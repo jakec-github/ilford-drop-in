@@ -1,0 +1,21 @@
+{
+  "name": "ilford-drop-in",
+  "version": "1.0.0",
+  "description": "Ilford drop in code ",
+  "main": "rota/index.ts",
+  "author": "jakechorley@gmail.com",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "run-rota": "yarn run build-rota && node out/index.js",
+    "build-rota": "tsc"
+  },
+  "dependencies": {
+    "googleapis": "^118.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.2.5",
+    "typescript": "^5.0.4"
+  }
+}
