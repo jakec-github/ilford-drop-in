@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { getSheetsClient } from './clients.js';
 
-interface ServiceVolunteer {
+export interface ServiceVolunteer {
   firstName: string;
   lastName: string;
   role: string; // TODO: Make enum values enums
