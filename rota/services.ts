@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { getFormsClient, getSheetsClient } from './clients.js';
+import { getFormsClient, getMailClient, getSheetsClient } from './clients.js';
 
 export interface ServiceVolunteer {
   firstName: string;
@@ -18,7 +18,7 @@ interface ConfidentialData {
 }
 
 export const getServiceVolunteers = async () => {
-  const service = getSheetsClient();
+  const client = getSheetsClient();
 
   const confidentialData = JSON.parse(
     readFileSync('./secrets/confidential.json', 'utf8'),
@@ -28,7 +28,7 @@ export const getServiceVolunteers = async () => {
     throw new Error('Confidential data format unexpected');
   }
 
-  const result = await service.spreadsheets.values.get({
+  const result = await client.spreadsheets.values.get({
     spreadsheetId: confidentialData.spreadsheetID,
     range: confidentialData.serviceVolunteersTab,
   });
@@ -71,12 +71,12 @@ interface DateRange {
 }
 
 export const createAvailabilityForm = async (
-  volunteer: Pick<ServiceVolunteer, 'firstName' | 'lastName'>,
+  volunteer: ServiceVolunteer,
   range: DateRange,
 ) => {
-  const service = getFormsClient();
+  const client = getFormsClient();
 
-  const createResult = await service.forms.create({
+  const createResult = await client.forms.create({
     requestBody: {
       info: {
         title: `Unavailability for ${volunteer.firstName} ${volunteer.lastName}`,
@@ -93,7 +93,7 @@ export const createAvailabilityForm = async (
 
   const options = getSundaysInRange(range).map((date) => ({ value: date }));
 
-  const updateResult = await service.forms.batchUpdate({
+  const updateResult = await client.forms.batchUpdate({
     formId: createResult.data.formId as string, // TODO: Fix this so there isn't type casting
     requestBody: {
       requests: [
@@ -150,4 +150,10 @@ const getSundaysInRange = (range: DateRange) => {
   }
 
   return sundays;
+};
+
+const emailForm = (volunteer: ServiceVolunteer, formUrl: string) => {
+  const client = getMailClient();
+
+  client.users.messages.send(); //TODO fill this in
 };
