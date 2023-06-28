@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { getSheetsClient } from './clients.js';
+import { getFormsClient, getSheetsClient } from './clients.js';
 
 export interface ServiceVolunteer {
   firstName: string;
@@ -64,3 +64,90 @@ const validateData = (data: unknown): data is string[][] =>
 const validateConfidentialData = (data: unknown): data is ConfidentialData =>
   typeof (data as ConfidentialData)?.spreadsheetID === 'string' &&
   typeof (data as ConfidentialData).serviceVolunteersTab === 'string';
+
+interface DateRange {
+  start: Date;
+  end: Date;
+}
+
+export const createAvailabilityForm = async (
+  volunteer: Pick<ServiceVolunteer, 'firstName' | 'lastName'>,
+  range: DateRange,
+) => {
+  const service = getFormsClient();
+
+  const createResult = await service.forms.create({
+    requestBody: {
+      info: {
+        title: `Unavailability for ${volunteer.firstName} ${volunteer.lastName}`,
+      },
+    },
+  });
+
+  if (createResult.status !== 200) {
+    // Believe the google client catches issues (This is a simple safeguard)
+    throw new Error(
+      `Request to create form for ${volunteer.firstName} ${volunteer.lastName}. Failed with ${createResult.status}`,
+    );
+  }
+
+  const options = getSundaysInRange(range).map((date) => ({ value: date }));
+
+  const updateResult = await service.forms.batchUpdate({
+    formId: createResult.data.formId as string, // TODO: Fix this so there isn't type casting
+    requestBody: {
+      requests: [
+        {
+          createItem: {
+            item: {
+              title: 'Please select the dates you are NOT available',
+              questionItem: {
+                question: {
+                  choiceQuestion: {
+                    type: 'CHECKBOX',
+                    options,
+                  },
+                },
+              },
+            },
+            location: {
+              index: 0,
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  if (updateResult.status !== 200) {
+    // Believe the google client catches issues (This is a simple safeguard)
+    throw new Error(
+      `Request to update form for ${volunteer.firstName} ${volunteer.lastName}. Failed with ${createResult.status}`,
+    );
+  }
+
+  console.log(
+    volunteer.firstName,
+    volunteer.lastName,
+    createResult.data.responderUri,
+  );
+};
+
+const getSundaysInRange = (range: DateRange) => {
+  const sundays: string[] = [];
+
+  // Adjust the start date to the nearest Sunday
+  const adjustedStartDate = new Date(range.start);
+  adjustedStartDate.setDate(
+    adjustedStartDate.getDate() + ((7 - adjustedStartDate.getDay()) % 7),
+  );
+
+  // Iterate from the adjusted start date until the end date
+  let currentDate = adjustedStartDate;
+  while (currentDate <= range.end) {
+    sundays.push(currentDate.toDateString());
+    currentDate.setDate(currentDate.getDate() + 7); // Increment by 7 days for the next Sunday
+  }
+
+  return sundays;
+};
