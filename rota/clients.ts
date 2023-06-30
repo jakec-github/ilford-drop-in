@@ -44,7 +44,7 @@ export const getFormsClient = () => {
   });
 };
 
-export const getMailClient = () => {
+export const getMailClient = async () => {
   const serviceAccount = JSON.parse(
     readFileSync('./secrets/serviceAccount.json', 'utf8'),
   );
@@ -54,9 +54,12 @@ export const getMailClient = () => {
     undefined,
     serviceAccount.private_key,
     [MAIL_ACCESS_SCOPE],
-    undefined,
+    'jakechorley@gmail.com',
     serviceAccount.private_key_id,
   );
+
+  await client.authorize();
+
   return google.gmail({
     version: 'v1',
     auth: client,

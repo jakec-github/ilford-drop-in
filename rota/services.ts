@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { getFormsClient, getMailClient, getSheetsClient } from './clients.js';
+import { createEmail } from './mail.js';
 
 export interface ServiceVolunteer {
   firstName: string;
@@ -131,6 +132,8 @@ export const createAvailabilityForm = async (
     volunteer.lastName,
     createResult.data.responderUri,
   );
+
+  return createResult.data.responderUri;
 };
 
 const getSundaysInRange = (range: DateRange) => {
@@ -152,8 +155,35 @@ const getSundaysInRange = (range: DateRange) => {
   return sundays;
 };
 
-const emailForm = (volunteer: ServiceVolunteer, formUrl: string) => {
-  const client = getMailClient();
+const EMAIL_ID = 'jakechorley@googlemail.com';
 
-  client.users.messages.send(); //TODO fill this in
+export const emailForm = async (
+  volunteer: ServiceVolunteer,
+  formUrl: string,
+) => {
+  const client = await getMailClient();
+
+  const raw = createEmail(
+    EMAIL_ID,
+    volunteer.email,
+    'Unavailaiblity for <DATES>',
+    `Hey ${volunteer.firstName} ${volunteer.lastName}
+
+Please use this form to let us know when you aren't availabe for the upcoming rota
+
+${formUrl}
+
+Thanks
+
+The drop-in team`,
+  );
+
+  console.log(`Sending email to ${volunteer.email}`);
+
+  return await client.users.messages.send({
+    userId: EMAIL_ID,
+    requestBody: {
+      raw: raw,
+    },
+  });
 };

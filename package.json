@@ -12,7 +12,8 @@
     "build-rota": "tsc"
   },
   "dependencies": {
-    "googleapis": "^118.0.0"
+    "googleapis": "^118.0.0",
+    "mimetext": "^3.0.15"
   },
   "devDependencies": {
     "@types/node": "^20.2.5",
