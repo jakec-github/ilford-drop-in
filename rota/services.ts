@@ -75,7 +75,7 @@ export const createAvailabilityForm = async (
   volunteer: ServiceVolunteer,
   range: DateRange,
 ) => {
-  const client = getFormsClient();
+  const client = await getFormsClient();
 
   const createResult = await client.forms.create({
     requestBody: {
@@ -131,6 +131,7 @@ export const createAvailabilityForm = async (
     volunteer.firstName,
     volunteer.lastName,
     createResult.data.responderUri,
+    createResult.data.formId,
   );
 
   return createResult.data.responderUri;

@@ -1,4 +1,3 @@
-import { createEmail } from './mail.js';
 import {
   createAvailabilityForm,
   emailForm,
@@ -9,27 +8,23 @@ import { getActiveVolunteers } from './volunteers.js';
 const main = async () => {
   const volunteers = await getServiceVolunteers();
 
-  // getActiveVolunteers(volunteers)
+  // const volunteersAndForms = await Promise.all(
+  //   getActiveVolunteers(volunteers).map(async (volunteer) => {
+  //     const formUrl = await createAvailabilityForm(volunteer, {
+  //       start: new Date('2023-07-30'),
+  //       end: new Date('2023-09-17'),
+  //     });
 
-  (
-    await Promise.all(
-      volunteers
-        .filter(({ lastName }) => lastName === 'Atherton')
-        .map(async (volunteer) => {
-          const formUrl = await createAvailabilityForm(volunteer, {
-            start: new Date(),
-            end: new Date('2023-08-31'),
-          });
+  //     return {
+  //       volunteer,
+  //       formUrl,
+  //     };
+  //   }),
+  // );
 
-          return {
-            volunteer,
-            formUrl,
-          };
-        }),
-    )
-  ).forEach(({ volunteer, formUrl }) => {
-    emailForm(volunteer, formUrl as string); //TODO add guarding to avoid casting
-  });
+  // volunteersAndForms.forEach(({ volunteer, formUrl }) => {
+  //   emailForm(volunteer, formUrl as string); //TODO add guarding to avoid casting
+  // });
 };
 
 main();

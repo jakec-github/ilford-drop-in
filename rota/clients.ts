@@ -4,6 +4,8 @@ import { google } from 'googleapis';
 
 const SHEETS_ACCESS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const FORMS_ACCESS_SCOPE = 'https://www.googleapis.com/auth/forms.body';
+const FORMS_READ_ACCESS_SCOPE =
+  'https://www.googleapis.com/auth/forms.responses.readonly';
 const MAIL_ACCESS_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 export const getSheetsClient = () => {
@@ -19,13 +21,14 @@ export const getSheetsClient = () => {
     undefined,
     serviceAccount.private_key_id,
   );
+
   return google.sheets({
     version: 'v4',
     auth: client,
   });
 };
 
-export const getFormsClient = () => {
+export const getFormsClient = async () => {
   const serviceAccount = JSON.parse(
     readFileSync('./secrets/serviceAccount.json', 'utf8'),
   );
@@ -34,10 +37,16 @@ export const getFormsClient = () => {
     serviceAccount.client_email,
     undefined,
     serviceAccount.private_key,
-    [FORMS_ACCESS_SCOPE],
+    [FORMS_ACCESS_SCOPE, FORMS_READ_ACCESS_SCOPE],
     undefined,
     serviceAccount.private_key_id,
   );
+
+  await client.authorize();
+
+  // Useful for testing in google API explorer
+  // console.log(await client.getAccessToken());
+
   return google.forms({
     version: 'v1',
     auth: client,
