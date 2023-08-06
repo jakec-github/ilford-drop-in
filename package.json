@@ -12,8 +12,10 @@
     "build-rota": "tsc"
   },
   "dependencies": {
+    "@types/yargs": "^17.0.24",
     "googleapis": "^118.0.0",
-    "mimetext": "^3.0.15"
+    "mimetext": "^3.0.15",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/node": "^20.2.5",
