@@ -8,8 +8,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "run-rota": "yarn run build-rota && node out/index.js",
-    "build-rota": "tsc"
+    "script": "yarn run build && node out/runner.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@types/yargs": "^17.0.24",
