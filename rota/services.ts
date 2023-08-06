@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 
+import { forms_v1 } from 'googleapis';
+
 import { getFormsClient, getMailClient, getSheetsClient } from './clients.js';
 import { createEmail } from './mail.js';
 
@@ -154,6 +156,41 @@ const getSundaysInRange = (range: DateRange) => {
   }
 
   return sundays;
+};
+
+export const getAvailablityResponses = async (
+  formIds: string[],
+): Promise<string[][]> => {
+  const client = await getFormsClient();
+
+  const apiResponses = await Promise.all(
+    formIds.map((formId) =>
+      client.forms.responses.list({
+        formId,
+        pageSize: 1,
+      }),
+    ),
+  );
+
+  return apiResponses.map((res) =>
+    parseAvailabilityFormResponseResponseData(res.data.responses),
+  );
+};
+
+const parseAvailabilityFormResponseResponseData = (
+  apiResponse: forms_v1.Schema$ListFormResponsesResponse['responses'],
+): string[] => {
+  const answers = apiResponse?.[0].answers;
+  if (!answers) {
+    return ['No responses'];
+  }
+
+  const results = Object.values(answers)[0].textAnswers?.answers;
+  if (!results) {
+    return [];
+  }
+
+  return (Object.values(results).map(({ value }) => value) as string[]) || [];
 };
 
 const EMAIL_ID = 'jakechorley@googlemail.com';
