@@ -15,10 +15,10 @@ A google service account has been created with access to volunteer info
 
 Create a secrets directory with the following files:
 
-- `confidentialData.json`
+- `confidential.json`
 - `serviceAccount.json`
 
-`confidendtial.json` must include:
+`confidential.json` must include:
 
 - `"spreadsheetID": \<Volunteer spreadsheet ID\>,
 - `"serviceVolunteersTab": \<Tab name for service volunteers\>,
@@ -26,3 +26,9 @@ Create a secrets directory with the following files:
 `serviceAccount.json` is supplied by google when creating the service account. Ask for this if needed
 
 Run `yarn install` before executing the script
+
+## Executing
+
+Use `yarn run script`
+
+Pass the help flag to see commands and options `yarn run script --help`
