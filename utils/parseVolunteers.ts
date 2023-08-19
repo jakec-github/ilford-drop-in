@@ -1,6 +1,7 @@
 import { ServiceVolunteer } from '../types';
 
 const FIELDS = [
+  'Unique ID',
   'First name',
   'Last name',
   'Role',
@@ -30,13 +31,17 @@ export const parseVolunteers = (raw: string[][]): ServiceVolunteer[] => {
     return row[index];
   };
 
-  return raw.slice(1).map((row) => ({
-    firstName: getField('First name', row),
-    lastName: getField('Last name', row),
-    role: getField('Role', row), // TODO: Make enum values enums or unions
-    status: getField('Status', row),
-    gender: getField('Sex/Gender', row),
-    email: getField('Email', row),
-    groupKey: getField('Group key', row) || null,
-  }));
+  return raw
+    .slice(1)
+    .map((row) => ({
+      id: getField('Unique ID', row),
+      firstName: getField('First name', row),
+      lastName: getField('Last name', row),
+      role: getField('Role', row), // TODO: Make enum values enums or unions
+      status: getField('Status', row),
+      gender: getField('Sex/Gender', row),
+      email: getField('Email', row),
+      groupKey: getField('Group key', row) || null,
+    }))
+    .filter(({ firstName }) => firstName !== '');
 };

@@ -4,6 +4,7 @@ export interface ConfidentialData {
 }
 
 export interface ServiceVolunteer {
+  id: string;
   firstName: string;
   lastName: string;
   role: string; // TODO: Make enum values enums
