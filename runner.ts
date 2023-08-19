@@ -1,40 +1,19 @@
 import yargs from 'yargs';
 
-import getPrompter from 'prompt-sync';
-
 import { createForms } from './scripts/createForms.js';
 import { generateRota } from './scripts/generateRota.js';
 import { sendForms } from './scripts/sendForms.js';
-
-const prompt = getPrompter();
+import { confirmPrompt } from './utils/confirmPrompt.js';
 
 const warn = (argv: any) => {
   if (argv.live_run) {
-    const response = prompt(
-      'You are running live. Do you want to continue? (y/n)',
-      'n',
-    );
-
-    switch (response.toLowerCase()) {
-      case 'n':
-      case 'no': {
-        console.log('Aborting');
-        process.exit();
-      }
-      case 'y':
-      case 'yes':
-        console.log('Running live');
-        return;
-      default:
-        console.log(`Invalid response: ${response}`);
-        process.exit();
-    }
+    confirmPrompt('You are running live. Do you want to continue?');
   } else {
     console.log('Dry run only. To execute live pass the --live_run flag');
   }
 };
 
-const argv = yargs(process.argv.slice(2))
+yargs(process.argv.slice(2))
   .middleware(warn)
   .command(
     'create_forms',
@@ -73,5 +52,3 @@ const argv = yargs(process.argv.slice(2))
     describe: 'Side effects will be executed',
     type: 'boolean',
   }).argv;
-
-console.log(argv);

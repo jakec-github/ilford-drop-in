@@ -1,8 +1,9 @@
 import { getSheetsClient } from '../client.js';
 import { getConfidentialData } from '../utils/getConfidentialData.js';
+import { guardService } from '../utils/guardService.js';
 import { parseVolunteers } from '../utils/parseVolunteers.js';
 
-export const listVolunteers = async () => {
+const listVolunteersPrivate = async () => {
   const client = await getSheetsClient();
   const confidentialData = getConfidentialData();
 
@@ -17,9 +18,13 @@ export const listVolunteers = async () => {
   }
   const serviceVolunteers = parseVolunteers(spreadsheetData);
 
-  console.table(serviceVolunteers);
   return serviceVolunteers;
 };
+
+export const listVolunteers = guardService(
+  listVolunteersPrivate,
+  'List Volunteers',
+);
 
 const validateSpreadsheetData = (data: unknown): data is string[][] =>
   Array.isArray(data) &&
