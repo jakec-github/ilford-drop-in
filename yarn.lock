@@ -42,6 +42,11 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-20.2.5.tgz#26d295f3570323b2837d322180dfbf1ba156fefb"
   integrity sha512-JJulVEQXmiY9Px5axXHeYGLSjhkZEnD+MDPDGbCbIAbMslkKwmygtZFy1X6s/075Yo94sf8GuSlFfPzysQrWZQ==
 
+"@types/prompt-sync@^4.2.0":
+  version "4.2.0"
+  resolved "https://registry.yarnpkg.com/@types/prompt-sync/-/prompt-sync-4.2.0.tgz#e0bcf80211e9a2edb52891926a0700b2bffe08cb"
+  integrity sha512-5RPQYDT7MNkt+vq6xp58tSPx4THANyQcBSaw3Ni+KV7MUAgvUUbmCsQmcPVrcc8dwuURSPixz2qTJdJF6ABSKw==
+
 "@types/yargs-parser@*":
   version "21.0.0"
   resolved "https://registry.yarnpkg.com/@types/yargs-parser/-/yargs-parser-21.0.0.tgz#0c60e537fa790f5f9472ed2776c2b71ec117351b"
@@ -60,6 +65,11 @@ agent-base@6:
   integrity sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==
   dependencies:
     debug "4"
+
+ansi-regex@^4.1.0:
+  version "4.1.1"
+  resolved "https://registry.yarnpkg.com/ansi-regex/-/ansi-regex-4.1.1.tgz#164daac87ab2d6f6db3a29875e2d1766582dabed"
+  integrity sha512-ILlv4k/3f6vfQ4OoP2AGvirOktlQ98ZEL1k9FaQjxa3L1abBgbuTDAdPOpvbGncC0BTVQrl+OM8xZGK6tWXt7g==
 
 ansi-regex@^5.0.1:
   version "5.0.1"
@@ -369,6 +379,13 @@ object-inspect@^1.9.0:
   resolved "https://registry.yarnpkg.com/object-inspect/-/object-inspect-1.12.3.tgz#ba62dffd67ee256c8c086dfae69e016cd1f198b9"
   integrity sha512-geUvdk7c+eizMNUDkRpW1wJwgfOiOeHbxBR/hLXK1aT6zmVSO0jsQcs7fj6MGw89jC/cjGfLcNOrtMYtGqm81g==
 
+prompt-sync@^4.2.0:
+  version "4.2.0"
+  resolved "https://registry.yarnpkg.com/prompt-sync/-/prompt-sync-4.2.0.tgz#0198f73c5b70e3b03e4b9033a50540a7c9a1d7f4"
+  integrity sha512-BuEzzc5zptP5LsgV5MZETjDaKSWfchl5U9Luiu8SKp7iZWD5tZalOxvNcZRwv+d2phNFr8xlbxmFNcRKfJOzJw==
+  dependencies:
+    strip-ansi "^5.0.0"
+
 qs@^6.7.0:
   version "6.11.2"
   resolved "https://registry.yarnpkg.com/qs/-/qs-6.11.2.tgz#64bea51f12c1f5da1bc01496f48ffcff7c69d7d9"
@@ -408,6 +425,13 @@ string-width@^4.1.0, string-width@^4.2.0, string-width@^4.2.3:
     emoji-regex "^8.0.0"
     is-fullwidth-code-point "^3.0.0"
     strip-ansi "^6.0.1"
+
+strip-ansi@^5.0.0:
+  version "5.2.0"
+  resolved "https://registry.yarnpkg.com/strip-ansi/-/strip-ansi-5.2.0.tgz#8c9a536feb6afc962bdfa5b104a5091c1ad9c0ae"
+  integrity sha512-DuRs1gKbBqsMKIZlrffwlug8MHkcnpjs5VPmL1PAh+mA30U0DTotfDZ0d2UUsXpPmPmMMJ6W773MaA3J+lbiWA==
+  dependencies:
+    ansi-regex "^4.1.0"
 
 strip-ansi@^6.0.0, strip-ansi@^6.0.1:
   version "6.0.1"

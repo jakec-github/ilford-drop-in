@@ -12,13 +12,15 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@types/yargs": "^17.0.24",
     "googleapis": "^118.0.0",
     "mimetext": "^3.0.15",
+    "prompt-sync": "^4.2.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/node": "^20.2.5",
+    "@types/prompt-sync": "^4.2.0",
+    "@types/yargs": "^17.0.24",
     "typescript": "^5.0.4"
   }
 }
