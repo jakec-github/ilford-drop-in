@@ -15,5 +15,7 @@ export const getConfidentialData = (): ConfidentialData => {
 };
 
 const validateConfidentialData = (data: unknown): data is ConfidentialData =>
-  typeof (data as ConfidentialData)?.spreadsheetID === 'string' &&
-  typeof (data as ConfidentialData).serviceVolunteersTab === 'string';
+  typeof (data as ConfidentialData)?.volunteerSheetID === 'string' &&
+  typeof (data as ConfidentialData).serviceVolunteersTab === 'string' &&
+  typeof (data as ConfidentialData).rotaSheetID === 'string' &&
+  typeof (data as ConfidentialData).formSheetID === 'string';

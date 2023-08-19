@@ -1,6 +1,8 @@
 export interface ConfidentialData {
-  spreadsheetID: string;
+  volunteerSheetID: string;
   serviceVolunteersTab: string;
+  rotaSheetID: string;
+  formSheetID: string;
 }
 
 export interface ServiceVolunteer {

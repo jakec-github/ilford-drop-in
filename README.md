@@ -11,17 +11,19 @@ This repository contains a set of scripts to help organise the Ilford drop in ce
 
 ## Prerequisites
 
-A google service account has been created with access to volunteer info
+A google service account with access to volunteer info
 
-Create a secrets directory with the following files:
+A secrets directory in this directory with the following files:
 
 - `confidential.json`
 - `serviceAccount.json`
 
 `confidential.json` must include:
 
-- `"spreadsheetID": \<Volunteer spreadsheet ID\>,
-- `"serviceVolunteersTab": \<Tab name for service volunteers\>,
+- "volunteerSheetID": \<Volunteer spreadsheet ID\>
+- "serviceVolunteersTab": \<Tab name for service volunteers\>
+- "rotaSheetID": \<Rota spreadsheet ID\>
+- "formSheetID": \<Form spreadsheet ID\>
 
 `serviceAccount.json` is supplied by google when creating the service account. Ask for this if needed
 

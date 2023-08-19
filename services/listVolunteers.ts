@@ -8,7 +8,7 @@ const listVolunteersPrivate = async () => {
   const confidentialData = getConfidentialData();
 
   const apiResponse = await client.spreadsheets.values.get({
-    spreadsheetId: confidentialData.spreadsheetID,
+    spreadsheetId: confidentialData.volunteerSheetID,
     range: confidentialData.serviceVolunteersTab,
   });
 
