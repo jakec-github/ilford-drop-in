@@ -15,3 +15,11 @@ export interface ServiceVolunteer {
   email: string;
   groupKey: string | null;
 }
+
+export interface AvailabilityFormData {
+  firstName: string;
+  lastName: string;
+  volunteerID: string;
+  formID: string;
+  formURL: string;
+}
