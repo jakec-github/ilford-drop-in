@@ -1,5 +1,6 @@
 import yargs from 'yargs';
 
+import { context } from './context.js';
 import { createForms } from './scripts/createForms.js';
 import { generateRota } from './scripts/generateRota.js';
 import { sendForms } from './scripts/sendForms.js';
@@ -8,6 +9,7 @@ import { confirmPrompt } from './utils/confirmPrompt.js';
 const warn = (argv: any) => {
   if (argv.live_run) {
     confirmPrompt('You are running live. Do you want to continue?');
+    context.live = true;
   } else {
     console.log('Dry run only. To execute live pass the --live_run flag');
   }
@@ -25,12 +27,12 @@ yargs(process.argv.slice(2))
         required: true,
       },
     },
-    ({ live_run, shift_count }) => {
-      createForms(live_run as boolean, shift_count);
+    ({ shift_count }) => {
+      createForms(shift_count);
     },
   )
-  .command('send_forms', 'Email forms to volunteers', {}, ({ live_run }) => {
-    sendForms(live_run as boolean);
+  .command('send_forms', 'Email forms to volunteers', {}, () => {
+    sendForms();
   })
   .command(
     'generate_rota',
@@ -42,8 +44,8 @@ yargs(process.argv.slice(2))
         required: true,
       },
     },
-    ({ live_run, shift_count }) => {
-      generateRota(live_run as boolean, shift_count);
+    ({ shift_count }) => {
+      generateRota(shift_count);
     },
   )
   .demandCommand(1)
