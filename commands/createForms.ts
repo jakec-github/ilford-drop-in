@@ -4,7 +4,8 @@ import { getRota } from '../services/getRota.js';
 import { listVolunteers } from '../services/listVolunteers.js';
 
 export const createForms = async (shiftCount: number) => {
-  const [volunteers, rota] = await Promise.all([listVolunteers(), getRota()]);
+  const volunteers = await listVolunteers();
+  const rota = await getRota();
 
   const activeVolunteers = volunteers.filter(
     ({ status }) => status === 'Active',
