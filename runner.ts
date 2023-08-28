@@ -1,9 +1,9 @@
 import yargs from 'yargs';
 
 import { context } from './context.js';
-import { createForms } from './scripts/createForms.js';
-import { generateRota } from './scripts/generateRota.js';
-import { sendForms } from './scripts/sendForms.js';
+import { createForms } from './commands/createForms.js';
+import { generateRota } from './commands/generateRota.js';
+import { sendForms } from './commands/sendForms.js';
 import { confirmPrompt } from './utils/confirmPrompt.js';
 
 const warn = (argv: any) => {
