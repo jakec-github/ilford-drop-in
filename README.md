@@ -11,12 +11,24 @@ This repository contains a set of scripts to help organise the Ilford drop in ce
 
 ## Prerequisites
 
-A google service account with access to volunteer info
+### Google resources
+
+- A gmail account
+- A google cloud project
+  - The gmail, spreadsheet and form APIs need enabling
+- A service account in the project with access to the relevant spreadsheets
+  - Ilford drop-in
+  - Form IDs
+  - Ilford drop-in rota
+- A desktop oAuth2 client
+
+## Codebase
 
 A secrets directory in this directory with the following files:
 
 - `confidential.json`
 - `serviceAccount.json`
+- `oauthClient.json`
 
 `confidential.json` must include:
 
@@ -26,6 +38,8 @@ A secrets directory in this directory with the following files:
 - "formSheetID": \<Form spreadsheet ID\>
 
 `serviceAccount.json` is supplied by google when creating the service account. Ask for this if needed
+
+`oauthClient.json` can be downloaded from the google cloud console page
 
 Run `yarn install` before executing the script
 
