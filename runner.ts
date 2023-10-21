@@ -31,9 +31,20 @@ yargs(process.argv.slice(2))
       createForms(shift_count);
     },
   )
-  .command('send_forms', 'Email forms to volunteers', {}, () => {
-    sendForms();
-  })
+  .command(
+    'send_forms',
+    'Email forms to volunteers',
+    {
+      ['deadline']: {
+        type: 'string',
+        description: 'Human readable deadline for form responses',
+        required: true,
+      },
+    },
+    ({ deadline }) => {
+      sendForms(deadline);
+    },
+  )
   .command(
     'generate_rota',
     'Use responses to produce a valid rota',
