@@ -36,6 +36,8 @@ A secrets directory in this directory with the following files:
 - "serviceVolunteersTab": \<Tab name for service volunteers\>
 - "rotaSheetID": \<Rota spreadsheet ID\>
 - "formSheetID": \<Form spreadsheet ID\>
+- "gmailUserID": \<User ID for gmail\>
+- "gmailSender": \<Sender for gmail\>
 
 `serviceAccount.json` is supplied by google when creating the service account. Ask for this if needed
 

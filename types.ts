@@ -3,6 +3,8 @@ export interface ConfidentialData {
   serviceVolunteersTab: string;
   rotaSheetID: string;
   formSheetID: string;
+  gmailUserID: string;
+  gmailSender: string;
 }
 
 export interface ServiceVolunteer {
