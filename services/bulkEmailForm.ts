@@ -5,6 +5,9 @@ import { ServiceVolunteer } from '../types.js';
 import { getConfidentialData } from '../utils/getConfidentialData.js';
 import { guardService } from '../utils/guardService.js';
 
+// Interval between sending each email to avoid rate limits
+const EMAIL_INTERVAL = 3 * 1000;
+
 export interface FormWithVolunteer {
   volunteer: ServiceVolunteer;
   formURL: string;
@@ -17,14 +20,22 @@ const bulkEmailFormPrivate = async (
   const client = await getMailClient();
   const confidentialData = await getConfidentialData();
 
-  const requests = forms.map((form) =>
-    client.users.messages.send({
+  console.log(
+    `Emailing ${forms.length} volunteers with delay: ${
+      EMAIL_INTERVAL / 1000
+    } seconds`,
+  );
+
+  const requests = forms.map(async (form, i) => {
+    await waitFor(i * EMAIL_INTERVAL);
+    console.log(`Sending email to: ${form.volunteer.email}`);
+    return client.users.messages.send({
       userId: confidentialData.gmailUserID,
       requestBody: {
         raw: createEmail(confidentialData.gmailSender, form, deadline),
       },
-    }),
-  );
+    });
+  });
 
   return (await Promise.all(requests)).map(({ status }, i) => ({
     success: status === 200,
@@ -71,3 +82,6 @@ The Ilford drop-in team
 
   return encodeURI(btoa(msg.asRaw()));
 };
+
+const waitFor = (wait: number) =>
+  new Promise<void>((resolve) => setTimeout(() => resolve(), wait));
