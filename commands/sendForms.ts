@@ -3,9 +3,12 @@ import { getFormSheet } from '../services/getFormSheet.js';
 import { listVolunteers } from '../services/listVolunteers.js';
 import { bulkEmailForm } from '../services/bulkEmailForm.js';
 import type { FormWithVolunteer } from '../services/bulkEmailForm.js';
-import { ServiceVolunteer } from '../types.js';
+import type { ServiceVolunteer } from '../types.js';
 
-export const sendForms = async (deadline: string) => {
+export const sendForms = async (
+  deadline: string,
+  volunteerIDs: string[] = [],
+) => {
   const volunteers = await listVolunteers();
 
   const rota = await getRota();
@@ -18,12 +21,14 @@ export const sendForms = async (deadline: string) => {
 
   const forms = await getFormSheet(dateString);
 
-  const enrichedForms: FormWithVolunteer[] = forms.map(
-    ({ volunteerID, formURL }) => ({
+  const enrichedForms: FormWithVolunteer[] = forms
+    .filter(({ volunteerID }) =>
+      volunteerIDs.length ? volunteerIDs.includes(volunteerID) : true,
+    )
+    .map(({ volunteerID, formURL }) => ({
       volunteer: mustGetVolunteerByID(volunteerID, volunteers),
       formURL,
-    }),
-  );
+    }));
 
   await bulkEmailForm(enrichedForms, deadline);
 };

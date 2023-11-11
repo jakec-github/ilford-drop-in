@@ -40,9 +40,15 @@ yargs(process.argv.slice(2))
         description: 'Human readable deadline for form responses',
         required: true,
       },
+      ['volunteer_ids']: {
+        type: 'array',
+        description: 'Volunteer IDs to send form to. All volunteers if omitted',
+        required: false,
+      },
     },
-    ({ deadline }) => {
-      sendForms(deadline);
+    ({ deadline, volunteer_ids }) => {
+      const volunteerIDs = volunteer_ids?.map((id) => String(id));
+      sendForms(deadline, volunteerIDs);
     },
   )
   .command(

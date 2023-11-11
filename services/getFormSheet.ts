@@ -22,9 +22,6 @@ const getFormSheetPrivate = async (firstShift: string) => {
     );
   }
 
-  console.log('Worksheet name');
-  console.log(worksheetName);
-
   const valuesResponse = await client.spreadsheets.values.get({
     spreadsheetId: confidentialData.formSheetID,
     range: worksheetName,

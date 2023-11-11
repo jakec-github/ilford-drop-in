@@ -8,15 +8,17 @@ export const guardService = <A extends any[], R>(
   readOnly = true,
 ): ((...args: A) => Promise<R>) => {
   return async (...args) => {
-    console.log(`Executing ${serviceName}`);
     if (!readOnly) {
       if (!context.live) {
         console.log('Exiting. To run this service use the --live_run flag');
         process.exit();
       }
+      console.log(`Executing ${serviceName}`);
       console.log(`Running with arguments:`);
       console.log(args);
       confirmPrompt('Would you like to proceed?');
+    } else {
+      console.log(`Executing ${serviceName}`);
     }
     const serviceResponse = await serviceFunction(...args);
     console.log('Results:');
