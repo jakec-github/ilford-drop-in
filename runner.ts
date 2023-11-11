@@ -1,6 +1,7 @@
 import yargs from 'yargs';
 
 import { context } from './context.js';
+import { addForms } from './commands/addForms.js';
 import { createForms } from './commands/createForms.js';
 import { generateRota } from './commands/generateRota.js';
 import { sendForms } from './commands/sendForms.js';
@@ -29,6 +30,26 @@ yargs(process.argv.slice(2))
     },
     ({ shift_count }) => {
       createForms(shift_count);
+    },
+  )
+  .command(
+    'add_forms',
+    'Create additional unavailability forms',
+    {
+      ['shift_count']: {
+        type: 'number',
+        description: 'Number of shifts to ask availability for',
+        required: true,
+      },
+      ['volunteer_ids']: {
+        type: 'array',
+        description: 'Volunteer IDs to add forms for',
+        required: true,
+      },
+    },
+    ({ shift_count, volunteer_ids }) => {
+      const volunteerIDs = volunteer_ids?.map((id) => String(id)) || [];
+      addForms(shift_count, volunteerIDs);
     },
   )
   .command(

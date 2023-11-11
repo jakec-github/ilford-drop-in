@@ -10,7 +10,8 @@ export const guardService = <A extends any[], R>(
   return async (...args) => {
     if (!readOnly) {
       if (!context.live) {
-        console.log('Exiting. To run this service use the --live_run flag');
+        console.log(`${serviceName} requires the --live_run flag`);
+        console.log('Exiting');
         process.exit();
       }
       console.log(`Executing ${serviceName}`);

@@ -35,12 +35,15 @@ const createFormSheetPrivate = async (
   const lastRow = forms.length + 1;
 
   await client.spreadsheets.values.update({
+    // Path parameters
     spreadsheetId: confidentialData.formSheetID,
     range: `${worksheetTitle}!A1:${lastColumn}${lastRow}`,
+    // Query parameters
+    valueInputOption: 'RAW',
+    // Body
     requestBody: {
       values: [FIELDS, ...formsToRows(forms)],
     },
-    valueInputOption: 'RAW',
   });
 };
 
