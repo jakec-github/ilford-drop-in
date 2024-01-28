@@ -1,10 +1,11 @@
 import yargs from 'yargs';
 
-import { context } from './context.js';
 import { addForms } from './commands/addForms.js';
 import { createForms } from './commands/createForms.js';
 import { generateRota } from './commands/generateRota.js';
 import { sendForms } from './commands/sendForms.js';
+import { viewResponses } from './commands/viewResponses.js';
+import { context } from './context.js';
 import { confirmPrompt } from './utils/confirmPrompt.js';
 
 const warn = (argv: any) => {
@@ -73,12 +74,31 @@ yargs(process.argv.slice(2))
     },
   )
   .command(
+    'view_responses',
+    'See all form responses',
+    {
+      ['first_shift']: {
+        type: 'string',
+        description: 'The first shift for the period in 8601',
+        required: true,
+      },
+      ['shift_count']: {
+        type: 'number',
+        description: 'Number of shifts that will be in the rota',
+        required: true,
+      },
+    },
+    ({ first_shift, shift_count }) => {
+      viewResponses(first_shift, shift_count);
+    },
+  )
+  .command(
     'generate_rota',
     'Use responses to produce a valid rota',
     {
       ['shift_count']: {
         type: 'number',
-        description: 'Number of shifts to ask availability for',
+        description: 'Number of shifts to create rota for',
         required: true,
       },
     },
