@@ -1,3 +1,5 @@
+import dayjs from 'dayjs';
+
 import { getRota } from '../services/getRota.js';
 import { getFormSheet } from '../services/getFormSheet.js';
 import { listVolunteers } from '../services/listVolunteers.js';
@@ -14,10 +16,9 @@ export const sendForms = async (
   const rota = await getRota();
 
   // Use previous rota to get first shift of the next rota
-  const lastShift = rota[rota.length - 1][0];
-  const nextShift = new Date(lastShift);
-  nextShift.setDate(nextShift.getDate() + 7);
-  const dateString = nextShift.toISOString().slice(0, 10);
+  const lastShift = dayjs(rota[rota.length - 1][0]);
+  const nextShift = lastShift.add(7, 'day');
+  const dateString = nextShift.format('YYYY-MM-DD');
 
   const forms = await getFormSheet(dateString);
 

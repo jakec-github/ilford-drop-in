@@ -2,6 +2,7 @@ export const getNextShifts = (lastShift: string, shiftCount: number) => {
   let dates: string[] = [];
   let isoDates: string[] = [];
   for (let i = 1; i <= shiftCount; i += 1) {
+    //TODO: Replace with dayjs for safer date manipulation logic
     const shift = new Date(lastShift);
     shift.setDate(shift.getDate() + i * 7);
 

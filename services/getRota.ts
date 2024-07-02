@@ -1,3 +1,5 @@
+import dayjs from 'dayjs';
+
 import { getSheetsClient } from '../client.js';
 import { getConfidentialData } from '../utils/getConfidentialData.js';
 import { guardService } from '../utils/guardService.js';
@@ -37,8 +39,8 @@ export const getRota = guardService(getRotaPrivate, 'Get rota');
 const getLastRange = (ranges: string[]): string => {
   let sortedRanges = [...ranges];
 
-  const getlatestDate = (range: string): Date => new Date(range.slice(-10));
-  sortedRanges.sort((a, b) => (getlatestDate(a) >= getlatestDate(b) ? 1 : -1));
+  const endDate = (range: string) => dayjs(range.slice(-10));
+  sortedRanges.sort((a, b) => (endDate(a).isAfter(endDate(b)) ? 1 : -1));
 
   return sortedRanges[sortedRanges.length - 1];
 };
