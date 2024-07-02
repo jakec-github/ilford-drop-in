@@ -11,8 +11,6 @@ const getRotaPrivate = async () => {
     spreadsheetId: confidentialData.rotaSheetID,
   });
 
-  console.log(sheetResponse.data?.sheets?.[0].properties?.gridProperties);
-
   const ranges = sheetResponse.data?.sheets
     ?.map(({ properties }) => properties?.title)
     .filter(rangeIsString);
