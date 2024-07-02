@@ -1,6 +1,7 @@
 import yargs from 'yargs';
 
 import { addForms } from './commands/addForms.js';
+import { checkResponse } from './commands/checkResponse.js';
 import { createForms } from './commands/createForms.js';
 import { generateRota } from './commands/generateRota.js';
 import { sendForms } from './commands/sendForms.js';
@@ -91,6 +92,25 @@ yargs(process.argv.slice(2))
     ({ first_shift, shift_count }) => {
       viewResponses(first_shift, shift_count);
     },
+  )
+  .command(
+    'check_response',
+    'See a volunteers response',
+    {
+      ['first_shift']: {
+        type: 'string',
+        description: 'The first shift for the period in 8601',
+        required: true,
+      },
+      ['volunteer_id']: {
+        type: 'string',
+        description: 'Volunteer ID to check',
+        required: true,
+      },
+    },
+    ({first_shift, volunteer_id}) => {
+      checkResponse(first_shift, volunteer_id)
+    }
   )
   .command(
     'generate_rota',
