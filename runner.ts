@@ -60,7 +60,7 @@ yargs(process.argv.slice(2))
     {
       ['deadline']: {
         type: 'string',
-        description: 'Human readable deadline for form responses',
+        description: 'Human readable deadline for form responses "Deadline for responses is ${deadline} when we will create the rota."',
         required: true,
       },
       ['volunteer_ids']: {
