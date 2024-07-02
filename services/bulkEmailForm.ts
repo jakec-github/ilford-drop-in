@@ -57,12 +57,11 @@ const createEmail = (
 ) => {
   const body = `Hey ${volunteer.firstName}
 
-Please use this form to submit the shifts that you CANNOT do.
+Please use this form to let us know your availability.
 ${formUrl}
 
 Deadline for responses is ${deadline} when we will create the rota.
-You can change your answers as many times as you like before the deadline.
-If you attend as part of a group only one member needs to complete the form.
+You can change your response as many times as you like before the deadline.
 
 Thanks
 

@@ -1,6 +1,6 @@
 import { batchGetFormResponses } from '../services/batchGetFormResponses.js';
-import { getRota } from '../services/getRota.js';
 import { getFormSheet } from '../services/getFormSheet.js';
+import { listVolunteers } from '../services/listVolunteers.js';
 import { getNextShifts } from '../utils/getNextShifts.js';
 
 interface Response {
@@ -10,23 +10,60 @@ interface Response {
 }
 
 export const viewResponses = async (firstShift: string, shiftCount: number) => {
+  const volunteers = await listVolunteers();
   const formSheet = await getFormSheet(firstShift);
   const formResponses = await batchGetFormResponses(
     formSheet.map((form) => form.formID),
   );
-  // TODO: Remove the reliance on the rota. Only used to get previous shift date
-  const rota = await getRota();
 
-  const responses: Response[] = formResponses.map((formResponse, i) => ({
-    firstName: formSheet[i].firstName,
-    lastName: formSheet[i].lastName,
-    responses: formResponse,
-  })); // That shows results by person
+  const [unsortedLeadResponses, unsortedVolunteerResponses]: [Response[], Response[]] = formResponses.reduce<[Response[], Response[]]>((acc, formResponse, i) => {
+    const {volunteerID} = formSheet[i];
+    const volunteer = volunteers.find(({id}) => id === volunteerID);
 
-  const [dates] = getNextShifts(rota[rota.length - 1][0], shiftCount);
+    if (volunteer === undefined) {
+      throw new Error(`Cannot find volunteer with id: ${volunteerID}`)
+    }
 
-  console.table(responsesToTable(responses, dates));
+    if (volunteer.role === 'Team lead') {
+      return [
+        [...acc[0], {
+          firstName: formSheet[i].firstName,
+          lastName: formSheet[i].lastName,
+          responses: formResponse,
+        }],
+        acc[1],
+      ]
+    }
+
+    return [
+      acc[0],
+      [...acc[1], {
+        firstName: formSheet[i].firstName,
+        lastName: formSheet[i].lastName,
+        responses: formResponse,
+      }],
+    ]
+  }, [[],[]]);
+
+  const leadResponses = sortResponses(unsortedLeadResponses);
+  const volunteerResponses = sortResponses(unsortedVolunteerResponses);
+
+
+  const [dates] = getNextShifts('2024-06-23', shiftCount);
+
+  console.table(responsesToTable(leadResponses, dates));
+  console.table(responsesToTable(volunteerResponses, dates));
 };
+
+const sortResponses = (responses: Response[]) => [...responses].sort(({responses: a}, {responses: b}) => {
+  if (a[0] === 'No responses') {
+    return 1
+  }
+  if (b[0] === 'No responses') {
+    return -1
+  }
+  return b.length - a.length
+});
 
 const responsesToTable = (responses: Response[], shifts: string[]) => [
   ['', ...shifts.map((shift) => shift.slice(4, -5))],

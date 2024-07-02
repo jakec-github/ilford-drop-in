@@ -1,5 +1,6 @@
 import { forms_v1 } from 'googleapis';
 
+import { NOT_AVAILABLE_RESPONSE } from '../const.js';
 import { getFormsClient } from '../client.js';
 import { guardService } from '../utils/guardService.js';
 
@@ -28,16 +29,25 @@ export const batchGetFormResponses = guardService(
 const parseAvailabilityFormResponseResponseData = (
   apiResponse: forms_v1.Schema$ListFormResponsesResponse['responses'],
 ): string[] => {
-  const answers = apiResponse?.[0].answers;
-  if (!answers) {
+  const allAnswers = apiResponse?.[0].answers;
+  if (!allAnswers) {
     return ['No responses'];
   }
 
-  const results = Object.values(answers)[0].textAnswers?.answers;
-  if (!results) {
+  const answerArray = Object.values(allAnswers);
+
+  // If they only answered one question full availability is infered
+  if (answerArray.length === 1) {
     return [];
   }
 
-  //TODO: Remove type coercion
-  return (Object.values(results).map(({ value }) => value) as string[]) || [];
+  const results = [
+    ...Object.values(answerArray[0].textAnswers?.answers || []),
+    ...Object.values(answerArray[1].textAnswers?.answers || []),
+  ];
+
+  // TODO: Remove type coercion
+  return results
+    .map(({ value }) => value)
+    .filter((value) => value !== NOT_AVAILABLE_RESPONSE) as string[];
 };
