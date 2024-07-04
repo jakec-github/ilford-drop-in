@@ -17,7 +17,7 @@ export const sendForms = async (
 
   // Use previous rota to get first shift of the next rota
   const lastShift = dayjs(rota[rota.length - 1][0]);
-  const nextShift = lastShift.add(7, 'day');
+  const nextShift = lastShift.add(1, 'week');
   const dateString = nextShift.format('YYYY-MM-DD');
 
   const forms = await getFormSheet(dateString);

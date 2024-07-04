@@ -1,16 +1,14 @@
+import dayjs from 'dayjs';
+
 export const getNextShifts = (lastShift: string, shiftCount: number) => {
   let dates: string[] = [];
   let isoDates: string[] = [];
+  const lastShiftDate = dayjs(lastShift);
+
   for (let i = 1; i <= shiftCount; i += 1) {
-    //TODO: Replace with dayjs for safer date manipulation logic
-    const shift = new Date(lastShift);
-    shift.setDate(shift.getDate() + i * 7);
-
-    dates.push(shift.toDateString());
-
-    // Ensures that BST times still result in an ISO string with the correct date
-    shift.setHours(shift.getHours() + 1);
-    isoDates.push(shift.toISOString().slice(0, 10));
+    const shift = lastShiftDate.add(i, 'week');
+    dates.push(shift.format('ddd MMM DD YYYY'));
+    isoDates.push(shift.format('YYYY-MM-DD'));
   }
 
   return [dates, isoDates];
