@@ -28,6 +28,7 @@ yargs(process.argv.slice(2))
         type: 'number',
         description: 'Number of shifts to ask availability for',
         required: true,
+        default: 12,
       },
     },
     ({ shift_count }) => {
@@ -42,6 +43,7 @@ yargs(process.argv.slice(2))
         type: 'number',
         description: 'Number of shifts to ask availability for',
         required: true,
+        default: 12,
       },
       ['volunteer_ids']: {
         type: 'array',
@@ -60,7 +62,8 @@ yargs(process.argv.slice(2))
     {
       ['deadline']: {
         type: 'string',
-        description: 'Human readable deadline for form responses "Deadline for responses is ${deadline} when we will create the rota."',
+        description:
+          'Human readable deadline for form responses "Deadline for responses is ${deadline} when we will create the rota."',
         required: true,
       },
       ['volunteer_ids']: {
@@ -87,6 +90,7 @@ yargs(process.argv.slice(2))
         type: 'number',
         description: 'Number of shifts that will be in the rota',
         required: true,
+        default: 12,
       },
     },
     ({ first_shift, shift_count }) => {
@@ -108,9 +112,9 @@ yargs(process.argv.slice(2))
         required: true,
       },
     },
-    ({first_shift, volunteer_id}) => {
-      checkResponse(first_shift, volunteer_id)
-    }
+    ({ first_shift, volunteer_id }) => {
+      checkResponse(first_shift, volunteer_id);
+    },
   )
   .command(
     'generate_rota',
@@ -120,6 +124,7 @@ yargs(process.argv.slice(2))
         type: 'number',
         description: 'Number of shifts to create rota for',
         required: true,
+        default: 12,
       },
     },
     ({ shift_count }) => {
