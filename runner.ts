@@ -106,6 +106,12 @@ yargs(process.argv.slice(2))
         description: 'The first shift for the period in 8601',
         required: true,
       },
+      ['shift_count']: {
+        type: 'number',
+        description: 'Number of shifts to create rota for',
+        required: true,
+        default: 12,
+      },
       ['volunteer_id']: {
         type: 'string',
         description: 'Volunteer ID to check',
