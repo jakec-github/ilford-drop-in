@@ -118,8 +118,8 @@ yargs(process.argv.slice(2))
         required: true,
       },
     },
-    ({ first_shift, volunteer_id }) => {
-      checkResponse(first_shift, volunteer_id);
+    ({ first_shift, shift_count, volunteer_id }) => {
+      checkResponse(first_shift, shift_count, volunteer_id);
     },
   )
   .command(
