@@ -25,3 +25,13 @@ export interface AvailabilityFormData {
   formID: string;
   formURL: string;
 }
+
+export interface Response {
+  volunteer: ServiceVolunteer;
+  availability: Availability;
+}
+
+export interface Availability {
+  responded: boolean;
+  dates: string[];
+}

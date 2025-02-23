@@ -3,94 +3,49 @@ import dayjs from 'dayjs';
 import { batchGetFormResponses } from '../services/batchGetFormResponses.js';
 import { getFormSheet } from '../services/getFormSheet.js';
 import { listVolunteers } from '../services/listVolunteers.js';
+import { Response } from '../types.js';
 import { getNextShifts } from '../utils/getNextShifts.js';
-
-interface Response {
-  firstName: string;
-  lastName: string;
-  responses: string[];
-}
+import { sortResponses, splitResponses } from '../utils/responses.js';
 
 export const viewResponses = async (firstShift: string, shiftCount: number) => {
+  const firstShiftDate = dayjs(firstShift);
+  const previousShiftDate = firstShiftDate.add(-1, 'week');
+  const previousShift = previousShiftDate.format('YYYY-MM-DD');
+  const [shiftDates] = getNextShifts(previousShift, shiftCount);
+
   const volunteers = await listVolunteers();
   const formSheet = await getFormSheet(firstShift);
   const formResponses = await batchGetFormResponses(
     formSheet.map((form) => form.formID),
+    shiftDates,
   );
 
-  const [unsortedLeadResponses, unsortedVolunteerResponses]: [
-    Response[],
-    Response[],
-  ] = formResponses.reduce<[Response[], Response[]]>(
-    (acc, formResponse, i) => {
-      const { volunteerID } = formSheet[i];
-      const volunteer = volunteers.find(({ id }) => id === volunteerID);
-
-      if (volunteer === undefined) {
-        throw new Error(`Cannot find volunteer with id: ${volunteerID}`);
-      }
-
-      if (volunteer.role === 'Team lead') {
-        return [
-          [
-            ...acc[0],
-            {
-              firstName: formSheet[i].firstName,
-              lastName: formSheet[i].lastName,
-              responses: formResponse,
-            },
-          ],
-          acc[1],
-        ];
-      }
-
-      return [
-        acc[0],
-        [
-          ...acc[1],
-          {
-            firstName: formSheet[i].firstName,
-            lastName: formSheet[i].lastName,
-            responses: formResponse,
-          },
-        ],
-      ];
-    },
-    [[], []],
+  const [unsortedLeadResponses, unsortedVolunteerResponses] = splitResponses(
+    formResponses,
+    formSheet,
+    volunteers,
   );
+
+  console.log(unsortedLeadResponses);
 
   const leadResponses = sortResponses(unsortedLeadResponses);
   const volunteerResponses = sortResponses(unsortedVolunteerResponses);
 
-  const firstShiftDate = dayjs(firstShift);
-  const previousShiftDate = firstShiftDate.add(-1, 'week');
-  const previousShift = previousShiftDate.format('YYYY-MM-DD');
-  const [dates] = getNextShifts(previousShift, shiftCount);
+  console.log(leadResponses);
 
-  console.table(responsesToTable(leadResponses, dates));
-  console.table(responsesToTable(volunteerResponses, dates));
+  console.table(responsesToTable(leadResponses, shiftDates));
+  console.table(responsesToTable(volunteerResponses, shiftDates));
 };
-
-const sortResponses = (responses: Response[]) =>
-  [...responses].sort(({ responses: a }, { responses: b }) => {
-    if (a[0] === 'No responses') {
-      return 1;
-    }
-    if (b[0] === 'No responses') {
-      return -1;
-    }
-    return b.length - a.length;
-  });
 
 const responsesToTable = (responses: Response[], shifts: string[]) => [
   ['', ...shifts.map((shift) => shift.slice(4, -5))],
   ...responses.map((response) => [
-    `${response.firstName} ${response.lastName}`,
+    `${response.volunteer.firstName} ${response.volunteer.lastName}`,
     ...responseToTicks(response, shifts),
   ]),
 ];
 
-const responseToTicks = ({ responses }: Response, shifts: string[]) =>
-  responses[0] === 'No responses'
-    ? '-'.repeat(shifts.length)
-    : shifts.map((shift) => (responses.includes(shift) ? 'N' : 'Y'));
+const responseToTicks = ({ availability }: Response, shifts: string[]) =>
+  availability.responded
+    ? shifts.map((shift) => (availability.dates.includes(shift) ? 'Y' : 'N'))
+    : '-'.repeat(shifts.length);

@@ -1,10 +1,13 @@
 import { forms_v1 } from 'googleapis';
 
-import { NOT_AVAILABLE_RESPONSE } from '../const.js';
 import { getFormsClient } from '../client.js';
+import { Availability } from '../types.js';
 import { guardService } from '../utils/guardService.js';
 
-const batchGetFormResponsesPrivate = async (formIds: string[]) => {
+const batchGetFormResponsesPrivate = async (
+  formIds: string[],
+  shiftDates: string[],
+) => {
   const client = await getFormsClient();
 
   const apiResponses = await Promise.all(
@@ -17,7 +20,7 @@ const batchGetFormResponsesPrivate = async (formIds: string[]) => {
   );
 
   return apiResponses.map((res) =>
-    parseAvailabilityFormResponseResponseData(res.data.responses),
+    parseAvailabilityFormResponseResponseData(res.data.responses, shiftDates),
   );
 };
 
@@ -28,26 +31,33 @@ export const batchGetFormResponses = guardService(
 
 const parseAvailabilityFormResponseResponseData = (
   apiResponse: forms_v1.Schema$ListFormResponsesResponse['responses'],
-): string[] => {
+  shiftDates: string[],
+): Availability => {
   const allAnswers = apiResponse?.[0].answers;
   if (!allAnswers) {
-    return ['No responses'];
+    return {
+      responded: false,
+      dates: [],
+    };
   }
 
   const answerArray = Object.values(allAnswers);
 
   // If they only answered one question full availability is infered
   if (answerArray.length === 1) {
-    return [];
+    return {
+      responded: true,
+      dates: shiftDates,
+    };
   }
 
   const results = [
     ...Object.values(answerArray[0].textAnswers?.answers || []),
     ...Object.values(answerArray[1].textAnswers?.answers || []),
-  ];
+  ].map(({ value }) => value);
 
-  // TODO: Remove type coercion
-  return results
-    .map(({ value }) => value)
-    .filter((value) => value !== NOT_AVAILABLE_RESPONSE) as string[];
+  return {
+    responded: true,
+    dates: shiftDates.filter((shiftDate) => !results.includes(shiftDate)),
+  };
 };
