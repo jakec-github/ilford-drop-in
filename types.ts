@@ -2,6 +2,7 @@ export interface ConfidentialData {
   volunteerSheetID: string;
   serviceVolunteersTab: string;
   rotaSheetID: string;
+  originalRotaSheetID: string;
   formSheetID: string;
   gmailUserID: string;
   gmailSender: string;
@@ -34,4 +35,12 @@ export interface Response {
 export interface Availability {
   responded: boolean;
   dates: string[];
+}
+
+export interface Shift {
+  date: string;
+  remainingAvailabilty: number;
+  teamLead: string | null;
+  volunteerNames: string[];
+  assignedMaleCount: number;
 }

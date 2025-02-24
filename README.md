@@ -35,6 +35,7 @@ A secrets directory in this directory with the following files:
 - "volunteerSheetID": \<Volunteer spreadsheet ID\>
 - "serviceVolunteersTab": \<Tab name for service volunteers\>
 - "rotaSheetID": \<Rota spreadsheet ID\>
+- "originalRotaSheetID": \<Original rota spreadsheet ID\
 - "formSheetID": \<Form spreadsheet ID\>
 - "gmailUserID": \<User ID for gmail\>
 - "gmailSender": \<Sender for gmail\>
