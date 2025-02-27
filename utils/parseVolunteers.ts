@@ -45,3 +45,6 @@ export const parseVolunteers = (raw: string[][]): ServiceVolunteer[] => {
     }))
     .filter(({ firstName }) => firstName !== '');
 };
+
+export const getName = (volunteer: ServiceVolunteer): string =>
+  `${volunteer.firstName} ${volunteer.lastName}`;

@@ -126,15 +126,25 @@ yargs(process.argv.slice(2))
     'generate_rota',
     'Use responses to produce a valid rota',
     {
+      ['first_shift']: {
+        type: 'string',
+        description: 'The first shift for the period in 8601',
+        required: true,
+      },
       ['shift_count']: {
         type: 'number',
         description: 'Number of shifts to create rota for',
         required: true,
         default: 12,
       },
+      ['seed']: {
+        type: 'number',
+        description: 'Optional seed for random sorting',
+        required: false,
+      },
     },
-    ({ shift_count }) => {
-      generateRota(shift_count);
+    ({ first_shift, shift_count }) => {
+      generateRota(first_shift, shift_count);
     },
   )
   .demandCommand(1)

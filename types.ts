@@ -32,6 +32,12 @@ export interface Response {
   availability: Availability;
 }
 
+export interface GroupResponse {
+  teamLead: ServiceVolunteer | null;
+  volunteers: ServiceVolunteer[];
+  availability: Availability;
+}
+
 export interface Availability {
   responded: boolean;
   dates: string[];

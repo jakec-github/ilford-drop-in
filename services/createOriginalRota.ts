@@ -59,4 +59,5 @@ const createOriginalRotaPrivate = async (dates: string[], shifts: Shift[]) => {
 export const createOriginalRota = guardService(
   createOriginalRotaPrivate,
   'Create original rota',
+  false,
 );
