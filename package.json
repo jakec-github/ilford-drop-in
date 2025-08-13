@@ -17,6 +17,7 @@
     "googleapis": "^118.0.0",
     "mimetext": "^3.0.15",
     "prompt-sync": "^4.2.0",
+    "rrule": "^2.8.1",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
