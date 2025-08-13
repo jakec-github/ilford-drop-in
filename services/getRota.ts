@@ -39,7 +39,7 @@ export const getRota = guardService(getRotaPrivate, 'Get rota');
 const getLastRange = (ranges: string[]): string => {
   let sortedRanges = [...ranges];
 
-  const endDate = (range: string) => dayjs(range.slice(-10));
+  const endDate = (range: string) => dayjs(range.split(' - ')[1]);
   sortedRanges.sort((a, b) => (endDate(a).isAfter(endDate(b)) ? 1 : -1));
 
   return sortedRanges[sortedRanges.length - 1];
