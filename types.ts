@@ -8,6 +8,14 @@ export interface ConfidentialData {
   gmailSender: string;
 }
 
+export interface Config {
+  occupiedSlots: {
+    type: 'RRule';
+    rule: string;
+    volunteers: string[];
+  }[];
+}
+
 export interface ServiceVolunteer {
   id: string;
   firstName: string;

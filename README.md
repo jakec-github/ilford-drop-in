@@ -24,6 +24,14 @@ This repository contains a set of scripts to help organise the Ilford drop in ce
 
 ### Codebase
 
+#### Config (optional)
+
+A config file `config.json` at the root of the project.
+
+See the `types.ts` for the expected shape of the config. Currently it is only used to specify occupied slots in the rota for the generateRota command.
+
+#### Secrets
+
 A secrets directory in this directory with the following files:
 
 - `confidential.json`
