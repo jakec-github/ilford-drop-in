@@ -1,3 +1,5 @@
+import { Dayjs } from 'dayjs';
+
 export interface ConfidentialData {
   volunteerSheetID: string;
   serviceVolunteersTab: string;
@@ -10,7 +12,7 @@ export interface ConfidentialData {
 
 export interface Config {
   occupiedSlots: {
-    type: 'RRule';
+    type: 'RRULE';
     rule: string;
     volunteers: string[];
   }[];
@@ -48,11 +50,11 @@ export interface GroupResponse {
 
 export interface Availability {
   responded: boolean;
-  dates: string[];
+  days: Dayjs[];
 }
 
 export interface Shift {
-  date: string;
+  date: string; // TODO: should be day: Dayjs
   remainingAvailabilty: number;
   teamLead: string | null;
   volunteerNames: string[];

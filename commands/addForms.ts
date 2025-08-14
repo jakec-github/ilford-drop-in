@@ -2,8 +2,8 @@ import { bulkCreateForms } from '../services/bulkCreateForm.js';
 import { appendToFormSheet } from '../services/appendToFormSheet.js';
 import { getRota } from '../services/getRota.js';
 import { listVolunteers } from '../services/listVolunteers.js';
-import { getNextShifts } from '../utils/getNextShifts.js';
-import { isoDatesToRange } from '../utils/isoDatesToRange.js';
+import { getNextShiftsLegacy } from '../utils/shifts.js';
+import { orderedDatesToRange } from '../utils/orderedDatesToRange.js';
 
 export const addForms = async (shiftCount: number, volunteerIDs: string[]) => {
   const volunteers = await listVolunteers();
@@ -17,9 +17,12 @@ export const addForms = async (shiftCount: number, volunteerIDs: string[]) => {
     throw new Error('No matching active volunteers found');
   }
 
-  const [dates, isoDates] = getNextShifts(rota[rota.length - 1][0], shiftCount);
+  const [dates, isoDates] = getNextShiftsLegacy(
+    rota[rota.length - 1][0],
+    shiftCount,
+  );
 
-  const worksheetTitle = isoDatesToRange(isoDates);
+  const worksheetTitle = orderedDatesToRange(isoDates);
 
   const forms = await bulkCreateForms(dates, whitelistedVolunteers);
 

@@ -1,7 +1,7 @@
 import { getSheetsClient } from '../client.js';
 import { FIELDS, formsToRows } from '../model/formData.js';
 import { AvailabilityFormData } from '../types.js';
-import { isoDatesToRange } from '../utils/isoDatesToRange.js';
+import { orderedDatesToRange } from '../utils/orderedDatesToRange.js';
 import { getConfidentialData } from '../utils/getConfidentialData.js';
 import { guardService } from '../utils/guardService.js';
 
@@ -12,7 +12,7 @@ const createFormSheetPrivate = async (
   const client = await getSheetsClient();
   const confidentialData = getConfidentialData();
 
-  const worksheetTitle = isoDatesToRange(dates);
+  const worksheetTitle = orderedDatesToRange(dates);
 
   // Create worksheet
   await client.spreadsheets.batchUpdate({

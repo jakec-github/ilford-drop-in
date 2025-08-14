@@ -1,4 +1,4 @@
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 
 import { ASSIGNMENT_PERIOD, FEMALE, MALE, SHIFT_SIZE } from '../const.js';
 import { createOriginalRota } from '../services/createOriginalRota.js';
@@ -7,13 +7,15 @@ import { getFormSheet } from '../services/getFormSheet.js';
 import { getRota } from '../services/getRota.js';
 import { listVolunteers } from '../services/listVolunteers.js';
 import { GroupResponse, Shift } from '../types.js';
-import { getNextShifts } from '../utils/getNextShifts.js';
+import { getConfig } from '../utils/getConfig.js';
+import { getName } from '../utils/parseVolunteers.js';
 import {
   getIndividualResponses,
   groupResponses,
   sortGroupedResponses,
 } from '../utils/responses.js';
-import { getName } from '../utils/parseVolunteers.js';
+import { friendlyDay, isoDay, getNextShifts } from '../utils/shifts.js';
+import { shiftMatchesRRule } from '../utils/shiftMatchesRRule.js';
 
 type ShiftMap = Record<string, Shift>;
 
@@ -22,16 +24,16 @@ export const generateRota = async (
   shiftCount: number,
   seed = 0,
 ) => {
-  const firstShiftDate = dayjs(firstShift);
-  const previousShiftDate = firstShiftDate.add(-1, 'week');
-  const previousShift = previousShiftDate.format('YYYY-MM-DD');
-  const [shiftDates] = getNextShifts(previousShift, shiftCount);
+  const shiftDays = getNextShifts(
+    dayjs(firstShift).add(-1, 'week'),
+    shiftCount,
+  );
 
   const volunteers = await listVolunteers();
   const formSheet = await getFormSheet(firstShift);
   const formResponses = await batchGetFormResponses(
     formSheet.map((form) => form.formID),
-    shiftDates,
+    shiftDays.map((shift) => friendlyDay(shift)),
   );
   const rota = await getRota();
 
@@ -43,28 +45,28 @@ export const generateRota = async (
   const groupedResponses = groupResponses(responses);
   const sortedGroups = sortGroupedResponses(groupedResponses, shiftCount);
 
-  const shifts = initShifts(shiftDates, sortedGroups);
+  const shifts = initShifts(shiftDays, sortedGroups);
   const lastShiftNames = rota[rota.length - 1][1].volunteers;
-  assignGroups(shifts, sortedGroups, shiftDates, lastShiftNames, seed);
+  assignGroups(shifts, sortedGroups, shiftDays, lastShiftNames, seed);
 
   const shiftArray = Object.values(shifts).sort(({ date: a }, { date: b }) =>
     dayjs(a).format('YYYY-MM-DD') > dayjs(b).format('YYYY-MM-DD') ? 1 : -1,
   );
 
-  createOriginalRota(shiftDates, shiftArray);
+  createOriginalRota(shiftDays, shiftArray);
 };
 
 const initShifts = (
-  shiftDates: string[],
-  sortedResponses: GroupResponse[],
+  shiftDays: Dayjs[],
+  sortedGroups: GroupResponse[],
 ): ShiftMap => {
-  const shifts: ShiftMap = shiftDates.reduce(
-    (acc, date) => ({
-      [date]: {
-        date,
+  const shifts: ShiftMap = shiftDays.reduce(
+    (acc, day) => ({
+      [isoDay(day)]: {
+        date: friendlyDay(day),
         remainingAvailabilty: 0,
         teamLead: null,
-        volunteerNames: [],
+        volunteerNames: fillOccupiedSlots(day, shiftDays),
         assignedMaleCount: 0,
       },
       ...acc,
@@ -72,46 +74,61 @@ const initShifts = (
     {},
   );
 
-  sortedResponses.forEach(({ availability, volunteers }) => {
-    availability.dates.forEach((date) => {
-      shifts[date].remainingAvailabilty += volunteers.length;
+  sortedGroups.forEach(({ availability, volunteers }) => {
+    availability.days.forEach((day) => {
+      shifts[isoDay(day)].remainingAvailabilty += volunteers.length;
     });
   });
 
   return shifts;
 };
 
+const fillOccupiedSlots = (shift: Dayjs, shifts: Dayjs[]) => {
+  const { occupiedSlots } = getConfig();
+  const occupiedVolunteers: string[] = [];
+  console.log(occupiedSlots);
+  occupiedSlots.forEach(({ rule, volunteers }) => {
+    if (shiftMatchesRRule(rule, shift, shifts[0], shifts[shifts.length - 1])) {
+      occupiedVolunteers.push(...volunteers);
+    }
+  });
+  return occupiedVolunteers;
+};
+
 // TODO: Account for over subscription (Should probably check total volunteer count/availability first)
 // TODO: Sort shifts without adjacent availables higher
+// TODO: Better handle team lead availabilities (right now it just looks at overall availability on the shift)
 // BUG: If team lead spot is left null it will over fill volunteers
 const assignGroups = (
   shifts: ShiftMap,
   groups: GroupResponse[],
-  shiftDates: string[],
+  shiftDays: Dayjs[],
   lastShiftNames: string[],
   seed: number,
 ) => {
-  if (shiftDates.length % ASSIGNMENT_PERIOD !== 0) {
+  if (shiftDays.length % ASSIGNMENT_PERIOD !== 0) {
     throw new Error(
-      `Shift count (${shiftDates.length}) must be a multiple of the assignment period (${ASSIGNMENT_PERIOD})`,
+      `Shift count (${shiftDays.length}) must be a multiple of the assignment period (${ASSIGNMENT_PERIOD})`,
     );
   }
 
   groups.forEach(({ teamLead, volunteers, availability }) => {
-    const allAvailableDates = availability.responded
-      ? availability.dates
-      : shiftDates;
-    const allAvailableShifts = allAvailableDates.map((date) => shifts[date]);
+    const allAvailableDays = availability.responded
+      ? availability.days
+      : shiftDays;
+    const allAvailableShifts = allAvailableDays.map(
+      (day) => shifts[isoDay(day)],
+    );
 
     let hasMinimumAvailability = true;
 
-    if (allAvailableDates.length < shiftDates.length / ASSIGNMENT_PERIOD) {
+    if (allAvailableDays.length < shiftDays.length / ASSIGNMENT_PERIOD) {
       console.log(
         `Group with volunteer(s): ${volunteers.map((v) =>
           getName(v),
         )} does not have the minimum availability`,
       );
-      console.log(`Availability is: ${allAvailableDates.length}`);
+      console.log(`Availability is: ${allAvailableDays.length}`);
       hasMinimumAvailability = false;
     }
 
@@ -151,7 +168,7 @@ const assignGroups = (
         return seededRandomSign(hashStringToNumber(shiftA.date) + seed);
       });
 
-    let shiftsToAssignCount = shiftDates.length / ASSIGNMENT_PERIOD;
+    let shiftsToAssignCount = shiftDays.length / ASSIGNMENT_PERIOD;
 
     for (const shift of availableShifts) {
       if (shiftsToAssignCount == 0) {
@@ -205,9 +222,9 @@ const isDoubleShift = (
 ): boolean => {
   const currentShiftDate = dayjs(shift.date);
   const previousShift =
-    shifts[currentShiftDate.add(-1, 'week').format('ddd MMM DD YYYY')];
+    shifts[currentShiftDate.add(-1, 'week').format('YYYY-MM-DD')];
   const nextShift =
-    shifts[currentShiftDate.add(1, 'week').format('ddd MMM DD YYYY')];
+    shifts[currentShiftDate.add(1, 'week').format('YYYY-MM-DD')];
 
   if (previousShift) {
     if (

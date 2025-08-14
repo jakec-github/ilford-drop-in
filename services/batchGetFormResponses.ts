@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { forms_v1 } from 'googleapis';
 
 import { getFormsClient } from '../client.js';
@@ -37,17 +38,18 @@ const parseAvailabilityFormResponseResponseData = (
   if (!allAnswers) {
     return {
       responded: false,
-      dates: [],
+      days: [],
     };
   }
 
   const answerArray = Object.values(allAnswers);
+  const shiftDays = shiftDates.map((date) => dayjs(date));
 
   // If they only answered one question full availability is infered
   if (answerArray.length === 1) {
     return {
       responded: true,
-      dates: shiftDates,
+      days: shiftDays,
     };
   }
 
@@ -58,6 +60,8 @@ const parseAvailabilityFormResponseResponseData = (
 
   return {
     responded: true,
-    dates: shiftDates.filter((shiftDate) => !results.includes(shiftDate)),
+    days: shiftDates
+      .filter((shiftDate) => !results.includes(shiftDate))
+      .map((date) => dayjs(date)),
   };
 };

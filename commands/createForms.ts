@@ -2,7 +2,7 @@ import { bulkCreateForms } from '../services/bulkCreateForm.js';
 import { createFormSheet } from '../services/createFormSheet.js';
 import { getRota } from '../services/getRota.js';
 import { listVolunteers } from '../services/listVolunteers.js';
-import { getNextShifts } from '../utils/getNextShifts.js';
+import { getNextShiftsLegacy } from '../utils/shifts.js';
 
 export const createForms = async (shiftCount: number) => {
   const volunteers = await listVolunteers();
@@ -12,7 +12,10 @@ export const createForms = async (shiftCount: number) => {
     ({ status }) => status === 'Active',
   );
 
-  const [dates, isoDates] = getNextShifts(rota[rota.length - 1][0], shiftCount);
+  const [dates, isoDates] = getNextShiftsLegacy(
+    rota[rota.length - 1][0],
+    shiftCount,
+  );
 
   const forms = await bulkCreateForms(dates, activeVolunteers);
 

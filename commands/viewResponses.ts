@@ -1,23 +1,23 @@
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 
 import { batchGetFormResponses } from '../services/batchGetFormResponses.js';
 import { getFormSheet } from '../services/getFormSheet.js';
 import { listVolunteers } from '../services/listVolunteers.js';
 import { Response } from '../types.js';
-import { getNextShifts } from '../utils/getNextShifts.js';
+import { friendlyDay, getNextShifts } from '../utils/shifts.js';
 import { sortResponses, splitResponses } from '../utils/responses.js';
 
 export const viewResponses = async (firstShift: string, shiftCount: number) => {
-  const firstShiftDate = dayjs(firstShift);
-  const previousShiftDate = firstShiftDate.add(-1, 'week');
-  const previousShift = previousShiftDate.format('YYYY-MM-DD');
-  const [shiftDates] = getNextShifts(previousShift, shiftCount);
+  const shiftDays = getNextShifts(
+    dayjs(firstShift).add(-1, 'week'),
+    shiftCount,
+  );
 
   const volunteers = await listVolunteers();
   const formSheet = await getFormSheet(firstShift);
   const formResponses = await batchGetFormResponses(
     formSheet.map((form) => form.formID),
-    shiftDates,
+    shiftDays.map((shift) => friendlyDay(shift)),
   );
 
   const [unsortedLeadResponses, unsortedVolunteerResponses] = splitResponses(
@@ -33,19 +33,21 @@ export const viewResponses = async (firstShift: string, shiftCount: number) => {
 
   console.log(leadResponses);
 
-  console.table(responsesToTable(leadResponses, shiftDates));
-  console.table(responsesToTable(volunteerResponses, shiftDates));
+  console.table(responsesToTable(leadResponses, shiftDays));
+  console.table(responsesToTable(volunteerResponses, shiftDays));
 };
 
-const responsesToTable = (responses: Response[], shifts: string[]) => [
-  ['', ...shifts.map((shift) => shift.slice(4, -5))],
+const responsesToTable = (responses: Response[], shifts: Dayjs[]) => [
+  ['', ...shifts.map((shift) => friendlyDay(shift).slice(4, -5))],
   ...responses.map((response) => [
     `${response.volunteer.firstName} ${response.volunteer.lastName}`,
     ...responseToTicks(response, shifts),
   ]),
 ];
 
-const responseToTicks = ({ availability }: Response, shifts: string[]) =>
+const responseToTicks = ({ availability }: Response, shifts: Dayjs[]) =>
   availability.responded
-    ? shifts.map((shift) => (availability.dates.includes(shift) ? 'Y' : 'N'))
+    ? shifts.map((shift) =>
+        availability.days.some((day) => day.isSame(shift, 'day')) ? 'Y' : 'N',
+      )
     : '-'.repeat(shifts.length);

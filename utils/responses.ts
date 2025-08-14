@@ -1,3 +1,4 @@
+import { Dayjs } from 'dayjs';
 import {
   Availability,
   AvailabilityFormData,
@@ -58,10 +59,10 @@ export const sortGroupedResponses = (
       return 1;
     }
     const aAvailability = a.availability.responded
-      ? a.availability.dates.length
+      ? a.availability.days.length
       : shiftcount + 1;
     const bAvailability = b.availability.responded
-      ? b.availability.dates.length
+      ? b.availability.days.length
       : shiftcount + 1;
 
     return (
@@ -79,7 +80,7 @@ export const sortResponses = (responses: Response[]) =>
     if (!b.responded) {
       return -1;
     }
-    return a.dates.length - b.dates.length;
+    return a.days.length - b.days.length;
   });
 
 export const getIndividualResponses = (
@@ -143,12 +144,12 @@ export const splitResponses = (
   );
 
 const mergeAvailability = (
-  { responded: r1, dates: d1 }: Availability,
-  { responded: r2, dates: d2 }: Availability,
+  { responded: r1, days: d1 }: Availability,
+  { responded: r2, days: d2 }: Availability,
 ): Availability => ({
   responded: r1 || r2,
-  dates: r1 && r2 ? getDatesIntersection(d1, d2) : r1 ? d1 : d2, // Sorry
+  days: r1 && r2 ? getDatesIntersection(d1, d2) : r1 ? d1 : d2, // Sorry
 });
 
-const getDatesIntersection = (d1: string[], d2: string[]): string[] =>
-  d1.filter((date) => d2.includes(date));
+const getDatesIntersection = (d1: Dayjs[], d2: Dayjs[]): Dayjs[] =>
+  d1.filter((day) => d2.some((day2) => day2.isSame(day, 'day')));

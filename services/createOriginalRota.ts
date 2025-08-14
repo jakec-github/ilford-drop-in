@@ -1,15 +1,20 @@
+import { Dayjs } from 'dayjs';
+
 import { getSheetsClient } from '../client.js';
 import { shiftsToRows } from '../model/originalRota.js';
 import { Shift } from '../types.js';
-import { isoDatesToRange } from '../utils/isoDatesToRange.js';
+import { orderedDatesToRange } from '../utils/orderedDatesToRange.js';
 import { getConfidentialData } from '../utils/getConfidentialData.js';
 import { guardService } from '../utils/guardService.js';
+import { friendlyDay } from '../utils/shifts.js';
 
-const createOriginalRotaPrivate = async (dates: string[], shifts: Shift[]) => {
+const createOriginalRotaPrivate = async (days: Dayjs[], shifts: Shift[]) => {
   const client = await getSheetsClient();
   const confidentialData = getConfidentialData();
 
-  const worksheetTitle = isoDatesToRange(dates);
+  const worksheetTitle = orderedDatesToRange(
+    days.map((day) => friendlyDay(day)),
+  );
 
   // Create worksheet
   await client.spreadsheets.batchUpdate({

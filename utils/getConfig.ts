@@ -32,7 +32,7 @@ const validateConfig = (value: unknown): value is Config => {
     (slot) =>
       typeof slot === 'object' &&
       slot !== null &&
-      slot.type === 'RRule' &&
+      slot.type === 'RRULE' &&
       typeof slot.rule === 'string' &&
       Array.isArray(slot.volunteers) &&
       slot.volunteers.every((v) => typeof v === 'string'),
