@@ -3,3 +3,23 @@ secrets
 out
 .DS_Store
 config.json
+
+# OAuth and authentication secrets
+oauthClient.json
+serviceAccount.json
+.token.json
+
+# Configuration with sensitive data
+drop_in_config.yaml
+
+# Any other secrets
+*.secret
+*.key
+
+# Test coverage
+*.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
