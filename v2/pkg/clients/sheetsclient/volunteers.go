@@ -1,4 +1,4 @@
-package sheetsClient
+package sheetsclient
 
 import (
 	"fmt"

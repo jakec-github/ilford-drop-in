@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsClient"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 )
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 	// Initialize sheets client (will trigger OAuth flow if needed)
 	fmt.Println("Initialising sheets client...")
 	ctx := context.Background()
-	client, err := sheetsClient.NewClient(ctx, oauthCfg)
+	client, err := sheetsclient.NewClient(ctx, oauthCfg)
 	if err != nil {
 		log.Fatalf("Failed to create sheets client: %v", err)
 	}
