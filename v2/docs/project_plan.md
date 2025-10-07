@@ -2,8 +2,8 @@
 
 ## Phase 1 - Ground work
 
-- Skeleton app
-- Config consumption
+- Skeleton app ✅
+- Config consumption ✅
 - Secret consumption
 - Sheets client
 - List volunteers
