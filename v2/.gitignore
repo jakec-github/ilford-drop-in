@@ -1,4 +1,4 @@
 # Binaries
-/cmd/cli/cli
-/cmd/server/server
+cli
+server
 
