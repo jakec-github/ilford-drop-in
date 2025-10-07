@@ -4,7 +4,16 @@ import (
 	"fmt"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
+	"google.golang.org/api/sheets/v4"
 )
+
+// SheetsClient defines the interface for sheets operations
+type SheetsClient interface {
+	GetValues(spreadsheetID, sheetRange string) ([][]interface{}, error)
+	AppendRows(spreadsheetID, sheetRange string, values [][]interface{}) error
+	CreateSheet(spreadsheetID, sheetTitle string) (int64, error)
+	Service() *sheets.Service
+}
 
 // Column defines a column with name and type
 type Column struct {
@@ -25,7 +34,7 @@ type Schema struct {
 
 // DB represents a connection to a Google Sheets "database"
 type DB struct {
-	client        *sheetsclient.Client
+	client        SheetsClient
 	spreadsheetID string
 	schema        *Schema
 }
@@ -47,7 +56,7 @@ func NewDB(client *sheetsclient.Client, spreadsheetID string, schema *Schema) (*
 }
 
 // Client returns the underlying sheets client
-func (db *DB) Client() *sheetsclient.Client {
+func (db *DB) Client() SheetsClient {
 	return db.client
 }
 
