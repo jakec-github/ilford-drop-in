@@ -82,8 +82,47 @@ func (c *Client) GetValues(spreadsheetID, sheetRange string) ([][]interface{}, e
 	return resp.Values, nil
 }
 
-// TODO: Add more methods for common operations:
-// - UpdateValues(spreadsheetID, range, values) to write data
-// - BatchGet(spreadsheetID, ranges) to read multiple ranges
-// - BatchUpdate(spreadsheetID, requests) to perform multiple updates
+// AppendRows appends rows to the end of a sheet
+func (c *Client) AppendRows(spreadsheetID, sheetRange string, values [][]interface{}) error {
+	valueRange := &sheets.ValueRange{
+		Values: values,
+	}
+
+	_, err := c.service.Spreadsheets.Values.Append(spreadsheetID, sheetRange, valueRange).
+		ValueInputOption("RAW").
+		Do()
+	if err != nil {
+		return fmt.Errorf("failed to append rows: %w", err)
+	}
+
+	return nil
+}
+
+// CreateSheet creates a new sheet/tab in the spreadsheet
+func (c *Client) CreateSheet(spreadsheetID, sheetTitle string) (int64, error) {
+	req := &sheets.Request{
+		AddSheet: &sheets.AddSheetRequest{
+			Properties: &sheets.SheetProperties{
+				Title: sheetTitle,
+			},
+		},
+	}
+
+	batchUpdateRequest := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	resp, err := c.service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateRequest).Do()
+	if err != nil {
+		return 0, fmt.Errorf("failed to create sheet: %w", err)
+	}
+
+	if len(resp.Replies) == 0 || resp.Replies[0].AddSheet == nil {
+		return 0, fmt.Errorf("unexpected response from create sheet")
+	}
+
+	sheetID := resp.Replies[0].AddSheet.Properties.SheetId
+	return sheetID, nil
+}
+
 
