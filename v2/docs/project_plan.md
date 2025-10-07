@@ -4,7 +4,7 @@
 
 - Skeleton app ✅
 - Config consumption ✅
-- Secret consumption
+- Secret consumption ✅
 - Sheets client
 - List volunteers
 - Sheets SQL groundwork
