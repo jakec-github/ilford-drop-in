@@ -5,12 +5,12 @@
 !v2/**/*
 
 # OAuth and authentication secrets
-**/oauthClient.json
-**/serviceAccount.json
+**/oauthClient.*.json
+**/serviceAccount.*.json
 **/.token.json
 
 # Configuration with sensitive data
-**/drop_in_config.yaml
+**/drop_in_config.*.yaml
 
 # Any other secrets
 **/*.secret

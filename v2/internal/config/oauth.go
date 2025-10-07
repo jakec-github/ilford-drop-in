@@ -23,10 +23,10 @@ type OAuthInstalled struct {
 	RedirectURIs            []string `json:"redirect_uris" validate:"required,min=1,dive,uri"`
 }
 
-// LoadOAuthClient loads and validates the OAuth client configuration from oauthClient.json
-// It looks for the config file in the current directory first, then in the user's home directory
-func LoadOAuthClient() (*OAuthClientConfig, error) {
-	oauthPath, err := findOAuthFile()
+// LoadOAuthClientWithEnv loads and validates the OAuth client configuration with an environment suffix
+// For example, env="test" will look for "oauthClient.test.json"
+func LoadOAuthClientWithEnv(env string) (*OAuthClientConfig, error) {
+	oauthPath, err := findOAuthFile(env)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find oauth client file: %w", err)
 	}
@@ -63,8 +63,12 @@ func ValidateOAuthClient(cfg *OAuthClientConfig) error {
 }
 
 // findOAuthFile searches for oauthClient.json in current directory and home directory
-func findOAuthFile() (string, error) {
+// If env is provided, it adds it as an extension (e.g., "oauthClient.test.json")
+func findOAuthFile(env string) (string, error) {
 	oauthFileName := "oauthClient.json"
+	if env != "" {
+		oauthFileName = "oauthClient." + env + ".json"
+	}
 
 	// Check current directory
 	if _, err := os.Stat(oauthFileName); err == nil {

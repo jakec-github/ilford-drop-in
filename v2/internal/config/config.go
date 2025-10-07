@@ -34,10 +34,10 @@ func init() {
 	validate = validator.New()
 }
 
-// Load loads and validates the configuration from drop_in_config.yaml
-// It looks for the config file in the current directory first, then in the user's home directory
-func Load() (*Config, error) {
-	configPath, err := findConfigFile()
+// LoadWithEnv loads and validates the configuration with an environment suffix
+// For example, env="test" will look for "drop_in_config.test.yaml"
+func LoadWithEnv(env string) (*Config, error) {
+	configPath, err := findConfigFile(env)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find config file: %w", err)
 	}
@@ -81,9 +81,13 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
-// findConfigFile searches for drop_in_config.yaml in current directory and home directory
-func findConfigFile() (string, error) {
+// findConfigFile searches for config file in current directory and home directory
+// If env is provided, it adds it as an extension (e.g., "drop_in_config.test.yaml")
+func findConfigFile(env string) (string, error) {
 	configFileName := "drop_in_config.yaml"
+	if env != "" {
+		configFileName = "drop_in_config." + env + ".yaml"
+	}
 
 	// Check current directory
 	if _, err := os.Stat(configFileName); err == nil {
