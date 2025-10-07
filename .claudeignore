@@ -1,0 +1,5 @@
+# Block all modifications by default
+**/*
+
+# Allow only v2/
+!v2/**/*
