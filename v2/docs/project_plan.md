@@ -6,7 +6,7 @@
 - Config consumption ✅
 - Secret consumption ✅
 - Sheets client ✅
-- List volunteers
+- List volunteers ✅
 - Sheets SQL groundwork
 - Sheets SQL support for SELECT statements
 - DB layer groundwork

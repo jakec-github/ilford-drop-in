@@ -72,5 +72,18 @@ func (c *Client) Service() *sheets.Service {
 	return c.service
 }
 
-// TODO: Add methods for common operations
+// GetValues reads values from a spreadsheet range
+func (c *Client) GetValues(spreadsheetID, sheetRange string) ([][]interface{}, error) {
+	resp, err := c.service.Spreadsheets.Values.Get(spreadsheetID, sheetRange).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get values: %w", err)
+	}
+
+	return resp.Values, nil
+}
+
+// TODO: Add more methods for common operations:
+// - UpdateValues(spreadsheetID, range, values) to write data
+// - BatchGet(spreadsheetID, ranges) to read multiple ranges
+// - BatchUpdate(spreadsheetID, requests) to perform multiple updates
 
