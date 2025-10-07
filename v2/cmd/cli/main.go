@@ -37,7 +37,7 @@ func main() {
 		Short: "Ilford Drop-In CLI - Manage volunteer rotas",
 		Long:  `A CLI tool for managing volunteer rotas, availability requests, and shift scheduling.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return initializeApp()
+			return initApp()
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			if app != nil && app.logger != nil {
@@ -65,8 +65,8 @@ func main() {
 	}
 }
 
-// initializeApp sets up logger, config, clients, and database
-func initializeApp() error {
+// initApp sets up logger, config, clients, and database
+func initApp() error {
 	var err error
 	app = &App{
 		ctx: context.Background(),
