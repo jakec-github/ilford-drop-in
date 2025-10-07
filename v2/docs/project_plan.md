@@ -5,7 +5,7 @@
 - Skeleton app ✅
 - Config consumption ✅
 - Secret consumption ✅
-- Sheets client
+- Sheets client ✅
 - List volunteers
 - Sheets SQL groundwork
 - Sheets SQL support for SELECT statements
