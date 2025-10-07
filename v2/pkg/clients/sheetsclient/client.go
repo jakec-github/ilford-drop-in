@@ -125,4 +125,3 @@ func (c *Client) CreateSheet(spreadsheetID, sheetTitle string) (int64, error) {
 	return sheetID, nil
 }
 
-

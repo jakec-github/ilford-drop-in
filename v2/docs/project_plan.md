@@ -7,8 +7,7 @@
 - Secret consumption ✅
 - Sheets client ✅
 - List volunteers ✅
-- Sheets SQL groundwork
-- Sheets SQL support for SELECT statements
+- Sheets SQL groundwork ✅
 - DB layer groundwork
 - Integration testing groundwork
 
