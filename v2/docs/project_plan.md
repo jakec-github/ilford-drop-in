@@ -14,7 +14,7 @@
 
 ## Phase 2 - Simple commands
 
-- Add CLI runner
+- Add CLI runner ✅
 - Define rota service
 - Request availability service
 - Send availability reminders service
