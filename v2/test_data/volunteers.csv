@@ -1,0 +1,57 @@
+Unique ID,First name,Last name,Role,Status,Sex/Gender,Email,Group key,Junk Column
+XYZ,Sarah,Johnson,Team lead,Active,Female,sarah.johnson@email.com,Group A,Random Data
+ABC,Michael,Smith,Service volunteer,Active,Male,michael.smith@email.com,Group A,Ignore This
+DEF,Emma,Williams,Service volunteer,Active,Female,emma.williams@email.com,Group B,Test Value
+GHI,James,Brown,Service volunteer,Active,Male,james.brown@email.com,,Some Junk
+JKL,Olivia,Jones,Service volunteer,Active,Female,olivia.jones@email.com,,Data Here
+MNO,William,Garcia,Team lead,Active,Male,william.garcia@email.com,Group B,Whatever
+PQR,Ava,Martinez,Service volunteer,Active,Female,ava.martinez@email.com,,Stuff
+STU,Ethan,Rodriguez,Service volunteer,Active,Male,ethan.rodriguez@email.com,,More Junk
+VWX,Sophia,Davis,Service volunteer,Active,Female,sophia.davis@email.com,Group C,Extra
+YZA,Liam,Lopez,Service volunteer,Active,Male,liam.lopez@email.com,,Column
+BCD,Isabella,Hernandez,Team lead,Active,Female,isabella.hernandez@email.com,,Data
+EFG,Noah,Gonzalez,Service volunteer,Active,Male,noah.gonzalez@email.com,,Info
+HIJ,Mia,Wilson,Service volunteer,Active,Female,mia.wilson@email.com,,Random
+KLM,Oliver,Anderson,Service volunteer,Active,Male,oliver.anderson@email.com,,Text
+NOP,Charlotte,Thomas,Service volunteer,Active,Female,charlotte.thomas@email.com,,Here
+QRS,Elijah,Taylor,Team lead,Active,Male,elijah.taylor@email.com,,Noise
+TUV,Amelia,Moore,Service volunteer,Active,Female,amelia.moore@email.com,,Value
+WXY,Benjamin,Jackson,Service volunteer,Active,Male,benjamin.jackson@email.com,,123
+ZAB,Harper,Martin,Service volunteer,Active,Female,harper.martin@email.com,,456
+CDE,Lucas,Lee,Service volunteer,Active,Male,lucas.lee@email.com,Group D,789
+FGH,Evelyn,Perez,Team lead,Active,Female,evelyn.perez@email.com,,ABC
+IJK,Mason,Thompson,Service volunteer,Active,Male,mason.thompson@email.com,,DEF
+LMN,Abigail,White,Service volunteer,Active,Female,abigail.white@email.com,,GHI
+OPQ,Logan,Harris,Service volunteer,Active,Male,logan.harris@email.com,,JKL
+RST,Emily,Sanchez,Service volunteer,Active,Female,emily.sanchez@email.com,,MNO
+UVW,Alexander,Clark,Team lead,Active,Male,alexander.clark@email.com,,PQR
+XYA,Elizabeth,Ramirez,Service volunteer,Active,Female,elizabeth.ramirez@email.com,,STU
+ZBC,Jackson,Lewis,Service volunteer,Active,Male,jackson.lewis@email.com,,VWX
+CDF,Avery,Robinson,Service volunteer,Active,Female,avery.robinson@email.com,,YZA
+EGH,Sebastian,Walker,Service volunteer,Active,Male,sebastian.walker@email.com,,Test
+GIJ,Sofia,Young,Service volunteer,Active,Female,sofia.young@email.com,,Data
+HKL,Jack,Allen,Team lead,Active,Male,jack.allen@email.com,,Filler
+ILM,Ella,King,Service volunteer,Active,Female,ella.king@email.com,Group C,Words
+JMN,Aiden,Wright,Service volunteer,Active,Male,aiden.wright@email.com,,Content
+KNO,Scarlett,Scott,Service volunteer,Active,Female,scarlett.scott@email.com,,Sample
+LOP,Matthew,Torres,Service volunteer,Active,Male,matthew.torres@email.com,,Entry
+MPQ,Grace,Nguyen,Team lead,Active,Female,grace.nguyen@email.com,,Field
+NQR,Daniel,Hill,Service volunteer,Active,Male,daniel.hill@email.com,Group D,Extra
+ORS,Chloe,Flores,Service volunteer,Active,Female,chloe.flores@email.com,,Junk
+PST,Henry,Green,Service volunteer,Active,Male,henry.green@email.com,,More
+QTU,Victoria,Adams,Service volunteer,Active,Female,victoria.adams@email.com,Group E,Info
+RUV,Owen,Nelson,Team lead,Active,Male,owen.nelson@email.com,,Data
+SVW,Zoey,Baker,Service volunteer,Active,Female,zoey.baker@email.com,,Point
+TWX,Leo,Hall,Service volunteer,Inactive,Male,leo.hall@email.com,,Test
+UXY,Lily,Rivera,Service volunteer,On Leave,Female,lily.rivera@email.com,,Value
+VYZ,Dylan,Campbell,Service volunteer,Probation,Male,dylan.campbell@email.com,,Random
+WAB,Luna,Mitchell,Service volunteer,Active,Female,luna.mitchell@email.com,,Text
+XBC,Gabriel,Roberts,Service volunteer,Maybe Active,Male,gabriel.roberts@email.com,,Word
+YCD,Layla,Carter,Service volunteer,INACTIVE,Female,layla.carter@email.com,,Sample
+ZDE,David,Phillips,Service volunteer,active,Male,david.phillips@email.com,,Entry
+AEF,Hannah,Evans,Team lead,Suspended,Female,hannah.evans@email.com,,Data
+BFG,Samuel,Turner,Service volunteer,Active,Male,samuel.turner@email.com,,Info
+CGH,Aria,Torres,Service volunteer,Active,Female,aria.torres@email.com,Group E,Value
+DHI,Joseph,Parker,Service volunteer,Pending,Male,joseph.parker@email.com,,Text
+EIJ,Aaliyah,Collins,Service volunteer,Active,Female,aaliyah.collins@email.com,Group C,Word
+FJK,John,Edwards,Team lead,Active,Male,john.edwards@email.com,,Sample

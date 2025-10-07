@@ -167,6 +167,7 @@ The volunteers sheet is designed to be human friendly and maintained manually. I
 | ---------- | ---- |
 | First name | text |
 | Last name  | text |
+| Role       | text |
 | Status     | text |
 | Sex/Gender | text |
 | Email      | text |

@@ -9,7 +9,8 @@
 - List volunteers ✅
 - Sheets SQL groundwork ✅
 - DB layer groundwork ✅
-- Integration testing groundwork
+- E2E testing groundwork ✅
+- Write init code
 
 ## Phase 2 - Simple commands
 
