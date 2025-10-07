@@ -14,6 +14,12 @@
 
 ## Phase 2 - Simple commands
 
+- Add CLI runner
+- Define rota service
+- Request availability service
+- Send availability reminders service
+- View responses service
+
 ## Phase 3 - Generate rota
 
 ## Phase 4 - Remaining commands
