@@ -8,7 +8,7 @@
 - Sheets client ✅
 - List volunteers ✅
 - Sheets SQL groundwork ✅
-- DB layer groundwork
+- DB layer groundwork ✅
 - Integration testing groundwork
 
 ## Phase 2 - Simple commands
