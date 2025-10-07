@@ -1,8 +1,8 @@
 # Binaries (executable files, not directories)
-cli
-server
-cmd/cli/cli
-cmd/server/server
+/cli
+/server
+/cmd/cli/cli
+/cmd/server/server
 
 # Logs
 **/logs/

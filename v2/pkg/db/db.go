@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/sheetssql"
@@ -16,6 +17,15 @@ func NewDB(ssql *sheetssql.DB) *DB {
 	return &DB{
 		ssql: ssql,
 	}
+}
+
+// GetRotations retrieves all rotation records
+func (db *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
+	rotations, err := sheetssql.GetTableAs[Rotation](db.ssql, "rotation")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rotations: %w", err)
+	}
+	return rotations, nil
 }
 
 // InsertRotation inserts a new rotation record

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/sheetssql"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
@@ -143,9 +144,23 @@ func defineRotaCmd() *cobra.Command {
 				return fmt.Errorf("shift_count must be a number: %w", err)
 			}
 
-			app.logger.Info("defineRota command", zap.Int("shift_count", shiftCount))
-			fmt.Printf("TODO: Implement defineRota with %d shifts\n", shiftCount)
-			// Service call will go here: services.DefineRota(app.ctx, app.database, shiftCount)
+			result, err := services.DefineRota(app.ctx, app.database, app.logger, shiftCount)
+			if err != nil {
+				return err
+			}
+
+			// Display results
+			fmt.Printf("\n✓ Rotation created successfully!\n\n")
+			fmt.Printf("Rotation ID: %s\n", result.Rotation.ID)
+			fmt.Printf("Start Date:  %s\n", result.Rotation.Start)
+			fmt.Printf("Shift Count: %d\n\n", result.Rotation.ShiftCount)
+
+			fmt.Printf("Shift Dates:\n")
+			for i, shiftDate := range result.ShiftDates {
+				fmt.Printf("  %2d. %s\n", i+1, shiftDate.Format("2006-01-02 (Monday)"))
+			}
+			fmt.Println()
+
 			return nil
 		},
 	}
