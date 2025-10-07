@@ -12,6 +12,9 @@
 # Configuration with sensitive data
 **/drop_in_config.*.yaml
 
+# Log files
+**/logs/
+
 # Any other secrets
 **/*.secret
 **/*.key

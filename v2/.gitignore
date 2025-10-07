@@ -2,3 +2,9 @@
 **/cli
 **/server
 
+# Logs
+**/logs/
+
+# Config files with secrets
+**/oauthClient*.json
+**/drop_in_config*.yaml
