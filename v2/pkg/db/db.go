@@ -35,3 +35,12 @@ func (db *DB) InsertRotation(rotation *Rotation) error {
 	}
 	return nil
 }
+
+// GetAvailabilityRequests retrieves all availability request records
+func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityRequest, error) {
+	requests, err := sheetssql.GetTableAs[AvailabilityRequest](db.ssql, "availability_request")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get availability requests: %w", err)
+	}
+	return requests, nil
+}
