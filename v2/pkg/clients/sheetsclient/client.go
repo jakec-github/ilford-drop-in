@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/oauth2"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
@@ -14,6 +15,7 @@ import (
 // Client wraps the Google Sheets API client
 type Client struct {
 	service *sheets.Service
+	token   *oauth2.Token
 	ctx     context.Context
 }
 
@@ -43,6 +45,7 @@ func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig) (*Client
 
 	return &Client{
 		service: service,
+		token:   token,
 		ctx:     ctx,
 	}, nil
 }
@@ -50,6 +53,11 @@ func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig) (*Client
 // Service returns the underlying sheets service for direct API access
 func (c *Client) Service() *sheets.Service {
 	return c.service
+}
+
+// Token returns the OAuth token used by this client
+func (c *Client) Token() *oauth2.Token {
+	return c.token
 }
 
 // GetValues reads values from a spreadsheet range

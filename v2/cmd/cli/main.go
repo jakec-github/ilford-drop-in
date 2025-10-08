@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -22,11 +24,14 @@ import (
 
 // App holds the application dependencies
 type App struct {
-	cfg      *config.Config
-	client   *sheetsclient.Client
-	database *db.DB
-	logger   *zap.Logger
-	ctx      context.Context
+	cfg          *config.Config
+	oauthCfg     *config.OAuthClientConfig
+	sheetsClient *sheetsclient.Client
+	formsClient  *formsclient.Client
+	gmailClient  *gmailclient.Client
+	database     *db.DB
+	logger       *zap.Logger
+	ctx          context.Context
 }
 
 var (
@@ -94,7 +99,7 @@ func initApp() error {
 
 	// Load OAuth client configuration
 	app.logger.Info("Loading OAuth client configuration")
-	oauthCfg, err := config.LoadOAuthClientWithEnv(env)
+	app.oauthCfg, err = config.LoadOAuthClientWithEnv(env)
 	if err != nil {
 		return fmt.Errorf("failed to load OAuth client config: %w", err)
 	}
@@ -102,11 +107,27 @@ func initApp() error {
 
 	// Initialize sheets client
 	app.logger.Info("Initializing sheets client")
-	app.client, err = sheetsclient.NewClient(app.ctx, oauthCfg)
+	app.sheetsClient, err = sheetsclient.NewClient(app.ctx, app.oauthCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create sheets client: %w", err)
 	}
 	app.logger.Debug("Sheets client initialized successfully")
+
+	// Initialize forms client (uses same OAuth token from sheets client)
+	app.logger.Info("Initializing forms client")
+	app.formsClient, err = formsclient.NewClient(app.ctx, app.oauthCfg, app.sheetsClient.Token())
+	if err != nil {
+		return fmt.Errorf("failed to create forms client: %w", err)
+	}
+	app.logger.Debug("Forms client initialized successfully")
+
+	// Initialize gmail client (uses same OAuth token from sheets client)
+	app.logger.Info("Initializing gmail client")
+	app.gmailClient, err = gmailclient.NewClient(app.ctx, app.oauthCfg, app.sheetsClient.Token())
+	if err != nil {
+		return fmt.Errorf("failed to create gmail client: %w", err)
+	}
+	app.logger.Debug("Gmail client initialized successfully")
 
 	// Initialize database schema
 	app.logger.Info("Initializing database schema")
@@ -123,7 +144,7 @@ func initApp() error {
 
 	// Initialize SheetsSQL database
 	app.logger.Info("Connecting to database", zap.String("spreadsheet_id", app.cfg.DatabaseSheetID))
-	ssqlDB, err := sheetssql.NewDB(app.client, app.cfg.DatabaseSheetID, schema)
+	ssqlDB, err := sheetssql.NewDB(app.sheetsClient, app.cfg.DatabaseSheetID, schema)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
@@ -178,9 +199,44 @@ func requestAvailabilityCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deadline := args[0]
 
-			app.logger.Info("requestAvailability command", zap.String("deadline", deadline))
-			fmt.Printf("TODO: Implement requestAvailability with deadline %s\n", deadline)
-			// Service call will go here: services.RequestAvailability(app.ctx, app.cfg, app.client, app.database, deadline)
+			// Call the service
+			sentForms, failedEmails, err := services.RequestAvailability(
+				app.ctx,
+				app.database,
+				app.sheetsClient,
+				app.formsClient,
+				app.gmailClient,
+				app.cfg,
+				app.logger,
+				deadline,
+			)
+			if err != nil {
+				return err
+			}
+
+			// Display results
+			fmt.Printf("\n✓ Availability request completed!\n\n")
+
+			if len(sentForms) > 0 {
+				fmt.Printf("Forms sent to %d volunteers:\n", len(sentForms))
+				for _, sf := range sentForms {
+					fmt.Printf("  ✓ %s (%s)\n", sf.VolunteerName, sf.Email)
+				}
+				fmt.Println()
+			}
+
+			if len(failedEmails) > 0 {
+				fmt.Printf("⚠️  Failed to send %d emails:\n", len(failedEmails))
+				for _, fe := range failedEmails {
+					fmt.Printf("  ✗ %s (%s): %s\n", fe.VolunteerName, fe.Email, fe.Error)
+				}
+				fmt.Println()
+			}
+
+			if len(sentForms) == 0 && len(failedEmails) == 0 {
+				fmt.Println("No new forms to send - all volunteers already have requests.")
+			}
+
 			return nil
 		},
 	}
@@ -307,7 +363,7 @@ func listVolunteersCmd() *cobra.Command {
 			app.logger.Info("listVolunteers command")
 
 			// Fetch volunteers
-			volunteers, err := app.client.ListVolunteers(app.cfg)
+			volunteers, err := app.sheetsClient.ListVolunteers(app.cfg)
 			if err != nil {
 				return fmt.Errorf("failed to list volunteers: %w", err)
 			}

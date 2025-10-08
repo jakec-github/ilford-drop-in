@@ -67,7 +67,7 @@ type mockFormsClient struct {
 	err          error
 }
 
-func (m *mockFormsClient) CreateAvailabilityForm(volunteerName string, rotaID string, shiftDates []time.Time) (*formsclient.AvailabilityFormResult, error) {
+func (m *mockFormsClient) CreateAvailabilityForm(volunteerName string, shiftDates []time.Time) (*formsclient.AvailabilityFormResult, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -124,10 +124,11 @@ func TestRequestAvailability_CreatesRequestsForVolunteersWithoutRequests(t *test
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	result, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
 
 	require.NoError(t, err)
-	require.NotNil(t, result)
+	require.NotNil(t, sentForms)
+	require.NotNil(t, failedEmails)
 
 	// Should have created 4 new requests: 2 unsent (vol-2, vol-3) + 2 sent (vol-2, vol-3)
 	require.Len(t, mockStore.insertedRequests, 4)
@@ -165,8 +166,11 @@ func TestRequestAvailability_CreatesRequestsForVolunteersWithoutRequests(t *test
 	assert.Contains(t, mockGmailClient.sentEmails, "jane@example.com")
 	assert.Contains(t, mockGmailClient.sentEmails, "bob@example.com")
 
+	// Verify sent forms
+	assert.Len(t, sentForms, 2)
+
 	// Verify no failed emails
-	assert.Len(t, result.FailedEmails, 0)
+	assert.Len(t, failedEmails, 0)
 }
 
 func TestRequestAvailability_NoVolunteersNeedRequests(t *testing.T) {
@@ -191,22 +195,22 @@ func TestRequestAvailability_NoVolunteersNeedRequests(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	result, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
 
 	require.NoError(t, err)
-	require.NotNil(t, result)
+	require.NotNil(t, sentForms)
+	require.NotNil(t, failedEmails)
 
 	// Should not have created any new requests
 	assert.Len(t, mockStore.insertedRequests, 0)
 	assert.Len(t, mockFormsClient.createdForms, 0)
 	assert.Len(t, mockGmailClient.sentEmails, 0)
 
-	// Should return unsent forms (vol-2)
-	require.Len(t, result.UnsentForms, 1)
-	assert.Equal(t, "vol-2", result.UnsentForms[0].VolunteerID)
+	// No sent forms
+	assert.Len(t, sentForms, 0)
 
 	// No failed emails
-	assert.Len(t, result.FailedEmails, 0)
+	assert.Len(t, failedEmails, 0)
 }
 
 func TestRequestAvailability_OnlyCreatesForLatestRota(t *testing.T) {
@@ -231,10 +235,11 @@ func TestRequestAvailability_OnlyCreatesForLatestRota(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	result, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
 
 	require.NoError(t, err)
-	require.NotNil(t, result)
+	require.NotNil(t, sentForms)
+	require.NotNil(t, failedEmails)
 
 	// Should create 2 requests for vol-1 for the latest rota: 1 unsent + 1 sent
 	require.Len(t, mockStore.insertedRequests, 2)
@@ -242,6 +247,13 @@ func TestRequestAvailability_OnlyCreatesForLatestRota(t *testing.T) {
 		assert.Equal(t, "vol-1", req.VolunteerID)
 		assert.Equal(t, "rota-2", req.RotaID)
 	}
+
+	// Should have sent form to vol-1
+	assert.Len(t, sentForms, 1)
+	assert.Equal(t, "vol-1", sentForms[0].VolunteerID)
+
+	// No failed emails
+	assert.Len(t, failedEmails, 0)
 }
 
 func TestRequestAvailability_PartialEmailFailures(t *testing.T) {
@@ -266,10 +278,11 @@ func TestRequestAvailability_PartialEmailFailures(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	result, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
 
 	require.NoError(t, err)
-	require.NotNil(t, result)
+	require.NotNil(t, sentForms)
+	require.NotNil(t, failedEmails)
 
 	// Should have created: 3 unsent (all) + 2 sent (vol-1, vol-3 only - vol-2 failed)
 	require.Len(t, mockStore.insertedRequests, 5)
@@ -294,10 +307,20 @@ func TestRequestAvailability_PartialEmailFailures(t *testing.T) {
 	assert.False(t, sentByVolunteer["vol-2"], "Should not have sent record for failed email")
 	assert.True(t, sentByVolunteer["vol-3"])
 
+	// Should have 2 sent forms (vol-1 and vol-3)
+	require.Len(t, sentForms, 2)
+	sentVolunteerIDs := make(map[string]bool)
+	for _, sf := range sentForms {
+		sentVolunteerIDs[sf.VolunteerID] = true
+	}
+	assert.True(t, sentVolunteerIDs["vol-1"])
+	assert.True(t, sentVolunteerIDs["vol-3"])
+	assert.False(t, sentVolunteerIDs["vol-2"])
+
 	// Should have 1 failed email
-	require.Len(t, result.FailedEmails, 1)
-	assert.Equal(t, "vol-2", result.FailedEmails[0].VolunteerID)
-	assert.Equal(t, "jane@example.com", result.FailedEmails[0].Email)
+	require.Len(t, failedEmails, 1)
+	assert.Equal(t, "vol-2", failedEmails[0].VolunteerID)
+	assert.Equal(t, "jane@example.com", failedEmails[0].Email)
 }
 
 func TestRequestAvailability_AllEmailsFail(t *testing.T) {
@@ -321,10 +344,11 @@ func TestRequestAvailability_AllEmailsFail(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	result, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
 
 	require.Error(t, err)
-	assert.Nil(t, result)
+	assert.Nil(t, sentForms)
+	assert.Nil(t, failedEmails)
 	assert.Contains(t, err.Error(), "all 2 email send attempts failed")
 }
 

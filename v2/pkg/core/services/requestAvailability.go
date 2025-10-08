@@ -14,11 +14,11 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// UnsentForm represents a form that needs to be sent
-type UnsentForm struct {
+// SentForm represents a volunteer who was successfully sent a form
+type SentForm struct {
 	VolunteerID   string
 	VolunteerName string
-	FormURL       string
+	Email         string
 }
 
 // FailedEmail represents an email that failed to send
@@ -27,13 +27,6 @@ type FailedEmail struct {
 	VolunteerName string
 	Email         string
 	Error         string
-}
-
-// AvailabilityRequestResult represents the result of requesting availability
-type AvailabilityRequestResult struct {
-	LatestRota   *db.Rotation
-	UnsentForms  []UnsentForm
-	FailedEmails []FailedEmail
 }
 
 // AvailabilityRequestStore defines the database operations needed for request availability
@@ -50,7 +43,7 @@ type VolunteerClient interface {
 
 // FormsClient defines the operations needed to create forms
 type FormsClient interface {
-	CreateAvailabilityForm(volunteerName string, rotaID string, shiftDates []time.Time) (*formsclient.AvailabilityFormResult, error)
+	CreateAvailabilityForm(volunteerName string, shiftDates []time.Time) (*formsclient.AvailabilityFormResult, error)
 }
 
 // GmailClient defines the operations needed to send emails
@@ -60,7 +53,7 @@ type GmailClient interface {
 
 // RequestAvailability creates availability forms for volunteers, sends emails, and returns results
 // It fetches the latest rota, creates forms for volunteers without requests, sends emails,
-// inserts DB records, and returns all unsent forms and any failed emails
+// and inserts DB records. Returns volunteers who were successfully sent forms and those that failed.
 func RequestAvailability(
 	ctx context.Context,
 	database AvailabilityRequestStore,
@@ -70,20 +63,20 @@ func RequestAvailability(
 	cfg *config.Config,
 	logger *zap.Logger,
 	deadline string,
-) (*AvailabilityRequestResult, error) {
+) ([]SentForm, []FailedEmail, error) {
 	logger.Info("Starting requestAvailability", zap.String("deadline", deadline))
 
 	// Step 1: Fetch all rotations
 	logger.Debug("Fetching rotations")
 	rotations, err := database.GetRotations(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch rotations: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch rotations: %w", err)
 	}
 	logger.Debug("Found rotations", zap.Int("count", len(rotations)))
 
 	// Step 2: Find latest rota
 	if len(rotations) == 0 {
-		return nil, fmt.Errorf("no rotations found - please define a rota first")
+		return nil, nil, fmt.Errorf("no rotations found - please define a rota first")
 	}
 
 	latestRota := findLatestRotation(rotations)
@@ -95,14 +88,14 @@ func RequestAvailability(
 	// Calculate shift dates for the rota
 	shiftDates, err := calculateShiftDates(latestRota.Start, latestRota.ShiftCount)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+		return nil, nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
 
 	// Step 3: Fetch all availability requests
 	logger.Debug("Fetching availability requests")
 	allRequests, err := database.GetAvailabilityRequests(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
 	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
 
@@ -121,7 +114,7 @@ func RequestAvailability(
 	logger.Debug("Fetching volunteers")
 	allVolunteers, err := volunteerClient.ListVolunteers(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
 	logger.Debug("Found volunteers", zap.Int("count", len(allVolunteers)))
 
@@ -153,9 +146,9 @@ func RequestAvailability(
 			zap.String("volunteer_name", volunteerName))
 
 		// Create the form
-		formResult, err := formsClient.CreateAvailabilityForm(volunteerName, latestRota.ID, shiftDates)
+		formResult, err := formsClient.CreateAvailabilityForm(volunteerName, shiftDates)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create form for volunteer %s: %w", volunteer.ID, err)
+			return nil, nil, fmt.Errorf("failed to create form for volunteer %s: %w", volunteer.ID, err)
 		}
 
 		logger.Info("Form created",
@@ -185,13 +178,14 @@ func RequestAvailability(
 	if len(unsentRequests) > 0 {
 		logger.Info("Inserting unsent availability requests", zap.Int("count", len(unsentRequests)))
 		if err := database.InsertAvailabilityRequests(unsentRequests); err != nil {
-			return nil, fmt.Errorf("failed to insert availability requests: %w", err)
+			return nil, nil, fmt.Errorf("failed to insert availability requests: %w", err)
 		}
 		logger.Info("Unsent availability requests inserted successfully")
 	}
 
 	// Step 9: Send emails and create form_sent=true records for successful sends
 	sentRequests := make([]db.AvailabilityRequest, 0, len(volunteersWithoutRequests))
+	sentForms := []SentForm{}
 	failedEmails := []FailedEmail{}
 
 	for _, volunteer := range volunteersWithoutRequests {
@@ -226,6 +220,13 @@ func RequestAvailability(
 			zap.String("volunteer_id", volunteer.ID),
 			zap.String("email", volunteer.Email))
 
+		// Add to sent forms list
+		sentForms = append(sentForms, SentForm{
+			VolunteerID:   volunteer.ID,
+			VolunteerName: volunteerName,
+			Email:         volunteer.Email,
+		})
+
 		// Create form_sent=true record for successful email
 		// Find the original request to get the FormID
 		var originalFormID string
@@ -249,53 +250,24 @@ func RequestAvailability(
 
 	// If all emails failed, return error
 	if len(failedEmails) == len(volunteersWithoutRequests) && len(volunteersWithoutRequests) > 0 {
-		return nil, fmt.Errorf("all %d email send attempts failed", len(failedEmails))
+		return nil, nil, fmt.Errorf("all %d email send attempts failed", len(failedEmails))
 	}
 
 	// Insert form_sent=true records for successful emails
 	if len(sentRequests) > 0 {
 		logger.Info("Inserting sent availability requests", zap.Int("count", len(sentRequests)))
 		if err := database.InsertAvailabilityRequests(sentRequests); err != nil {
-			return nil, fmt.Errorf("failed to insert sent availability requests: %w", err)
+			return nil, nil, fmt.Errorf("failed to insert sent availability requests: %w", err)
 		}
 		logger.Info("Sent availability requests inserted successfully")
 	}
 
-	// Step 10: Build list of unsent forms for the current rota
-	// Combine existing requests with newly created unsent ones (not the sent ones)
-	allRequestsForRota := append(requestsForRota, unsentRequests...)
-
-	unsentForms := []UnsentForm{}
-	for _, req := range allRequestsForRota {
-		if !req.FormSent {
-			// Find volunteer name
-			var volunteerName string
-			for _, vol := range allVolunteers {
-				if vol.ID == req.VolunteerID {
-					volunteerName = fmt.Sprintf("%s %s", vol.FirstName, vol.LastName)
-					break
-				}
-			}
-
-			unsentForms = append(unsentForms, UnsentForm{
-				VolunteerID:   req.VolunteerID,
-				VolunteerName: volunteerName,
-				FormURL:       req.FormURL,
-			})
-		}
-	}
-
 	logger.Info("Request availability completed",
 		zap.Int("forms_created", len(volunteersWithoutRequests)),
-		zap.Int("emails_sent", len(sentRequests)),
-		zap.Int("emails_failed", len(failedEmails)),
-		zap.Int("total_unsent_forms", len(unsentForms)))
+		zap.Int("emails_sent", len(sentForms)),
+		zap.Int("emails_failed", len(failedEmails)))
 
-	return &AvailabilityRequestResult{
-		LatestRota:   latestRota,
-		UnsentForms:  unsentForms,
-		FailedEmails: failedEmails,
-	}, nil
+	return sentForms, failedEmails, nil
 }
 
 // filterVolunteersWithoutRequests filters volunteers to only those who don't have requests yet
