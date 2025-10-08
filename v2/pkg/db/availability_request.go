@@ -65,3 +65,11 @@ func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityReques
 
 	return result, nil
 }
+
+// InsertAvailabilityRequest inserts a new availability request record
+func (db *DB) InsertAvailabilityRequest(request *AvailabilityRequest) error {
+	if err := sheetssql.InsertModel(db.ssql, *request); err != nil {
+		return fmt.Errorf("failed to insert availability request: %w", err)
+	}
+	return nil
+}
