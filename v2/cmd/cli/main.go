@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -59,6 +62,7 @@ func main() {
 	rootCmd.AddCommand(publishRotaCmd())
 	rootCmd.AddCommand(addCoverCmd())
 	rootCmd.AddCommand(listVolunteersCmd())
+	rootCmd.AddCommand(interactiveCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -330,4 +334,126 @@ func listVolunteersCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func interactiveCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "interactive",
+		Short: "Start an interactive session (authenticate once, run multiple commands)",
+		Long: `Start an interactive session where you can run multiple commands without re-authenticating.
+The session will keep running until you type 'exit' or 'quit'.
+
+Type 'help' to see available commands.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("\n🚀 Starting interactive session...")
+			fmt.Println("Type 'help' for available commands, 'exit' or 'quit' to leave")
+
+			// Get all sibling commands (excluding interactive itself)
+			rootCmd := cmd.Parent()
+			commands := make(map[string]*cobra.Command)
+			for _, subCmd := range rootCmd.Commands() {
+				if subCmd.Name() != "interactive" && subCmd.Name() != "completion" && subCmd.Name() != "help" {
+					commands[subCmd.Name()] = subCmd
+				}
+			}
+
+			scanner := bufio.NewScanner(os.Stdin)
+
+			for {
+				fmt.Print("> ")
+
+				if !scanner.Scan() {
+					break
+				}
+
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" {
+					continue
+				}
+
+				// Parse command
+				parts := strings.Fields(line)
+				cmdName := parts[0]
+				cmdArgs := parts[1:]
+
+				// Handle exit
+				if cmdName == "exit" || cmdName == "quit" {
+					fmt.Println("👋 Goodbye!")
+					return nil
+				}
+
+				// Handle help
+				if cmdName == "help" {
+					printInteractiveHelp(commands)
+					continue
+				}
+
+				// Execute command via Cobra
+				targetCmd, exists := commands[cmdName]
+				if !exists {
+					fmt.Printf("❌ Unknown command: %s (type 'help' for available commands)\n\n", cmdName)
+					continue
+				}
+
+				// Reset command flags and args
+				targetCmd.Flags().VisitAll(func(flag *pflag.Flag) {
+					flag.Changed = false
+					flag.Value.Set(flag.DefValue)
+				})
+
+				// Execute the command's RunE directly, bypassing the full Execute() flow
+				// This avoids re-running PersistentPreRunE which would call initApp() again
+				if err := targetCmd.ParseFlags(cmdArgs); err != nil {
+					fmt.Printf("❌ Error parsing flags: %v\n\n", err)
+					continue
+				}
+
+				// Get non-flag args after parsing flags
+				cmdArgs = targetCmd.Flags().Args()
+
+				// Validate args
+				if err := targetCmd.Args(targetCmd, cmdArgs); err != nil {
+					fmt.Printf("❌ Error: %v\n\n", err)
+					continue
+				}
+
+				// Execute the RunE function directly
+				if targetCmd.RunE != nil {
+					if err := targetCmd.RunE(targetCmd, cmdArgs); err != nil {
+						fmt.Printf("❌ Error: %v\n\n", err)
+					}
+				} else if targetCmd.Run != nil {
+					targetCmd.Run(targetCmd, cmdArgs)
+				}
+			}
+
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("error reading input: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	return cmd
+}
+
+func printInteractiveHelp(commands map[string]*cobra.Command) {
+	fmt.Println("\nAvailable commands:")
+
+	// Get command names and sort them
+	names := make([]string, 0, len(commands))
+	for name := range commands {
+		names = append(names, name)
+	}
+
+	// Print each command with its short description
+	for _, name := range names {
+		cmd := commands[name]
+		fmt.Printf("  %-30s %s\n", cmd.Use, cmd.Short)
+	}
+
+	fmt.Println("\n  help                           Show this help message")
+	fmt.Println("  exit, quit                     Exit the interactive session")
 }
