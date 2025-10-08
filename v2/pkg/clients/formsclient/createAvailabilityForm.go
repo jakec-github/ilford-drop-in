@@ -22,6 +22,20 @@ func (c *Client) CreateAvailabilityForm(
 	// Build the form title
 	formTitle := fmt.Sprintf("Availability Request - %s", volunteerName)
 
+	// Step 1: Create the form with just the title
+	form := &forms.Form{
+		Info: &forms.Info{
+			Title:         formTitle,
+			DocumentTitle: formTitle,
+		},
+	}
+
+	createdForm, err := c.service.Forms.Create(form).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create form: %w", err)
+	}
+
+	// Step 2: Add items using batchUpdate
 	// Create checkbox options for each shift date
 	checkboxOptions := make([]*forms.Option, len(shiftDateStrings))
 	for i, dateStr := range shiftDateStrings {
@@ -30,58 +44,74 @@ func (c *Client) CreateAvailabilityForm(
 		}
 	}
 
-	// Build the form structure with two pages
-	form := &forms.Form{
-		Info: &forms.Info{
-			Title:       formTitle,
-			DocumentTitle: formTitle,
-		},
-		Items: []*forms.Item{
-			// Page 1: Are you available for all dates?
+	// Build batch update request to add items
+	// Items are added to the end of the form by using Index with ForceSendFields
+	batchUpdateRequest := &forms.BatchUpdateFormRequest{
+		Requests: []*forms.Request{
+			// Add Page 1: Are you available for all dates?
 			{
-				Title:       "Are you available for all dates?",
-				Description: "",
-				ItemId:      "available_all_question",
-				QuestionItem: &forms.QuestionItem{
-					Question: &forms.Question{
-						Required: true,
-						ChoiceQuestion: &forms.ChoiceQuestion{
-							Type: "RADIO",
-							Options: []*forms.Option{
-								{Value: "Yes"},
-								{Value: "No"},
+				CreateItem: &forms.CreateItemRequest{
+					Item: &forms.Item{
+						Title: "Are you available for all dates?",
+						QuestionItem: &forms.QuestionItem{
+							Question: &forms.Question{
+								Required: true,
+								ChoiceQuestion: &forms.ChoiceQuestion{
+									Type: "RADIO",
+									Options: []*forms.Option{
+										{Value: "Yes"},
+										{Value: "No"},
+									},
+								},
 							},
 						},
 					},
+					Location: &forms.Location{
+						Index:           0,
+						ForceSendFields: []string{"Index"},
+					},
 				},
 			},
-			// Page break
+			// Add page break
 			{
-				ItemId: "page_break_1",
-				PageBreakItem: &forms.PageBreakItem{},
+				CreateItem: &forms.CreateItemRequest{
+					Item: &forms.Item{
+						PageBreakItem: &forms.PageBreakItem{},
+					},
+					Location: &forms.Location{
+						Index:           1,
+						ForceSendFields: []string{"Index"},
+					},
+				},
 			},
-			// Page 2: Which dates are you unavailable? (conditional)
+			// Add Page 2: Which dates are you unavailable?
 			{
-				Title:       "Which shifts are you UNAVAILABLE for?",
-				Description: "Select all dates you CANNOT volunteer",
-				ItemId:      "unavailable_dates_question",
-				QuestionItem: &forms.QuestionItem{
-					Question: &forms.Question{
-						Required: true,
-						ChoiceQuestion: &forms.ChoiceQuestion{
-							Type:    "CHECKBOX",
-							Options: checkboxOptions,
+				CreateItem: &forms.CreateItemRequest{
+					Item: &forms.Item{
+						Title:       "Which shifts are you UNAVAILABLE for?",
+						Description: "Select all dates you CANNOT volunteer",
+						QuestionItem: &forms.QuestionItem{
+							Question: &forms.Question{
+								Required: false, // Not required - they might be available for all
+								ChoiceQuestion: &forms.ChoiceQuestion{
+									Type:    "CHECKBOX",
+									Options: checkboxOptions,
+								},
+							},
 						},
+					},
+					Location: &forms.Location{
+						Index:           2,
+						ForceSendFields: []string{"Index"},
 					},
 				},
 			},
 		},
 	}
 
-	// Create the form
-	createdForm, err := c.service.Forms.Create(form).Do()
+	_, err = c.service.Forms.BatchUpdate(createdForm.FormId, batchUpdateRequest).Do()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create form: %w", err)
+		return nil, fmt.Errorf("failed to add items to form: %w", err)
 	}
 
 	return &AvailabilityFormResult{
