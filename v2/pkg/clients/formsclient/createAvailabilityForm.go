@@ -11,7 +11,6 @@ import (
 // Uses a 2-step form: first asks if available for all dates, then conditionally asks for unavailable dates
 func (c *Client) CreateAvailabilityForm(
 	volunteerName string,
-	rotaID string,
 	shiftDates []time.Time,
 ) (*AvailabilityFormResult, error) {
 	// Format shift dates for display
