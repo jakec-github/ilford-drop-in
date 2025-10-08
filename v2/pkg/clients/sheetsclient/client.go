@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/oauth2"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
@@ -19,9 +18,10 @@ type Client struct {
 }
 
 // NewClient creates a new Sheets client using OAuth credentials and performs OAuth flow if needed
+// Requests all necessary scopes upfront (sheets, forms, gmail) so the token can be shared across clients
 func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig) (*Client, error) {
-	// Get OAuth config with sheets scope
-	oauthConfig, err := utils.GetOAuthConfig(oauthCfg, []string{utils.ScopeSheets})
+	// Get OAuth config with all required scopes for the application
+	oauthConfig, err := utils.GetOAuthConfig(oauthCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get oauth config: %w", err)
 	}
@@ -36,26 +36,6 @@ func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig) (*Client
 	httpClient := oauthConfig.Client(ctx, token)
 
 	// Create sheets service
-	service, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sheets service: %w", err)
-	}
-
-	return &Client{
-		service: service,
-		ctx:     ctx,
-	}, nil
-}
-
-// NewClientWithToken creates a new Sheets client using an existing token
-func NewClientWithToken(ctx context.Context, oauthCfg *config.OAuthClientConfig, token *oauth2.Token) (*Client, error) {
-	oauthConfig, err := utils.GetOAuthConfig(oauthCfg, []string{utils.ScopeSheets})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get oauth config: %w", err)
-	}
-
-	httpClient := oauthConfig.Client(ctx, token)
-
 	service, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sheets service: %w", err)

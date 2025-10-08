@@ -34,10 +34,18 @@ const (
 )
 
 // GetOAuthConfig creates an OAuth2 config from the OAuth client configuration
-func GetOAuthConfig(oauthCfg *config.OAuthClientConfig, scopes []string) (*oauth2.Config, error) {
+// Requests all necessary scopes for the application upfront (sheets, forms, gmail)
+func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) {
 	oauthConfigJSON, err := json.Marshal(oauthCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal oauth config: %w", err)
+	}
+
+	scopes := []string{
+		ScopeSheets,
+		ScopeFormsBody,
+		ScopeFormsResponsesReadonly,
+		ScopeGmailSend,
 	}
 
 	googleConfig, err := google.ConfigFromJSON(oauthConfigJSON, scopes...)
