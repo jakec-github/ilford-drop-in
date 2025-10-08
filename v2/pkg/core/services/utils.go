@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -64,4 +65,20 @@ func getVolunteerIDs(volunteers []model.Volunteer) []string {
 		ids[i] = vol.ID
 	}
 	return ids
+}
+
+// calculateShiftDates calculates all shift dates for a rota, starting from the given date
+// Shifts occur weekly (every 7 days) for the specified shift count
+func calculateShiftDates(startDateStr string, shiftCount int) ([]time.Time, error) {
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start date format: %w", err)
+	}
+
+	dates := make([]time.Time, shiftCount)
+	for i := 0; i < shiftCount; i++ {
+		dates[i] = startDate.AddDate(0, 0, i*7) // Add i weeks
+	}
+
+	return dates, nil
 }
