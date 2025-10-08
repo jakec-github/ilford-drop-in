@@ -98,33 +98,6 @@ func DefineRota(ctx context.Context, database db.RotationStore, logger *zap.Logg
 	}, nil
 }
 
-// findLatestRotation finds the rotation with the most recent start date
-func findLatestRotation(rotations []db.Rotation) *db.Rotation {
-	if len(rotations) == 0 {
-		return nil
-	}
-
-	latest := &rotations[0]
-	latestDate, err := time.Parse("2006-01-02", latest.Start)
-	if err != nil {
-		return latest
-	}
-
-	for i := 1; i < len(rotations); i++ {
-		currentDate, err := time.Parse("2006-01-02", rotations[i].Start)
-		if err != nil {
-			continue
-		}
-
-		if currentDate.After(latestDate) {
-			latest = &rotations[i]
-			latestDate = currentDate
-		}
-	}
-
-	return latest
-}
-
 // nextSunday returns the next Sunday from the given date
 func nextSunday(from time.Time) time.Time {
 	// Normalize to start of day to avoid time-of-day issues
