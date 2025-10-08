@@ -206,7 +206,7 @@ The tool will support the following actions and queries. For each one there is a
 - Forms query: Creates availability forms for this rota for those volunteers
 - DB query: Appends availability requests for all missing volunteers with form_sent set to false
 - Finds all the previously created availability requests with form_sent set to false
-- Gmail query: Emails all new forms and old forms with form_sent set to false. Includes deadline
+- Gmail query: Emails all unsent forms. Includes deadline
 - DB query: Appends a new availability request for emailed volunteers with form_sent set to true
 - Shows volunteers who have been sent forms
 
