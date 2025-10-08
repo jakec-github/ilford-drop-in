@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -428,8 +429,15 @@ Type 'help' to see available commands.`,
 					continue
 				}
 
-				// Parse command
-				parts := strings.Fields(line)
+				// Parse command (respecting quotes)
+				parts, err := parseCommandLine(line)
+				if err != nil {
+					fmt.Printf("❌ Error parsing command: %v\n\n", err)
+					continue
+				}
+				if len(parts) == 0 {
+					continue
+				}
 				cmdName := parts[0]
 				cmdArgs := parts[1:]
 
@@ -512,4 +520,49 @@ func printInteractiveHelp(commands map[string]*cobra.Command) {
 
 	fmt.Println("\n  help                           Show this help message")
 	fmt.Println("  exit, quit                     Exit the interactive session")
+}
+
+// parseCommandLine splits a command line into arguments, respecting quoted strings
+// Supports both single and double quotes
+func parseCommandLine(line string) ([]string, error) {
+	var args []string
+	var current strings.Builder
+	var inQuote rune // 0 if not in quote, '"' or '\'' if in quote
+
+	for i, r := range line {
+		switch {
+		case inQuote != 0:
+			// Inside a quote
+			if r == inQuote {
+				// End quote
+				inQuote = 0
+			} else {
+				current.WriteRune(r)
+			}
+		case r == '"' || r == '\'':
+			// Start quote
+			inQuote = r
+		case unicode.IsSpace(r):
+			// Whitespace outside quotes - end current argument
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			// Regular character
+			current.WriteRune(r)
+		}
+
+		// Check for unclosed quote at end
+		if i == len(line)-1 && inQuote != 0 {
+			return nil, fmt.Errorf("unclosed quote: %c", inQuote)
+		}
+	}
+
+	// Add final argument if present
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args, nil
 }
