@@ -208,7 +208,7 @@ The tool will support the following actions and queries. For each one there is a
 - Finds all the previously created availability requests with form_sent set to false
 - Gmail query: Emails all unsent forms. Includes deadline
 - DB query: Appends a new availability request for emailed volunteers with form_sent set to true
-- Shows volunteers who have been sent forms
+- Shows volunteers who have been sent forms and those it failed to send to
 
 `sendAvailabilityReminders`
 
