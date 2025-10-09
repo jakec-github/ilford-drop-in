@@ -25,7 +25,7 @@ func DefineRota(ctx context.Context, database db.RotationStore, logger *zap.Logg
 		return nil, fmt.Errorf("shift count must be positive, got %d", shiftCount)
 	}
 
-	logger.Info("Defining new rota", zap.Int("shift_count", shiftCount))
+	logger.Debug("Defining new rota", zap.Int("shift_count", shiftCount))
 
 	// Fetch all existing rotations
 	logger.Debug("Fetching existing rotations")
@@ -61,7 +61,7 @@ func DefineRota(ctx context.Context, database db.RotationStore, logger *zap.Logg
 
 		// New rota starts the Sunday after the latest rota ends
 		startDate = nextSundayAfter(latestEnd)
-		logger.Info("Calculated start date from latest rotation",
+		logger.Debug("Calculated start date from latest rotation",
 			zap.Time("latest_end", latestEnd),
 			zap.Time("new_start", startDate))
 	}
@@ -73,7 +73,7 @@ func DefineRota(ctx context.Context, database db.RotationStore, logger *zap.Logg
 		ShiftCount: shiftCount,
 	}
 
-	logger.Info("Creating new rotation", zap.String("id", rotation.ID), zap.String("start", rotation.Start))
+	logger.Debug("Creating new rotation", zap.String("id", rotation.ID), zap.String("start", rotation.Start))
 
 	// Insert rotation into database
 	if err := database.InsertRotation(rotation); err != nil {
@@ -86,7 +86,7 @@ func DefineRota(ctx context.Context, database db.RotationStore, logger *zap.Logg
 		shiftDates[i] = startDate.AddDate(0, 0, 7*i)
 	}
 
-	logger.Info("Rotation created successfully",
+	logger.Debug("Rotation created successfully",
 		zap.String("rotation_id", rotation.ID),
 		zap.Int("shift_count", shiftCount),
 		zap.String("first_shift", shiftDates[0].Format("2006-01-02")),

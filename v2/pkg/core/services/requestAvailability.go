@@ -64,7 +64,7 @@ func RequestAvailability(
 	logger *zap.Logger,
 	deadline string,
 ) ([]SentForm, []FailedEmail, error) {
-	logger.Info("Starting requestAvailability", zap.String("deadline", deadline))
+	logger.Debug("Starting requestAvailability", zap.String("deadline", deadline))
 
 	// Step 1: Fetch all rotations
 	logger.Debug("Fetching rotations")
@@ -80,7 +80,7 @@ func RequestAvailability(
 	}
 
 	latestRota := findLatestRotation(rotations)
-	logger.Info("Found latest rota",
+	logger.Debug("Found latest rota",
 		zap.String("id", latestRota.ID),
 		zap.String("start", latestRota.Start),
 		zap.Int("shift_count", latestRota.ShiftCount))
@@ -101,7 +101,7 @@ func RequestAvailability(
 
 	// Step 4: Filter to requests for the current rota
 	requestsForRota := filterRequestsByRotaID(allRequests, latestRota.ID)
-	logger.Info("Filtered requests for latest rota", zap.Int("count", len(requestsForRota)))
+	logger.Debug("Filtered requests for latest rota", zap.Int("count", len(requestsForRota)))
 
 	// Build set of volunteer IDs who already have requests for this rota
 	volunteerIDsWithRequests := make(map[string]bool)
@@ -120,16 +120,16 @@ func RequestAvailability(
 
 	// Step 6: Filter to active volunteers
 	activeVolunteers := filterActiveVolunteers(allVolunteers)
-	logger.Info("Filtered to active volunteers", zap.Int("count", len(activeVolunteers)))
+	logger.Debug("Filtered to active volunteers", zap.Int("count", len(activeVolunteers)))
 
 	// Step 7: Find volunteers without availability requests
 	volunteersWithoutRequests := filterVolunteersWithoutRequests(activeVolunteers, volunteerIDsWithRequests)
-	logger.Info("Found volunteers without requests",
+	logger.Debug("Found volunteers without requests",
 		zap.Int("count", len(volunteersWithoutRequests)),
 		zap.Strings("volunteer_ids", getVolunteerIDs(volunteersWithoutRequests)))
 
 	// Step 8: Create forms for volunteers without requests
-	logger.Info("Creating forms for volunteers", zap.Int("count", len(volunteersWithoutRequests)))
+	logger.Debug("Creating forms for volunteers", zap.Int("count", len(volunteersWithoutRequests)))
 	unsentRequests := make([]db.AvailabilityRequest, 0, len(volunteersWithoutRequests))
 
 	// Map to track form details by volunteer ID for email sending
@@ -151,7 +151,7 @@ func RequestAvailability(
 			return nil, nil, fmt.Errorf("failed to create form for volunteer %s: %w", volunteer.ID, err)
 		}
 
-		logger.Info("Form created",
+		logger.Debug("Form created",
 			zap.String("volunteer_id", volunteer.ID),
 			zap.String("form_id", formResult.FormID),
 			zap.String("form_url", formResult.ResponderURI))
@@ -176,11 +176,11 @@ func RequestAvailability(
 
 	// Insert all unsent availability requests
 	if len(unsentRequests) > 0 {
-		logger.Info("Inserting unsent availability requests", zap.Int("count", len(unsentRequests)))
+		logger.Debug("Inserting unsent availability requests", zap.Int("count", len(unsentRequests)))
 		if err := database.InsertAvailabilityRequests(unsentRequests); err != nil {
 			return nil, nil, fmt.Errorf("failed to insert availability requests: %w", err)
 		}
-		logger.Info("Unsent availability requests inserted successfully")
+		logger.Debug("Unsent availability requests inserted successfully")
 	}
 
 	// Step 9: Send emails and create form_sent=true records for successful sends
@@ -255,14 +255,14 @@ func RequestAvailability(
 
 	// Insert form_sent=true records for successful emails
 	if len(sentRequests) > 0 {
-		logger.Info("Inserting sent availability requests", zap.Int("count", len(sentRequests)))
+		logger.Debug("Inserting sent availability requests", zap.Int("count", len(sentRequests)))
 		if err := database.InsertAvailabilityRequests(sentRequests); err != nil {
 			return nil, nil, fmt.Errorf("failed to insert sent availability requests: %w", err)
 		}
-		logger.Info("Sent availability requests inserted successfully")
+		logger.Debug("Sent availability requests inserted successfully")
 	}
 
-	logger.Info("Request availability completed",
+	logger.Debug("Request availability completed",
 		zap.Int("forms_created", len(volunteersWithoutRequests)),
 		zap.Int("emails_sent", len(sentForms)),
 		zap.Int("emails_failed", len(failedEmails)))

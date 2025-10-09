@@ -91,7 +91,7 @@ func initApp() error {
 	app.logger.Info("Starting application", zap.String("environment", env))
 
 	// Load configuration
-	app.logger.Info("Loading configuration")
+	app.logger.Debug("Loading configuration")
 	app.cfg, err = config.LoadWithEnv(env)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -99,7 +99,7 @@ func initApp() error {
 	app.logger.Debug("Configuration loaded successfully")
 
 	// Load OAuth client configuration
-	app.logger.Info("Loading OAuth client configuration")
+	app.logger.Debug("Loading OAuth client configuration")
 	app.oauthCfg, err = config.LoadOAuthClientWithEnv(env)
 	if err != nil {
 		return fmt.Errorf("failed to load OAuth client config: %w", err)
@@ -107,7 +107,7 @@ func initApp() error {
 	app.logger.Debug("OAuth configuration loaded successfully")
 
 	// Initialize sheets client
-	app.logger.Info("Initializing sheets client")
+	app.logger.Debug("Initializing sheets client")
 	app.sheetsClient, err = sheetsclient.NewClient(app.ctx, app.oauthCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create sheets client: %w", err)
@@ -115,7 +115,7 @@ func initApp() error {
 	app.logger.Debug("Sheets client initialized successfully")
 
 	// Initialize forms client (uses same OAuth token from sheets client)
-	app.logger.Info("Initializing forms client")
+	app.logger.Debug("Initializing forms client")
 	app.formsClient, err = formsclient.NewClient(app.ctx, app.oauthCfg, app.sheetsClient.Token())
 	if err != nil {
 		return fmt.Errorf("failed to create forms client: %w", err)
@@ -123,7 +123,7 @@ func initApp() error {
 	app.logger.Debug("Forms client initialized successfully")
 
 	// Initialize gmail client (uses same OAuth token from sheets client)
-	app.logger.Info("Initializing gmail client")
+	app.logger.Debug("Initializing gmail client")
 	app.gmailClient, err = gmailclient.NewClient(app.ctx, app.oauthCfg, app.sheetsClient.Token())
 	if err != nil {
 		return fmt.Errorf("failed to create gmail client: %w", err)
@@ -131,7 +131,7 @@ func initApp() error {
 	app.logger.Debug("Gmail client initialized successfully")
 
 	// Initialize database schema
-	app.logger.Info("Initializing database schema")
+	app.logger.Debug("Initializing database schema")
 	schema, err := sheetssql.SchemaFromModels(
 		db.Rotation{},
 		db.AvailabilityRequest{},
@@ -144,7 +144,7 @@ func initApp() error {
 	app.logger.Debug("Database schema created", zap.Int("tables", len(schema.Tables)))
 
 	// Initialize SheetsSQL database
-	app.logger.Info("Connecting to database", zap.String("spreadsheet_id", app.cfg.DatabaseSheetID))
+	app.logger.Debug("Connecting to database", zap.String("spreadsheet_id", app.cfg.DatabaseSheetID))
 	ssqlDB, err := sheetssql.NewDB(app.sheetsClient, app.cfg.DatabaseSheetID, schema)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
@@ -152,7 +152,7 @@ func initApp() error {
 
 	// Initialize DB layer
 	app.database = db.NewDB(ssqlDB)
-	app.logger.Info("Database initialized successfully")
+	app.logger.Debug("Database initialized successfully")
 
 	return nil
 }
@@ -251,7 +251,7 @@ func sendAvailabilityRemindersCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deadline := args[0]
 
-			app.logger.Info("sendAvailabilityReminders command", zap.String("deadline", deadline))
+			app.logger.Debug("sendAvailabilityReminders command", zap.String("deadline", deadline))
 			fmt.Printf("TODO: Implement sendAvailabilityReminders with deadline %s\n", deadline)
 			// Service call will go here: services.SendAvailabilityReminders(app.ctx, app.cfg, app.client, app.database, deadline)
 			return nil
@@ -271,10 +271,10 @@ func viewResponsesCmd() *cobra.Command {
 			}
 
 			if rotaID != "" {
-				app.logger.Info("viewResponses command", zap.String("rota_id", rotaID))
+				app.logger.Debug("viewResponses command", zap.String("rota_id", rotaID))
 				fmt.Printf("TODO: Implement viewResponses for rota %s\n", rotaID)
 			} else {
-				app.logger.Info("viewResponses command (latest rota)")
+				app.logger.Debug("viewResponses command (latest rota)")
 				fmt.Println("TODO: Implement viewResponses for latest rota")
 			}
 			// Service call will go here: services.ViewResponses(app.ctx, app.cfg, app.client, app.database, rotaID)
@@ -291,7 +291,7 @@ func generateRotaCmd() *cobra.Command {
 			seed, _ := cmd.Flags().GetString("seed")
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-			app.logger.Info("generateRota command",
+			app.logger.Debug("generateRota command",
 				zap.String("seed", seed),
 				zap.Bool("dry_run", dryRun))
 
@@ -320,7 +320,7 @@ func publishRotaCmd() *cobra.Command {
 		Short: "Publish the latest rota to the rota sheet",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app.logger.Info("publishRota command")
+			app.logger.Debug("publishRota command")
 			fmt.Println("TODO: Implement publishRota")
 			// Service call will go here: services.PublishRota(app.ctx, app.cfg, app.client, app.database)
 			return nil
@@ -342,7 +342,7 @@ func addCoverCmd() *cobra.Command {
 				rotaID = args[3]
 			}
 
-			app.logger.Info("addCover command",
+			app.logger.Debug("addCover command",
 				zap.String("shift_date", shiftDate),
 				zap.String("covered_volunteer_id", coveredVolunteerID),
 				zap.String("covering_volunteer_id", coveringVolunteerID),
@@ -361,7 +361,7 @@ func listVolunteersCmd() *cobra.Command {
 		Short: "List all volunteers from the volunteer sheet",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app.logger.Info("listVolunteers command")
+			app.logger.Debug("listVolunteers command")
 
 			// Fetch volunteers
 			volunteers, err := app.sheetsClient.ListVolunteers(app.cfg)
@@ -369,7 +369,7 @@ func listVolunteersCmd() *cobra.Command {
 				return fmt.Errorf("failed to list volunteers: %w", err)
 			}
 
-			app.logger.Info("Volunteers fetched successfully", zap.Int("count", len(volunteers)))
+			app.logger.Debug("Volunteers fetched successfully", zap.Int("count", len(volunteers)))
 
 			// Print volunteers
 			fmt.Printf("\nFound %d volunteers:\n\n", len(volunteers))
