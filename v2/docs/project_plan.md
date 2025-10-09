@@ -19,7 +19,7 @@
 - Keep session running for multiple commands ✅
 - Request availability service ✅
 - Send availability reminders service ✅
-- View responses service
+- View responses service ✅
 
 ## Phase 3 - Generate rota
 
