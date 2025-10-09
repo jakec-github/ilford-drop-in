@@ -17,7 +17,7 @@
 - Add CLI runner ✅
 - Define rota service ✅
 - Keep session running for multiple commands ✅
-- Request availability service
+- Request availability service ✅
 - Send availability reminders service
 - View responses service
 
