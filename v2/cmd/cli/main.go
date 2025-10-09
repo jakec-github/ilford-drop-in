@@ -251,9 +251,44 @@ func sendAvailabilityRemindersCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deadline := args[0]
 
-			app.logger.Debug("sendAvailabilityReminders command", zap.String("deadline", deadline))
-			fmt.Printf("TODO: Implement sendAvailabilityReminders with deadline %s\n", deadline)
-			// Service call will go here: services.SendAvailabilityReminders(app.ctx, app.cfg, app.client, app.database, deadline)
+			// Call the service
+			remindersSent, failedEmails, err := services.SendAvailabilityReminders(
+				app.ctx,
+				app.database,
+				app.sheetsClient,
+				app.formsClient,
+				app.gmailClient,
+				app.cfg,
+				app.logger,
+				deadline,
+			)
+			if err != nil {
+				return err
+			}
+
+			// Display results
+			fmt.Printf("\n✓ Availability reminders completed!\n\n")
+
+			if len(remindersSent) > 0 {
+				fmt.Printf("Reminders sent to %d volunteers:\n", len(remindersSent))
+				for _, rs := range remindersSent {
+					fmt.Printf("  ✓ %s (%s)\n", rs.VolunteerName, rs.Email)
+				}
+				fmt.Println()
+			}
+
+			if len(failedEmails) > 0 {
+				fmt.Printf("⚠️  Failed to send %d reminder emails:\n", len(failedEmails))
+				for _, fe := range failedEmails {
+					fmt.Printf("  ✗ %s (%s): %s\n", fe.VolunteerName, fe.Email, fe.Error)
+				}
+				fmt.Println()
+			}
+
+			if len(remindersSent) == 0 && len(failedEmails) == 0 {
+				fmt.Println("No reminders needed - all volunteers have responded or no requests have been sent.")
+			}
+
 			return nil
 		},
 	}
