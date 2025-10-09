@@ -59,8 +59,8 @@ func (c *Client) CreateAvailabilityForm(
 								ChoiceQuestion: &forms.ChoiceQuestion{
 									Type: "RADIO",
 									Options: []*forms.Option{
-										{Value: "Yes"},
-										{Value: "No"},
+										{Value: "Yes", GoToAction: "SUBMIT_FORM"},
+										{Value: "No", GoToAction: "NEXT_SECTION"},
 									},
 								},
 							},
