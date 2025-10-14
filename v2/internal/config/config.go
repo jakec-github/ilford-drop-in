@@ -13,7 +13,7 @@ import (
 // RotaOverride defines overrides to apply when generating rotas
 type RotaOverride struct {
 	RRule          string   `yaml:"rrule" validate:"required"`
-	PrefilledSlots []string `yaml:"prefilledSlots,omitempty"`
+	PrefilledAllocations []string `yaml:"prefilledAllocations,omitempty"`
 	ShiftSize      *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
 }
 

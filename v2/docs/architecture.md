@@ -65,7 +65,7 @@ Internal data stored in sheets will take the following format. The tool will not
 | form_url     | text |             |
 | form_sent    | bool |             |
 
-## slots
+## allocations
 
 | Column       | Type | Constraint  |
 | ------------ | ---- | ----------- |
@@ -122,7 +122,7 @@ Config will be kept in `drop_in_config.yaml`. The CLI runner will look for the f
             "description": "An rrule to match shifts",
             "type": "string"
           },
-          "prefilledSlots": {
+          "prefilledAllocations": {
             "description": "A list of volunteer names to add to the rota",
             "type": "array",
             "items": { "type": "string" }
@@ -252,8 +252,8 @@ The tool will support the following actions and queries. For each one there is a
 - Matches volunteer ids to names
 - Generates rota (uses seed to settle arbitrary decisions)
 - Jumps to last step if dry run
-- Resolves all slots
-- DB query: Appends slots
+- Resolves all allocations
+- DB query: Appends allocations
 - Shows rota
 
 `publishRota`
@@ -262,8 +262,8 @@ The tool will support the following actions and queries. For each one there is a
   - Zilch
 - DB query: Fetches rota list
 - Finds latest rota
-- DB query: Fetches slots
-- Finds slots for latest rota
+- DB query: Fetches allocations
+- Finds allocations for latest rota
 - DB query: Fetches covers
 - Sheets query: Fetches volunteers
 - Matches volunteer ids to names
@@ -280,8 +280,8 @@ The tool will support the following actions and queries. For each one there is a
   - rota id - string (optional)
 - DB query: Fetches rota list
 - Resolves rota
-- DB query: Fetches slots
-- Finds slots for latest rota
+- DB query: Fetches allocations
+- Finds allocations for latest rota
 - Verifies volunteers can cover
 - DBquery: appends cover
 - DB query: Fetches covers

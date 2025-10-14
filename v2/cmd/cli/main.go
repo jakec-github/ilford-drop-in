@@ -146,7 +146,7 @@ func initApp() error {
 	schema, err := sheetssql.SchemaFromModels(
 		db.Rotation{},
 		db.AvailabilityRequest{},
-		db.Slot{},
+		db.Allocation{},
 		db.Cover{},
 	)
 	if err != nil {

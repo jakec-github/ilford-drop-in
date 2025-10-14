@@ -29,8 +29,8 @@ type AvailabilityRequest struct {
 	FormSent    bool
 }
 
-// Slot represents a shift slot assignment
-type Slot struct {
+// Allocation represents a shift allocation assignment
+type Allocation struct {
 	ID          string
 	RotaID      string
 	ShiftDate   string

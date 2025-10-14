@@ -22,7 +22,7 @@ A CLI tool for managing volunteer rotas at the Ilford Drop-in Centre, which prov
 3. **Grant Access to Spreadsheets**
    - The Google account you authenticate with needs access to:
      - Volunteer spreadsheet
-     - Database spreadsheet (for storing rotations, requests, slots, covers)
+     - Database spreadsheet (for storing rotations, requests, allocations, covers)
      - Rota spreadsheet (for publishing the final schedule)
 
 ### Configuration Files
@@ -55,7 +55,7 @@ gmail_sender: 'your-email@gmail.com' # Defaults to match the above value
 # Optional rota overrides
 rotaOverrides:
   rrule: 'FREQ=WEEKLY;BYDAY=SU' # Weekly shifts on Sunday
-  prefilledSlots: # Volunteers to be manually scheduled
+  prefilledAllocations: # Volunteers to be manually scheduled
       - "John Doe"
       - "Jane Smith"
     shiftSize: 5 # Custom shift size

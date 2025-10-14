@@ -15,7 +15,7 @@ Emails each form to each volunteer
 Uses the availability data to generate a rota and publishes it to a spreadsheet
 There are a lot of requirements and optimisations to consider at this point
 
-There are a handful of additional commands for adding people and viewing responses. The tool has limited config that allows admins to define rrules with prefilled slots.
+There are a handful of additional commands for adding people and viewing responses. The tool has limited config that allows admins to define rrules with prefilled allocations.
 
 ## Limitations of the existing model
 
@@ -69,7 +69,7 @@ Optimisations:
 - Spread out males to make sure we have some on every shift
 - Spread out shifts so that shifts don’t get clumped together
 
-This function should be built flexibly. Ideally at least some requirements/optimisations should be defined separately and then integrated into the function for quick swapping out. Requirements may change e.g. introducing a shadow lead or giving team leads ordinary slots.
+This function should be built flexibly. Ideally at least some requirements/optimisations should be defined separately and then integrated into the function for quick swapping out. Requirements may change e.g. introducing a shadow lead or giving team leads ordinary allocations.
 
 The rota should then be viewable. Should have a dry run mode that just shows the rota that it would generate.
 
@@ -84,7 +84,7 @@ We should possibly have a command that I can use to reflect swaps and covers by 
 
 ## Config
 
-In addition to specifying secrets, sheet URLs etc. Users should be able to override the behaviour of the generator using rrules. Currently, they can prefill some of the slots in a shift but in this version they should also be able to adjust the desired shift size.
+In addition to specifying secrets, sheet URLs etc. Users should be able to override the behaviour of the generator using rrules. Currently, they can prefill some of the allocations in a shift but in this version they should also be able to adjust the desired shift size.
 
 ## Extensible
 
@@ -103,7 +103,7 @@ This design aims to minimise developer cost and maintenance. As such it does not
 Some simple extensions would be:
 Coverage of food collection and hot food rotas
 Allowing rotas to be specified in terms of months
-Ensuring shift slots are spread evenly between volunteers over several consecutive rotas.
+Ensuring shift allocations are spread evenly between volunteers over several consecutive rotas.
 
 In future I would like to extend this tool to run as a server. This will allow it to operate automatically and serve a mobile-first web app.
 

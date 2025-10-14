@@ -13,7 +13,7 @@ type TestRotation struct {
 	ShiftCount int    `ssql_header:"shift_count" ssql_type:"int"`
 }
 
-type TestSlot struct {
+type TestAllocation struct {
 	ID          string `ssql_header:"id" ssql_type:"uuid"`
 	RotaID      string `ssql_header:"rota_id" ssql_type:"uuid"`
 	ShiftDate   string `ssql_header:"shift_date" ssql_type:"date"`
@@ -42,7 +42,7 @@ func TestSchemaFromModels_SingleModel(t *testing.T) {
 }
 
 func TestSchemaFromModels_MultipleModels(t *testing.T) {
-	schema, err := SchemaFromModels(TestRotation{}, TestSlot{})
+	schema, err := SchemaFromModels(TestRotation{}, TestAllocation{})
 	require.NoError(t, err)
 
 	require.Len(t, schema.Tables, 2)
@@ -52,7 +52,7 @@ func TestSchemaFromModels_MultipleModels(t *testing.T) {
 	assert.Len(t, schema.Tables[0].Columns, 3)
 
 	// Check second table
-	assert.Equal(t, "test_slot", schema.Tables[1].Name)
+	assert.Equal(t, "test_allocation", schema.Tables[1].Name)
 	assert.Len(t, schema.Tables[1].Columns, 5)
 }
 
@@ -96,7 +96,7 @@ func TestToSnakeCase(t *testing.T) {
 		expected string
 	}{
 		{"TestRotation", "test_rotation"},
-		{"TestSlot", "test_slot"},
+		{"TestAllocation", "test_allocation"},
 		{"AvailabilityRequest", "availability_request"},
 		{"UUID", "u_u_i_d"},
 		{"simple", "simple"},

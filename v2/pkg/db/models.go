@@ -18,8 +18,8 @@ type AvailabilityRequest struct {
 	FormSent    bool   `ssql_header:"form_sent" ssql_type:"bool"`
 }
 
-// Slot represents a database slot record
-type Slot struct {
+// Allocation represents a database allocation record
+type Allocation struct {
 	ID          string `ssql_header:"id" ssql_type:"uuid"`
 	RotaID      string `ssql_header:"rota_id" ssql_type:"uuid"`
 	ShiftDate   string `ssql_header:"shift_date" ssql_type:"date"`

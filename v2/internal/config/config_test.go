@@ -21,7 +21,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:          "FREQ=WEEKLY;BYDAY=SU",
-				PrefilledSlots: []string{"John Doe", "Jane Smith"},
+				PrefilledAllocations: []string{"John Doe", "Jane Smith"},
 				ShiftSize:      &shiftSize,
 			},
 		},
@@ -68,7 +68,7 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:          "INVALID_RRULE_SYNTAX",
-				PrefilledSlots: []string{"John Doe"},
+				PrefilledAllocations: []string{"John Doe"},
 			},
 		},
 	}
@@ -110,7 +110,7 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:          "",
-				PrefilledSlots: []string{"John Doe"},
+				PrefilledAllocations: []string{"John Doe"},
 			},
 		},
 	}
@@ -151,7 +151,7 @@ gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    prefilledSlots:
+    prefilledAllocations:
       - "John Doe"
       - "Jane Smith"
     shiftSize: 5
@@ -175,9 +175,9 @@ rotaOverrides:
 	require.Len(t, cfg.RotaOverrides, 1)
 	override := cfg.RotaOverrides[0]
 	assert.Equal(t, "FREQ=WEEKLY;BYDAY=SU", override.RRule)
-	assert.Len(t, override.PrefilledSlots, 2)
-	assert.Contains(t, override.PrefilledSlots, "John Doe")
-	assert.Contains(t, override.PrefilledSlots, "Jane Smith")
+	assert.Len(t, override.PrefilledAllocations, 2)
+	assert.Contains(t, override.PrefilledAllocations, "John Doe")
+	assert.Contains(t, override.PrefilledAllocations, "Jane Smith")
 	require.NotNil(t, override.ShiftSize)
 	assert.Equal(t, 5, *override.ShiftSize)
 }
@@ -194,7 +194,7 @@ databaseSheetID: "db789"
 gmailUserID: "user@example.com"
 rotaOverrides:
   - rrule: "INVALID_RRULE_SYNTAX"
-    prefilledSlots:
+    prefilledAllocations:
       - "John Doe"
 `
 
@@ -283,7 +283,7 @@ rotaSheetID: "rota456"
 databaseSheetID: "db789"
 gmailUserID: "user@example.com"
 rotaOverrides:
-  - prefilledSlots:
+  - prefilledAllocations:
       - "John Doe"
     shiftSize: 5
 `
@@ -308,7 +308,7 @@ databaseSheetID: "db789"
 gmailUserID: "user@example.com"
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    prefilledSlots:
+    prefilledAllocations:
       - "John Doe"
 `
 
