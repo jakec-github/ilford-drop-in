@@ -15,6 +15,11 @@ type RotaState struct {
 
 	// MaxAllocationFrequency is the maximum number of shifts a group can be allocated
 	MaxAllocationFrequency int
+
+	// ExhaustedGroupIndices tracks which volunteer groups are exhausted
+	// (allocated to all available shifts OR reached MaxAllocationFrequency)
+	// Updated by the main allocation loop
+	ExhaustedGroupIndices []int
 }
 
 // VolunteerGroup represents a group of volunteers that are allocated together
@@ -77,6 +82,10 @@ type Shift struct {
 	// MaleCount is the number of male volunteers allocated to this shift via AllocatedGroups
 	// Does not include TeamLead or pre-allocated volunteers
 	MaleCount int
+
+	// AvailableGroupIndices contains indices of volunteer groups that expressed
+	// availability for this shift (populated during initialization)
+	AvailableGroupIndices []int
 }
 
 // IsFull returns true if the shift has reached its desired size
@@ -95,6 +104,68 @@ func (s *Shift) CurrentSize() int {
 		size += len(group.Members)
 	}
 	return size
+}
+
+// RemainingAvailableVolunteers returns the count of ordinary volunteers (non-team leads)
+// from groups that are:
+//   - Available for this shift (in AvailableGroupIndices)
+//   - Not yet exhausted (not in state.ExhaustedGroupIndices)
+//   - Not yet allocated to this shift
+//   - Small enough to fit in the remaining capacity
+//
+// This is used to calculate shift affinity - when there are fewer remaining
+// available volunteers relative to remaining capacity, the shift becomes more urgent.
+func (s *Shift) RemainingAvailableVolunteers(state *RotaState) int {
+	count := 0
+
+	// Calculate remaining capacity for this shift
+	currentSize := s.CurrentSize()
+	remainingCapacity := s.Size - currentSize
+
+	// Build set of exhausted group indices for fast lookup
+	exhaustedSet := make(map[int]bool)
+	for _, idx := range state.ExhaustedGroupIndices {
+		exhaustedSet[idx] = true
+	}
+
+	// Build set of already allocated group indices for this shift
+	allocatedSet := make(map[string]bool)
+	for _, group := range s.AllocatedGroups {
+		allocatedSet[group.GroupKey] = true
+	}
+
+	// Count ordinary volunteers from groups that are available, not exhausted,
+	// not already allocated, and small enough to fit
+	for _, groupIdx := range s.AvailableGroupIndices {
+		// Skip if exhausted
+		if exhaustedSet[groupIdx] {
+			continue
+		}
+
+		group := state.VolunteerGroups[groupIdx]
+
+		// Skip if already allocated to this shift
+		if allocatedSet[group.GroupKey] {
+			continue
+		}
+
+		// Count ordinary volunteers in this group (exclude team leads)
+		ordinaryVolunteerCount := 0
+		for _, member := range group.Members {
+			if !member.IsTeamLead {
+				ordinaryVolunteerCount++
+			}
+		}
+
+		// Skip groups that are too large to fit in remaining capacity
+		if ordinaryVolunteerCount > remainingCapacity {
+			continue
+		}
+
+		count += ordinaryVolunteerCount
+	}
+
+	return count
 }
 
 // IsAvailable returns true if the group is available for the given shift

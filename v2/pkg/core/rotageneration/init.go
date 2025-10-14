@@ -197,6 +197,10 @@ type InitShiftsInput struct {
 
 	// Overrides allow customizing specific shifts
 	Overrides []ShiftOverride
+
+	// VolunteerGroups is the list of initialized volunteer groups
+	// Used to populate each shift's AvailableGroupIndices
+	VolunteerGroups []*VolunteerGroup
 }
 
 // InitShifts creates and initializes shifts for the rota
@@ -205,6 +209,7 @@ type InitShiftsInput struct {
 //   - Sequential indices
 //   - Applied size overrides
 //   - Pre-allocated volunteer IDs (metadata flags start at false/0)
+//   - AvailableGroupIndices populated based on volunteer group availability
 func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	shifts := make([]*Shift, len(input.ShiftDates))
 
@@ -228,6 +233,14 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			}
 		}
 
+		// Populate available group indices for this shift
+		availableGroupIndices := make([]int, 0)
+		for groupIdx, group := range input.VolunteerGroups {
+			if group.IsAvailable(i) {
+				availableGroupIndices = append(availableGroupIndices, groupIdx)
+			}
+		}
+
 		shifts[i] = &Shift{
 			Date:                   date,
 			Index:                  i,
@@ -236,6 +249,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			PreAllocatedVolunteers: preAllocatedVolunteers,
 			TeamLead:               nil, // Will be set when a team lead is allocated
 			MaleCount:              0,   // Will be updated when groups are allocated
+			AvailableGroupIndices:  availableGroupIndices,
 		}
 	}
 
