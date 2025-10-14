@@ -12,7 +12,7 @@ func RankVolunteerGroups(state *RotaState, criteria []Criterion, targetFrequency
 	groupScores := make(map[*VolunteerGroup]float64)
 
 	for _, group := range state.VolunteerGroups {
-		score := CalculateGroupRankingScore(state, group, criteria, targetFrequency)
+		score := calculateGroupRankingScore(state, group, criteria, targetFrequency)
 		groupScores[group] = score
 	}
 
@@ -24,14 +24,14 @@ func RankVolunteerGroups(state *RotaState, criteria []Criterion, targetFrequency
 	})
 }
 
-// CalculateGroupRankingScore computes the ranking score for a volunteer group
+// calculateGroupRankingScore computes the ranking score for a volunteer group
 // by running all criterion PromoteVolunteerGroup hooks and summing their weighted results.
 //
 // The score includes built-in fairness calculations based on target frequency and availability,
 // plus all custom criterion promotion values.
 //
 // Returns a score where higher values indicate the group should be allocated earlier.
-func CalculateGroupRankingScore(state *RotaState, group *VolunteerGroup, criteria []Criterion, targetFrequency float64) float64 {
+func calculateGroupRankingScore(state *RotaState, group *VolunteerGroup, criteria []Criterion, targetFrequency float64) float64 {
 	totalScore := 0.0
 
 	remainingAvailability := len(group.AvailableShiftIndices) - len(group.AllocatedShiftIndices)
