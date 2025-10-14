@@ -118,3 +118,60 @@ func (vg *VolunteerGroup) RemainingCapacity(maxFrequency int) int {
 	}
 	return remaining
 }
+
+// DesiredRemainingAllocations calculates how many more shifts this group should ideally be
+// allocated to reach the target frequency over time.
+//
+// This function calculates the ideal number based purely on target frequency, without
+// enforcing any caps. The cap should be enforced elsewhere (e.g., in criteria or constraints).
+//
+// Parameters:
+//   - totalHistoricalShifts: total number of shifts in historical data
+//   - totalCurrentShifts: total number of shifts in the current rota
+//   - targetFrequency: desired allocation frequency (e.g., 0.5 = allocated to 50% of shifts)
+//
+// Returns the number of remaining allocations needed to reach targetFrequency.
+// Can return 0 or negative if the group has met or exceeded the target.
+//
+// Example 1 - Group needs more allocations:
+//   - Historical: 100 shifts, group allocated 20 times (20%)
+//   - Current: 10 shifts, group allocated 2 times so far
+//   - Target: 0.25 (25%)
+//   - Total shifts after this rota: 110
+//   - Target allocations: 110 * 0.25 = 27.5 → 27
+//   - Current total allocations: 20 + 2 = 22
+//   - Desired remaining: 27 - 22 = 5
+//
+// Example 2 - Group at target:
+//   - Historical: 100 shifts, allocated 25 times (25%)
+//   - Current: 10 shifts, allocated 2 times so far
+//   - Target: 0.25 (25%)
+//   - Total shifts: 110
+//   - Target allocations: 110 * 0.25 = 27.5 → 27
+//   - Current total: 25 + 2 = 27
+//   - Desired remaining: 27 - 27 = 0
+//
+// Example 3 - Group above target:
+//   - Historical: 100 shifts, allocated 30 times (30%)
+//   - Current: 10 shifts, allocated 2 times so far
+//   - Target: 0.25 (25%)
+//   - Total shifts: 110
+//   - Target allocations: 110 * 0.25 = 27.5 → 27
+//   - Current total: 30 + 2 = 32
+//   - Desired remaining: 27 - 32 = -5 (over-allocated)
+func (vg *VolunteerGroup) DesiredRemainingAllocations(totalHistoricalShifts, totalCurrentShifts int, targetFrequency float64) int {
+	// Calculate total shifts across historical and current rotas
+	totalShifts := totalHistoricalShifts + totalCurrentShifts
+
+	// Calculate target number of allocations based on frequency
+	targetAllocations := int(float64(totalShifts) * targetFrequency)
+
+	// Calculate current total allocations (historical + current rota so far)
+	currentAllocations := vg.TotalFrequency()
+
+	// Calculate how many more allocations are needed to reach target
+	// Can be negative if already over-allocated
+	remaining := targetAllocations - currentAllocations
+
+	return remaining
+}
