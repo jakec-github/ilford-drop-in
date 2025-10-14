@@ -40,9 +40,12 @@ type InitVolunteerGroupsInput struct {
 //   - A slice of initialized VolunteerGroups
 //   - Error if initialization fails
 //
+// Invalid groups (errors returned):
+//   - Groups with more than one team lead
+//
 // Invalid groups (discarded):
 //   - Groups where no members have responded
-//   - Groups with more than one team lead
+//   - Groups with no availability
 func InitVolunteerGroups(input InitVolunteerGroupsInput) ([]*VolunteerGroup, error) {
 	// Build availability lookup map
 	availabilityMap := make(map[string]VolunteerAvailability)
@@ -82,8 +85,13 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) ([]*VolunteerGroup, err
 		}
 
 		if teamLeadCount > 1 {
-			// Invalid group - skip it
-			continue
+			// Invalid group - return error with details
+			memberNames := make([]string, len(members))
+			for i, member := range members {
+				memberNames[i] = member.FirstName + " " + member.LastName
+			}
+			return nil, fmt.Errorf("group '%s' has %d team leads (max 1 allowed): %v",
+				groupKey, teamLeadCount, memberNames)
 		}
 
 		// Calculate availability for the group
