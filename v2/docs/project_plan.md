@@ -23,4 +23,6 @@
 
 ## Phase 3 - Generate rota
 
+- Rota generation building blocks
+
 ## Phase 4 - Remaining commands

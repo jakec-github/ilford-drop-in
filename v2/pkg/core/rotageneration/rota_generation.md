@@ -27,7 +27,6 @@ Group volunteers by key into VolunteerGroups
 
 - No group can have more than 1 team lead
 - Initially unassigned
-- Indicate the desired allocation count for this group (based on previous allocations)
 - Sort by ranking. See below
 - Discard invalid Volunteer Groups (gave no availability)
 

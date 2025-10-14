@@ -31,15 +31,15 @@ type VolunteerGroup struct {
 	// AllocatedShiftIndices tracks which shifts this group has been allocated to
 	AllocatedShiftIndices []int
 
-	// HistoricalFrequency is the number of times this group was allocated in historical shifts
+	// HistoricalAllocationCount is the number of times this group was allocated in historical shifts
 	// Used for fairness calculations and allocation balancing
-	HistoricalFrequency int
+	HistoricalAllocationCount int
 
 	// HasTeamLead indicates if any member of this group is a team lead
 	HasTeamLead bool
 
-	// HasMale indicates if any member of this group is male
-	HasMale bool
+	// MaleCount is the number of male volunteers in this group
+	MaleCount int
 }
 
 // Volunteer represents an individual volunteer
@@ -73,8 +73,8 @@ type Shift struct {
 	// HasTeamLead indicates if a team lead has been allocated to this shift
 	HasTeamLead bool
 
-	// HasMale indicates if a male volunteer has been allocated to this shift
-	HasMale bool
+	// MaleCount is the number of male volunteers allocated to this shift
+	MaleCount int
 }
 
 // IsFull returns true if the shift has reached its desired size
@@ -105,9 +105,9 @@ func (vg *VolunteerGroup) IsAllocated(shiftIndex int) bool {
 	return slices.Contains(vg.AllocatedShiftIndices, shiftIndex)
 }
 
-// TotalFrequency returns the total number of allocations (historical + current rota)
-func (vg *VolunteerGroup) TotalFrequency() int {
-	return vg.HistoricalFrequency + len(vg.AllocatedShiftIndices)
+// TotalAllocationCount returns the total number of allocations (historical + current rota)
+func (vg *VolunteerGroup) TotalAllocationCount() int {
+	return vg.HistoricalAllocationCount + len(vg.AllocatedShiftIndices)
 }
 
 // RemainingCapacity returns how many more allocations this group can accept
@@ -167,7 +167,7 @@ func (vg *VolunteerGroup) DesiredRemainingAllocations(totalHistoricalShifts, tot
 	targetAllocations := int(float64(totalShifts) * targetFrequency)
 
 	// Calculate current total allocations (historical + current rota so far)
-	currentAllocations := vg.TotalFrequency()
+	currentAllocations := vg.TotalAllocationCount()
 
 	// Calculate how many more allocations are needed to reach target
 	// Can be negative if already over-allocated
