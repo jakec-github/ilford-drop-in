@@ -60,20 +60,22 @@ type Shift struct {
 	// Index in the Shifts array (for quick reference)
 	Index int
 
-	// DesiredSize is the target number of volunteers for this shift
-	DesiredSize int
+	// Size is the target number of volunteers for this shift
+	Size int
 
 	// AllocatedGroups tracks which volunteer groups have been assigned
 	AllocatedGroups []*VolunteerGroup
 
-	// PreAllocatedVolunteers are volunteers manually assigned before generation
-	// These count toward DesiredSize but don't prevent group allocation
+	// PreAllocatedVolunteers are volunteer IDs manually assigned before generation
+	// These count toward Size but don't affect TeamLead or MaleCount
 	PreAllocatedVolunteers []string
 
-	// HasTeamLead indicates if a team lead has been allocated to this shift
-	HasTeamLead bool
+	// TeamLead is the team lead assigned to this shift (nil if none assigned)
+	// Does not count toward Size
+	TeamLead *Volunteer
 
-	// MaleCount is the number of male volunteers allocated to this shift
+	// MaleCount is the number of male volunteers allocated to this shift via AllocatedGroups
+	// Does not include TeamLead or pre-allocated volunteers
 	MaleCount int
 }
 
@@ -83,7 +85,7 @@ func (s *Shift) IsFull() bool {
 	for _, group := range s.AllocatedGroups {
 		currentSize += len(group.Members)
 	}
-	return currentSize >= s.DesiredSize
+	return currentSize >= s.Size
 }
 
 // CurrentSize returns the current number of volunteers allocated to this shift

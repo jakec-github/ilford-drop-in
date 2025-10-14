@@ -174,3 +174,70 @@ func calculateHistoricalAllocationCount(groupKey string, historicalShifts []*Shi
 
 	return count
 }
+
+// ShiftOverride allows customizing specific shifts based on date patterns
+type ShiftOverride struct {
+	// AppliesTo is a function that returns true if this override applies to the given shift date
+	AppliesTo func(date string) bool
+
+	// ShiftSize overrides the default shift size (if set)
+	ShiftSize *int
+
+	// PreAllocatedVolunteers are volunteers manually assigned to this shift.
+	PreAllocatedVolunteers []string
+}
+
+// InitShiftsInput contains the data needed to initialize shifts
+type InitShiftsInput struct {
+	// ShiftDates is the list of dates for shifts in the current rota
+	ShiftDates []string
+
+	// DefaultShiftSize is the default number of volunteers per shift
+	DefaultShiftSize int
+
+	// Overrides allow customizing specific shifts
+	Overrides []ShiftOverride
+}
+
+// InitShifts creates and initializes shifts for the rota
+//
+// Returns a slice of initialized Shift objects with:
+//   - Sequential indices
+//   - Applied size overrides
+//   - Pre-allocated volunteer IDs (metadata flags start at false/0)
+func InitShifts(input InitShiftsInput) ([]*Shift, error) {
+	shifts := make([]*Shift, len(input.ShiftDates))
+
+	for i, date := range input.ShiftDates {
+		// Start with default shift size
+		shiftSize := input.DefaultShiftSize
+
+		// Track pre-allocated volunteers
+		var preAllocatedVolunteers []string
+
+		// Apply overrides for this date
+		for _, override := range input.Overrides {
+			if override.AppliesTo(date) {
+				// Override size if specified
+				if override.ShiftSize != nil {
+					shiftSize = *override.ShiftSize
+				}
+
+				// Add pre-allocated volunteers
+				preAllocatedVolunteers = append(preAllocatedVolunteers, override.PreAllocatedVolunteers...)
+			}
+		}
+
+		shifts[i] = &Shift{
+			Date:                   date,
+			Index:                  i,
+			Size:                   shiftSize,
+			AllocatedGroups:        []*VolunteerGroup{},
+			PreAllocatedVolunteers: preAllocatedVolunteers,
+			TeamLead:               nil, // Will be set when a team lead is allocated
+			MaleCount:              0,   // Will be updated when groups are allocated
+		}
+	}
+
+	return shifts, nil
+}
