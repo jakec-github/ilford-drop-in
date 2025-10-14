@@ -69,13 +69,12 @@ func calculateGroupRankingScore(state *RotaState, group *VolunteerGroup, criteri
 		// Normalize by the number of shifts in this rota
 		fairnessScore := float64(desiredRemaining) / float64(len(state.Shifts))
 
-		// Take max of ratio or 1.0
-		if fairnessScore < 1.0 {
+		// Clamp to range: minimum 1.0 (groups that need allocations), maximum unbounded negative (over-allocated groups)
+		// This ensures groups behind on target get prioritized, while groups ahead are deprioritized proportionally
+		if fairnessScore > 1.0 {
 			fairnessScore = 1.0
 		}
-
-		// Take min of ratio or -1.0
-		if fairnessScore > -1.0 {
+		if fairnessScore < -1.0 {
 			fairnessScore = -1.0
 		}
 

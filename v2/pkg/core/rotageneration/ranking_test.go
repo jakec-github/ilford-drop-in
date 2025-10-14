@@ -58,13 +58,13 @@ func TestCalculateGroupRankingScore_NoCriteria(t *testing.T) {
 
 	// With no historical data and no allocations yet:
 	// Built-in 1: targetThisRota = 5*0.5 = 2.5 -> 2, remaining = 2/5 = 0.4, score = max(0.4, 1.0) = 1.0
-	// Built-in 2: desired = (0+5)*0.5 = 2.5 -> 2, current = 0, fairness = 2/5 = 0.4, clamped = 1.0
+	// Built-in 2: desired = (0+5)*0.5 = 2.5 -> 2, current = 0, fairness = 2/5 = 0.4, clamped to [-1,1] = 0.4
 	// Built-in 3: single member = 0
-	// Expected: 1.0 * WeightCurrentRotaUrgency + 1.0 * WeightOverallFrequencyFairness = 2.0
+	// Expected: 1.0 * WeightCurrentRotaUrgency + 0.4 * WeightOverallFrequencyFairness = 1.4
 	score := calculateGroupRankingScore(state, group, []Criterion{}, 0.5)
 
-	// With current weights of 1 each: 1.0 + 1.0 = 2.0
-	assert.Equal(t, 2.0, score)
+	// With current weights of 1 each: 1.0 + 0.4 = 1.4
+	assert.Equal(t, 1.4, score)
 }
 
 func TestCalculateGroupRankingScore_WithCustomCriteria(t *testing.T) {
@@ -99,10 +99,10 @@ func TestCalculateGroupRankingScore_WithCustomCriteria(t *testing.T) {
 
 	score := calculateGroupRankingScore(state, group, criteria, 0.5)
 
-	// Built-in scores: 2.0 (from previous test)
+	// Built-in scores: 1.4 (from previous test)
 	// Custom: (0.5 * 10.0) + (-0.3 * 5.0) = 5.0 - 1.5 = 3.5
-	// Total: 2.0 + 3.5 = 5.5
-	assert.Equal(t, 5.5, score)
+	// Total: 1.4 + 3.5 = 4.9
+	assert.Equal(t, 4.9, score)
 }
 
 func TestCalculateGroupRankingScore_GroupPromotion(t *testing.T) {
@@ -174,12 +174,13 @@ func TestCalculateGroupRankingScore_UrgencyHighWhenLimitedAvailability(t *testin
 	fullScore := calculateGroupRankingScore(state, fullGroup, []Criterion{}, 0.5)
 
 	// Limited group should have higher urgency
-	// Limited: target = 2.5->2, remaining = 2, ratio = 2/2 = 1.0
-	// Full: target = 2.5->2, remaining = 5, ratio = 2/5 = 0.4 -> clamped to 1.0
-	// Both get 1.0 for urgency, but limited group has less availability affecting other calculations
+	// Limited: Built-in 1 urgency = 1.0, Built-in 2 fairness = 0.4, total = 1.4
+	// Full: Built-in 1 urgency = max(2/5, 1.0) = 1.0, Built-in 2 fairness = 0.4, total = 1.4
+	// Both should have the same score in this scenario
 	// This test mainly validates that the calculation doesn't break with limited availability
 	assert.NotZero(t, limitedScore)
 	assert.NotZero(t, fullScore)
+	assert.Equal(t, limitedScore, fullScore)
 }
 
 func TestCalculateGroupRankingScore_BehindOnFrequency(t *testing.T) {
@@ -225,8 +226,10 @@ func TestCalculateGroupRankingScore_BehindOnFrequency(t *testing.T) {
 	aheadScore := calculateGroupRankingScore(state, aheadGroup, []Criterion{}, 0.5)
 
 	// Behind group should have higher overall frequency fairness score
-	// Behind: desired = (0+5)*0.5 - 0 = 2.5, fairness = 2.5/5 = 0.5 (not clamped)
-	// Ahead: desired = (10+5)*0.5 - 10 = 7.5-10 = -2.5, fairness = -2.5/5 = -0.5 (clamped to -1.0)
+	// Behind: desired = (0+5)*0.5 - 0 = 2.5 -> 2, fairness = 2/5 = 0.4 (within [-1,1])
+	//         Built-in 1 urgency = 1.0, Built-in 2 = 0.4, total = 1.4
+	// Ahead: desired = (10+5)*0.5 - 10 = 7.5 -> 7, then 7 - 10 = -3, fairness = -3/5 = -0.6 (within [-1,1])
+	//        Built-in 1 urgency = 1.0, Built-in 2 = -0.6, total = 0.4
 	assert.Greater(t, behindScore, aheadScore)
 }
 
