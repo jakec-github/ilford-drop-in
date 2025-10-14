@@ -94,7 +94,28 @@ func SendAvailabilityReminders(
 		volunteersByID[vol.ID] = vol
 	}
 
-	// Step 6: Identify volunteers who need reminders (active + no response)
+	// Step 6: Build a map of groups that have at least one response
+	groupsWithResponses := make(map[string]bool)
+	for _, req := range requestsForRota {
+		volunteer, exists := volunteersByID[req.VolunteerID]
+		if !exists {
+			continue
+		}
+
+		// Check if this volunteer's form has a response
+		hasResponse, err := formsClient.HasResponse(req.FormID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to check response for form %s: %w", req.FormID, err)
+		}
+
+		if hasResponse && volunteer.GroupKey != "" {
+			groupsWithResponses[volunteer.GroupKey] = true
+		}
+	}
+
+	logger.Debug("Groups with responses", zap.Int("count", len(groupsWithResponses)))
+
+	// Step 7: Identify volunteers who need reminders (active + no response + group hasn't responded)
 	volunteersNeedingReminders := []db.AvailabilityRequest{}
 	for _, req := range requestsForRota {
 		volunteer, exists := volunteersByID[req.VolunteerID]
@@ -109,6 +130,14 @@ func SendAvailabilityReminders(
 			logger.Debug("Skipping inactive volunteer",
 				zap.String("volunteer_id", req.VolunteerID),
 				zap.String("status", volunteer.Status))
+			continue
+		}
+
+		// Skip if volunteer's group has already responded
+		if volunteer.GroupKey != "" && groupsWithResponses[volunteer.GroupKey] {
+			logger.Debug("Skipping volunteer - group member already responded",
+				zap.String("volunteer_id", req.VolunteerID),
+				zap.String("group_key", volunteer.GroupKey))
 			continue
 		}
 
@@ -130,7 +159,7 @@ func SendAvailabilityReminders(
 		return []ReminderSent{}, []FailedEmail{}, nil
 	}
 
-	// Step 7: Send reminder emails
+	// Step 8: Send reminder emails
 	remindersSent := []ReminderSent{}
 	failedEmails := []FailedEmail{}
 
