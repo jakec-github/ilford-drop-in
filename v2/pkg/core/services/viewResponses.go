@@ -27,16 +27,26 @@ type VolunteerResponse struct {
 	FormURL          string
 }
 
+// GroupResponse represents a group's aggregated availability response status
+type GroupResponse struct {
+	GroupKey         string
+	GroupName        string   // Display name for the group
+	MemberNames      []string // Names of all members in the group
+	HasResponded     bool     // True if ANY member has responded
+	UnavailableDates []string // Dates where ANY member is unavailable
+	AvailableDates   []string // Dates where ALL members are available
+}
+
 // ViewResponsesResult contains the response data for display
 type ViewResponsesResult struct {
-	RotaID          string
-	RotaStart       string
-	ShiftCount      int
-	ShiftDates      []time.Time
-	Responses       []VolunteerResponse
-	RespondedCount  int
+	RotaID            string
+	RotaStart         string
+	ShiftCount        int
+	ShiftDates        []time.Time
+	GroupResponses    []GroupResponse
+	RespondedCount    int
 	NotRespondedCount int
-	TotalActiveCount int
+	TotalActiveCount  int
 }
 
 // ViewResponsesStore defines the database operations needed for viewing responses
@@ -190,28 +200,116 @@ func ViewResponses(
 		})
 	}
 
-	// Sort responses: responded first, then by name
-	sort.Slice(responses, func(i, j int) bool {
-		if responses[i].HasResponded != responses[j].HasResponded {
-			return responses[i].HasResponded
+	// Aggregate responses by group
+	groupResponses := aggregateByGroup(responses, shiftDates, volunteersByID)
+
+	// Sort group responses: responded first, then by name
+	sort.Slice(groupResponses, func(i, j int) bool {
+		if groupResponses[i].HasResponded != groupResponses[j].HasResponded {
+			return groupResponses[i].HasResponded
 		}
-		return responses[i].VolunteerName < responses[j].VolunteerName
+		return groupResponses[i].GroupName < groupResponses[j].GroupName
 	})
 
 	logger.Debug("View responses completed",
 		zap.Int("total_requests", len(responses)),
 		zap.Int("responded", respondedCount),
 		zap.Int("not_responded", notRespondedCount),
-		zap.Int("total_active", activeCount))
+		zap.Int("total_active", activeCount),
+		zap.Int("total_groups", len(groupResponses)))
 
 	return &ViewResponsesResult{
 		RotaID:            targetRota.ID,
 		RotaStart:         targetRota.Start,
 		ShiftCount:        targetRota.ShiftCount,
 		ShiftDates:        shiftDates,
-		Responses:         responses,
+		GroupResponses:    groupResponses,
 		RespondedCount:    respondedCount,
 		NotRespondedCount: notRespondedCount,
 		TotalActiveCount:  activeCount,
 	}, nil
+}
+
+// aggregateByGroup aggregates volunteer responses into group responses
+// A group has responded if ANY member has responded
+// A group is unavailable on dates where ANY member is unavailable
+func aggregateByGroup(responses []VolunteerResponse, shiftDates []time.Time, volunteersByID map[string]model.Volunteer) []GroupResponse {
+	// Group responses by GroupKey
+	groupMap := make(map[string][]VolunteerResponse)
+
+	for _, resp := range responses {
+		volunteer := volunteersByID[resp.VolunteerID]
+		groupKey := volunteer.GroupKey
+
+		// If volunteer has no group, create a unique group for them
+		if groupKey == "" {
+			groupKey = "individual_" + resp.VolunteerID
+		}
+
+		groupMap[groupKey] = append(groupMap[groupKey], resp)
+	}
+
+	// Convert to GroupResponse slice
+	groupResponses := make([]GroupResponse, 0, len(groupMap))
+
+	for groupKey, memberResponses := range groupMap {
+		// Determine if group has responded (ANY member responded)
+		hasResponded := false
+		memberNames := make([]string, 0, len(memberResponses))
+
+		for _, resp := range memberResponses {
+			memberNames = append(memberNames, resp.VolunteerName)
+			if resp.HasResponded {
+				hasResponded = true
+			}
+		}
+
+		// Build set of unavailable dates (ANY responding member explicitly unavailable)
+		unavailableSet := make(map[string]bool)
+		for _, resp := range memberResponses {
+			if resp.HasResponded {
+				// Only consider their unavailable dates if they've responded
+				for _, dateStr := range resp.UnavailableDates {
+					unavailableSet[dateStr] = true
+				}
+			}
+			// If member hasn't responded, ignore them (don't assume unavailable)
+		}
+
+		// Convert unavailable set to slice
+		unavailableDates := make([]string, 0, len(unavailableSet))
+		for dateStr := range unavailableSet {
+			unavailableDates = append(unavailableDates, dateStr)
+		}
+
+		// Calculate available dates (dates NOT in unavailable set)
+		availableDates := make([]string, 0)
+		for _, date := range shiftDates {
+			dateStr := date.Format("Mon Jan 2 2006")
+			if !unavailableSet[dateStr] {
+				availableDates = append(availableDates, dateStr)
+			}
+		}
+
+		// Determine group name
+		groupName := groupKey
+		if len(memberNames) == 1 {
+			// Single member, use their name
+			groupName = memberNames[0]
+		} else {
+			// Multiple members, use group key
+			groupName = groupKey
+		}
+
+		groupResponses = append(groupResponses, GroupResponse{
+			GroupKey:         groupKey,
+			GroupName:        groupName,
+			MemberNames:      memberNames,
+			HasResponded:     hasResponded,
+			UnavailableDates: unavailableDates,
+			AvailableDates:   availableDates,
+		})
+	}
+
+	return groupResponses
 }

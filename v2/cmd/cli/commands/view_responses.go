@@ -51,26 +51,26 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 			}
 			fmt.Println()
 
-			// Display summary
-			fmt.Printf("Response Summary:\n")
-			fmt.Printf("  Total Active Volunteers: %d\n", result.TotalActiveCount)
-			fmt.Printf("  ✓ Responded:             %d\n", result.RespondedCount)
-			fmt.Printf("  ✗ Not Responded:         %d\n", result.NotRespondedCount)
-			fmt.Println()
-
-			// Display availability matrix for responded volunteers
-			respondedVolunteers := []services.VolunteerResponse{}
-			notRespondedVolunteers := []services.VolunteerResponse{}
-			for _, resp := range result.Responses {
+			// Display availability matrix for responded groups
+			respondedGroups := []services.GroupResponse{}
+			notRespondedGroups := []services.GroupResponse{}
+			for _, resp := range result.GroupResponses {
 				if resp.HasResponded {
-					respondedVolunteers = append(respondedVolunteers, resp)
+					respondedGroups = append(respondedGroups, resp)
 				} else {
-					notRespondedVolunteers = append(notRespondedVolunteers, resp)
+					notRespondedGroups = append(notRespondedGroups, resp)
 				}
 			}
 
-			if len(respondedVolunteers) > 0 {
-				fmt.Printf("Availability Matrix:\n\n")
+			// Display summary by groups
+			fmt.Printf("Response Summary (by Group):\n")
+			fmt.Printf("  Total Groups:            %d\n", len(result.GroupResponses))
+			fmt.Printf("  ✓ Groups Responded:      %d\n", len(respondedGroups))
+			fmt.Printf("  ✗ Groups Not Responded:  %d\n", len(notRespondedGroups))
+			fmt.Println()
+
+			if len(respondedGroups) > 0 {
+				fmt.Printf("Availability Matrix (by Group):\n\n")
 
 				// ANSI color codes
 				const (
@@ -80,17 +80,17 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 					colorBold  = "\033[1m"
 				)
 
-				// Calculate column width for volunteer names
+				// Calculate column width for group names
 				maxNameLen := 20
-				for _, resp := range respondedVolunteers {
-					if len(resp.VolunteerName) > maxNameLen {
-						maxNameLen = len(resp.VolunteerName)
+				for _, resp := range respondedGroups {
+					if len(resp.GroupName) > maxNameLen {
+						maxNameLen = len(resp.GroupName)
 					}
 				}
 				nameColWidth := maxNameLen + 2
 
 				// Print header row with dates
-				fmt.Printf("%-*s", nameColWidth, "Volunteer")
+				fmt.Printf("%-*s", nameColWidth, "Group")
 				for _, shiftDate := range result.ShiftDates {
 					fmt.Printf("  %-6s", shiftDate.Format("Jan 2"))
 				}
@@ -103,16 +103,16 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				}
 				fmt.Println()
 
-				// Print each volunteer's availability
-				for _, resp := range respondedVolunteers {
+				// Print each group's availability
+				for _, resp := range respondedGroups {
 					// Create a map of available dates for quick lookup
 					availableMap := make(map[string]bool)
 					for _, dateStr := range resp.AvailableDates {
 						availableMap[dateStr] = true
 					}
 
-					// Print volunteer name
-					fmt.Printf("%-*s", nameColWidth, resp.VolunteerName)
+					// Print group name
+					fmt.Printf("%-*s", nameColWidth, resp.GroupName)
 
 					// Print availability for each shift date
 					for _, shiftDate := range result.ShiftDates {
@@ -128,11 +128,11 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				fmt.Println()
 			}
 
-			// Display volunteers who haven't responded
-			if len(notRespondedVolunteers) > 0 {
-				fmt.Printf("Not Responded (%d):\n", len(notRespondedVolunteers))
-				for _, resp := range notRespondedVolunteers {
-					fmt.Printf("  ✗ %s (%s) - %s\n", resp.VolunteerName, resp.Email, resp.Status)
+			// Display groups who haven't responded
+			if len(notRespondedGroups) > 0 {
+				fmt.Printf("Not Responded (%d):\n", len(notRespondedGroups))
+				for _, resp := range notRespondedGroups {
+					fmt.Printf("  ✗ %s\n", resp.GroupName)
 				}
 				fmt.Println()
 			}
