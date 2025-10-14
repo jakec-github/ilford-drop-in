@@ -168,6 +168,52 @@ func (s *Shift) RemainingAvailableVolunteers(state *RotaState) int {
 	return count
 }
 
+// RemainingAvailableTeamLeads returns the count of team leads from groups that are:
+//   - Available for this shift (in AvailableGroupIndices)
+//   - Not yet exhausted (not in state.ExhaustedGroupIndices)
+//   - Not yet allocated to this shift
+//   - Contain a team lead
+//
+// This is used to calculate team lead affinity - when there are fewer remaining
+// available team leads, shifts become more urgent for team lead allocation.
+func (s *Shift) RemainingAvailableTeamLeads(state *RotaState) int {
+	count := 0
+
+	// Build set of exhausted group indices for fast lookup
+	exhaustedSet := make(map[int]bool)
+	for _, idx := range state.ExhaustedGroupIndices {
+		exhaustedSet[idx] = true
+	}
+
+	// Build set of already allocated group indices for this shift
+	allocatedSet := make(map[string]bool)
+	for _, group := range s.AllocatedGroups {
+		allocatedSet[group.GroupKey] = true
+	}
+
+	// Count team leads from groups that are available, not exhausted, and not already allocated
+	for _, groupIdx := range s.AvailableGroupIndices {
+		// Skip if exhausted
+		if exhaustedSet[groupIdx] {
+			continue
+		}
+
+		group := state.VolunteerGroups[groupIdx]
+
+		// Skip if already allocated to this shift
+		if allocatedSet[group.GroupKey] {
+			continue
+		}
+
+		// Count this group if it has a team lead
+		if group.HasTeamLead {
+			count++
+		}
+	}
+
+	return count
+}
+
 // IsAvailable returns true if the group is available for the given shift
 func (vg *VolunteerGroup) IsAvailable(shiftIndex int) bool {
 	return slices.Contains(vg.AvailableShiftIndices, shiftIndex)
