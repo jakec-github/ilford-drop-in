@@ -123,6 +123,7 @@ func (c *ShiftSpreadCriterion) AffinityWeight() float64 {
 }
 
 func (c *ShiftSpreadCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	// TODO: Implement validation
-	return nil
+	// No validity constraints - all shifts are valid
+	var errors []ShiftValidationError
+	return errors
 }
