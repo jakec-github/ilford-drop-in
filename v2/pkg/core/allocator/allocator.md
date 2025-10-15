@@ -1,4 +1,4 @@
-# Rota generatation
+# Allocator
 
 This problem is a form of optimisation problem. Finding an optial solution is very difficult.
 Instead of aiming to provide a perfect solution this algorithm aims to make sensible decisions that
@@ -55,7 +55,7 @@ Report outcome
 
 ### Outcome
 
-Once the rota is completed the generator should provide an outcome report. It should include:
+Once the rota is completed the allocator should provide an outcome report. It should include:
 
 - the rota generated
 - a boolean indicating whether a full rota was succssfully generated
@@ -64,9 +64,9 @@ Once the rota is completed the generator should provide an outcome report. It sh
 
 ### Custom criteria
 
-We want the rota generator to be extensible and adjustable in future. As such criteria are defined in a reasonably generic way.
+We want the rota allocator to be extensible and adjustable in future. As such criteria are defined in a reasonably generic way.
 
-The rota generator will accept a list of criteria. Each criterion will have 3 optional hooks. These will accept all state about the rota. Criteria can be initialised with a Group weight and an Affinity weight.
+The rota allocator will accept a list of criteria. Each criterion will have 3 optional hooks. These will accept all state about the rota. Criteria can be initialised with a Group weight and an Affinity weight.
 
 VolunteerGroupPromotion - Returns number between -1 and 1 multiplied by the weight
 ShiftValidity - Returns boolean. If false, shift is not allocatable
@@ -116,7 +116,7 @@ Each custom criteria's VolunteerGroupShiftAffinity hook is run. The results are 
 ### Randomness
 
 Ideally there would be a pseudorandom chance element based on a provided seed. This would allow
-users to regenerate rotas if they are unhappy with the first result. Possibly a "temperature" style approach where there is a chance of swapping ranking or affinity in close calls.
+users to re-allocate rotas if they are unhappy with the first result. Possibly a "temperature" style approach where there is a chance of swapping ranking or affinity in close calls.
 
 ### Other
 
