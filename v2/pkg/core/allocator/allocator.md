@@ -26,7 +26,7 @@ Represents the current state during allocation:
 - `Shifts` - Array of shifts being filled
 - `VolunteerGroups` - Available volunteer groups for allocation
 - `HistoricalShifts` - Previous rota data (read-only, for pattern analysis and fairness)
-- `MaxAllocationFrequency` - Maximum shifts a group can be allocated
+- `MaxAllocationFrequency` - Frequency ratio (e.g., 0.5 = 50%, 0.33 = 33%). The max allocation count is: `floor(len(Shifts) * MaxAllocationFrequency)`
 - `ExhaustedGroupIndices` - Tracks which groups are fully allocated
 
 ### VolunteerGroup

@@ -24,7 +24,7 @@
 ## Phase 3 - Generate rota
 
 - Allocator building blocks ✅
-- Allocator validity checks
+- Allocator validity checks ✅
 - Complete allocator
 - Improve allocations DB schema to account for custom allocations
 - Build historical shifts

@@ -13,13 +13,20 @@ type RotaState struct {
 	// HistoricalShifts from previous rotas (read-only, for pattern analysis and fairness)
 	HistoricalShifts []*Shift
 
-	// MaxAllocationFrequency is the maximum number of shifts a group can be allocated
-	MaxAllocationFrequency int
+	// MaxAllocationFrequency is the ratio of shifts to allocate (e.g., 0.5 = 50%, 0.33 = 33%)
+	// The maximum allocation count is calculated as: floor(len(Shifts) * MaxAllocationFrequency)
+	MaxAllocationFrequency float64
 
 	// ExhaustedGroupIndices tracks which volunteer groups are exhausted
 	// (allocated to all available shifts OR reached MaxAllocationFrequency)
 	// Updated by the main allocation loop
 	ExhaustedGroupIndices []int
+}
+
+// MaxAllocationCount returns the maximum number of shifts a group can be allocated to
+// based on the frequency ratio and the total number of shifts
+func (rs *RotaState) MaxAllocationCount() int {
+	return int(float64(len(rs.Shifts)) * rs.MaxAllocationFrequency)
 }
 
 // VolunteerGroup represents a group of volunteers that are allocated together
