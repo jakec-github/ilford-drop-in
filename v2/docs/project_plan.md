@@ -23,6 +23,12 @@
 
 ## Phase 3 - Generate rota
 
-- Rota generation building blocks
+- Rota generation building blocks ✅
+- Rota generation validity checks
+- Rota generator
+- Improve allocations schema to account for custom allocations
+- Build historical shifts
+- Generate rota service
+- Generator rota command
 
 ## Phase 4 - Remaining commands
