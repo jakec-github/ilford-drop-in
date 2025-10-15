@@ -461,3 +461,209 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_HistoricalBlocksFirstShi
 	affinity := criterion.CalculateShiftAffinity(state, group, state.Shifts[2])
 	assert.Equal(t, 0.0, affinity)
 }
+
+func TestNoDoubleShiftsCriterion_ValidateRotaState_NoDoubleShifts(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+
+	groupA := &VolunteerGroup{GroupKey: "group_a"}
+	groupB := &VolunteerGroup{GroupKey: "group_b"}
+	groupC := &VolunteerGroup{GroupKey: "group_c"}
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{groupA},
+			},
+			{
+				Index:           1,
+				Date:            "2024-01-08",
+				AllocatedGroups: []*VolunteerGroup{groupB},
+			},
+			{
+				Index:           2,
+				Date:            "2024-01-15",
+				AllocatedGroups: []*VolunteerGroup{groupA, groupC},
+			},
+			{
+				Index:           3,
+				Date:            "2024-01-22",
+				AllocatedGroups: []*VolunteerGroup{groupB},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Should have no errors when no groups have adjacent allocations")
+}
+
+func TestNoDoubleShiftsCriterion_ValidateRotaState_DetectsDoubleShift(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+
+	groupA := &VolunteerGroup{GroupKey: "group_a"}
+	groupB := &VolunteerGroup{GroupKey: "group_b"}
+	groupC := &VolunteerGroup{GroupKey: "group_c"}
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{groupA},
+			},
+			{
+				Index:           1,
+				Date:            "2024-01-08",
+				AllocatedGroups: []*VolunteerGroup{groupA, groupB}, // group_a has double shift (0 and 1)
+			},
+			{
+				Index:           2,
+				Date:            "2024-01-15",
+				AllocatedGroups: []*VolunteerGroup{groupC}, // Different group, no double shift
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect one double shift violation")
+
+	assert.Equal(t, 1, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
+	assert.Equal(t, "NoDoubleShifts", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "group_a")
+	assert.Contains(t, errors[0].Description, "adjacent shifts")
+}
+
+func TestNoDoubleShiftsCriterion_ValidateRotaState_MultipleDoubleShifts(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+
+	groupA := &VolunteerGroup{GroupKey: "group_a"}
+	groupB := &VolunteerGroup{GroupKey: "group_b"}
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{groupA},
+			},
+			{
+				Index:           1,
+				Date:            "2024-01-08",
+				AllocatedGroups: []*VolunteerGroup{groupA, groupB}, // Both groups have double shifts
+			},
+			{
+				Index:           2,
+				Date:            "2024-01-15",
+				AllocatedGroups: []*VolunteerGroup{groupB}, // group_b continues double shift
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 2, "Should detect two double shift violations")
+
+	// First error: group_a allocated to shifts 0 and 1
+	assert.Equal(t, 1, errors[0].ShiftIndex)
+	assert.Contains(t, errors[0].Description, "group_a")
+
+	// Second error: group_b allocated to shifts 1 and 2
+	assert.Equal(t, 2, errors[1].ShiftIndex)
+	assert.Contains(t, errors[1].Description, "group_b")
+}
+
+func TestNoDoubleShiftsCriterion_ValidateRotaState_HistoricalBoundary(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+
+	groupA := &VolunteerGroup{GroupKey: "group_a"}
+	groupB := &VolunteerGroup{GroupKey: "group_b"}
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-02-01",
+				AllocatedGroups: []*VolunteerGroup{groupA}, // group_a double shift across boundary
+			},
+			{
+				Index:           1,
+				Date:            "2024-02-08",
+				AllocatedGroups: []*VolunteerGroup{groupB},
+			},
+		},
+		HistoricalShifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{groupB},
+			},
+			{
+				Index:           1,
+				Date:            "2024-01-25",
+				AllocatedGroups: []*VolunteerGroup{groupA}, // Last historical shift
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect double shift across rota boundary")
+
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-02-01", errors[0].ShiftDate)
+	assert.Contains(t, errors[0].Description, "group_a")
+	assert.Contains(t, errors[0].Description, "rota boundary")
+}
+
+func TestNoDoubleShiftsCriterion_ValidateRotaState_NoHistoricalShifts(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+
+	groupA := &VolunteerGroup{GroupKey: "group_a"}
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{groupA},
+			},
+			{
+				Index:           1,
+				Date:            "2024-01-08",
+				AllocatedGroups: []*VolunteerGroup{groupA},
+			},
+		},
+		HistoricalShifts: []*Shift{}, // No historical data
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect double shift within current rota")
+	assert.Contains(t, errors[0].Description, "adjacent shifts")
+}
+
+func TestNoDoubleShiftsCriterion_ValidateRotaState_GroupNotInHistorical(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+
+	groupA := &VolunteerGroup{GroupKey: "group_a"}
+	groupB := &VolunteerGroup{GroupKey: "group_b"}
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-02-01",
+				AllocatedGroups: []*VolunteerGroup{groupA}, // Different group, no violation
+			},
+		},
+		HistoricalShifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-25",
+				AllocatedGroups: []*VolunteerGroup{groupB}, // Last historical shift
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Should not detect violation when different group is in historical shift")
+}

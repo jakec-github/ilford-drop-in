@@ -1,5 +1,7 @@
 package rotageneration
 
+import "fmt"
+
 // NoDoubleShiftsCriterion prevents allocation to shifts immediately adjacent to already allocated shifts.
 //
 // Validity:
@@ -173,6 +175,48 @@ func (c *NoDoubleShiftsCriterion) AffinityWeight() float64 {
 }
 
 func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	// TODO: Implement validation
-	return nil
+	var errors []ShiftValidationError
+
+	// Check each shift for double shifts
+	for i := 0; i < len(state.Shifts); i++ {
+		shift := state.Shifts[i]
+
+		// Build a map of groups allocated to this shift
+		currentGroups := make(map[string]bool)
+		for _, group := range shift.AllocatedGroups {
+			currentGroups[group.GroupKey] = true
+		}
+
+		// Check against previous shift
+		if i > 0 {
+			prevShift := state.Shifts[i-1]
+			for _, prevGroup := range prevShift.AllocatedGroups {
+				if currentGroups[prevGroup.GroupKey] {
+					errors = append(errors, ShiftValidationError{
+						ShiftIndex:    shift.Index,
+						ShiftDate:     shift.Date,
+						CriterionName: c.Name(),
+						Description:   fmt.Sprintf("Group '%s' is allocated to adjacent shifts %d and %d", prevGroup.GroupKey, i-1, i),
+					})
+				}
+			}
+		}
+
+		// Check against historical last shift (only for first shift in new rota)
+		if i == 0 && len(state.HistoricalShifts) > 0 {
+			lastHistoricalShift := state.HistoricalShifts[len(state.HistoricalShifts)-1]
+			for _, historicalGroup := range lastHistoricalShift.AllocatedGroups {
+				if currentGroups[historicalGroup.GroupKey] {
+					errors = append(errors, ShiftValidationError{
+						ShiftIndex:    shift.Index,
+						ShiftDate:     shift.Date,
+						CriterionName: c.Name(),
+						Description:   fmt.Sprintf("Group '%s' is allocated to last historical shift and first shift of new rota (double shift across rota boundary)", historicalGroup.GroupKey),
+					})
+				}
+			}
+		}
+	}
+
+	return errors
 }
