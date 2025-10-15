@@ -214,6 +214,68 @@ func (s *Shift) RemainingAvailableTeamLeads(state *RotaState) int {
 	return count
 }
 
+// RemainingAvailableMaleVolunteers returns the count of male volunteers from groups that are:
+//   - Available for this shift (in AvailableGroupIndices)
+//   - Not yet exhausted (not in state.ExhaustedGroupIndices)
+//   - Not yet allocated to this shift
+//   - Small enough to fit in the remaining capacity
+//
+// This is used to calculate male balance affinity - when there are fewer remaining
+// available male volunteers, shifts become more urgent for male allocation.
+func (s *Shift) RemainingAvailableMaleVolunteers(state *RotaState) int {
+	count := 0
+
+	// Calculate remaining capacity for this shift
+	currentSize := s.CurrentSize()
+	remainingCapacity := s.Size - currentSize
+
+	// Build set of exhausted group indices for fast lookup
+	exhaustedSet := make(map[int]bool)
+	for _, idx := range state.ExhaustedGroupIndices {
+		exhaustedSet[idx] = true
+	}
+
+	// Build set of already allocated group indices for this shift
+	allocatedSet := make(map[string]bool)
+	for _, group := range s.AllocatedGroups {
+		allocatedSet[group.GroupKey] = true
+	}
+
+	// Count male volunteers from groups that are available, not exhausted, not allocated,
+	// and small enough to fit
+	for _, groupIdx := range s.AvailableGroupIndices {
+		// Skip if exhausted
+		if exhaustedSet[groupIdx] {
+			continue
+		}
+
+		group := state.VolunteerGroups[groupIdx]
+
+		// Skip if already allocated to this shift
+		if allocatedSet[group.GroupKey] {
+			continue
+		}
+
+		// Count ordinary volunteers in this group (exclude team leads)
+		ordinaryVolunteerCount := 0
+		for _, member := range group.Members {
+			if !member.IsTeamLead {
+				ordinaryVolunteerCount++
+			}
+		}
+
+		// Skip groups that are too large to fit in remaining capacity
+		if ordinaryVolunteerCount > remainingCapacity {
+			continue
+		}
+
+		// Add the male count from this group
+		count += group.MaleCount
+	}
+
+	return count
+}
+
 // IsAvailable returns true if the group is available for the given shift
 func (vg *VolunteerGroup) IsAvailable(shiftIndex int) bool {
 	return slices.Contains(vg.AvailableShiftIndices, shiftIndex)
