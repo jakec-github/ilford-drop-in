@@ -544,3 +544,243 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_ExcludesTooLargeGroups(t *tes
 	affinity := criterion.CalculateShiftAffinity(state, smallGroup, shift)
 	assert.Equal(t, 1.0, affinity)
 }
+
+func TestShiftSizeCriterion_ValidateRotaState_AllShiftsFilled(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  3,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+							{ID: "v3", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				Size:  2,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v4", IsTeamLead: false},
+							{ID: "v5", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Should have no errors when all shifts are filled")
+}
+
+func TestShiftSizeCriterion_ValidateRotaState_UnderfillDetected(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  5,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				Size:  3,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v3", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 2, "Should detect two underfilled shifts")
+
+	// Check first error
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "ShiftSize", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "underfilled")
+	assert.Contains(t, errors[0].Description, "has 2 volunteers but size is 5")
+
+	// Check second error
+	assert.Equal(t, 1, errors[1].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[1].ShiftDate)
+	assert.Equal(t, "ShiftSize", errors[1].CriterionName)
+	assert.Contains(t, errors[1].Description, "underfilled")
+	assert.Contains(t, errors[1].Description, "has 1 volunteers but size is 3")
+}
+
+func TestShiftSizeCriterion_ValidateRotaState_OverfillDetected(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  3,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+							{ID: "v3", IsTeamLead: false},
+							{ID: "v4", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect one overfilled shift")
+
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "ShiftSize", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "overfilled")
+	assert.Contains(t, errors[0].Description, "has 4 volunteers but size is 3")
+}
+
+func TestShiftSizeCriterion_ValidateRotaState_TeamLeadDoesNotCount(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  3,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "tl1", IsTeamLead: true},
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+							{ID: "v3", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Team lead should not count toward shift size")
+}
+
+func TestShiftSizeCriterion_ValidateRotaState_WithPreAllocated(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  5,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{"p1", "p2", "p3"},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Should count pre-allocated volunteers: 2 + 3 = 5")
+}
+
+func TestShiftSizeCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  3,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+							{ID: "v3", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				Size:  5,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v4", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+			{
+				Index: 2,
+				Date:  "2024-01-15",
+				Size:  2,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v5", IsTeamLead: false},
+							{ID: "v6", IsTeamLead: false},
+						},
+					},
+				},
+				PreAllocatedVolunteers: []string{},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect only the underfilled shift")
+
+	assert.Equal(t, 1, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
+	assert.Contains(t, errors[0].Description, "underfilled")
+}

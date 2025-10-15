@@ -1,5 +1,7 @@
 package rotageneration
 
+import "fmt"
+
 // ShiftSizeCriterion prevents overfilling of shifts and optimizes for unpopular shifts.
 //
 // Validity:
@@ -102,6 +104,26 @@ func (c *ShiftSizeCriterion) AffinityWeight() float64 {
 }
 
 func (c *ShiftSizeCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	// TODO: Implement validation
-	return nil
+	var errors []ShiftValidationError
+
+	for _, shift := range state.Shifts {
+		currentSize := shift.CurrentSize()
+		if currentSize < shift.Size {
+			errors = append(errors, ShiftValidationError{
+				ShiftIndex:    shift.Index,
+				ShiftDate:     shift.Date,
+				CriterionName: c.Name(),
+				Description:   fmt.Sprintf("Shift is underfilled: has %d volunteers but size is %d", currentSize, shift.Size),
+			})
+		} else if currentSize > shift.Size {
+			errors = append(errors, ShiftValidationError{
+				ShiftIndex:    shift.Index,
+				ShiftDate:     shift.Date,
+				CriterionName: c.Name(),
+				Description:   fmt.Sprintf("Shift is overfilled: has %d volunteers but size is %d", currentSize, shift.Size),
+			})
+		}
+	}
+
+	return errors
 }
