@@ -1,5 +1,7 @@
 package rotageneration
 
+import "fmt"
+
 // TeamLeadCriterion prevents overallocation of team leads and optimizes for unpopular shifts.
 //
 // Validity:
@@ -84,6 +86,42 @@ func (c *TeamLeadCriterion) AffinityWeight() float64 {
 }
 
 func (c *TeamLeadCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	// TODO: Implement validation
-	return nil
+	var errors []ShiftValidationError
+
+	for _, shift := range state.Shifts {
+		// Count team leads in this shift
+		teamLeadCount := 0
+		if shift.TeamLead != nil {
+			teamLeadCount++
+		}
+
+		// Also count team leads in allocated groups
+		for _, group := range shift.AllocatedGroups {
+			if group.HasTeamLead {
+				teamLeadCount++
+			}
+		}
+
+		// Check for missing team lead
+		if teamLeadCount == 0 {
+			errors = append(errors, ShiftValidationError{
+				ShiftIndex:    shift.Index,
+				ShiftDate:     shift.Date,
+				CriterionName: c.Name(),
+				Description:   "Shift has no team lead",
+			})
+		}
+
+		// Check for multiple team leads
+		if teamLeadCount > 1 {
+			errors = append(errors, ShiftValidationError{
+				ShiftIndex:    shift.Index,
+				ShiftDate:     shift.Date,
+				CriterionName: c.Name(),
+				Description:   fmt.Sprintf("Shift has %d team leads but should have exactly 1", teamLeadCount),
+			})
+		}
+	}
+
+	return errors
 }

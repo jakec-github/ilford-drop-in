@@ -348,3 +348,222 @@ func TestTeamLeadCriterion_PrefersUnpopularShifts(t *testing.T) {
 	assert.Equal(t, 0.1, popularAffinity)   // 1/10
 	assert.Equal(t, 0.5, unpopularAffinity) // 1/2
 }
+
+func TestTeamLeadCriterion_ValidateRotaState_AllShiftsHaveTeamLead(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: true,
+						Members: []Volunteer{
+							{ID: "tl1", IsTeamLead: true},
+						},
+					},
+				},
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				TeamLead: &Volunteer{ID: "tl2", IsTeamLead: true},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Should have no errors when all shifts have team leads")
+}
+
+func TestTeamLeadCriterion_ValidateRotaState_MissingTeamLead(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: false,
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+						},
+					},
+				},
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: false,
+						Members: []Volunteer{
+							{ID: "v2", IsTeamLead: false},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 2, "Should detect two shifts missing team leads")
+
+	// Check first error
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "TeamLead", errors[0].CriterionName)
+	assert.Equal(t, "Shift has no team lead", errors[0].Description)
+
+	// Check second error
+	assert.Equal(t, 1, errors[1].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[1].ShiftDate)
+	assert.Equal(t, "TeamLead", errors[1].CriterionName)
+	assert.Equal(t, "Shift has no team lead", errors[1].Description)
+}
+
+func TestTeamLeadCriterion_ValidateRotaState_MultipleTeamLeads(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:    0,
+				Date:     "2024-01-01",
+				TeamLead: &Volunteer{ID: "tl1", IsTeamLead: true},
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: true,
+						Members: []Volunteer{
+							{ID: "tl2", IsTeamLead: true},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect shift with multiple team leads")
+
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "TeamLead", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "has 2 team leads")
+}
+
+func TestTeamLeadCriterion_ValidateRotaState_ThreeTeamLeads(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:    0,
+				Date:     "2024-01-01",
+				TeamLead: &Volunteer{ID: "tl1", IsTeamLead: true},
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: true,
+						Members: []Volunteer{
+							{ID: "tl2", IsTeamLead: true},
+						},
+					},
+					{
+						HasTeamLead: true,
+						Members: []Volunteer{
+							{ID: "tl3", IsTeamLead: true},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect shift with three team leads")
+
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "TeamLead", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "has 3 team leads")
+}
+
+func TestTeamLeadCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: true,
+						Members: []Volunteer{
+							{ID: "tl1", IsTeamLead: true},
+						},
+					},
+				},
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: false,
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+						},
+					},
+				},
+			},
+			{
+				Index:    2,
+				Date:     "2024-01-15",
+				TeamLead: &Volunteer{ID: "tl2", IsTeamLead: true},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect only the shift missing a team lead")
+
+	assert.Equal(t, 1, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
+	assert.Contains(t, errors[0].Description, "no team lead")
+}
+
+func TestTeamLeadCriterion_ValidateRotaState_GroupWithoutTeamLeadDoesNotCount(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: true,
+						Members: []Volunteer{
+							{ID: "tl1", IsTeamLead: true},
+						},
+					},
+					{
+						HasTeamLead: false,
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+							{ID: "v2", IsTeamLead: false},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Groups without team leads should not be counted")
+}
