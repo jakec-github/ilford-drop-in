@@ -11,15 +11,15 @@ func RankVolunteerGroups(state *RotaState, criteria []Criterion, targetFrequency
 	// Calculate scores for each group
 	groupScores := make(map[*VolunteerGroup]float64)
 
-	for _, group := range state.VolunteerGroups {
+	for _, group := range state.VolunteerState.VolunteerGroups {
 		score := calculateGroupRankingScore(state, group, criteria, targetFrequency)
 		groupScores[group] = score
 	}
 
 	// Sort groups by score (descending - highest score first)
-	sort.Slice(state.VolunteerGroups, func(i, j int) bool {
-		scoreI := groupScores[state.VolunteerGroups[i]]
-		scoreJ := groupScores[state.VolunteerGroups[j]]
+	sort.Slice(state.VolunteerState.VolunteerGroups, func(i, j int) bool {
+		scoreI := groupScores[state.VolunteerState.VolunteerGroups[i]]
+		scoreJ := groupScores[state.VolunteerState.VolunteerGroups[j]]
 		return scoreI > scoreJ
 	})
 }

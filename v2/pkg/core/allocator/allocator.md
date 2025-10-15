@@ -24,10 +24,16 @@ The requirements will likely change in the future so extensibility and maintaina
 Represents the current state during allocation:
 
 - `Shifts` - Array of shifts being filled
-- `VolunteerGroups` - Available volunteer groups for allocation
+- `VolunteerState` - Manages volunteer groups and exhaustion tracking (see VolunteerState below)
 - `HistoricalShifts` - Previous rota data (read-only, for pattern analysis and fairness)
 - `MaxAllocationFrequency` - Frequency ratio (e.g., 0.5 = 50%, 0.33 = 33%). The max allocation count is: `floor(len(Shifts) * MaxAllocationFrequency)`
-- `ExhaustedGroupIndices` - Tracks which groups are fully allocated
+
+### VolunteerState
+
+Manages volunteer groups and tracks which are exhausted:
+
+- `VolunteerGroups` - Array of volunteer groups available for allocation
+- `ExhaustedVolunteerGroups` - Map tracking which groups are fully allocated (O(1) lookup)
 
 ### VolunteerGroup
 
@@ -52,7 +58,7 @@ Represents a single shift to be filled:
 - `PreAllocatedVolunteers` - String IDs of manually pre-assigned volunteers (count toward Size)
 - `TeamLead` - Pointer to team lead volunteer (separate from Size, can be nil)
 - `MaleCount` - Number of males in AllocatedGroups (excludes TeamLead and pre-allocated)
-- `AvailableGroupIndices` - Groups that expressed availability for this shift
+- `AvailableGroups` - Pointers to groups that expressed availability for this shift
 
 **Important:** Team leads and pre-allocated volunteers have different treatment:
 
@@ -76,7 +82,7 @@ Represents a single shift to be filled:
    - Set `TeamLead` to nil
    - Populate `PreAllocatedVolunteers` from overrides
    - Set `Size` from defaults or overrides
-   - Populate `AvailableGroupIndices` - which groups are available for each shift
+   - Populate `AvailableGroups` - pointers to groups that are available for each shift
    - Initialize `MaleCount` to 0
 
 4. **Rank Volunteer Groups** - Sort by priority (see Ranking section)
@@ -295,12 +301,13 @@ The shift with highest affinity is selected for allocation.
 
 ## Key Design Decisions
 
-1. **Index-based References** - Groups and shifts referenced by indices for efficiency
-2. **Team Leads Separate** - Team leads don't count toward shift Size, stored in separate field
-3. **Pre-allocated as Strings** - Pre-allocated volunteers are just string IDs that count toward Size. The allocator will not produce valid rotas if autoamtically allocated volunteers are also pre-allocated.
-4. **Historical Data Integration** - NoDoubleShifts and ShiftSpread criteria consider historical allocations
-5. **Exhaustion Tracking** - `ExhaustedGroupIndices` avoids re-checking invalid groups
-6. **Availability Pre-computation** - `AvailableGroupIndices` populated during init for efficiency
+1. **Pointer-based References** - Groups referenced by pointers for type safety and simplicity
+2. **Volunteer State Management** - `VolunteerState` encapsulates volunteer groups and exhaustion tracking
+3. **Team Leads Separate** - Team leads don't count toward shift Size, stored in separate field
+4. **Pre-allocated as Strings** - Pre-allocated volunteers are just string IDs that count toward Size. The allocator will not produce valid rotas if automatically allocated volunteers are also pre-allocated.
+5. **Historical Data Integration** - NoDoubleShifts and ShiftSpread criteria consider historical allocations
+6. **Exhaustion Tracking** - `ExhaustedVolunteerGroups` map provides O(1) lookup to avoid re-checking invalid groups
+7. **Availability Pre-computation** - `AvailableGroups` populated during init for efficiency
 
 ## Future Extensions
 

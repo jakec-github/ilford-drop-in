@@ -23,14 +23,14 @@ func TestInitVolunteerGroups_BasicGrouping(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 2) // group_a and group_b
+	require.Len(t, volunteerState.VolunteerGroups, 2) // group_a and group_b
 
 	// Find groups
 	var groupA, groupB *VolunteerGroup
-	for _, g := range groups {
+	for _, g := range volunteerState.VolunteerGroups {
 		if g.GroupKey == "group_a" {
 			groupA = g
 		} else if g.GroupKey == "group_b" {
@@ -70,12 +70,12 @@ func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 2) // Two individual groups
+	require.Len(t, volunteerState.VolunteerGroups, 2) // Two individual groups
 
-	for _, g := range groups {
+	for _, g := range volunteerState.VolunteerGroups {
 		assert.Len(t, g.Members, 1, "Individual volunteers should be in single-member groups")
 		assert.Contains(t, g.GroupKey, "individual_", "Individual group keys should have prefix")
 	}
@@ -121,12 +121,12 @@ func TestInitVolunteerGroups_DiscardGroupWithNoResponses(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 1) // Only has_response_group should remain
+	require.Len(t, volunteerState.VolunteerGroups, 1) // Only has_response_group should remain
 
-	assert.Equal(t, "has_response_group", groups[0].GroupKey)
+	assert.Equal(t, "has_response_group", volunteerState.VolunteerGroups[0].GroupKey)
 }
 
 func TestInitVolunteerGroups_DiscardGroupWithNoAvailability(t *testing.T) {
@@ -164,12 +164,12 @@ func TestInitVolunteerGroups_GroupAvailabilityLogic(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 1)
+	require.Len(t, volunteerState.VolunteerGroups, 1)
 
-	group := groups[0]
+	group := volunteerState.VolunteerGroups[0]
 	// Group unavailable on: 0, 1 (v1), 2 (v2)
 	// Group available on: 3, 4
 	assert.ElementsMatch(t, []int{3, 4}, group.AvailableShiftIndices)
@@ -211,14 +211,14 @@ func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {
 		HistoricalShifts: historicalShifts,
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 2)
+	require.Len(t, volunteerState.VolunteerGroups, 2)
 
 	// Find groups
 	var groupA, groupB *VolunteerGroup
-	for _, g := range groups {
+	for _, g := range volunteerState.VolunteerGroups {
 		if g.GroupKey == "group_a" {
 			groupA = g
 		} else if g.GroupKey == "group_b" {
@@ -249,12 +249,12 @@ func TestInitVolunteerGroups_MaleCountAccuracy(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 1)
+	require.Len(t, volunteerState.VolunteerGroups, 1)
 
-	assert.Equal(t, 2, groups[0].MaleCount, "Should count 2 males in group")
+	assert.Equal(t, 2, volunteerState.VolunteerGroups[0].MaleCount, "Should count 2 males in group")
 }
 
 func TestInitVolunteerGroups_NonRespondingMembersIgnored(t *testing.T) {
@@ -272,12 +272,12 @@ func TestInitVolunteerGroups_NonRespondingMembersIgnored(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	groups, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
-	require.Len(t, groups, 1)
+	require.Len(t, volunteerState.VolunteerGroups, 1)
 
-	group := groups[0]
+	group := volunteerState.VolunteerGroups[0]
 	// Group should be available on 1, 2 (not 0 due to Alice)
 	// Bob's non-response should NOT make all dates unavailable
 	assert.ElementsMatch(t, []int{1, 2}, group.AvailableShiftIndices)

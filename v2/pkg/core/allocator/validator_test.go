@@ -34,7 +34,10 @@ func TestValidateRotaState_ValidRota(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA, groupB},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -81,7 +84,10 @@ func TestValidateRotaState_MultipleViolations(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -143,6 +149,10 @@ func TestValidateRotaState_MultipleViolations(t *testing.T) {
 
 func TestValidateRotaState_NoCriteria(t *testing.T) {
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          []*VolunteerGroup{},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -173,7 +183,10 @@ func TestValidateRotaState_OnlySomeCriteriaViolated(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 1 shift = floor(1 * 1.0) = 1 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -214,7 +227,10 @@ func TestValidateRotaState_ShiftSpreadNeverFails(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -257,7 +273,10 @@ func TestValidateCoreInvariants_OverAllocation(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 0.5, // Frequency ratio 50% with 3 shifts = floor(3 * 0.5) = 1 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{Index: 0, AllocatedGroups: []*VolunteerGroup{groupA}, MaleCount: 1},
 			{Index: 1, AllocatedGroups: []*VolunteerGroup{groupA}, MaleCount: 1},
@@ -290,7 +309,10 @@ func TestValidateCoreInvariants_DuplicateAllocation(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 1 shift = floor(1 * 1.0) = 1 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -326,7 +348,10 @@ func TestValidateCoreInvariants_AvailabilityViolation(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 1 shift = floor(1 * 1.0) = 1 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -362,7 +387,10 @@ func TestValidateCoreInvariants_AllocatedIndicesMismatch(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -405,7 +433,10 @@ func TestValidateCoreInvariants_MaleCountFieldMismatch(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 1 shift = floor(1 * 1.0) = 1 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -444,7 +475,10 @@ func TestValidateCoreInvariants_AllValid(t *testing.T) {
 
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 1 shift = floor(1 * 1.0) = 1 max allocation
+		VolunteerState: &VolunteerState{
 		VolunteerGroups:        []*VolunteerGroup{groupA},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 		Shifts: []*Shift{
 			{
 				Index:           0,

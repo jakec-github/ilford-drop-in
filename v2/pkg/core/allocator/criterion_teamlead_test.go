@@ -93,13 +93,16 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_GroupWithoutTeamLead(t *testin
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0},
+		AvailableGroups: []*VolunteerGroup{group},
 	}
 
 	// Should return 0 for groups without team leads
@@ -116,13 +119,16 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ShiftAlreadyHasTeamLead(t *tes
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               &Volunteer{ID: "tl1", IsTeamLead: true}, // Already has team lead
-		AvailableGroupIndices:  []int{0},
+		AvailableGroups: []*VolunteerGroup{group},
 	}
 
 	// Should return 0 as a safety check
@@ -143,13 +149,16 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ManyTeamLeadsAvailable(t *test
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, // All 10 available
+		AvailableGroups: groups, // All 10 available
 	}
 
 	// Affinity: 1 / 10 = 0.1 (low priority - many team leads available)
@@ -170,13 +179,16 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_FewTeamLeadsAvailable(t *testi
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0, 1}, // Only 2 available
+		AvailableGroups: groups[:2], // Only 2 available
 	}
 
 	// Affinity: 1 / 2 = 0.5 (moderate priority)
@@ -193,13 +205,16 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_OnlyOneTeamLeadAvailable(t *te
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0}, // Only 1 available
+		AvailableGroups: []*VolunteerGroup{group}, // Only 1 available
 	}
 
 	// Affinity: 1 / 1 = 1.0 (urgent!)
@@ -219,15 +234,23 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ExcludesExhaustedGroups(t *tes
 		}
 	}
 
+	// Mark groups 1, 2, 3 as exhausted
+	exhaustedMap := make(map[*VolunteerGroup]bool)
+	exhaustedMap[groups[1]] = true
+	exhaustedMap[groups[2]] = true
+	exhaustedMap[groups[3]] = true
+
 	state := &RotaState{
-		VolunteerGroups:       groups,
-		ExhaustedGroupIndices: []int{1, 2, 3}, // 3 groups exhausted
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: exhaustedMap,
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0, 1, 2, 3, 4}, // All 5 originally available
+		Index:           0,
+		TeamLead:        nil,
+		AvailableGroups: groups, // All 5 originally available
 	}
 
 	// Should only count non-exhausted groups: 0, 4
@@ -248,24 +271,21 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ExcludesAllocatedGroups(t *tes
 		}
 	}
 
-	// One group already allocated to this shift
-	allocatedGroup := &VolunteerGroup{
-		GroupKey:    "b",
-		HasTeamLead: true,
-	}
-
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AllocatedGroups:        []*VolunteerGroup{allocatedGroup}, // Group 'b' already allocated
-		AvailableGroupIndices:  []int{0, 1, 2},
+		AllocatedGroups:        []*VolunteerGroup{groups[1]}, // Group 'b' (groups[1]) already allocated
+		AvailableGroups: groups[:3],
 	}
 
-	// Should only count groups not already allocated: 'a', 'c'
+	// Should only count groups not already allocated: 'a' (groups[0]), 'c' (groups[2])
 	// Affinity: 1 / 2 = 0.5
 	affinity := criterion.CalculateShiftAffinity(state, groups[0], shift)
 	assert.Equal(t, 0.5, affinity)
@@ -295,13 +315,16 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_MixedGroupsOnlyCountsTeamLeads
 	allGroups := append(teamLeadGroups, nonTeamLeadGroups...)
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: allGroups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0, 1, 2, 3, 4, 5, 6, 7}, // All 8 available
+		AvailableGroups: allGroups[:8], // All 8 available
 	}
 
 	// Should only count team lead groups: 3
@@ -323,21 +346,24 @@ func TestTeamLeadCriterion_PrefersUnpopularShifts(t *testing.T) {
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	// Popular shift - many team leads available
 	popularShift := &Shift{
 		Index:                  0,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, // All 10 available
+		AvailableGroups: groups, // All 10 available
 	}
 
 	// Unpopular shift - only 2 team leads available
 	unpopularShift := &Shift{
 		Index:                  1,
 		TeamLead:               nil,
-		AvailableGroupIndices:  []int{0, 1}, // Only 2 available
+		AvailableGroups: groups[:2], // Only 2 available
 	}
 
 	popularAffinity := criterion.CalculateShiftAffinity(state, groups[0], popularShift)

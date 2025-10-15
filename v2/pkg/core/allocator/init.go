@@ -37,7 +37,7 @@ type InitVolunteerGroupsInput struct {
 //   - Non-responding members don't affect availability
 //
 // Returns:
-//   - A slice of initialized VolunteerGroups
+//   - A VolunteerState with initialized groups and empty exhaustion map
 //   - Error if initialization fails
 //
 // Invalid groups (errors returned):
@@ -46,7 +46,7 @@ type InitVolunteerGroupsInput struct {
 // Invalid groups (discarded):
 //   - Groups where no members have responded
 //   - Groups with no availability
-func InitVolunteerGroups(input InitVolunteerGroupsInput) ([]*VolunteerGroup, error) {
+func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error) {
 	// Build availability lookup map
 	availabilityMap := make(map[string]VolunteerAvailability)
 	for _, avail := range input.Availability {
@@ -156,7 +156,13 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) ([]*VolunteerGroup, err
 		return nil, fmt.Errorf("no valid volunteer groups after initialization")
 	}
 
-	return groups, nil
+	// Create VolunteerState with empty exhaustion map
+	volunteerState := &VolunteerState{
+		VolunteerGroups:          groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	}
+
+	return volunteerState, nil
 }
 
 // calculateHistoricalAllocationCount counts how many times a group was allocated in historical shifts
@@ -198,9 +204,9 @@ type InitShiftsInput struct {
 	// Overrides allow customizing specific shifts
 	Overrides []ShiftOverride
 
-	// VolunteerGroups is the list of initialized volunteer groups
-	// Used to populate each shift's AvailableGroupIndices
-	VolunteerGroups []*VolunteerGroup
+	// VolunteerState contains the initialized volunteer groups
+	// Used to populate each shift's AvailableGroups
+	VolunteerState *VolunteerState
 }
 
 // InitShifts creates and initializes shifts for the rota
@@ -209,7 +215,7 @@ type InitShiftsInput struct {
 //   - Sequential indices
 //   - Applied size overrides
 //   - Pre-allocated volunteer IDs (metadata flags start at false/0)
-//   - AvailableGroupIndices populated based on volunteer group availability
+//   - AvailableGroups populated based on volunteer group availability
 func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	shifts := make([]*Shift, len(input.ShiftDates))
 
@@ -233,11 +239,11 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			}
 		}
 
-		// Populate available group indices for this shift
-		availableGroupIndices := make([]int, 0)
-		for groupIdx, group := range input.VolunteerGroups {
+		// Populate available groups for this shift
+		availableGroups := make([]*VolunteerGroup, 0)
+		for _, group := range input.VolunteerState.VolunteerGroups {
 			if group.IsAvailable(i) {
-				availableGroupIndices = append(availableGroupIndices, groupIdx)
+				availableGroups = append(availableGroups, group)
 			}
 		}
 
@@ -249,7 +255,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			PreAllocatedVolunteers: preAllocatedVolunteers,
 			TeamLead:               nil, // Will be set when a team lead is allocated
 			MaleCount:              0,   // Will be updated when groups are allocated
-			AvailableGroupIndices:  availableGroupIndices,
+			AvailableGroups:        availableGroups,
 		}
 	}
 

@@ -158,14 +158,17 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_GroupWithoutMales(t *testin
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		MaleCount:             0,
-		TeamLead:              &Volunteer{Gender: "Female"},
-		AvailableGroupIndices: []int{0},
+		Index:           0,
+		MaleCount:       0,
+		TeamLead:        &Volunteer{Gender: "Female"},
+		AvailableGroups: []*VolunteerGroup{group},
 	}
 
 	// Should return 0 for groups without males
@@ -183,14 +186,17 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ShiftAlreadyHasMale(t *test
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  5,
-		MaleCount:             1, // Already has a male
-		AvailableGroupIndices: []int{0},
+		Index:           0,
+		Size:            5,
+		MaleCount:       1, // Already has a male
+		AvailableGroups: []*VolunteerGroup{group},
 	}
 
 	// With 1 male already allocated and 1 male volunteer available
@@ -214,14 +220,17 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ManyMaleVolunteersAvailable
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  15,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, // All 10 available
+		Index:           0,
+		Size:            15,
+		MaleCount:       0,
+		AvailableGroups: groups, // All 10 available
 	}
 
 	// Need = 1.0 (no males yet)
@@ -244,14 +253,17 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_FewMaleVolunteersAvailable(
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  5,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0, 1}, // Only 2 available
+		Index:           0,
+		Size:            5,
+		MaleCount:       0,
+		AvailableGroups: groups, // Only 2 available
 	}
 
 	// Need = 1.0 (no males yet)
@@ -270,14 +282,17 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_OnlyOneMaleVolunteerAvailab
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  5,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0}, // Only 1 available
+		Index:           0,
+		Size:            5,
+		MaleCount:       0,
+		AvailableGroups: []*VolunteerGroup{group}, // Only 1 available
 	}
 
 	// Need = 1.0 (no males yet)
@@ -299,16 +314,24 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ExcludesExhaustedGroups(t *
 		}
 	}
 
+	// Mark groups 1, 2, 3 as exhausted
+	exhaustedMap := make(map[*VolunteerGroup]bool)
+	exhaustedMap[groups[1]] = true
+	exhaustedMap[groups[2]] = true
+	exhaustedMap[groups[3]] = true
+
 	state := &RotaState{
-		VolunteerGroups:       groups,
-		ExhaustedGroupIndices: []int{1, 2, 3}, // 3 groups exhausted
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: exhaustedMap,
+		},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  5,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0, 1, 2, 3, 4}, // All 5 originally available
+		Index:           0,
+		Size:            5,
+		MaleCount:       0,
+		AvailableGroups: groups, // All 5 originally available
 	}
 
 	// Should only count non-exhausted groups: 0, 4 (2 male volunteers)
@@ -331,26 +354,22 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ExcludesAllocatedGroups(t *
 		}
 	}
 
-	// One group already allocated to this shift
-	allocatedGroup := &VolunteerGroup{
-		GroupKey:  "b",
-		MaleCount: 1,
-		Members:   []Volunteer{{ID: "b", Gender: "M"}},
-	}
-
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  5,
-		MaleCount:             0,
-		AllocatedGroups:       []*VolunteerGroup{allocatedGroup}, // Group 'b' already allocated
-		AvailableGroupIndices: []int{0, 1, 2},
+		Index:           0,
+		Size:            5,
+		MaleCount:       0,
+		AllocatedGroups: []*VolunteerGroup{groups[1]}, // Group 'b' (groups[1]) already allocated
+		AvailableGroups: groups,
 	}
 
-	// Should only count groups not already allocated: 'a', 'c' (2 male volunteers)
+	// Should only count groups not already allocated: 'a' (groups[0]), 'c' (groups[2]) = 2 male volunteers
 	// Need = 1.0
 	// Affinity: 1.0 / 2 = 0.5
 	affinity := criterion.CalculateShiftAffinity(state, groups[0], shift)
@@ -383,14 +402,17 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_MixedGroupsOnlyCountsMales(
 	allGroups := append(maleGroups, femaleGroups...)
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: allGroups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	shift := &Shift{
-		Index:                 0,
-		Size:                  10,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0, 1, 2, 3, 4, 5, 6, 7}, // All 8 available
+		Index:           0,
+		Size:            10,
+		MaleCount:       0,
+		AvailableGroups: allGroups[:8], // First 8 groups
 	}
 
 	// Should only count male volunteers: 3
@@ -414,23 +436,26 @@ func TestMaleBalanceCriterion_PrefersUnpopularShifts(t *testing.T) {
 	}
 
 	state := &RotaState{
+		VolunteerState: &VolunteerState{
 		VolunteerGroups: groups,
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	},
 	}
 
 	// Popular shift - many male volunteers available
 	popularShift := &Shift{
-		Index:                 0,
-		Size:                  15,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, // All 10 available
+		Index:           0,
+		Size:            15,
+		MaleCount:       0,
+		AvailableGroups: groups, // All 10 available
 	}
 
 	// Unpopular shift - only 2 male volunteers available
 	unpopularShift := &Shift{
-		Index:                 1,
-		Size:                  5,
-		MaleCount:             0,
-		AvailableGroupIndices: []int{0, 1}, // Only 2 available
+		Index:           1,
+		Size:            5,
+		MaleCount:       0,
+		AvailableGroups: groups[:2], // Only 2 available
 	}
 
 	popularAffinity := criterion.CalculateShiftAffinity(state, groups[0], popularShift)

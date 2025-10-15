@@ -46,7 +46,7 @@ func checkOverAllocation(state *RotaState) []ShiftValidationError {
 	var errors []ShiftValidationError
 
 	maxAllocationCount := state.MaxAllocationCount()
-	for _, group := range state.VolunteerGroups {
+	for _, group := range state.VolunteerState.VolunteerGroups {
 		allocatedCount := len(group.AllocatedShiftIndices)
 		if allocatedCount > maxAllocationCount {
 			errors = append(errors, ShiftValidationError{
@@ -119,7 +119,7 @@ func checkDataConsistency(state *RotaState) []ShiftValidationError {
 	}
 
 	// Check that each group's AllocatedShiftIndices matches actual allocations
-	for _, group := range state.VolunteerGroups {
+	for _, group := range state.VolunteerState.VolunteerGroups {
 		actual := actualAllocations[group.GroupKey]
 		if actual == nil {
 			actual = make(map[int]bool)
