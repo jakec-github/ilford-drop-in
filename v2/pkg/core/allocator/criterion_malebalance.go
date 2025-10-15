@@ -1,5 +1,7 @@
 package rotageneration
 
+import "fmt"
+
 // MaleBalanceCriterion ensures each shift has at least one male volunteer and spreads male volunteers maximally.
 //
 // Validity:
@@ -121,6 +123,19 @@ func (c *MaleBalanceCriterion) AffinityWeight() float64 {
 }
 
 func (c *MaleBalanceCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	// TODO: Implement validation
-	return nil
+	var errors []ShiftValidationError
+
+	for _, shift := range state.Shifts {
+		// Check if shift has at least one male volunteer
+		if shift.MaleCount == 0 {
+			errors = append(errors, ShiftValidationError{
+				ShiftIndex:    shift.Index,
+				ShiftDate:     shift.Date,
+				CriterionName: c.Name(),
+				Description:   fmt.Sprintf("Shift has no male volunteers (has %d males)", shift.MaleCount),
+			})
+		}
+	}
+
+	return errors
 }

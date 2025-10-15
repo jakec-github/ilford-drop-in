@@ -441,3 +441,90 @@ func TestMaleBalanceCriterion_PrefersUnpopularShifts(t *testing.T) {
 	assert.Equal(t, 0.1, popularAffinity)   // 1.0/10
 	assert.Equal(t, 0.5, unpopularAffinity) // 1.0/2
 }
+
+func TestMaleBalanceCriterion_ValidateRotaState_AllShiftsHaveMales(t *testing.T) {
+	criterion := NewMaleBalanceCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:     0,
+				Date:      "2024-01-01",
+				MaleCount: 1,
+			},
+			{
+				Index:     1,
+				Date:      "2024-01-08",
+				MaleCount: 2,
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Empty(t, errors, "Should have no errors when all shifts have at least one male")
+}
+
+func TestMaleBalanceCriterion_ValidateRotaState_MissingMales(t *testing.T) {
+	criterion := NewMaleBalanceCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:     0,
+				Date:      "2024-01-01",
+				MaleCount: 0,
+			},
+			{
+				Index:     1,
+				Date:      "2024-01-08",
+				MaleCount: 0,
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 2, "Should detect two shifts without males")
+
+	// Check first error
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "MaleBalance", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "no male volunteers")
+
+	// Check second error
+	assert.Equal(t, 1, errors[1].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[1].ShiftDate)
+	assert.Equal(t, "MaleBalance", errors[1].CriterionName)
+	assert.Contains(t, errors[1].Description, "no male volunteers")
+}
+
+func TestMaleBalanceCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) {
+	criterion := NewMaleBalanceCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:     0,
+				Date:      "2024-01-01",
+				MaleCount: 1,
+			},
+			{
+				Index:     1,
+				Date:      "2024-01-08",
+				MaleCount: 0,
+			},
+			{
+				Index:     2,
+				Date:      "2024-01-15",
+				MaleCount: 3,
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect only the shift without males")
+
+	assert.Equal(t, 1, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
+	assert.Contains(t, errors[0].Description, "no male volunteers")
+}
