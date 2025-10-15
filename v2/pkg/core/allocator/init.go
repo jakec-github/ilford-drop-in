@@ -261,3 +261,58 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 
 	return shifts, nil
 }
+
+func InitAllocation(config AllocationConfig) (Allocator, error) {
+	// Validate config
+	if len(config.ShiftDates) == 0 {
+		return Allocator{}, fmt.Errorf("no shift dates provided")
+	}
+	if len(config.Volunteers) == 0 {
+		return Allocator{}, fmt.Errorf("no volunteers provided")
+	}
+	if config.DefaultShiftSize < 0 {
+		return Allocator{}, fmt.Errorf("default shift size must be non-negative, got %d", config.DefaultShiftSize)
+	}
+	if config.MaxAllocationFrequency <= 0 || config.MaxAllocationFrequency > 1 {
+		return Allocator{}, fmt.Errorf("max allocation frequency must be between 0 and 1, got %.2f", config.MaxAllocationFrequency)
+	}
+
+	volunteerState, err := InitVolunteerGroups(
+		InitVolunteerGroupsInput{
+			Volunteers:       config.Volunteers,
+			Availability:     config.Availability,
+			TotalShifts:      len(config.ShiftDates),
+			HistoricalShifts: config.HistoricalShifts,
+		},
+	)
+	if err != nil {
+		return Allocator{}, err
+	}
+
+	shifts, err := InitShifts(
+		InitShiftsInput{
+			ShiftDates:       config.ShiftDates,
+			DefaultShiftSize: config.DefaultShiftSize,
+			Overrides:        config.Overrides,
+			VolunteerState:   volunteerState,
+		},
+	)
+	if err != nil {
+		return Allocator{}, err
+	}
+
+	// Create initial rota state
+	state := &RotaState{
+		Shifts:                 shifts,
+		VolunteerState:         volunteerState,
+		HistoricalShifts:       config.HistoricalShifts,
+		MaxAllocationFrequency: config.MaxAllocationFrequency,
+	}
+
+	RankVolunteerGroups(state, config.Criteria, config.MaxAllocationFrequency)
+
+	return Allocator{
+		criteria: config.Criteria,
+		state:    state,
+	}, nil
+}

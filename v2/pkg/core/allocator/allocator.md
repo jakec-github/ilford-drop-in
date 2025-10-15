@@ -99,13 +99,12 @@ Represents a single shift to be filled:
 5. Re-rank and re-insert the group, or mark as exhausted if:
    - Allocated to all available shifts
    - Reached `MaxAllocationFrequency`
-   - No valid shifts remaining
+   - No shifts are valid for them
 
 Repeat until:
 
 - All shifts are full
 - OR all volunteer groups exhausted
-- OR no further allocations possible without breaching constraints
 
 ### Outcome
 
@@ -126,10 +125,14 @@ The allocator is extensible via a criteria interface. Each criterion implements 
    - Multiplied by `GroupWeight`
    - Used in ranking to prioritize certain groups
 
+Note that this method is used to sort all groups ON INIT ONLY. Allocated volunteers will be reinserted in their correct new position but do not implement a method that sorts groups based on the allocation of others as this will not work as expected.
+
 2. **IsShiftValid(state, group, shift)** → bool
 
    - Returns false to block allocation
    - Hard constraint enforcement
+
+Note that if a volunteer cannot be assigned due to invalid shifts they will be exhausted. Do not implement shift validity rules where a shift becomes invalid temporarily.
 
 3. **CalculateShiftAffinity(state, group, shift)** → float64
    - Returns value between 0 and 1
@@ -248,17 +251,20 @@ The allocator is extensible via a criteria interface. Each criterion implements 
 Groups are ranked by summing:
 
 1. **Current Rota Urgency** - `remainingNeededThisRota / remainingAvailability`
+
    - Prioritizes groups that need more allocations relative to their available shifts
    - Minimum value of 1.0 (groups that have met their quota still get base score)
    - Multiplied by `WeightCurrentRotaUrgency`
 
 2. **Overall Frequency Fairness** - Based on `DesiredRemainingAllocations()`
+
    - Formula: `desiredRemaining / totalShiftsInCurrentRota`
    - Groups under their target frequency over time get higher priority
    - Clamped to range [-1.0, 1.0]
    - Multiplied by `WeightOverallFrequencyFairness`
 
 3. **Group Promotion** - Promote groups over individuals
+
    - Groups with more than 1 member get +1.0 bonus
    - Schedule groups early to ensure space availability
    - Multiplied by `WeightPromoteGroup`
