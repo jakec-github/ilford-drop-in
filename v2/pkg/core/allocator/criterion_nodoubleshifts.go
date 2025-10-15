@@ -171,3 +171,8 @@ func (c *NoDoubleShiftsCriterion) GroupWeight() float64 {
 func (c *NoDoubleShiftsCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
+
+func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
+	// TODO: Implement validation
+	return nil
+}

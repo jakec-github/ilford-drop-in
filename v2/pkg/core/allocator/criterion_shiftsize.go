@@ -100,3 +100,8 @@ func (c *ShiftSizeCriterion) GroupWeight() float64 {
 func (c *ShiftSizeCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
+
+func (c *ShiftSizeCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
+	// TODO: Implement validation
+	return nil
+}

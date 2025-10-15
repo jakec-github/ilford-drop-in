@@ -128,3 +128,8 @@ func (c *MaleBalanceCriterion) GroupWeight() float64 {
 func (c *MaleBalanceCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
+
+func (c *MaleBalanceCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
+	// TODO: Implement validation
+	return nil
+}

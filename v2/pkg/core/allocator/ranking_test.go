@@ -39,6 +39,10 @@ func (m *mockCriterion) AffinityWeight() float64 {
 	return m.affinityWeight
 }
 
+func (m *mockCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
+	return nil
+}
+
 func TestCalculateGroupRankingScore_NoCriteria(t *testing.T) {
 	state := &RotaState{
 		Shifts: []*Shift{

@@ -82,3 +82,8 @@ func (c *TeamLeadCriterion) GroupWeight() float64 {
 func (c *TeamLeadCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
+
+func (c *TeamLeadCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
+	// TODO: Implement validation
+	return nil
+}

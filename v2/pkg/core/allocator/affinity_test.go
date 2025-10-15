@@ -245,3 +245,7 @@ type mockCriterionWithValidity struct {
 func (m *mockCriterionWithValidity) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
 	return m.isValid
 }
+
+func (m *mockCriterionWithValidity) ValidateRotaState(state *RotaState) []ShiftValidationError {
+	return nil
+}

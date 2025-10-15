@@ -1,5 +1,13 @@
 package rotageneration
 
+// ShiftValidationError represents a validation error for a specific shift
+type ShiftValidationError struct {
+	ShiftIndex     int
+	ShiftDate      string
+	CriterionName  string
+	Description    string
+}
+
 // Criterion defines the interface for custom allocation criteria
 // Criteria influence both which volunteer groups are prioritized and which shifts they're assigned to
 type Criterion interface {
@@ -22,6 +30,11 @@ type Criterion interface {
 	// Higher scores indicate better matches and will be preferred during allocation
 	// Return 0 if this criterion doesn't affect shift selection
 	CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64
+
+	// ValidateRotaState checks if the final rota state meets this criterion's requirements
+	// Returns a slice of validation errors (empty if all valid)
+	// This is called after allocation completes to verify the rota satisfies all constraints
+	ValidateRotaState(state *RotaState) []ShiftValidationError
 
 	// GroupWeight returns the weight for group promotion (typical range: 0.0 - 10.0)
 	// Higher weights make this criterion's group promotion more influential
