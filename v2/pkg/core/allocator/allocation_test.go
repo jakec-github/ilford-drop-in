@@ -6,6 +6,115 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestIsShiftValidForGroup_GroupNotAvailable(t *testing.T) {
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0, Date: "2024-01-01"},
+			{Index: 1, Date: "2024-01-08"},
+		},
+	}
+
+	group := &VolunteerGroup{
+		GroupKey:              "group_a",
+		AvailableShiftIndices: []int{1}, // Only available for shift 1
+		AllocatedShiftIndices: []int{},
+	}
+
+	shift := state.Shifts[0] // Shift 0
+
+	// Group is not available for shift 0
+	valid := IsShiftValidForGroup(state, group, shift, []Criterion{})
+	assert.False(t, valid, "Should return false for unavailable shift")
+}
+
+func TestIsShiftValidForGroup_GroupAlreadyAllocated(t *testing.T) {
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0, Date: "2024-01-01"},
+			{Index: 1, Date: "2024-01-08"},
+		},
+	}
+
+	group := &VolunteerGroup{
+		GroupKey:              "group_a",
+		AvailableShiftIndices: []int{0, 1},
+		AllocatedShiftIndices: []int{0}, // Already allocated to shift 0
+	}
+
+	shift := state.Shifts[0] // Shift 0
+
+	// Group is already allocated to shift 0
+	valid := IsShiftValidForGroup(state, group, shift, []Criterion{})
+	assert.False(t, valid, "Should return false for already allocated shift")
+}
+
+func TestIsShiftValidForGroup_CriterionMarksInvalid(t *testing.T) {
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0, Date: "2024-01-01"},
+		},
+	}
+
+	group := &VolunteerGroup{
+		GroupKey:              "group_a",
+		AvailableShiftIndices: []int{0},
+		AllocatedShiftIndices: []int{},
+	}
+
+	shift := state.Shifts[0]
+
+	// Criterion that marks shift as invalid
+	customCriterion := &mockCriterionWithValidity{
+		mockCriterion: mockCriterion{
+			name:           "custom",
+			affinityValue:  1.0,
+			affinityWeight: 1.0,
+		},
+		isValid: false,
+	}
+
+	valid := IsShiftValidForGroup(state, group, shift, []Criterion{customCriterion})
+	assert.False(t, valid, "Should return false when criterion marks shift as invalid")
+}
+
+func TestIsShiftValidForGroup_AllValid(t *testing.T) {
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0, Date: "2024-01-01"},
+		},
+	}
+
+	group := &VolunteerGroup{
+		GroupKey:              "group_a",
+		AvailableShiftIndices: []int{0},
+		AllocatedShiftIndices: []int{},
+	}
+
+	shift := state.Shifts[0]
+
+	criteria := []Criterion{
+		&mockCriterionWithValidity{
+			mockCriterion: mockCriterion{
+				name:           "valid1",
+				affinityValue:  0.5,
+				affinityWeight: 2.0,
+			},
+			isValid: true,
+		},
+		&mockCriterionWithValidity{
+			mockCriterion: mockCriterion{
+				name:           "valid2",
+				affinityValue:  0.5,
+				affinityWeight: 2.0,
+			},
+			isValid: true,
+		},
+	}
+
+	valid := IsShiftValidForGroup(state, group, shift, criteria)
+	assert.True(t, valid, "Should return true when all checks pass")
+}
+
 func TestCalculateShiftAffinity_GroupNotAvailable(t *testing.T) {
 	state := &RotaState{
 		Shifts: []*Shift{

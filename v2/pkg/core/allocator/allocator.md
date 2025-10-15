@@ -269,15 +269,24 @@ Groups are ranked by summing:
 
 Higher scoring groups are allocated first.
 
-## Shift Affinity Calculation
+## Allocation Functions
 
-For a given group and shift:
+### IsShiftValidForGroup(state, group, shift, criteria)
 
-1. Return 0 if group not available for shift
-2. Return 0 if group already allocated to shift
-3. Run all `IsShiftValid()` checks - return 0 if any fail
-4. Sum all `CalculateShiftAffinity()` results (weighted)
-5. Return total affinity
+Checks if a volunteer group can be allocated to a shift:
+
+1. Return false if group not available for shift
+2. Return false if group already allocated to shift
+3. Run all `IsShiftValid()` checks - return false if any fail
+4. Otherwise return true
+
+### CalculateShiftAffinity(state, group, shift, criteria)
+
+Computes the affinity score for a group-shift pairing:
+
+1. Check validity using `IsShiftValidForGroup()` - return 0 if invalid
+2. Sum all `CalculateShiftAffinity()` results (weighted)
+3. Return total affinity
 
 The shift with highest affinity is selected for allocation.
 
