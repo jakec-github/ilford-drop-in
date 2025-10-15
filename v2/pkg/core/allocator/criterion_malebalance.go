@@ -66,8 +66,7 @@ func (c *MaleBalanceCriterion) IsShiftValid(state *RotaState, group *VolunteerGr
 		}
 	}
 
-	currentSize := shift.CurrentSize()
-	remainingCapacity := shift.Size - currentSize
+	remainingCapacity := shift.RemainingCapacity()
 
 	// If adding this group would fill the shift and there are no males yet, invalid
 	wouldFillShift := ordinaryVolunteerCount >= remainingCapacity
@@ -78,14 +77,6 @@ func (c *MaleBalanceCriterion) IsShiftValid(state *RotaState, group *VolunteerGr
 func (c *MaleBalanceCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
 	// Only calculate affinity for groups with males
 	if group.MaleCount == 0 {
-		return 0
-	}
-
-	// Calculate remaining capacity
-	currentSize := shift.CurrentSize()
-	remainingCapacity := shift.Size - currentSize
-
-	if remainingCapacity == 0 {
 		return 0
 	}
 

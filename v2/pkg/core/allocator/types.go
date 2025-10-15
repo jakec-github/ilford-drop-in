@@ -88,22 +88,28 @@ type Shift struct {
 	AvailableGroupIndices []int
 }
 
-// IsFull returns true if the shift has reached its desired size
-func (s *Shift) IsFull() bool {
-	currentSize := len(s.PreAllocatedVolunteers)
-	for _, group := range s.AllocatedGroups {
-		currentSize += len(group.Members)
-	}
-	return currentSize >= s.Size
-}
 
 // CurrentSize returns the current number of volunteers allocated to this shift
 func (s *Shift) CurrentSize() int {
 	size := len(s.PreAllocatedVolunteers)
 	for _, group := range s.AllocatedGroups {
-		size += len(group.Members)
+		for _, member := range group.Members {
+			if !member.IsTeamLead {
+				size++
+			}
+		}
 	}
 	return size
+}
+
+// IsFull returns true if the shift has reached its desired size
+func (s *Shift) IsFull() bool {
+	return s.CurrentSize() >= s.Size
+}
+
+// RemainingCapacity returns the number of ordinary volunteers who should be assigned
+func (s *Shift) RemainingCapacity() int {
+	return max(s.Size -  s.CurrentSize(), 0)
 }
 
 // RemainingAvailableVolunteers returns the count of ordinary volunteers (non-team leads)
@@ -119,8 +125,7 @@ func (s *Shift) RemainingAvailableVolunteers(state *RotaState) int {
 	count := 0
 
 	// Calculate remaining capacity for this shift
-	currentSize := s.CurrentSize()
-	remainingCapacity := s.Size - currentSize
+	remainingCapacity := s.RemainingCapacity()
 
 	// Build set of exhausted group indices for fast lookup
 	exhaustedSet := make(map[int]bool)
@@ -226,8 +231,7 @@ func (s *Shift) RemainingAvailableMaleVolunteers(state *RotaState) int {
 	count := 0
 
 	// Calculate remaining capacity for this shift
-	currentSize := s.CurrentSize()
-	remainingCapacity := s.Size - currentSize
+	remainingCapacity := s.RemainingCapacity()
 
 	// Build set of exhausted group indices for fast lookup
 	exhaustedSet := make(map[int]bool)

@@ -44,11 +44,10 @@ func (c *ShiftSizeCriterion) IsShiftValid(state *RotaState, group *VolunteerGrou
 	}
 
 	// Calculate how many spots are available in the shift
-	currentSize := shift.CurrentSize()
-	remainingCapacity := shift.Size - currentSize
+	remainingCapacity := shift.RemainingCapacity()
 
 	// Invalid if adding this group's ordinary volunteers would exceed shift size
-	return ordinaryVolunteerCount <= remainingCapacity
+	return  remainingCapacity >= ordinaryVolunteerCount
 }
 
 func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
@@ -66,8 +65,7 @@ func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *RotaState, group *Vol
 	}
 
 	// Calculate remaining capacity and remaining available volunteers
-	currentSize := shift.CurrentSize()
-	remainingCapacity := shift.Size - currentSize
+	remainingCapacity := shift.RemainingCapacity()
 	remainingAvailableVolunteers := shift.RemainingAvailableVolunteers(state)
 
 	// Avoid division by zero
