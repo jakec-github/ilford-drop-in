@@ -89,37 +89,28 @@ func (c *TeamLeadCriterion) ValidateRotaState(state *RotaState) []ShiftValidatio
 	var errors []ShiftValidationError
 
 	for _, shift := range state.Shifts {
-		// Count team leads in this shift
-		teamLeadCount := 0
-		if shift.TeamLead != nil {
-			teamLeadCount++
-		}
-
-		// Also count team leads in allocated groups
-		for _, group := range shift.AllocatedGroups {
-			if group.HasTeamLead {
-				teamLeadCount++
-			}
-		}
-
-		// Check for missing team lead
-		if teamLeadCount == 0 {
+		if shift.TeamLead == nil {
 			errors = append(errors, ShiftValidationError{
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),
 				Description:   "Shift has no team lead",
 			})
+			continue
 		}
 
-		// Check for multiple team leads
-		if teamLeadCount > 1 {
-			errors = append(errors, ShiftValidationError{
-				ShiftIndex:    shift.Index,
-				ShiftDate:     shift.Date,
-				CriterionName: c.Name(),
-				Description:   fmt.Sprintf("Shift has %d team leads but should have exactly 1", teamLeadCount),
-			})
+		// Check that no other volunteers in the shift are team leads
+		for _, group := range shift.AllocatedGroups {
+			for _, member := range group.Members {
+				if member.IsTeamLead && member.ID != shift.TeamLead.ID {
+					errors = append(errors, ShiftValidationError{
+						ShiftIndex:    shift.Index,
+						ShiftDate:     shift.Date,
+						CriterionName: c.Name(),
+						Description:   fmt.Sprintf("Shift has team lead (%s %s) as ordinary volunteer", member.FirstName, member.LastName),
+					})
+				}
+			}
 		}
 	}
 

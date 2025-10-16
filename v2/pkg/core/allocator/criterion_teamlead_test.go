@@ -381,21 +381,31 @@ func TestTeamLeadCriterion_ValidateRotaState_AllShiftsHaveTeamLead(t *testing.T)
 	state := &RotaState{
 		Shifts: []*Shift{
 			{
-				Index: 0,
-				Date:  "2024-01-01",
+				Index:    0,
+				Date:     "2024-01-01",
+				TeamLead: &Volunteer{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
 				AllocatedGroups: []*VolunteerGroup{
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl1", IsTeamLead: true},
+							{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
+							{ID: "v1", FirstName: "Bob", LastName: "Smith", IsTeamLead: false},
 						},
 					},
 				},
 			},
 			{
-				Index: 1,
-				Date:  "2024-01-08",
-				TeamLead: &Volunteer{ID: "tl2", IsTeamLead: true},
+				Index:    1,
+				Date:     "2024-01-08",
+				TeamLead: &Volunteer{ID: "tl2", FirstName: "Charlie", LastName: "Jones", IsTeamLead: true},
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: false,
+						Members: []Volunteer{
+							{ID: "v2", FirstName: "Diana", LastName: "Green", IsTeamLead: false},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -460,12 +470,12 @@ func TestTeamLeadCriterion_ValidateRotaState_MultipleTeamLeads(t *testing.T) {
 			{
 				Index:    0,
 				Date:     "2024-01-01",
-				TeamLead: &Volunteer{ID: "tl1", IsTeamLead: true},
+				TeamLead: &Volunteer{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
 				AllocatedGroups: []*VolunteerGroup{
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl2", IsTeamLead: true},
+							{ID: "tl2", FirstName: "Bob", LastName: "Jones", IsTeamLead: true}, // Different team lead as ordinary volunteer
 						},
 					},
 				},
@@ -479,7 +489,8 @@ func TestTeamLeadCriterion_ValidateRotaState_MultipleTeamLeads(t *testing.T) {
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[0].CriterionName)
-	assert.Contains(t, errors[0].Description, "has 2 team leads")
+	assert.Contains(t, errors[0].Description, "team lead")
+	assert.Contains(t, errors[0].Description, "Bob Jones")
 }
 
 func TestTeamLeadCriterion_ValidateRotaState_ThreeTeamLeads(t *testing.T) {
@@ -490,18 +501,18 @@ func TestTeamLeadCriterion_ValidateRotaState_ThreeTeamLeads(t *testing.T) {
 			{
 				Index:    0,
 				Date:     "2024-01-01",
-				TeamLead: &Volunteer{ID: "tl1", IsTeamLead: true},
+				TeamLead: &Volunteer{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
 				AllocatedGroups: []*VolunteerGroup{
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl2", IsTeamLead: true},
+							{ID: "tl2", FirstName: "Bob", LastName: "Jones", IsTeamLead: true}, // Different team lead
 						},
 					},
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl3", IsTeamLead: true},
+							{ID: "tl3", FirstName: "Charlie", LastName: "Brown", IsTeamLead: true}, // Another different team lead
 						},
 					},
 				},
@@ -510,12 +521,18 @@ func TestTeamLeadCriterion_ValidateRotaState_ThreeTeamLeads(t *testing.T) {
 	}
 
 	errors := criterion.ValidateRotaState(state)
-	assert.Len(t, errors, 1, "Should detect shift with three team leads")
+	assert.Len(t, errors, 2, "Should detect shift with two extra team leads")
 
+	// Both Bob and Charlie are team leads allocated as ordinary volunteers
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[0].CriterionName)
-	assert.Contains(t, errors[0].Description, "has 3 team leads")
+	assert.Contains(t, errors[0].Description, "team lead")
+
+	assert.Equal(t, 0, errors[1].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[1].ShiftDate)
+	assert.Equal(t, "TeamLead", errors[1].CriterionName)
+	assert.Contains(t, errors[1].Description, "team lead")
 }
 
 func TestTeamLeadCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) {
@@ -524,13 +541,15 @@ func TestTeamLeadCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) 
 	state := &RotaState{
 		Shifts: []*Shift{
 			{
-				Index: 0,
-				Date:  "2024-01-01",
+				Index:    0,
+				Date:     "2024-01-01",
+				TeamLead: &Volunteer{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
 				AllocatedGroups: []*VolunteerGroup{
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl1", IsTeamLead: true},
+							{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
+							{ID: "v1", FirstName: "Bob", LastName: "Jones", IsTeamLead: false},
 						},
 					},
 				},
@@ -550,7 +569,7 @@ func TestTeamLeadCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) 
 			{
 				Index:    2,
 				Date:     "2024-01-15",
-				TeamLead: &Volunteer{ID: "tl2", IsTeamLead: true},
+				TeamLead: &Volunteer{ID: "tl2", FirstName: "Charlie", LastName: "Brown", IsTeamLead: true},
 			},
 		},
 	}
@@ -569,13 +588,15 @@ func TestTeamLeadCriterion_ValidateRotaState_GroupWithoutTeamLeadDoesNotCount(t 
 	state := &RotaState{
 		Shifts: []*Shift{
 			{
-				Index: 0,
-				Date:  "2024-01-01",
+				Index:    0,
+				Date:     "2024-01-01",
+				TeamLead: &Volunteer{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
 				AllocatedGroups: []*VolunteerGroup{
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl1", IsTeamLead: true},
+							{ID: "tl1", FirstName: "Alice", LastName: "Smith", IsTeamLead: true},
+							{ID: "v0", FirstName: "Bob", LastName: "Smith", IsTeamLead: false},
 						},
 					},
 					{
