@@ -150,7 +150,7 @@ View availability responses for a rota:
 Generate the rota schedule from availability responses:
 
 ```bash
-./cli -e test generateRota [--seed <seed>] [--dry-run]
+./cli -e test allocateRota [--seed <seed>] [--dry-run]
 ```
 
 #### Publish Rota (Coming Soon)

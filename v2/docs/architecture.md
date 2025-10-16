@@ -30,7 +30,7 @@ repo/
 │ ├─── requestAvailability.go
 │ ├─── sendAvailabilityReminders.go
 │ ├─── viewResponses.go
-│ ├─── generateRota.go
+│ ├─── allocateRota.go
 │ ├─── viewRota.go
 │ ├─── publishRota.go
 │ └─── addCovers.go
@@ -239,7 +239,7 @@ The tool will support the following actions and queries. For each one there is a
 - Matches volunteer ids to names
 - Shows responses
 
-`generateRota`
+`allocateRota`
 
 - Accepts:
   - dry_run boolean (default is false)
@@ -250,7 +250,7 @@ The tool will support the following actions and queries. For each one there is a
 - Forms query: Gets responses matching form IDs
 - Sheets query: Fetches volunteers
 - Matches volunteer ids to names
-- Generates rota (uses seed to settle arbitrary decisions)
+- Allocates rota using allocator package
 - Jumps to last step if dry run
 - Resolves all allocations
 - DB query: Appends allocations

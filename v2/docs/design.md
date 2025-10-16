@@ -11,7 +11,7 @@ Creates a form for each active volunteer requesting them to select dates in the 
 `sendForms`
 Emails each form to each volunteer
 
-`generateRota`
+`allocateRota`
 Uses the availability data to generate a rota and publishes it to a spreadsheet
 There are a lot of requirements and optimisations to consider at this point
 
@@ -51,7 +51,7 @@ Fetch volunteers who have not responded and nudge them via email to respond.
 `viewResponses`
 Allows me to see who has responded and when they are available for each shift in the upcoming rota. This already exists. Should be ported over.
 
-`generateRota`
+`allocateRota`
 Retrieves volunteer availability and generates a suitable rota.
 
 Requirements:

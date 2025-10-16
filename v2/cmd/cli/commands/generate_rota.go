@@ -6,19 +6,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// GenerateRotaCmd creates the generateRota command
+// GenerateRotaCmd creates the allocateRota command
 func GenerateRotaCmd(app *AppContext) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "generateRota",
+		Use:   "allocateRota",
 		Short: "Generate a rota from availability responses",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			seed, _ := cmd.Flags().GetString("seed")
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 			if dryRun {
-				fmt.Println("TODO: Implement generateRota (DRY RUN mode)")
+				fmt.Println("TODO: Implement allocateRota (DRY RUN mode)")
 			} else {
-				fmt.Println("TODO: Implement generateRota")
+				fmt.Println("TODO: Implement allocateRota")
 			}
 			if seed != "" {
 				fmt.Printf("Using seed: %s\n", seed)
