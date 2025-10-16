@@ -36,12 +36,7 @@ func (c *ShiftSizeCriterion) PromoteVolunteerGroup(state *RotaState, group *Volu
 
 func (c *ShiftSizeCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
 	// Count ordinary volunteers in the group (exclude team leads)
-	ordinaryVolunteerCount := 0
-	for _, member := range group.Members {
-		if !member.IsTeamLead {
-			ordinaryVolunteerCount++
-		}
-	}
+	ordinaryVolunteerCount := group.OrdinaryVolunteerCount()
 
 	// Calculate how many spots are available in the shift
 	remainingCapacity := shift.RemainingCapacity()
@@ -52,12 +47,7 @@ func (c *ShiftSizeCriterion) IsShiftValid(state *RotaState, group *VolunteerGrou
 
 func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
 	// Count ordinary volunteers in the group (exclude team leads)
-	ordinaryVolunteerCount := 0
-	for _, member := range group.Members {
-		if !member.IsTeamLead {
-			ordinaryVolunteerCount++
-		}
-	}
+	ordinaryVolunteerCount := group.OrdinaryVolunteerCount()
 
 	// If no ordinary volunteers in the group, no affinity contribution
 	if ordinaryVolunteerCount == 0 {

@@ -293,6 +293,17 @@ func (vg *VolunteerGroup) RemainingCapacity(maxFrequency int) int {
 	return remaining
 }
 
+// OrdinaryVolunteerCount returns the count of non-team lead volunteers in this group
+func (vg *VolunteerGroup) OrdinaryVolunteerCount() int {
+	count := 0
+	for _, member := range vg.Members {
+		if !member.IsTeamLead {
+			count++
+		}
+	}
+	return count
+}
+
 // DesiredRemainingAllocations calculates how many more shifts this group should ideally be
 // allocated to reach the target frequency over time.
 //

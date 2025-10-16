@@ -61,12 +61,7 @@ func (c *MaleBalanceCriterion) IsShiftValid(state *RotaState, group *VolunteerGr
 
 	// Check if allocating this group (with no males) would fill the shift
 	// Only count ordinary volunteers (team leads don't count toward shift size)
-	ordinaryVolunteerCount := 0
-	for _, member := range group.Members {
-		if !member.IsTeamLead {
-			ordinaryVolunteerCount++
-		}
-	}
+	ordinaryVolunteerCount := group.OrdinaryVolunteerCount()
 
 	remainingCapacity := shift.RemainingCapacity()
 
