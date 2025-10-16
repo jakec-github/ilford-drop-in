@@ -26,9 +26,12 @@
 - Allocator building blocks ✅
 - Allocator validity checks ✅
 - Complete allocator ✅
-- Improve allocations DB schema to account for custom allocations
-- Build historical shifts
-- Generate rota service
-- Generator rota command
+- Improve allocations DB schema to account for custom allocations ✅
+- Basic allocate rota service ✅
+- Support for team leads in the volunteer model
+- Allocate rota command
+- Handle historical shifts
+- Handle rota overrides
+- Support db inserts for unsuccessful shifts
 
 ## Phase 4 - Remaining commands
