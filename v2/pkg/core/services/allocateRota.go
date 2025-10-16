@@ -352,8 +352,8 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 				RotaID:        rotaID,
 				ShiftDate:     shift.Date,
 				Role:          "volunteer",
-				VolunteerID:   preAllocatedID,
-				Preallocation: "external",
+				VolunteerID:   "",
+				Preallocation: preAllocatedID,
 			})
 		}
 	}
