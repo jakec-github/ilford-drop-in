@@ -52,7 +52,7 @@ func TestMaleBalanceCriterion_IsShiftValid_GroupWithMales(t *testing.T) {
 
 	group := &VolunteerGroup{
 		MaleCount: 1,
-		Members:   []Volunteer{{ID: "v1", Gender: "M"}},
+		Members:   []Volunteer{{ID: "v1", Gender: "Male"}},
 	}
 
 	// Groups with males are always valid
@@ -182,7 +182,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ShiftAlreadyHasMale(t *test
 	group := &VolunteerGroup{
 		GroupKey:  "group_a",
 		MaleCount: 1,
-		Members:   []Volunteer{{ID: "v1", Gender: "M"}},
+		Members:   []Volunteer{{ID: "v1", Gender: "Male"}},
 	}
 
 	state := &RotaState{
@@ -215,7 +215,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ManyMaleVolunteersAvailable
 		groups[i] = &VolunteerGroup{
 			GroupKey:  string(rune('a' + i)),
 			MaleCount: 1,
-			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "M"}},
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
 		}
 	}
 
@@ -248,7 +248,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_FewMaleVolunteersAvailable(
 		groups[i] = &VolunteerGroup{
 			GroupKey:  string(rune('a' + i)),
 			MaleCount: 1,
-			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "M"}},
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
 		}
 	}
 
@@ -278,7 +278,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_OnlyOneMaleVolunteerAvailab
 	group := &VolunteerGroup{
 		GroupKey:  "group_a",
 		MaleCount: 1,
-		Members:   []Volunteer{{ID: "v1", Gender: "M"}},
+		Members:   []Volunteer{{ID: "v1", Gender: "Male"}},
 	}
 
 	state := &RotaState{
@@ -310,7 +310,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ExcludesExhaustedGroups(t *
 		groups[i] = &VolunteerGroup{
 			GroupKey:  string(rune('a' + i)),
 			MaleCount: 1,
-			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "M"}},
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
 		}
 	}
 
@@ -350,7 +350,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ExcludesAllocatedGroups(t *
 		groups[i] = &VolunteerGroup{
 			GroupKey:  string(rune('a' + i)),
 			MaleCount: 1,
-			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "M"}},
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
 		}
 	}
 
@@ -385,7 +385,7 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_MixedGroupsOnlyCountsMales(
 		maleGroups[i] = &VolunteerGroup{
 			GroupKey:  string(rune('a' + i)),
 			MaleCount: 1,
-			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "M"}},
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
 		}
 	}
 
@@ -431,7 +431,7 @@ func TestMaleBalanceCriterion_PrefersUnpopularShifts(t *testing.T) {
 		groups[i] = &VolunteerGroup{
 			GroupKey:  string(rune('a' + i)),
 			MaleCount: 1,
-			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "M"}},
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
 		}
 	}
 

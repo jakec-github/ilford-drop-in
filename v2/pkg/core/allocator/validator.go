@@ -162,7 +162,7 @@ func checkDataConsistency(state *RotaState) []ShiftValidationError {
 			actualMaleCount += group.MaleCount
 		}
 		// If there's a team lead allocated independently (not part of a group), count them if male
-		if shift.TeamLead != nil && shift.TeamLead.Gender == "M" {
+		if shift.TeamLead != nil && shift.TeamLead.Gender == GenderMale {
 			// Check if this team lead is already counted in a group
 			teamLeadInGroup := false
 			for _, group := range shift.AllocatedGroups {

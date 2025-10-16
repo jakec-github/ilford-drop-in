@@ -79,7 +79,7 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 				teamLeadCount++
 				hasTeamLead = true
 			}
-			if member.Gender == "Male" {
+			if member.Gender == GenderMale {
 				maleCount++
 			}
 		}

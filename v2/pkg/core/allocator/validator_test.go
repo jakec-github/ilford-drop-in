@@ -7,8 +7,8 @@ import (
 )
 
 func TestValidateRotaState_ValidRota(t *testing.T) {
-	teamLead1 := &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "M"}
-	teamLead2 := &Volunteer{ID: "tl2", IsTeamLead: true, Gender: "M"}
+	teamLead1 := &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "Male"}
+	teamLead2 := &Volunteer{ID: "tl2", IsTeamLead: true, Gender: "Male"}
 
 	groupA := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -168,7 +168,7 @@ func TestValidateRotaState_NoCriteria(t *testing.T) {
 }
 
 func TestValidateRotaState_OnlySomeCriteriaViolated(t *testing.T) {
-	teamLead1 := &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "M"}
+	teamLead1 := &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "Male"}
 
 	groupA := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -213,8 +213,8 @@ func TestValidateRotaState_OnlySomeCriteriaViolated(t *testing.T) {
 
 func TestValidateRotaState_ShiftSpreadNeverFails(t *testing.T) {
 	// ShiftSpread is optimization-only, so it should never produce errors
-	teamLead1 := &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "M"}
-	teamLead2 := &Volunteer{ID: "tl2", IsTeamLead: true, Gender: "M"}
+	teamLead1 := &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "Male"}
+	teamLead2 := &Volunteer{ID: "tl2", IsTeamLead: true, Gender: "Male"}
 
 	groupA := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -469,7 +469,7 @@ func TestValidateCoreInvariants_AllValid(t *testing.T) {
 		HasTeamLead:           true,
 		MaleCount:             1,
 		Members: []Volunteer{
-			{ID: "tl1", IsTeamLead: true, Gender: "M"},
+			{ID: "tl1", IsTeamLead: true, Gender: "Male"},
 		},
 	}
 
@@ -485,7 +485,7 @@ func TestValidateCoreInvariants_AllValid(t *testing.T) {
 				Date:            "2024-01-01",
 				Size:            1,
 				AllocatedGroups: []*VolunteerGroup{groupA},
-				TeamLead:        &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "M"},
+				TeamLead:        &Volunteer{ID: "tl1", IsTeamLead: true, Gender: "Male"},
 				MaleCount:       1,
 			},
 		},

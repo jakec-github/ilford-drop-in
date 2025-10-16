@@ -2,6 +2,11 @@ package rotageneration
 
 import "slices"
 
+// Gender constants
+const (
+	GenderMale = "Male"
+)
+
 // VolunteerState manages the volunteer groups and tracks exhaustion status
 type VolunteerState struct {
 	// VolunteerGroups available for allocation
