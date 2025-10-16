@@ -1,5 +1,7 @@
 package rotageneration
 
+import "slices"
+
 // Allocator manages the rota generation process with configurable criteria
 type Allocator struct {
 	criteria []Criterion
@@ -186,9 +188,7 @@ func (a *Allocator) reinsertGroup(group *VolunteerGroup) {
 	}
 
 	// Insert group at the found position
-	volunteers.VolunteerGroups = append(volunteers.VolunteerGroups, nil)                       // Expand slice
-	copy(volunteers.VolunteerGroups[insertIdx+1:], volunteers.VolunteerGroups[insertIdx:])    // Shift elements right
-	volunteers.VolunteerGroups[insertIdx] = group                                              // Insert the group
+	volunteers.VolunteerGroups = slices.Insert(volunteers.VolunteerGroups, insertIdx, group)
 }
 
 // buildOutcome creates the final allocation outcome report
