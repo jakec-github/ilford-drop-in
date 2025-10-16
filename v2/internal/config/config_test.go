@@ -20,9 +20,9 @@ func TestValidate_ValidConfig(t *testing.T) {
 		GmailSender:          "sender@example.com",
 		RotaOverrides: []RotaOverride{
 			{
-				RRule:          "FREQ=WEEKLY;BYDAY=SU",
+				RRule:                "FREQ=WEEKLY;BYDAY=SU",
 				PrefilledAllocations: []string{"John Doe", "Jane Smith"},
-				ShiftSize:      &shiftSize,
+				ShiftSize:            &shiftSize,
 			},
 		},
 	}
@@ -67,7 +67,7 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		GmailUserID:          "user@example.com",
 		RotaOverrides: []RotaOverride{
 			{
-				RRule:          "INVALID_RRULE_SYNTAX",
+				RRule:                "INVALID_RRULE_SYNTAX",
 				PrefilledAllocations: []string{"John Doe"},
 			},
 		},
@@ -109,7 +109,7 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		GmailUserID:          "user@example.com",
 		RotaOverrides: []RotaOverride{
 			{
-				RRule:          "",
+				RRule:                "",
 				PrefilledAllocations: []string{"John Doe"},
 			},
 		},

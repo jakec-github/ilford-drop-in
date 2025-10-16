@@ -40,9 +40,9 @@ type Allocation struct {
 
 // Cover represents a volunteer cover/swap
 type Cover struct {
-	ID                   string
-	RotaID               string
-	ShiftDate            string
-	CoveredVolunteerID   string // nullable
-	CoveringVolunteerID  string // nullable
+	ID                  string
+	RotaID              string
+	ShiftDate           string
+	CoveredVolunteerID  string // nullable
+	CoveringVolunteerID string // nullable
 }

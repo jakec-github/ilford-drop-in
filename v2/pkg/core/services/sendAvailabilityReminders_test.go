@@ -265,8 +265,8 @@ func TestSendAvailabilityReminders_SkipsVolunteersInGroupsWithResponses(t *testi
 		reminderIDs = append(reminderIDs, reminder.VolunteerID)
 	}
 
-	assert.Contains(t, reminderIDs, "vol-3") // Charlie should get reminder
-	assert.Contains(t, reminderIDs, "vol-4") // Diana should get reminder
+	assert.Contains(t, reminderIDs, "vol-3")    // Charlie should get reminder
+	assert.Contains(t, reminderIDs, "vol-4")    // Diana should get reminder
 	assert.NotContains(t, reminderIDs, "vol-2") // Bob should be skipped
 
 	// No failed emails

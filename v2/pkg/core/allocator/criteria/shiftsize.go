@@ -46,7 +46,7 @@ func (c *ShiftSizeCriterion) IsShiftValid(state *rotageneration.RotaState, group
 	remainingCapacity := shift.RemainingCapacity()
 
 	// Invalid if adding this group's ordinary volunteers would exceed shift size
-	return  remainingCapacity >= ordinaryVolunteerCount
+	return remainingCapacity >= ordinaryVolunteerCount
 }
 
 func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) float64 {

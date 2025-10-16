@@ -106,7 +106,6 @@ type Shift struct {
 	AvailableGroups []*VolunteerGroup
 }
 
-
 // CurrentSize returns the current number of volunteers allocated to this shift
 func (s *Shift) CurrentSize() int {
 	size := len(s.PreAllocatedVolunteers)
@@ -127,7 +126,7 @@ func (s *Shift) IsFull() bool {
 
 // RemainingCapacity returns the number of ordinary volunteers who should be assigned
 func (s *Shift) RemainingCapacity() int {
-	return max(s.Size -  s.CurrentSize(), 0)
+	return max(s.Size-s.CurrentSize(), 0)
 }
 
 // buildAllocatedGroupSet creates a set of groups already allocated to this shift for fast lookup

@@ -112,4 +112,3 @@ func (c *Client) CreateSheet(spreadsheetID, sheetTitle string) (int64, error) {
 	sheetID := resp.Replies[0].AddSheet.Properties.SheetId
 	return sheetID, nil
 }
-

@@ -27,10 +27,10 @@ var (
 
 // OAuth scopes for Google APIs
 const (
-	ScopeSheets               = "https://www.googleapis.com/auth/spreadsheets"
-	ScopeFormsBody            = "https://www.googleapis.com/auth/forms.body"
+	ScopeSheets                 = "https://www.googleapis.com/auth/spreadsheets"
+	ScopeFormsBody              = "https://www.googleapis.com/auth/forms.body"
 	ScopeFormsResponsesReadonly = "https://www.googleapis.com/auth/forms.responses.readonly"
-	ScopeGmailSend            = "https://www.googleapis.com/auth/gmail.send"
+	ScopeGmailSend              = "https://www.googleapis.com/auth/gmail.send"
 )
 
 // GetOAuthConfig creates an OAuth2 config from the OAuth client configuration

@@ -196,8 +196,8 @@ func TestCalculateGroupRankingScore_BehindOnFrequency(t *testing.T) {
 	}
 	for i := 1; i < 10; i++ {
 		historicalShifts = append(historicalShifts, &Shift{
-			Index:            i,
-			AllocatedGroups:  []*VolunteerGroup{{GroupKey: "group_b"}},
+			Index:           i,
+			AllocatedGroups: []*VolunteerGroup{{GroupKey: "group_b"}},
 		})
 	}
 

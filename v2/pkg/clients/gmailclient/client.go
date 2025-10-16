@@ -19,7 +19,7 @@ type Client struct {
 	service      *gmail.Service
 	ctx          context.Context
 	lastSendTime time.Time
-	sendMutex           sync.Mutex
+	sendMutex    sync.Mutex
 }
 
 // NewClient creates a new Gmail client using an existing OAuth token

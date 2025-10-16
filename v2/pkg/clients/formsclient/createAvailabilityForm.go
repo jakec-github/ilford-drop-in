@@ -20,7 +20,7 @@ func (c *Client) CreateAvailabilityForm(
 	}
 
 	// Build the form title
-	formTitle := fmt.Sprintf("Availability - %s - %s to %s", volunteerName, shiftDateStrings[0], shiftDateStrings[len(shiftDateStrings) - 1])
+	formTitle := fmt.Sprintf("Availability - %s - %s to %s", volunteerName, shiftDateStrings[0], shiftDateStrings[len(shiftDateStrings)-1])
 
 	// Step 1: Create the form with just the title
 	form := &forms.Form{

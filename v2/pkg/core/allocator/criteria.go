@@ -2,10 +2,10 @@ package allocator
 
 // ShiftValidationError represents a validation error for a specific shift
 type ShiftValidationError struct {
-	ShiftIndex     int
-	ShiftDate      string
-	CriterionName  string
-	Description    string
+	ShiftIndex    int
+	ShiftDate     string
+	CriterionName string
+	Description   string
 }
 
 // Criterion defines the interface for custom allocation criteria

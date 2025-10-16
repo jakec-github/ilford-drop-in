@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestTeamLeadCriterion_Name(t *testing.T) {
 	criterion := NewTeamLeadCriterion(1.0, 1.0)
 	assert.Equal(t, "TeamLead", criterion.Name())
@@ -95,14 +94,14 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_GroupWithoutTeamLead(t *testin
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
+		Index:           0,
+		TeamLead:        nil,
 		AvailableGroups: []*VolunteerGroup{group},
 	}
 
@@ -121,14 +120,14 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ShiftAlreadyHasTeamLead(t *tes
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               &Volunteer{ID: "tl1", IsTeamLead: true}, // Already has team lead
+		Index:           0,
+		TeamLead:        &Volunteer{ID: "tl1", IsTeamLead: true}, // Already has team lead
 		AvailableGroups: []*VolunteerGroup{group},
 	}
 
@@ -151,14 +150,14 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ManyTeamLeadsAvailable(t *test
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
+		Index:           0,
+		TeamLead:        nil,
 		AvailableGroups: groups, // All 10 available
 	}
 
@@ -181,14 +180,14 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_FewTeamLeadsAvailable(t *testi
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
+		Index:           0,
+		TeamLead:        nil,
 		AvailableGroups: groups[:2], // Only 2 available
 	}
 
@@ -207,14 +206,14 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_OnlyOneTeamLeadAvailable(t *te
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
+		Index:           0,
+		TeamLead:        nil,
 		AvailableGroups: []*VolunteerGroup{group}, // Only 1 available
 	}
 
@@ -274,15 +273,15 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_ExcludesAllocatedGroups(t *tes
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
-		AllocatedGroups:        []*VolunteerGroup{groups[1]}, // Group 'b' (groups[1]) already allocated
+		Index:           0,
+		TeamLead:        nil,
+		AllocatedGroups: []*VolunteerGroup{groups[1]}, // Group 'b' (groups[1]) already allocated
 		AvailableGroups: groups[:3],
 	}
 
@@ -317,14 +316,14 @@ func TestTeamLeadCriterion_CalculateShiftAffinity_MixedGroupsOnlyCountsTeamLeads
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: allGroups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          allGroups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
+		Index:           0,
+		TeamLead:        nil,
 		AvailableGroups: allGroups[:8], // All 8 available
 	}
 
@@ -348,22 +347,22 @@ func TestTeamLeadCriterion_PrefersUnpopularShifts(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Popular shift - many team leads available
 	popularShift := &Shift{
-		Index:                  0,
-		TeamLead:               nil,
+		Index:           0,
+		TeamLead:        nil,
 		AvailableGroups: groups, // All 10 available
 	}
 
 	// Unpopular shift - only 2 team leads available
 	unpopularShift := &Shift{
-		Index:                  1,
-		TeamLead:               nil,
+		Index:           1,
+		TeamLead:        nil,
 		AvailableGroups: groups[:2], // Only 2 available
 	}
 

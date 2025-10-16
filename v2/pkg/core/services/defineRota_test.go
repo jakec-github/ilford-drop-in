@@ -14,10 +14,10 @@ import (
 
 // mockDB implements a test double for db.DB
 type mockDB struct {
-	rotations      []db.Rotation
-	insertedRotas  []*db.Rotation
+	rotations       []db.Rotation
+	insertedRotas   []*db.Rotation
 	getRotationsErr error
-	insertErr      error
+	insertErr       error
 }
 
 func (m *mockDB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -159,8 +159,8 @@ func TestNextSunday(t *testing.T) {
 		},
 		{
 			name:     "from Sunday",
-			from:     time.Date(2025, 10, 5, 10, 0, 0, 0, time.UTC),  // Sunday
-			expected: time.Date(2025, 10, 12, 0, 0, 0, 0, time.UTC),  // Next Sunday
+			from:     time.Date(2025, 10, 5, 10, 0, 0, 0, time.UTC), // Sunday
+			expected: time.Date(2025, 10, 12, 0, 0, 0, 0, time.UTC), // Next Sunday
 		},
 		{
 			name:     "from Saturday",

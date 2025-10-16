@@ -74,4 +74,3 @@ func (db *DB) InsertRow(tableName string, row []interface{}) error {
 func (db *DB) InsertRows(tableName string, rows [][]interface{}) error {
 	return db.client.AppendRows(db.spreadsheetID, tableName, rows)
 }
-

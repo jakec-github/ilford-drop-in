@@ -69,7 +69,6 @@ func (c *ShiftSpreadCriterion) CalculateShiftAffinity(state *rotageneration.Rota
 		return 0.5 // Single shift or no distance possible
 	}
 
-
 	// Check distance to the last historical shift
 	distanceFromHistorical := maxDistance
 	if lastHistoricalIndex >= 0 {

@@ -195,9 +195,9 @@ func (a *Allocator) reinsertGroup(group *VolunteerGroup) {
 func (a *Allocator) buildOutcome() *AllocationOutcome {
 	// Initialize with empty slices (not nil) for easier consumption
 	outcome := &AllocationOutcome{
-		State:                a.state,
-		UnderutilizedGroups:  []*VolunteerGroup{},
-		ValidationErrors:     []ShiftValidationError{},
+		State:               a.state,
+		UnderutilizedGroups: []*VolunteerGroup{},
+		ValidationErrors:    []ShiftValidationError{},
 	}
 
 	// Safety check

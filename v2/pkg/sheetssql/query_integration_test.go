@@ -47,11 +47,11 @@ func TestGetTableAs_ValidData(t *testing.T) {
 	mock := &mockSheetsClient{
 		getValuesFunc: func(spreadsheetID, sheetRange string) ([][]interface{}, error) {
 			return [][]interface{}{
-				{"name", "age", "active"},           // Headers
-				{"text", "int", "bool"},             // Types
-				{"Alice", "30", "true"},             // Data row 1
-				{"Bob", "25", "false"},              // Data row 2
-				{"Charlie", "35", "true"},           // Data row 3
+				{"name", "age", "active"}, // Headers
+				{"text", "int", "bool"},   // Types
+				{"Alice", "30", "true"},   // Data row 1
+				{"Bob", "25", "false"},    // Data row 2
+				{"Charlie", "35", "true"}, // Data row 3
 			}, nil
 		},
 	}
@@ -153,8 +153,8 @@ func TestGetTableAs_InvalidIntConversion(t *testing.T) {
 	mock := &mockSheetsClient{
 		getValuesFunc: func(spreadsheetID, sheetRange string) ([][]interface{}, error) {
 			return [][]interface{}{
-				{"name", "age", "active"},      // Headers
-				{"text", "int", "bool"},        // Types
+				{"name", "age", "active"},         // Headers
+				{"text", "int", "bool"},           // Types
 				{"Alice", "not-a-number", "true"}, // Invalid int
 			}, nil
 		},

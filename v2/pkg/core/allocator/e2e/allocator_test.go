@@ -55,28 +55,28 @@ func TestAllocator_EndToEnd(t *testing.T) {
 	// Average availability: 74/168 = 44%
 	availability := []VolunteerAvailability{
 		// Team lead couples - varied availability
-		{VolunteerID: "alice", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 5}},         // Available: 0,2,4,6 (4/7) - NOT shift 3
-		{VolunteerID: "bob", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 5}},           // Available: 0,2,4,6 (4/7) - NOT shift 3
-		{VolunteerID: "george", HasResponded: true, UnavailableShiftIndices: []int{0, 2, 3}},        // Available: 1,4,5,6 (4/7) - NOT shift 3
-		{VolunteerID: "helen", HasResponded: true, UnavailableShiftIndices: []int{0, 2, 3}},         // Available: 1,4,5,6 (4/7) - NOT shift 3
-		{VolunteerID: "karen", HasResponded: true, UnavailableShiftIndices: []int{1, 2, 3, 5}},      // Available: 0,4,6 (3/7) - NOT shift 3
-		{VolunteerID: "larry", HasResponded: true, UnavailableShiftIndices: []int{1, 2, 3, 5}},      // Available: 0,4,6 (3/7) - NOT shift 3
-		{VolunteerID: "wendy", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 4, 5, 6}}, // Available: ONLY 3 (1/7) - ONLY team lead for shift 3!
+		{VolunteerID: "alice", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 5}},           // Available: 0,2,4,6 (4/7) - NOT shift 3
+		{VolunteerID: "bob", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 5}},             // Available: 0,2,4,6 (4/7) - NOT shift 3
+		{VolunteerID: "george", HasResponded: true, UnavailableShiftIndices: []int{0, 2, 3}},          // Available: 1,4,5,6 (4/7) - NOT shift 3
+		{VolunteerID: "helen", HasResponded: true, UnavailableShiftIndices: []int{0, 2, 3}},           // Available: 1,4,5,6 (4/7) - NOT shift 3
+		{VolunteerID: "karen", HasResponded: true, UnavailableShiftIndices: []int{1, 2, 3, 5}},        // Available: 0,4,6 (3/7) - NOT shift 3
+		{VolunteerID: "larry", HasResponded: true, UnavailableShiftIndices: []int{1, 2, 3, 5}},        // Available: 0,4,6 (3/7) - NOT shift 3
+		{VolunteerID: "wendy", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 4, 5, 6}},  // Available: ONLY 3 (1/7) - ONLY team lead for shift 3!
 		{VolunteerID: "xavier", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 4, 5, 6}}, // Available: ONLY 3 (1/7) - one of 2 for shift 3!
 
 		// Individual volunteers - varied availability
 		{VolunteerID: "charlie", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 3, 4, 5, 6}}, // Available: ONLY 2(1/7) - NOT shift 3
-		{VolunteerID: "diana", HasResponded: true, UnavailableShiftIndices: []int{2, 3, 5}},           // Available: 0,1,4,6 (4/7) - NOT shift 3
-		{VolunteerID: "ivan", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 4, 5, 6}},   // Available: ONLY 3 (1/7) - one of 2 for shift 3!
-		{VolunteerID: "judy", HasResponded: true, UnavailableShiftIndices: []int{0, 3, 4, 5}},         // Available: 1,2,6 (4/7) - NOT shift 3
-		{VolunteerID: "oliver", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 5}},          // Available: 0,2,4,6 (4/7) - NOT shift 3
-		{VolunteerID: "paula", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 6}},           // Available: 0,2,4,5 (4/7) - NOT shift 3
-		{VolunteerID: "quinn", HasResponded: true, UnavailableShiftIndices: []int{0, 2, 3, 5}},        // Available: 1,4,6 (3/7) - NOT shift 3
-		{VolunteerID: "rachel", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 3}},       // Available: 4,5,6 (3/7) - NOT shift 3
-		{VolunteerID: "steve", HasResponded: true, UnavailableShiftIndices: []int{3, 4, 5, 6}},        // Available: 0,1,2 (3/7) - NOT shift 3
-		{VolunteerID: "tina", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 3, 4}},         // Available: 2,5,6 (3/7) - NOT shift 3
-		{VolunteerID: "uma", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 3, 4, 6}},       // Available: 2,5 (3/7) - NOT shift 3
-		{VolunteerID: "victor", HasResponded: true, UnavailableShiftIndices: []int{0, 3, 5, 6}},       // Available: 1,2,4 (3/7) - NOT shift 3
+		{VolunteerID: "diana", HasResponded: true, UnavailableShiftIndices: []int{2, 3, 5}},            // Available: 0,1,4,6 (4/7) - NOT shift 3
+		{VolunteerID: "ivan", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 4, 5, 6}},    // Available: ONLY 3 (1/7) - one of 2 for shift 3!
+		{VolunteerID: "judy", HasResponded: true, UnavailableShiftIndices: []int{0, 3, 4, 5}},          // Available: 1,2,6 (4/7) - NOT shift 3
+		{VolunteerID: "oliver", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 5}},           // Available: 0,2,4,6 (4/7) - NOT shift 3
+		{VolunteerID: "paula", HasResponded: true, UnavailableShiftIndices: []int{1, 3, 6}},            // Available: 0,2,4,5 (4/7) - NOT shift 3
+		{VolunteerID: "quinn", HasResponded: true, UnavailableShiftIndices: []int{0, 2, 3, 5}},         // Available: 1,4,6 (3/7) - NOT shift 3
+		{VolunteerID: "rachel", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2, 3}},        // Available: 4,5,6 (3/7) - NOT shift 3
+		{VolunteerID: "steve", HasResponded: true, UnavailableShiftIndices: []int{3, 4, 5, 6}},         // Available: 0,1,2 (3/7) - NOT shift 3
+		{VolunteerID: "tina", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 3, 4}},          // Available: 2,5,6 (3/7) - NOT shift 3
+		{VolunteerID: "uma", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 3, 4, 6}},        // Available: 2,5 (3/7) - NOT shift 3
+		{VolunteerID: "victor", HasResponded: true, UnavailableShiftIndices: []int{0, 3, 5, 6}},        // Available: 1,2,4 (3/7) - NOT shift 3
 
 		// Couples - varied availability
 		{VolunteerID: "eve", HasResponded: true, UnavailableShiftIndices: []int{1, 2, 3}},      // Available: 0,4,5,6 (4/7) - NOT shift 3
@@ -122,9 +122,9 @@ func TestAllocator_EndToEnd(t *testing.T) {
 						{ID: "alice", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: "couple_alice_bob"},
 						{ID: "bob", FirstName: "Bob", LastName: "Smith", Gender: "Male", IsTeamLead: false, GroupKey: "couple_alice_bob"},
 					},
-					MaleCount:              1,
-					AllocatedShiftIndices:  []int{-1},
-					AvailableShiftIndices:  []int{}, // Historical, so no current availability
+					MaleCount:                 1,
+					AllocatedShiftIndices:     []int{-1},
+					AvailableShiftIndices:     []int{}, // Historical, so no current availability
 					HistoricalAllocationCount: 1,
 				},
 				{
@@ -133,9 +133,9 @@ func TestAllocator_EndToEnd(t *testing.T) {
 					Members: []Volunteer{
 						{ID: "diana", FirstName: "Diana", LastName: "Green", Gender: "Female", IsTeamLead: false, GroupKey: ""},
 					},
-					MaleCount:              0,
-					AllocatedShiftIndices:  []int{-1},
-					AvailableShiftIndices:  []int{},
+					MaleCount:                 0,
+					AllocatedShiftIndices:     []int{-1},
+					AvailableShiftIndices:     []int{},
 					HistoricalAllocationCount: 1,
 				},
 			},
@@ -167,7 +167,7 @@ func TestAllocator_EndToEnd(t *testing.T) {
 			AppliesTo: func(date string) bool {
 				return date == "2024-02-12" // Last shift
 			},
-			ShiftSize:              nil, // Use default size
+			ShiftSize:              nil,                       // Use default size
 			PreAllocatedVolunteers: []string{"external_john"}, // External volunteer from outside the regular group
 		},
 	}
@@ -415,11 +415,11 @@ func TestAllocator_ImpossibleScenario(t *testing.T) {
 	// Shift 1: Bob, Carol available - no team lead available
 	// Shift 2: Diana, Eve available - no team lead and no males
 	availability := []VolunteerAvailability{
-		{VolunteerID: "tl1", HasResponded: true, UnavailableShiftIndices: []int{1, 2}},    // Alice: only shift 0
-		{VolunteerID: "m1", HasResponded: true, UnavailableShiftIndices: []int{0, 2}},     // Bob: only shift 1
-		{VolunteerID: "f1", HasResponded: true, UnavailableShiftIndices: []int{0, 2}},     // Carol: only shift 1
-		{VolunteerID: "f2", HasResponded: true, UnavailableShiftIndices: []int{0, 1}},     // Diana: only shift 2
-		{VolunteerID: "f3", HasResponded: true, UnavailableShiftIndices: []int{0, 1}},     // Eve: only shift 2
+		{VolunteerID: "tl1", HasResponded: true, UnavailableShiftIndices: []int{1, 2}}, // Alice: only shift 0
+		{VolunteerID: "m1", HasResponded: true, UnavailableShiftIndices: []int{0, 2}},  // Bob: only shift 1
+		{VolunteerID: "f1", HasResponded: true, UnavailableShiftIndices: []int{0, 2}},  // Carol: only shift 1
+		{VolunteerID: "f2", HasResponded: true, UnavailableShiftIndices: []int{0, 1}},  // Diana: only shift 2
+		{VolunteerID: "f3", HasResponded: true, UnavailableShiftIndices: []int{0, 1}},  // Eve: only shift 2
 	}
 
 	config := AllocationConfig{
@@ -467,9 +467,9 @@ func TestAllocator_ImpossibleScenario(t *testing.T) {
 	// - TeamLead: shift missing team lead
 	// - MaleBalance: shift has no male volunteers
 	validCriteriaNames := map[string]bool{
-		"ShiftSize":    true,
-		"TeamLead":     true,
-		"MaleBalance":  true,
+		"ShiftSize":   true,
+		"TeamLead":    true,
+		"MaleBalance": true,
 	}
 
 	for _, verr := range outcome.ValidationErrors {

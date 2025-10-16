@@ -7,7 +7,7 @@ import (
 
 // VolunteerAvailability represents a volunteer's availability response
 type VolunteerAvailability struct {
-	VolunteerID string
+	VolunteerID  string
 	HasResponded bool
 	// UnavailableShiftIndices contains shift indices this volunteer marked as unavailable
 	// Only meaningful if HasResponded is true

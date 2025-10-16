@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestMaleBalanceCriterion_Name(t *testing.T) {
 	criterion := NewMaleBalanceCriterion(1.0, 1.0)
 	assert.Equal(t, "MaleBalance", criterion.Name())
@@ -83,9 +82,9 @@ func TestMaleBalanceCriterion_IsShiftValid_WouldFillWithoutMale(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Size:                  5,
-		MaleCount:             0,
-		TeamLead:              &Volunteer{Gender: "Female"},
+		Size:                   5,
+		MaleCount:              0,
+		TeamLead:               &Volunteer{Gender: "Female"},
 		PreAllocatedVolunteers: []string{"pre1", "pre2", "pre3"}, // 3 already allocated
 	}
 
@@ -107,9 +106,9 @@ func TestMaleBalanceCriterion_IsShiftValid_WouldNotFillShift(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Size:                  5,
-		MaleCount:             0,
-		TeamLead:              &Volunteer{Gender: "Female"},
+		Size:                   5,
+		MaleCount:              0,
+		TeamLead:               &Volunteer{Gender: "Female"},
 		PreAllocatedVolunteers: []string{"pre1"}, // Only 1 allocated
 	}
 
@@ -132,9 +131,9 @@ func TestMaleBalanceCriterion_IsShiftValid_NoTeamLeadAssigned(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Size:                  5,
-		MaleCount:             0,
-		TeamLead:              nil, // No team lead assigned yet
+		Size:                   5,
+		MaleCount:              0,
+		TeamLead:               nil,                                      // No team lead assigned yet
 		PreAllocatedVolunteers: []string{"pre1", "pre2", "pre3", "pre4"}, // Shift is full
 	}
 
@@ -160,9 +159,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_GroupWithoutMales(t *testin
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -188,9 +187,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ShiftAlreadyHasMale(t *test
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -222,9 +221,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ManyMaleVolunteersAvailable
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -255,9 +254,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_FewMaleVolunteersAvailable(
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -284,9 +283,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_OnlyOneMaleVolunteerAvailab
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -357,9 +356,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_ExcludesAllocatedGroups(t *
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -404,9 +403,9 @@ func TestMaleBalanceCriterion_CalculateShiftAffinity_MixedGroupsOnlyCountsMales(
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: allGroups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          allGroups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	shift := &Shift{
@@ -438,9 +437,9 @@ func TestMaleBalanceCriterion_PrefersUnpopularShifts(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Popular shift - many male volunteers available

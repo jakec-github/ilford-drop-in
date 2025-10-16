@@ -45,9 +45,9 @@ func (c *Client) GetFormResponse(formID string, volunteerName string, shiftDates
 	allAnswers := response.Answers
 	if len(allAnswers) == 0 {
 		return &FormResponse{
-			VolunteerName: volunteerName,
-			Email:         email,
-			HasResponded:  true,
+			VolunteerName:   volunteerName,
+			Email:           email,
+			HasResponded:    true,
 			AvailableForAll: false,
 		}, nil
 	}

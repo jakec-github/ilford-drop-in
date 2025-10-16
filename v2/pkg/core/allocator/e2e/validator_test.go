@@ -35,9 +35,9 @@ func TestValidateRotaState_ValidRota(t *testing.T) {
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
 		VolunteerState: &VolunteerState{
-		VolunteerGroups:        []*VolunteerGroup{groupA, groupB},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{groupA, groupB},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -85,9 +85,9 @@ func TestValidateRotaState_MultipleViolations(t *testing.T) {
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
 		VolunteerState: &VolunteerState{
-		VolunteerGroups:        []*VolunteerGroup{groupA},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{groupA},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -184,15 +184,15 @@ func TestValidateRotaState_OnlySomeCriteriaViolated(t *testing.T) {
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 1 shift = floor(1 * 1.0) = 1 max allocation
 		VolunteerState: &VolunteerState{
-		VolunteerGroups:        []*VolunteerGroup{groupA},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{groupA},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 		Shifts: []*Shift{
 			{
 				Index:           0,
 				Date:            "2024-01-01",
-				Size:            5, // Underfilled
-				MaleCount:       2, // 1 from group + 1 from team lead
+				Size:            5,                         // Underfilled
+				MaleCount:       2,                         // 1 from group + 1 from team lead
 				AllocatedGroups: []*VolunteerGroup{groupA}, // Has team lead
 				TeamLead:        teamLead1,
 			},
@@ -228,9 +228,9 @@ func TestValidateRotaState_ShiftSpreadNeverFails(t *testing.T) {
 	state := &RotaState{
 		MaxAllocationFrequency: 1.0, // Frequency ratio 100% with 2 shifts = floor(2 * 1.0) = 2 max allocation
 		VolunteerState: &VolunteerState{
-		VolunteerGroups:        []*VolunteerGroup{groupA},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{groupA},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 		Shifts: []*Shift{
 			{
 				Index:           0,
@@ -244,7 +244,7 @@ func TestValidateRotaState_ShiftSpreadNeverFails(t *testing.T) {
 				Index:           1,
 				Date:            "2024-01-08",
 				Size:            0,
-				MaleCount:       2, // 1 from group + 1 from team lead
+				MaleCount:       2,                         // 1 from group + 1 from team lead
 				AllocatedGroups: []*VolunteerGroup{groupA}, // Even with double shift
 				TeamLead:        teamLead2,
 			},

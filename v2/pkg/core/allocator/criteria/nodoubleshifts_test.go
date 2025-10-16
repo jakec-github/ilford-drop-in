@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestNoDoubleShiftsCriterion_Name(t *testing.T) {
 	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
 	assert.Equal(t, "NoDoubleShifts", criterion.Name())

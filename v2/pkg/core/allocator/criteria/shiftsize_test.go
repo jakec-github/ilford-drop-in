@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestShiftSizeCriterion_Name(t *testing.T) {
 	criterion := NewShiftSizeCriterion(1.0, 1.0)
 	assert.Equal(t, "ShiftSize", criterion.Name())
@@ -240,9 +239,9 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_EmptyShift(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Empty shift with 5 remaining capacity and 1 available group (2 volunteers)
@@ -251,7 +250,7 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_EmptyShift(t *testing.T) {
 		Size:                   5,
 		AllocatedGroups:        []*VolunteerGroup{},
 		PreAllocatedVolunteers: []string{},
-		AvailableGroups: []*VolunteerGroup{group}, // group is available
+		AvailableGroups:        []*VolunteerGroup{group}, // group is available
 	}
 
 	// Empty shift = 5 capacity / 2 available volunteers = 2.5, clamped to 1.0
@@ -284,9 +283,9 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_HalfFull(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Half-full shift (5 spots remaining)
@@ -295,7 +294,7 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_HalfFull(t *testing.T) {
 		Size:                   10,
 		AllocatedGroups:        []*VolunteerGroup{allocatedGroup},
 		PreAllocatedVolunteers: []string{},
-		AvailableGroups: []*VolunteerGroup{group}, // group is available
+		AvailableGroups:        []*VolunteerGroup{group}, // group is available
 	}
 
 	// Half full = 5 capacity / 1 available volunteer = 5.0, clamped to 1.0
@@ -330,9 +329,9 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_NearlyFull(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Nearly full shift (1 spot remaining)
@@ -341,7 +340,7 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_NearlyFull(t *testing.T) {
 		Size:                   5,
 		AllocatedGroups:        []*VolunteerGroup{allocatedGroup},
 		PreAllocatedVolunteers: []string{},
-		AvailableGroups: groups, // 5 groups available
+		AvailableGroups:        groups, // 5 groups available
 	}
 
 	// Nearly full = 1 capacity / 5 available volunteers (5 groups x 1 volunteer each) = 0.2 affinity
@@ -388,9 +387,9 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_MixedGroup(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: []*VolunteerGroup{group},
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Empty shift
@@ -399,7 +398,7 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_MixedGroup(t *testing.T) {
 		Size:                   5,
 		AllocatedGroups:        []*VolunteerGroup{},
 		PreAllocatedVolunteers: []string{},
-		AvailableGroups: []*VolunteerGroup{group},
+		AvailableGroups:        []*VolunteerGroup{group},
 	}
 
 	// Has ordinary volunteers, so should calculate affinity normally
@@ -468,9 +467,9 @@ func TestShiftSizeCriterion_PrefersUnpopularShifts(t *testing.T) {
 
 	state := &RotaState{
 		VolunteerState: &VolunteerState{
-		VolunteerGroups: groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
-	},
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
 	}
 
 	// Empty shift (unpopular) - 5 capacity / 5 available volunteers = 1.0
@@ -479,7 +478,7 @@ func TestShiftSizeCriterion_PrefersUnpopularShifts(t *testing.T) {
 		Size:                   5,
 		AllocatedGroups:        []*VolunteerGroup{},
 		PreAllocatedVolunteers: []string{},
-		AvailableGroups: groups, // 5 groups available
+		AvailableGroups:        groups, // 5 groups available
 	}
 
 	// Nearly full shift (popular) - 1 capacity / 5 available volunteers = 0.2
@@ -488,7 +487,7 @@ func TestShiftSizeCriterion_PrefersUnpopularShifts(t *testing.T) {
 		Size:                   5,
 		AllocatedGroups:        []*VolunteerGroup{allocatedGroup},
 		PreAllocatedVolunteers: []string{},
-		AvailableGroups: groups, // 5 groups available
+		AvailableGroups:        groups, // 5 groups available
 	}
 
 	emptyAffinity := criterion.CalculateShiftAffinity(state, group, emptyShift)
