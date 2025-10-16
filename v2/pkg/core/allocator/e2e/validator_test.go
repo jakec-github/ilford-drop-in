@@ -62,8 +62,8 @@ func TestValidateRotaState_ValidRota(t *testing.T) {
 		NewShiftSizeCriterion(1.0, 1.0),
 		NewTeamLeadCriterion(1.0, 1.0),
 		NewMaleBalanceCriterion(1.0, 1.0),
-		NewNoDoubleShiftsCriterion(1.0, 1.0),
-		NewShiftSpreadCriterion(1.0, 1.0),
+		NewNoDoubleShiftsCriterion(1.0),
+		NewShiftSpreadCriterion(1.0),
 	}
 
 	errors := ValidateRotaState(state, criteria)
@@ -110,7 +110,7 @@ func TestValidateRotaState_MultipleViolations(t *testing.T) {
 		NewShiftSizeCriterion(1.0, 1.0),
 		NewTeamLeadCriterion(1.0, 1.0),
 		NewMaleBalanceCriterion(1.0, 1.0),
-		NewNoDoubleShiftsCriterion(1.0, 1.0),
+		NewNoDoubleShiftsCriterion(1.0),
 	}
 
 	errors := ValidateRotaState(state, criteria)
@@ -200,10 +200,10 @@ func TestValidateRotaState_OnlySomeCriteriaViolated(t *testing.T) {
 	}
 
 	criteria := []Criterion{
-		NewShiftSizeCriterion(1.0, 1.0),      // Will fail
-		NewTeamLeadCriterion(1.0, 1.0),       // Will pass
-		NewMaleBalanceCriterion(1.0, 1.0),    // Will pass
-		NewNoDoubleShiftsCriterion(1.0, 1.0), // Will pass
+		NewShiftSizeCriterion(1.0, 1.0),   // Will fail
+		NewTeamLeadCriterion(1.0, 1.0),    // Will pass
+		NewMaleBalanceCriterion(1.0, 1.0), // Will pass
+		NewNoDoubleShiftsCriterion(1.0),   // Will pass
 	}
 
 	errors := ValidateRotaState(state, criteria)
@@ -253,7 +253,7 @@ func TestValidateRotaState_ShiftSpreadNeverFails(t *testing.T) {
 
 	// Only test ShiftSpread criterion
 	criteria := []Criterion{
-		NewShiftSpreadCriterion(1.0, 1.0),
+		NewShiftSpreadCriterion(1.0),
 	}
 
 	errors := ValidateRotaState(state, criteria)

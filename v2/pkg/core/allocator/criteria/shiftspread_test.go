@@ -7,18 +7,18 @@ import (
 )
 
 func TestShiftSpreadCriterion_Name(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 	assert.Equal(t, "ShiftSpread", criterion.Name())
 }
 
 func TestShiftSpreadCriterion_Weights(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(5.0, 10.0)
-	assert.Equal(t, 5.0, criterion.GroupWeight())
+	criterion := NewShiftSpreadCriterion(10.0)
+	assert.Equal(t, 0.0, criterion.GroupWeight())
 	assert.Equal(t, 10.0, criterion.AffinityWeight())
 }
 
 func TestShiftSpreadCriterion_PromoteVolunteerGroup(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 	state := &RotaState{}
 	group := &VolunteerGroup{}
 
@@ -28,7 +28,7 @@ func TestShiftSpreadCriterion_PromoteVolunteerGroup(t *testing.T) {
 }
 
 func TestShiftSpreadCriterion_IsShiftValid(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 	state := &RotaState{
 		Shifts: []*Shift{{Index: 0}, {Index: 1}},
 	}
@@ -40,7 +40,7 @@ func TestShiftSpreadCriterion_IsShiftValid(t *testing.T) {
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_NoAllocations(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -62,7 +62,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_NoAllocations(t *testing.T)
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_FartherShiftHigherAffinity(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -103,7 +103,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_FartherShiftHigherAffinity(
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_MultipleAllocations(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -139,7 +139,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_MultipleAllocations(t *test
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_WithHistoricalAllocations(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	historicalGroup := &VolunteerGroup{
 		GroupKey: "group_a",
@@ -183,7 +183,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_WithHistoricalAllocations(t
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_HistoricalAndCurrentAllocations(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	historicalGroup := &VolunteerGroup{
 		GroupKey: "group_a",
@@ -228,7 +228,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_HistoricalAndCurrentAllocat
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_SingleShiftRota(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -248,7 +248,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_SingleShiftRota(t *testing.
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_HistoricalButDifferentGroup(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	otherGroup := &VolunteerGroup{
 		GroupKey: "group_b",
@@ -276,7 +276,7 @@ func TestShiftSpreadCriterion_CalculateShiftAffinity_HistoricalButDifferentGroup
 }
 
 func TestShiftSpreadCriterion_CalculateShiftAffinity_MultipleHistoricalAllocations(t *testing.T) {
-	criterion := NewShiftSpreadCriterion(1.0, 1.0)
+	criterion := NewShiftSpreadCriterion(1.0)
 
 	historicalGroup := &VolunteerGroup{
 		GroupKey: "group_a",

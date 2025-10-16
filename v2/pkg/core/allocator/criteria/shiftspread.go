@@ -17,14 +17,13 @@ import (
 // Promotion:
 //   - No promotion logic for this criterion
 type ShiftSpreadCriterion struct {
-	groupWeight    float64
 	affinityWeight float64
 }
 
-// NewShiftSpreadCriterion creates a new ShiftSpreadCriterion with the given weights
-func NewShiftSpreadCriterion(groupWeight, affinityWeight float64) *ShiftSpreadCriterion {
+// NewShiftSpreadCriterion creates a new ShiftSpreadCriterion with the given affinity weight.
+// Group weight is always 0 since this criterion does not promote groups.
+func NewShiftSpreadCriterion(affinityWeight float64) *ShiftSpreadCriterion {
 	return &ShiftSpreadCriterion{
-		groupWeight:    groupWeight,
 		affinityWeight: affinityWeight,
 	}
 }
@@ -118,7 +117,7 @@ func (c *ShiftSpreadCriterion) getLastHistoricalIndex(state *rotageneration.Rota
 }
 
 func (c *ShiftSpreadCriterion) GroupWeight() float64 {
-	return c.groupWeight
+	return 0
 }
 
 func (c *ShiftSpreadCriterion) AffinityWeight() float64 {

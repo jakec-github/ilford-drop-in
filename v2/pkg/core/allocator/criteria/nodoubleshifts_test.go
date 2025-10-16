@@ -7,18 +7,18 @@ import (
 )
 
 func TestNoDoubleShiftsCriterion_Name(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 	assert.Equal(t, "NoDoubleShifts", criterion.Name())
 }
 
 func TestNoDoubleShiftsCriterion_Weights(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(5.0, 10.0)
-	assert.Equal(t, 5.0, criterion.GroupWeight())
+	criterion := NewNoDoubleShiftsCriterion(10.0)
+	assert.Equal(t, 0.0, criterion.GroupWeight())
 	assert.Equal(t, 10.0, criterion.AffinityWeight())
 }
 
 func TestNoDoubleShiftsCriterion_PromoteVolunteerGroup(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 	state := &RotaState{}
 	group := &VolunteerGroup{}
 
@@ -28,7 +28,7 @@ func TestNoDoubleShiftsCriterion_PromoteVolunteerGroup(t *testing.T) {
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_NoAdjacentAllocations(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -55,7 +55,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_NoAdjacentAllocations(t *testing.T
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_NotAdjacent(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -79,7 +79,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_NotAdjacent(t *testing.T) {
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShift(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -98,7 +98,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShift(t *testing.T) {
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_LastShift(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -117,7 +117,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_LastShift(t *testing.T) {
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_NoAllocations(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -138,7 +138,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_NoAllocations(t *testing.T) {
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_PreservesAllOptions(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -164,7 +164,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_PreservesAllOptions(t *t
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_EdgeShiftPreservesMore(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -198,7 +198,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_EdgeShiftPreservesMore(t
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_WithExistingAllocations(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -227,7 +227,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_WithExistingAllocations(
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_NoValidShiftsRemaining(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -252,7 +252,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_NoValidShiftsRemaining(t
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_LastValidShift(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -285,7 +285,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_LastValidShift(t *testin
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_OnlyUnavailableShiftsWouldBeInvalidated(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	state := &RotaState{
 		Shifts: []*Shift{
@@ -312,7 +312,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_OnlyUnavailableShiftsWou
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShiftAfterHistorical(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	group := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -344,7 +344,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShiftAfterHistorical(t *testi
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShiftNoHistorical(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	group := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -364,7 +364,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShiftNoHistorical(t *testing.
 }
 
 func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShiftGroupNotInHistorical(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	group := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -391,7 +391,7 @@ func TestNoDoubleShiftsCriterion_IsShiftValid_FirstShiftGroupNotInHistorical(t *
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_WithHistoricalShift(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	group := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -428,7 +428,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_WithHistoricalShift(t *t
 }
 
 func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_HistoricalBlocksFirstShift(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	group := &VolunteerGroup{
 		GroupKey:              "group_a",
@@ -463,7 +463,7 @@ func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_HistoricalBlocksFirstShi
 }
 
 func TestNoDoubleShiftsCriterion_ValidateRotaState_NoDoubleShifts(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	groupA := &VolunteerGroup{GroupKey: "group_a"}
 	groupB := &VolunteerGroup{GroupKey: "group_b"}
@@ -499,7 +499,7 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_NoDoubleShifts(t *testing.T) 
 }
 
 func TestNoDoubleShiftsCriterion_ValidateRotaState_DetectsDoubleShift(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	groupA := &VolunteerGroup{GroupKey: "group_a"}
 	groupB := &VolunteerGroup{GroupKey: "group_b"}
@@ -536,7 +536,7 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_DetectsDoubleShift(t *testing
 }
 
 func TestNoDoubleShiftsCriterion_ValidateRotaState_MultipleDoubleShifts(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	groupA := &VolunteerGroup{GroupKey: "group_a"}
 	groupB := &VolunteerGroup{GroupKey: "group_b"}
@@ -574,7 +574,7 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_MultipleDoubleShifts(t *testi
 }
 
 func TestNoDoubleShiftsCriterion_ValidateRotaState_HistoricalBoundary(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	groupA := &VolunteerGroup{GroupKey: "group_a"}
 	groupB := &VolunteerGroup{GroupKey: "group_b"}
@@ -616,7 +616,7 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_HistoricalBoundary(t *testing
 }
 
 func TestNoDoubleShiftsCriterion_ValidateRotaState_NoHistoricalShifts(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	groupA := &VolunteerGroup{GroupKey: "group_a"}
 
@@ -642,7 +642,7 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_NoHistoricalShifts(t *testing
 }
 
 func TestNoDoubleShiftsCriterion_ValidateRotaState_GroupNotInHistorical(t *testing.T) {
-	criterion := NewNoDoubleShiftsCriterion(1.0, 1.0)
+	criterion := NewNoDoubleShiftsCriterion(1.0)
 
 	groupA := &VolunteerGroup{GroupKey: "group_a"}
 	groupB := &VolunteerGroup{GroupKey: "group_b"}

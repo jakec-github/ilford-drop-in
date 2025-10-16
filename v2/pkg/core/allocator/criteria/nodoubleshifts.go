@@ -19,14 +19,13 @@ import (
 // Promotion:
 //   - No promotion logic for this criterion
 type NoDoubleShiftsCriterion struct {
-	groupWeight    float64
 	affinityWeight float64
 }
 
-// NewNoDoubleShiftsCriterion creates a new NoDoubleShiftsCriterion with the given weights
-func NewNoDoubleShiftsCriterion(groupWeight, affinityWeight float64) *NoDoubleShiftsCriterion {
+// NewNoDoubleShiftsCriterion creates a new NoDoubleShiftsCriterion with the given affinity weight.
+// Group weight is always 0 since this criterion does not promote groups.
+func NewNoDoubleShiftsCriterion(affinityWeight float64) *NoDoubleShiftsCriterion {
 	return &NoDoubleShiftsCriterion{
-		groupWeight:    groupWeight,
 		affinityWeight: affinityWeight,
 	}
 }
@@ -171,7 +170,7 @@ func (c *NoDoubleShiftsCriterion) CalculateShiftAffinity(state *rotageneration.R
 }
 
 func (c *NoDoubleShiftsCriterion) GroupWeight() float64 {
-	return c.groupWeight
+	return 0
 }
 
 func (c *NoDoubleShiftsCriterion) AffinityWeight() float64 {

@@ -138,8 +138,8 @@ func AllocateRota(
 		criteria.NewShiftSizeCriterion(2.0, 2.0),
 		criteria.NewTeamLeadCriterion(0.5, 2.0),
 		criteria.NewMaleBalanceCriterion(0.5, 1.0),
-		criteria.NewNoDoubleShiftsCriterion(0, 1.0),
-		criteria.NewShiftSpreadCriterion(0, 0.5),
+		criteria.NewNoDoubleShiftsCriterion(1.0),
+		criteria.NewShiftSpreadCriterion(0.5),
 	}
 
 	// Build allocation config

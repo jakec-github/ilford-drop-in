@@ -101,8 +101,8 @@ func TestAllocator_EndToEnd(t *testing.T) {
 		NewShiftSizeCriterion(2.0, 2.0),
 		NewTeamLeadCriterion(0.5, 2.0),
 		NewMaleBalanceCriterion(0.5, 1.0),
-		NewNoDoubleShiftsCriterion(0, 1.0),
-		NewShiftSpreadCriterion(0, 0.5),
+		NewNoDoubleShiftsCriterion(1.0),
+		NewShiftSpreadCriterion(0.5),
 	}
 
 	// Setup historical shifts - the week before the rota starts (2023-12-25)
