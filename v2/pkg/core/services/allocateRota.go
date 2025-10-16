@@ -1,0 +1,319 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator/criteria"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
+)
+
+// AllocateRotaResult contains the allocation results
+type AllocateRotaResult struct {
+	RotaID              string
+	RotaStart           string
+	ShiftCount          int
+	ShiftDates          []time.Time
+	Success             bool
+	AllocatedShifts     []*allocator.Shift
+	ValidationErrors    []allocator.ShiftValidationError
+	UnderutilizedGroups []*allocator.VolunteerGroup
+}
+
+// AllocateRotaStore defines the database operations needed for allocating a rota
+type AllocateRotaStore interface {
+	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
+	InsertAllocations(allocations []db.Allocation) error
+}
+
+// AllocateRota runs the allocation algorithm to assign volunteers to shifts
+// If dryRun is true, allocations are not saved to the database
+func AllocateRota(
+	ctx context.Context,
+	database AllocateRotaStore,
+	volunteerClient VolunteerClient,
+	formsClient FormsClientWithResponses,
+	cfg *config.Config,
+	logger *zap.Logger,
+	dryRun bool,
+) (*AllocateRotaResult, error) {
+	logger.Debug("Starting allocateRota",
+		zap.Bool("dry_run", dryRun))
+
+	// Step 1: DB query - Fetch rota list
+	logger.Debug("Fetching rotations")
+	rotations, err := database.GetRotations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch rotations: %w", err)
+	}
+	logger.Debug("Found rotations", zap.Int("count", len(rotations)))
+
+	if len(rotations) == 0 {
+		return nil, fmt.Errorf("no rotations found - please define a rota first")
+	}
+
+	// Step 2: Find latest rota
+	targetRota := findLatestRotation(rotations)
+	logger.Debug("Using latest rota", zap.String("id", targetRota.ID))
+
+	logger.Debug("Target rota",
+		zap.String("id", targetRota.ID),
+		zap.String("start", targetRota.Start),
+		zap.Int("shift_count", targetRota.ShiftCount))
+
+	// Calculate shift dates
+	shiftDates, err := calculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+	}
+
+	// Step 3: DB query - Fetch availability requests
+	logger.Debug("Fetching availability requests")
+	allRequests, err := database.GetAvailabilityRequests(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
+	}
+	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
+
+	// Step 4: Find availability requests for resolved rota
+	requestsForRota := filterSentRequestsByRotaID(allRequests, targetRota.ID)
+	logger.Debug("Filtered sent requests for target rota", zap.Int("count", len(requestsForRota)))
+
+	if len(requestsForRota) == 0 {
+		return nil, fmt.Errorf("no availability requests found for rota %s - please run requestAvailability first", targetRota.ID)
+	}
+
+	// Step 5: Sheets query - Fetch volunteers
+	logger.Debug("Fetching volunteers")
+	allVolunteers, err := volunteerClient.ListVolunteers(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
+	}
+	logger.Debug("Found volunteers", zap.Int("count", len(allVolunteers)))
+
+	// Build map of volunteers by ID
+	volunteersByID := make(map[string]model.Volunteer)
+	for _, vol := range allVolunteers {
+		volunteersByID[vol.ID] = vol
+	}
+
+	// Filter to active volunteers
+	activeVolunteers := filterActiveVolunteers(allVolunteers)
+	logger.Debug("Active volunteers", zap.Int("count", len(activeVolunteers)))
+
+	// Step 6: Forms query - Get responses matching form IDs
+	logger.Debug("Fetching form responses")
+	availability, err := fetchAvailabilityResponses(
+		ctx,
+		requestsForRota,
+		volunteersByID,
+		shiftDates,
+		formsClient,
+		logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch availability responses: %w", err)
+	}
+	logger.Debug("Processed availability responses", zap.Int("count", len(availability)))
+
+	// Convert model volunteers to allocator volunteers
+	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
+	logger.Debug("Converted volunteers for allocator", zap.Int("count", len(allocatorVolunteers)))
+
+	// Convert shift dates to strings for allocator
+	shiftDateStrings := make([]string, len(shiftDates))
+	for i, date := range shiftDates {
+		shiftDateStrings[i] = date.Format("2006-01-02")
+	}
+
+	// Configure allocation criteria
+	allocationCriteria := []allocator.Criterion{
+		criteria.NewShiftSizeCriterion(2.0, 2.0),
+		criteria.NewTeamLeadCriterion(0.5, 2.0),
+		criteria.NewMaleBalanceCriterion(0.5, 1.0),
+		criteria.NewNoDoubleShiftsCriterion(0, 1.0),
+		criteria.NewShiftSpreadCriterion(0, 0.5),
+	}
+
+	// Build allocation config
+	allocConfig := allocator.AllocationConfig{
+		Criteria:               allocationCriteria,
+		MaxAllocationFrequency: 0.33,                 // 33% - each volunteer can do roughly 1/3 of shifts
+		HistoricalShifts:       []*allocator.Shift{}, // TODO: Load from previous rotas
+		Volunteers:             allocatorVolunteers,
+		Availability:           availability,
+		ShiftDates:             shiftDateStrings,
+		DefaultShiftSize:       2,                           // 2 volunteers per shift (excluding team lead)
+		Overrides:              []allocator.ShiftOverride{}, // TODO: Support overrides
+	}
+
+	// Run the allocation algorithm
+	logger.Info("Running allocation algorithm")
+	outcome, err := allocator.Allocate(allocConfig)
+	if err != nil {
+		return nil, fmt.Errorf("allocation failed: %w", err)
+	}
+
+	logger.Info("Allocation completed",
+		zap.Bool("success", outcome.Success),
+		zap.Int("validation_errors", len(outcome.ValidationErrors)),
+		zap.Int("underutilized_groups", len(outcome.UnderutilizedGroups)))
+
+	// Log validation errors
+	for _, verr := range outcome.ValidationErrors {
+		logger.Warn("Validation error",
+			zap.String("criterion", verr.CriterionName),
+			zap.Int("shift_index", verr.ShiftIndex),
+			zap.String("shift_date", verr.ShiftDate),
+			zap.String("description", verr.Description))
+	}
+
+	// If not dry run, save allocations to database
+	if !dryRun && outcome.Success {
+		logger.Info("Saving allocations to database")
+		dbAllocations := convertToDBAllocations(targetRota.ID, outcome.State.Shifts)
+		if err := database.InsertAllocations(dbAllocations); err != nil {
+			return nil, fmt.Errorf("failed to save allocations: %w", err)
+		}
+		logger.Info("Allocations saved", zap.Int("count", len(dbAllocations)))
+	} else if dryRun {
+		logger.Info("Dry run mode - allocations not saved")
+	} else {
+		logger.Warn("Allocation unsuccessful - not saving to database")
+	}
+
+	return &AllocateRotaResult{
+		RotaID:              targetRota.ID,
+		RotaStart:           targetRota.Start,
+		ShiftCount:          targetRota.ShiftCount,
+		ShiftDates:          shiftDates,
+		Success:             outcome.Success,
+		AllocatedShifts:     outcome.State.Shifts,
+		ValidationErrors:    outcome.ValidationErrors,
+		UnderutilizedGroups: outcome.UnderutilizedGroups,
+	}, nil
+}
+
+// fetchAvailabilityResponses fetches form responses and converts them to allocator availability format
+func fetchAvailabilityResponses(
+	ctx context.Context,
+	requests []db.AvailabilityRequest,
+	volunteersByID map[string]model.Volunteer,
+	shiftDates []time.Time,
+	formsClient FormsClientWithResponses,
+	logger *zap.Logger,
+) ([]allocator.VolunteerAvailability, error) {
+	availability := make([]allocator.VolunteerAvailability, 0, len(requests))
+
+	for _, req := range requests {
+		volunteer, exists := volunteersByID[req.VolunteerID]
+		if !exists {
+			logger.Warn("Volunteer not found in map", zap.String("volunteer_id", req.VolunteerID))
+			continue
+		}
+
+		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
+
+		// Get form response
+		formResp, err := formsClient.GetFormResponse(req.FormID, volunteerName, shiftDates)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get form response for volunteer %s: %w", volunteer.ID, err)
+		}
+
+		// Convert unavailable dates to shift indices
+		unavailableIndices := make([]int, 0)
+		for _, unavailableDateStr := range formResp.UnavailableDates {
+			// Find the index of this date in shiftDates
+			for i, shiftDate := range shiftDates {
+				if shiftDate.Format("Mon Jan 2 2006") == unavailableDateStr {
+					unavailableIndices = append(unavailableIndices, i)
+					break
+				}
+			}
+		}
+
+		availability = append(availability, allocator.VolunteerAvailability{
+			VolunteerID:             req.VolunteerID,
+			HasResponded:            formResp.HasResponded,
+			UnavailableShiftIndices: unavailableIndices,
+		})
+	}
+
+	return availability, nil
+}
+
+// convertToAllocatorVolunteers converts model.Volunteer to allocator.Volunteer
+func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volunteer {
+	result := make([]allocator.Volunteer, len(volunteers))
+	for i, vol := range volunteers {
+		// TODO: Determine IsTeamLead from volunteer data
+		// Currently assuming no team leads until we have the field in the spreadsheet
+		isTeamLead := false
+
+		result[i] = allocator.Volunteer{
+			ID:         vol.ID,
+			FirstName:  vol.FirstName,
+			LastName:   vol.LastName,
+			Gender:     vol.Gender,
+			IsTeamLead: isTeamLead,
+			GroupKey:   vol.GroupKey,
+		}
+	}
+	return result
+}
+
+// convertToDBAllocations converts allocator shifts to database allocation records
+func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Allocation {
+	allocations := make([]db.Allocation, 0)
+
+	for _, shift := range shifts {
+		// Add allocations for regular volunteers in groups
+		for _, group := range shift.AllocatedGroups {
+			for _, member := range group.Members {
+				// Skip team lead if they're also the designated team lead for the shift
+				if shift.TeamLead != nil && member.ID == shift.TeamLead.ID {
+					continue
+				}
+
+				allocations = append(allocations, db.Allocation{
+					RotaID:        rotaID,
+					ShiftDate:     shift.Date,
+					Role:          "volunteer",
+					VolunteerID:   member.ID,
+					Preallocation: "",
+				})
+			}
+		}
+
+		// Add team lead allocation
+		if shift.TeamLead != nil {
+			allocations = append(allocations, db.Allocation{
+				RotaID:        rotaID,
+				ShiftDate:     shift.Date,
+				Role:          "team_lead",
+				VolunteerID:   shift.TeamLead.ID,
+				Preallocation: "",
+			})
+		}
+
+		// Add pre-allocated volunteers
+		for _, preAllocatedID := range shift.PreAllocatedVolunteers {
+			allocations = append(allocations, db.Allocation{
+				RotaID:        rotaID,
+				ShiftDate:     shift.Date,
+				Role:          "volunteer",
+				VolunteerID:   preAllocatedID,
+				Preallocation: "external",
+			})
+		}
+	}
+
+	return allocations
+}
