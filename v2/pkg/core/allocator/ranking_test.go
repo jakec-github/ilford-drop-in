@@ -48,7 +48,10 @@ func TestCalculateGroupRankingScore_NoCriteria(t *testing.T) {
 		Shifts: []*Shift{
 			{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4},
 		},
-		HistoricalShifts: []*Shift{},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 	}
 
 	group := &VolunteerGroup{
@@ -76,7 +79,10 @@ func TestCalculateGroupRankingScore_WithCustomCriteria(t *testing.T) {
 		Shifts: []*Shift{
 			{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4},
 		},
-		HistoricalShifts: []*Shift{},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 	}
 
 	group := &VolunteerGroup{
@@ -114,7 +120,10 @@ func TestCalculateGroupRankingScore_GroupPromotion(t *testing.T) {
 		Shifts: []*Shift{
 			{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4},
 		},
-		HistoricalShifts: []*Shift{},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 	}
 
 	multiMemberGroup := &VolunteerGroup{
@@ -143,7 +152,7 @@ func TestCalculateGroupRankingScore_GroupPromotion(t *testing.T) {
 
 	// Multi-member group should get +1 * WeightPromoteGroup = +1
 	assert.Greater(t, multiScore, singleScore)
-	assert.Equal(t, singleScore+float64(WeightPromoteGroup), multiScore)
+	assert.Equal(t, singleScore+state.WeightPromoteGroup, multiScore)
 }
 
 func TestCalculateGroupRankingScore_UrgencyHighWhenLimitedAvailability(t *testing.T) {
@@ -151,7 +160,10 @@ func TestCalculateGroupRankingScore_UrgencyHighWhenLimitedAvailability(t *testin
 		Shifts: []*Shift{
 			{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4},
 		},
-		HistoricalShifts: []*Shift{},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 	}
 
 	// Group with limited availability
@@ -202,8 +214,11 @@ func TestCalculateGroupRankingScore_BehindOnFrequency(t *testing.T) {
 	}
 
 	state := &RotaState{
-		Shifts:           []*Shift{{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4}},
-		HistoricalShifts: historicalShifts,
+		Shifts:                         []*Shift{{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4}},
+		HistoricalShifts:               historicalShifts,
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 	}
 
 	// Group A: Never allocated before (behind)
@@ -239,8 +254,11 @@ func TestCalculateGroupRankingScore_BehindOnFrequency(t *testing.T) {
 
 func TestCalculateGroupRankingScore_NoRemainingAvailability(t *testing.T) {
 	state := &RotaState{
-		Shifts:           []*Shift{{Index: 0}, {Index: 1}},
-		HistoricalShifts: []*Shift{},
+		Shifts:                         []*Shift{{Index: 0}, {Index: 1}},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 	}
 
 	// Group that has been allocated to all their available shifts

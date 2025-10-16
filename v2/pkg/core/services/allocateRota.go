@@ -14,6 +14,46 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+const (
+	// Built-in ranking weights for volunteer group prioritization
+	// These are used by the allocator's ranking algorithm to score groups
+
+	// WeightCurrentRotaUrgency is the weight applied based on how difficult this group
+	// is to schedule. More difficult volunteers are allocated first to ensure they get
+	// the shifts they want.
+	WeightCurrentRotaUrgency = 1
+
+	// WeightOverallFrequencyFairness is the weight applied based on how many allocations
+	// the group needs to reach their target frequency over time (historical + current).
+	// Higher values prioritize fairness across all rotas.
+	WeightOverallFrequencyFairness = 1
+
+	// WeightPromoteGroup is the weight applied to groups over individuals.
+	// Higher values prioritise groups more strongly. Group size does not affect score
+	WeightPromoteGroup = 1
+
+	// Criterion-specific weights
+	// These control how much each criterion influences group ranking and shift selection
+
+	// ShiftSize criterion weights
+	WeightShiftSizeGroup    = 2.0 // Prioritize groups when shifts need filling
+	WeightShiftSizeAffinity = 2.0 // Prefer shifts that need more volunteers
+
+	// TeamLead criterion weights
+	WeightTeamLeadGroup    = 0.5 // Slightly prioritize groups with team leads
+	WeightTeamLeadAffinity = 2.0 // Strongly prefer shifts that need team leads
+
+	// MaleBalance criterion weights
+	WeightMaleBalanceGroup    = 0.5 // Slightly prioritize groups with males
+	WeightMaleBalanceAffinity = 1.0 // Prefer shifts that need male volunteers
+
+	// NoDoubleShifts criterion weights
+	WeightNoDoubleShiftsAffinity = 1.0 // Prefer shifts that preserve more options
+
+	// ShiftSpread criterion weights
+	WeightShiftSpreadAffinity = 0.5 // Slightly prefer shifts that spread out allocations
+)
+
 // AllocateRotaResult contains the allocation results
 type AllocateRotaResult struct {
 	RotaID              string
@@ -135,23 +175,26 @@ func AllocateRota(
 
 	// Configure allocation criteria
 	allocationCriteria := []allocator.Criterion{
-		criteria.NewShiftSizeCriterion(2.0, 2.0),
-		criteria.NewTeamLeadCriterion(0.5, 2.0),
-		criteria.NewMaleBalanceCriterion(0.5, 1.0),
-		criteria.NewNoDoubleShiftsCriterion(1.0),
-		criteria.NewShiftSpreadCriterion(0.5),
+		criteria.NewShiftSizeCriterion(WeightShiftSizeGroup, WeightShiftSizeAffinity),
+		criteria.NewTeamLeadCriterion(WeightTeamLeadGroup, WeightTeamLeadAffinity),
+		criteria.NewMaleBalanceCriterion(WeightMaleBalanceGroup, WeightMaleBalanceAffinity),
+		criteria.NewNoDoubleShiftsCriterion(WeightNoDoubleShiftsAffinity),
+		criteria.NewShiftSpreadCriterion(WeightShiftSpreadAffinity),
 	}
 
 	// Build allocation config
 	allocConfig := allocator.AllocationConfig{
-		Criteria:               allocationCriteria,
-		MaxAllocationFrequency: cfg.MaxAllocationFrequency,
-		HistoricalShifts:       []*allocator.Shift{}, // TODO: Load from previous rotas
-		Volunteers:             allocatorVolunteers,
-		Availability:           availability,
-		ShiftDates:             shiftDateStrings,
-		DefaultShiftSize:       cfg.DefaultShiftSize,
-		Overrides:              []allocator.ShiftOverride{}, // TODO: Support overrides
+		Criteria:                       allocationCriteria,
+		MaxAllocationFrequency:         cfg.MaxAllocationFrequency,
+		HistoricalShifts:               []*allocator.Shift{}, // TODO: Load from previous rotas
+		Volunteers:                     allocatorVolunteers,
+		Availability:                   availability,
+		ShiftDates:                     shiftDateStrings,
+		DefaultShiftSize:               cfg.DefaultShiftSize,
+		Overrides:                      []allocator.ShiftOverride{}, // TODO: Support overrides
+		WeightCurrentRotaUrgency:       WeightCurrentRotaUrgency,
+		WeightOverallFrequencyFairness: WeightOverallFrequencyFairness,
+		WeightPromoteGroup:             WeightPromoteGroup,
 	}
 
 	// Run the allocation algorithm

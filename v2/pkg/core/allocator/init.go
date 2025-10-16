@@ -310,10 +310,13 @@ func InitAllocation(config AllocationConfig) (Allocator, error) {
 
 	// Create initial rota state
 	state := &RotaState{
-		Shifts:                 shifts,
-		VolunteerState:         volunteerState,
-		HistoricalShifts:       config.HistoricalShifts,
-		MaxAllocationFrequency: config.MaxAllocationFrequency,
+		Shifts:                         shifts,
+		VolunteerState:                 volunteerState,
+		HistoricalShifts:               config.HistoricalShifts,
+		MaxAllocationFrequency:         config.MaxAllocationFrequency,
+		WeightCurrentRotaUrgency:       config.WeightCurrentRotaUrgency,
+		WeightOverallFrequencyFairness: config.WeightOverallFrequencyFairness,
+		WeightPromoteGroup:             config.WeightPromoteGroup,
 	}
 
 	RankVolunteerGroups(state, config.Criteria, config.MaxAllocationFrequency)

@@ -32,6 +32,11 @@ type RotaState struct {
 	// MaxAllocationFrequency is the ratio of shifts to allocate (e.g., 0.5 = 50%, 0.33 = 33%)
 	// The maximum allocation count is calculated as: floor(len(Shifts) * MaxAllocationFrequency)
 	MaxAllocationFrequency float64
+
+	// Built-in ranking weights
+	WeightCurrentRotaUrgency       float64
+	WeightOverallFrequencyFairness float64
+	WeightPromoteGroup             float64
 }
 
 // MaxAllocationCount returns the maximum number of shifts a group can be allocated to

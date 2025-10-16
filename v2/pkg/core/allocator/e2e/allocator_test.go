@@ -174,14 +174,17 @@ func TestAllocator_EndToEnd(t *testing.T) {
 
 	// Create allocation config
 	config := AllocationConfig{
-		Criteria:               criteria,
-		MaxAllocationFrequency: 0.33, // Each group can be allocated to 33% of shifts (2 out of 7)
-		HistoricalShifts:       historicalShifts,
-		Volunteers:             volunteers,
-		Availability:           availability,
-		ShiftDates:             shiftDates,
-		DefaultShiftSize:       2, // 2 volunteers per shift (excludes team lead)
-		Overrides:              overrides,
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
+		Criteria:                       criteria,
+		MaxAllocationFrequency:         0.33, // Each group can be allocated to 33% of shifts (2 out of 7)
+		HistoricalShifts:               historicalShifts,
+		Volunteers:                     volunteers,
+		Availability:                   availability,
+		ShiftDates:                     shiftDates,
+		DefaultShiftSize:               2, // 2 volunteers per shift (excludes team lead)
+		Overrides:                      overrides,
 	}
 
 	// Run the allocator
@@ -304,6 +307,9 @@ func TestAllocator_EndToEnd(t *testing.T) {
 func TestAllocator_ErrorHandling(t *testing.T) {
 	t.Run("no shift dates", func(t *testing.T) {
 		config := AllocationConfig{
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 			Criteria:               []Criterion{},
 			MaxAllocationFrequency: 0.5,
 			Volunteers:             []Volunteer{{ID: "v1"}},
@@ -316,6 +322,9 @@ func TestAllocator_ErrorHandling(t *testing.T) {
 
 	t.Run("no volunteers", func(t *testing.T) {
 		config := AllocationConfig{
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 			Criteria:               []Criterion{},
 			MaxAllocationFrequency: 0.5,
 			Volunteers:             []Volunteer{},
@@ -328,6 +337,9 @@ func TestAllocator_ErrorHandling(t *testing.T) {
 
 	t.Run("invalid frequency", func(t *testing.T) {
 		config := AllocationConfig{
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 			Criteria:               []Criterion{},
 			MaxAllocationFrequency: 1.5,
 			Volunteers:             []Volunteer{{ID: "v1"}},
@@ -340,6 +352,9 @@ func TestAllocator_ErrorHandling(t *testing.T) {
 
 	t.Run("negative shift size", func(t *testing.T) {
 		config := AllocationConfig{
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 			Criteria:               []Criterion{},
 			MaxAllocationFrequency: 0.5,
 			Volunteers:             []Volunteer{{ID: "v1"}},
@@ -365,6 +380,9 @@ func TestAllocator_SmallScenario(t *testing.T) {
 	}
 
 	config := AllocationConfig{
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 		Criteria: []Criterion{
 			NewShiftSizeCriterion(1.0, 1.0),
 			NewTeamLeadCriterion(1.0, 1.0),
@@ -423,6 +441,9 @@ func TestAllocator_ImpossibleScenario(t *testing.T) {
 	}
 
 	config := AllocationConfig{
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
 		Criteria: []Criterion{
 			NewShiftSizeCriterion(1.0, 1.0),
 			NewTeamLeadCriterion(1.0, 1.0),

@@ -54,7 +54,7 @@ func calculateGroupRankingScore(state *RotaState, group *VolunteerGroup, criteri
 			urgencyScore = 1.0
 		}
 
-		totalScore += urgencyScore * WeightCurrentRotaUrgency
+		totalScore += urgencyScore * state.WeightCurrentRotaUrgency
 	}
 
 	// Built-in 2: Overall frequency fairness
@@ -78,13 +78,13 @@ func calculateGroupRankingScore(state *RotaState, group *VolunteerGroup, criteri
 			fairnessScore = -1.0
 		}
 
-		totalScore += fairnessScore * WeightOverallFrequencyFairness
+		totalScore += fairnessScore * state.WeightOverallFrequencyFairness
 	}
 
 	// Built-in 3: Promote groups over individuals
 	// Schedule groups early to make sure there is space
 	if len(group.Members) > 1 {
-		totalScore += 1 * WeightPromoteGroup
+		totalScore += 1 * state.WeightPromoteGroup
 	}
 
 	// Custom criteria promotion values
