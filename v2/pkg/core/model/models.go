@@ -31,11 +31,12 @@ type AvailabilityRequest struct {
 
 // Allocation represents a shift allocation assignment
 type Allocation struct {
-	ID          string
-	RotaID      string
-	ShiftDate   string
-	Role        string
-	VolunteerID string
+	ID           string
+	RotaID       string
+	ShiftDate    string
+	Role         string
+	VolunteerID  string // nullable
+	Preallocated string // nullable
 }
 
 // Cover represents a volunteer cover/swap

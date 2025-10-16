@@ -73,7 +73,8 @@ Internal data stored in sheets will take the following format. The tool will not
 | rota_id      | uuid |             |
 | shift_date   | date |             |
 | role         | text |             |
-| volunteer_id | text |             |
+| volunteer_id | text | nullable    |
+| preallocated | text | nullable    |
 
 ## covers
 
@@ -241,7 +242,6 @@ The tool will support the following actions and queries. For each one there is a
 `generateRota`
 
 - Accepts:
-  - seed -string (optional)
   - dry_run boolean (default is false)
 - DB query: Fetches rota list
 - Finds latest rota
