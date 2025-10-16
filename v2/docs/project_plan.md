@@ -25,7 +25,7 @@
 
 - Allocator building blocks ✅
 - Allocator validity checks ✅
-- Complete allocator
+- Complete allocator ✅
 - Improve allocations DB schema to account for custom allocations
 - Build historical shifts
 - Generate rota service
