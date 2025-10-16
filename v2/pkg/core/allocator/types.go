@@ -125,6 +125,15 @@ func (s *Shift) RemainingCapacity() int {
 	return max(s.Size -  s.CurrentSize(), 0)
 }
 
+// buildAllocatedGroupSet creates a set of groups already allocated to this shift for fast lookup
+func (s *Shift) buildAllocatedGroupSet() map[*VolunteerGroup]bool {
+	allocatedSet := make(map[*VolunteerGroup]bool)
+	for _, group := range s.AllocatedGroups {
+		allocatedSet[group] = true
+	}
+	return allocatedSet
+}
+
 // RemainingAvailableVolunteers returns the count of ordinary volunteers (non-team leads)
 // from groups that are:
 //   - Available for this shift (in AvailableGroups)
@@ -141,10 +150,7 @@ func (s *Shift) RemainingAvailableVolunteers(state *RotaState) int {
 	remainingCapacity := s.RemainingCapacity()
 
 	// Build set of already allocated groups for fast lookup
-	allocatedSet := make(map[*VolunteerGroup]bool)
-	for _, group := range s.AllocatedGroups {
-		allocatedSet[group] = true
-	}
+	allocatedSet := s.buildAllocatedGroupSet()
 
 	// Count ordinary volunteers from groups that are available, not exhausted,
 	// not already allocated, and small enough to fit
@@ -190,10 +196,7 @@ func (s *Shift) RemainingAvailableTeamLeads(state *RotaState) int {
 	count := 0
 
 	// Build set of already allocated groups for fast lookup
-	allocatedSet := make(map[*VolunteerGroup]bool)
-	for _, group := range s.AllocatedGroups {
-		allocatedSet[group] = true
-	}
+	allocatedSet := s.buildAllocatedGroupSet()
 
 	// Count team leads from groups that are available, not exhausted, and not already allocated
 	for _, group := range s.AvailableGroups {
@@ -231,10 +234,7 @@ func (s *Shift) RemainingAvailableMaleVolunteers(state *RotaState) int {
 	remainingCapacity := s.RemainingCapacity()
 
 	// Build set of already allocated groups for fast lookup
-	allocatedSet := make(map[*VolunteerGroup]bool)
-	for _, group := range s.AllocatedGroups {
-		allocatedSet[group] = true
-	}
+	allocatedSet := s.buildAllocatedGroupSet()
 
 	// Count male volunteers from groups that are available, not exhausted, not allocated,
 	// and small enough to fit
