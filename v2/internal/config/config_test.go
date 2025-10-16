@@ -12,12 +12,14 @@ import (
 func TestValidate_ValidConfig(t *testing.T) {
 	shiftSize := 5
 	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseSheetID:      "db789",
-		GmailUserID:          "user@example.com",
-		GmailSender:          "sender@example.com",
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseSheetID:        "db789",
+		GmailUserID:            "user@example.com",
+		GmailSender:            "sender@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "FREQ=WEEKLY;BYDAY=SU",
@@ -33,11 +35,13 @@ func TestValidate_ValidConfig(t *testing.T) {
 
 func TestValidate_MinimalConfig(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseSheetID:      "db789",
-		GmailUserID:          "user@example.com",
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseSheetID:        "db789",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
 	}
 
 	err := Validate(cfg)
@@ -60,11 +64,13 @@ func TestValidate_MissingRequiredField(t *testing.T) {
 
 func TestValidate_InvalidRRule(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseSheetID:      "db789",
-		GmailUserID:          "user@example.com",
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseSheetID:        "db789",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "INVALID_RRULE_SYNTAX",
@@ -80,11 +86,13 @@ func TestValidate_InvalidRRule(t *testing.T) {
 
 func TestValidate_MultipleInvalidRRules(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseSheetID:      "db789",
-		GmailUserID:          "user@example.com",
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseSheetID:        "db789",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=WEEKLY;BYDAY=SU",
@@ -102,11 +110,13 @@ func TestValidate_MultipleInvalidRRules(t *testing.T) {
 
 func TestValidate_EmptyRRule(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseSheetID:      "db789",
-		GmailUserID:          "user@example.com",
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseSheetID:        "db789",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "",
@@ -122,11 +132,13 @@ func TestValidate_EmptyRRule(t *testing.T) {
 
 func TestValidate_ComplexValidRRule(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseSheetID:      "db789",
-		GmailUserID:          "user@example.com",
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseSheetID:        "db789",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=MONTHLY;BYDAY=1SU;BYMONTH=1,4,7,10",
@@ -149,6 +161,8 @@ rotaSheetID: "rota456"
 databaseSheetID: "db789"
 gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
     prefilledAllocations:
@@ -192,6 +206,8 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseSheetID: "db789"
 gmailUserID: "user@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
 rotaOverrides:
   - rrule: "INVALID_RRULE_SYNTAX"
     prefilledAllocations:
@@ -216,6 +232,8 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseSheetID: "db789"
 gmailUserID: "user@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
 `
 
 	err := os.WriteFile(configPath, []byte(minimalConfig), 0644)
@@ -282,6 +300,8 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseSheetID: "db789"
 gmailUserID: "user@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
 rotaOverrides:
   - prefilledAllocations:
       - "John Doe"
@@ -306,6 +326,8 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseSheetID: "db789"
 gmailUserID: "user@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
     prefilledAllocations:

@@ -140,8 +140,20 @@ Config will be kept in `drop_in_config.yaml`. The CLI runner will look for the f
       "type": "string"
     },
     "gmailSender": {
-      "description": "The sender’s email address if it differs from the ID",
+      "description": "The sender's email address if it differs from the ID",
       "type": "string"
+    },
+    "maxAllocationFrequency": {
+      "description": "Maximum frequency a volunteer can be allocated (e.g., 0.25 = 1 in 4 shifts)",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "exclusiveMinimum": true
+    },
+    "defaultShiftSize": {
+      "description": "Default number of volunteers per shift (excluding team lead)",
+      "type": "integer",
+      "minimum": 1
     }
   },
   "required": [
@@ -149,7 +161,9 @@ Config will be kept in `drop_in_config.yaml`. The CLI runner will look for the f
     "serviceVolunteersTab",
     "rotaSheetID",
     "databaseSheetID",
-    "gmailUserID"
+    "gmailUserID",
+    "maxAllocationFrequency",
+    "defaultShiftSize"
   ]
 }
 ```

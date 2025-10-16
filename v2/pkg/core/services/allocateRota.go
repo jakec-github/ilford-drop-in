@@ -145,12 +145,12 @@ func AllocateRota(
 	// Build allocation config
 	allocConfig := allocator.AllocationConfig{
 		Criteria:               allocationCriteria,
-		MaxAllocationFrequency: 0.33,                 // 33% - each volunteer can do roughly 1/3 of shifts
+		MaxAllocationFrequency: cfg.MaxAllocationFrequency,
 		HistoricalShifts:       []*allocator.Shift{}, // TODO: Load from previous rotas
 		Volunteers:             allocatorVolunteers,
 		Availability:           availability,
 		ShiftDates:             shiftDateStrings,
-		DefaultShiftSize:       2,                           // 2 volunteers per shift (excluding team lead)
+		DefaultShiftSize:       cfg.DefaultShiftSize,
 		Overrides:              []allocator.ShiftOverride{}, // TODO: Support overrides
 	}
 

@@ -52,6 +52,10 @@ volunteers_tab: 'Volunteers'
 gmail_user_id: 'me'
 gmail_sender: 'your-email@gmail.com' # Defaults to match the above value
 
+# Allocation settings
+maxAllocationFrequency: 0.25 # Max 1/4 of shifts per volunteer (e.g., 1/4 = 1 in 4 shifts)
+defaultShiftSize: 2 # Default volunteers per shift (excluding team lead)
+
 # Optional rota overrides
 rotaOverrides:
   rrule: 'FREQ=WEEKLY;BYDAY=SU' # Weekly shifts on Sunday
