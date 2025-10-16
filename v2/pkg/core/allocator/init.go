@@ -1,7 +1,8 @@
-package rotageneration
+package allocator
 
 import (
 	"fmt"
+	"sort"
 )
 
 // VolunteerAvailability represents a volunteer's availability response
@@ -155,6 +156,12 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 	if len(groups) == 0 {
 		return nil, fmt.Errorf("no valid volunteer groups after initialization")
 	}
+
+	// Sort groups deterministically by GroupKey to ensure consistent ordering
+	// This prevents flaky tests due to Go's randomized map iteration order
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].GroupKey < groups[j].GroupKey
+	})
 
 	// Create VolunteerState with empty exhaustion map
 	volunteerState := &VolunteerState{

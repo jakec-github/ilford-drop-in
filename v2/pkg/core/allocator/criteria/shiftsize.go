@@ -1,6 +1,10 @@
-package rotageneration
+package criteria
 
-import "fmt"
+import (
+	"fmt"
+
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+)
 
 // ShiftSizeCriterion prevents overfilling of shifts and optimizes for unpopular shifts.
 //
@@ -29,12 +33,12 @@ func (c *ShiftSizeCriterion) Name() string {
 	return "ShiftSize"
 }
 
-func (c *ShiftSizeCriterion) PromoteVolunteerGroup(state *RotaState, group *VolunteerGroup) float64 {
+func (c *ShiftSizeCriterion) PromoteVolunteerGroup(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup) float64 {
 	// No promotion logic for this criterion
 	return 0
 }
 
-func (c *ShiftSizeCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
+func (c *ShiftSizeCriterion) IsShiftValid(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) bool {
 	// Count ordinary volunteers in the group (exclude team leads)
 	ordinaryVolunteerCount := group.OrdinaryVolunteerCount()
 
@@ -45,7 +49,7 @@ func (c *ShiftSizeCriterion) IsShiftValid(state *RotaState, group *VolunteerGrou
 	return  remainingCapacity >= ordinaryVolunteerCount
 }
 
-func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
+func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) float64 {
 	// Count ordinary volunteers in the group (exclude team leads)
 	ordinaryVolunteerCount := group.OrdinaryVolunteerCount()
 
@@ -91,20 +95,20 @@ func (c *ShiftSizeCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
 
-func (c *ShiftSizeCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	var errors []ShiftValidationError
+func (c *ShiftSizeCriterion) ValidateRotaState(state *rotageneration.RotaState) []rotageneration.ShiftValidationError {
+	var errors []rotageneration.ShiftValidationError
 
 	for _, shift := range state.Shifts {
 		currentSize := shift.CurrentSize()
 		if currentSize < shift.Size {
-			errors = append(errors, ShiftValidationError{
+			errors = append(errors, rotageneration.ShiftValidationError{
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),
 				Description:   fmt.Sprintf("Shift is underfilled: has %d volunteers but size is %d", currentSize, shift.Size),
 			})
 		} else if currentSize > shift.Size {
-			errors = append(errors, ShiftValidationError{
+			errors = append(errors, rotageneration.ShiftValidationError{
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),

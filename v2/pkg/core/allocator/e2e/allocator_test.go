@@ -1,4 +1,4 @@
-package rotageneration
+package e2e
 
 import (
 	"testing"

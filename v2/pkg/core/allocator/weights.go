@@ -1,4 +1,4 @@
-package rotageneration
+package allocator
 
 // Built-in ranking weights for volunteer group prioritization
 const (

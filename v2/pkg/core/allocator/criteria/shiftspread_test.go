@@ -1,10 +1,11 @@
-package rotageneration
+package criteria
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
 
 func TestShiftSpreadCriterion_Name(t *testing.T) {
 	criterion := NewShiftSpreadCriterion(1.0, 1.0)

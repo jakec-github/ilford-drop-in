@@ -1,4 +1,4 @@
-package rotageneration
+package allocator
 
 import "fmt"
 

@@ -1,6 +1,10 @@
-package rotageneration
+package criteria
 
-import "fmt"
+import (
+	"fmt"
+
+	allocator "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+)
 
 // TeamLeadCriterion prevents overallocation of team leads and optimizes for unpopular shifts.
 //
@@ -32,7 +36,7 @@ func (c *TeamLeadCriterion) Name() string {
 	return "TeamLead"
 }
 
-func (c *TeamLeadCriterion) PromoteVolunteerGroup(state *RotaState, group *VolunteerGroup) float64 {
+func (c *TeamLeadCriterion) PromoteVolunteerGroup(state *allocator.RotaState, group *allocator.VolunteerGroup) float64 {
 	// Promote groups with team leads
 	if group.HasTeamLead {
 		return 1.0
@@ -40,7 +44,7 @@ func (c *TeamLeadCriterion) PromoteVolunteerGroup(state *RotaState, group *Volun
 	return 0
 }
 
-func (c *TeamLeadCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
+func (c *TeamLeadCriterion) IsShiftValid(state *allocator.RotaState, group *allocator.VolunteerGroup, shift *allocator.Shift) bool {
 	// If this group has a team lead and the shift already has one, invalid
 	if group.HasTeamLead && shift.TeamLead != nil {
 		return false
@@ -48,7 +52,7 @@ func (c *TeamLeadCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup
 	return true
 }
 
-func (c *TeamLeadCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
+func (c *TeamLeadCriterion) CalculateShiftAffinity(state *allocator.RotaState, group *allocator.VolunteerGroup, shift *allocator.Shift) float64 {
 	// Only calculate affinity for groups with team leads
 	if !group.HasTeamLead {
 		return 0
@@ -85,12 +89,12 @@ func (c *TeamLeadCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
 
-func (c *TeamLeadCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	var errors []ShiftValidationError
+func (c *TeamLeadCriterion) ValidateRotaState(state *allocator.RotaState) []allocator.ShiftValidationError {
+	var errors []allocator.ShiftValidationError
 
 	for _, shift := range state.Shifts {
 		if shift.TeamLead == nil {
-			errors = append(errors, ShiftValidationError{
+			errors = append(errors, allocator.ShiftValidationError{
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),
@@ -103,7 +107,7 @@ func (c *TeamLeadCriterion) ValidateRotaState(state *RotaState) []ShiftValidatio
 		for _, group := range shift.AllocatedGroups {
 			for _, member := range group.Members {
 				if member.IsTeamLead && member.ID != shift.TeamLead.ID {
-					errors = append(errors, ShiftValidationError{
+					errors = append(errors, allocator.ShiftValidationError{
 						ShiftIndex:    shift.Index,
 						ShiftDate:     shift.Date,
 						CriterionName: c.Name(),

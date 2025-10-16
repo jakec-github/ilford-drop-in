@@ -1,4 +1,4 @@
-package rotageneration
+package criteria
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
 
 func TestShiftSizeCriterion_Name(t *testing.T) {
 	criterion := NewShiftSizeCriterion(1.0, 1.0)

@@ -1,6 +1,10 @@
-package rotageneration
+package criteria
 
-import "fmt"
+import (
+	"fmt"
+
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+)
 
 // NoDoubleShiftsCriterion prevents allocation to shifts immediately adjacent to already allocated shifts.
 //
@@ -31,12 +35,12 @@ func (c *NoDoubleShiftsCriterion) Name() string {
 	return "NoDoubleShifts"
 }
 
-func (c *NoDoubleShiftsCriterion) PromoteVolunteerGroup(state *RotaState, group *VolunteerGroup) float64 {
+func (c *NoDoubleShiftsCriterion) PromoteVolunteerGroup(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup) float64 {
 	// No promotion logic for this criterion
 	return 0
 }
 
-func (c *NoDoubleShiftsCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
+func (c *NoDoubleShiftsCriterion) IsShiftValid(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) bool {
 	// Check if the group is already allocated to an adjacent shift
 	shiftIndex := shift.Index
 
@@ -71,7 +75,7 @@ func (c *NoDoubleShiftsCriterion) IsShiftValid(state *RotaState, group *Voluntee
 	return true
 }
 
-func (c *NoDoubleShiftsCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
+func (c *NoDoubleShiftsCriterion) CalculateShiftAffinity(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) float64 {
 	// Calculate how many valid shift options would remain after this allocation
 	// We want to prefer shifts that preserve more options for future allocations
 
@@ -174,8 +178,8 @@ func (c *NoDoubleShiftsCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
 
-func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	var errors []ShiftValidationError
+func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *rotageneration.RotaState) []rotageneration.ShiftValidationError {
+	var errors []rotageneration.ShiftValidationError
 
 	// Check each shift for double shifts
 	for i := 0; i < len(state.Shifts); i++ {
@@ -192,7 +196,7 @@ func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *RotaState) []ShiftVal
 			prevShift := state.Shifts[i-1]
 			for _, prevGroup := range prevShift.AllocatedGroups {
 				if currentGroups[prevGroup.GroupKey] {
-					errors = append(errors, ShiftValidationError{
+					errors = append(errors, rotageneration.ShiftValidationError{
 						ShiftIndex:    shift.Index,
 						ShiftDate:     shift.Date,
 						CriterionName: c.Name(),
@@ -207,7 +211,7 @@ func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *RotaState) []ShiftVal
 			lastHistoricalShift := state.HistoricalShifts[len(state.HistoricalShifts)-1]
 			for _, historicalGroup := range lastHistoricalShift.AllocatedGroups {
 				if currentGroups[historicalGroup.GroupKey] {
-					errors = append(errors, ShiftValidationError{
+					errors = append(errors, rotageneration.ShiftValidationError{
 						ShiftIndex:    shift.Index,
 						ShiftDate:     shift.Date,
 						CriterionName: c.Name(),

@@ -1,10 +1,11 @@
-package rotageneration
+package criteria
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
 
 func TestMaleBalanceCriterion_Name(t *testing.T) {
 	criterion := NewMaleBalanceCriterion(1.0, 1.0)

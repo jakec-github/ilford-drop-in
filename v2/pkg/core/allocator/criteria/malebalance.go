@@ -1,6 +1,10 @@
-package rotageneration
+package criteria
 
-import "fmt"
+import (
+	"fmt"
+
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+)
 
 // MaleBalanceCriterion ensures each shift has at least one male volunteer and spreads male volunteers maximally.
 //
@@ -33,7 +37,7 @@ func (c *MaleBalanceCriterion) Name() string {
 	return "MaleBalance"
 }
 
-func (c *MaleBalanceCriterion) PromoteVolunteerGroup(state *RotaState, group *VolunteerGroup) float64 {
+func (c *MaleBalanceCriterion) PromoteVolunteerGroup(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup) float64 {
 	// Promote groups with male volunteers
 	if group.MaleCount > 0 {
 		return 1.0
@@ -41,7 +45,7 @@ func (c *MaleBalanceCriterion) PromoteVolunteerGroup(state *RotaState, group *Vo
 	return 0
 }
 
-func (c *MaleBalanceCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
+func (c *MaleBalanceCriterion) IsShiftValid(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) bool {
 	// Invalid only if assigning this group would fill the shift with no males at all
 
 	// If the group has males, it's always valid
@@ -71,7 +75,7 @@ func (c *MaleBalanceCriterion) IsShiftValid(state *RotaState, group *VolunteerGr
 	return !wouldFillShift
 }
 
-func (c *MaleBalanceCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
+func (c *MaleBalanceCriterion) CalculateShiftAffinity(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) float64 {
 	// Only calculate affinity for groups with males
 	if group.MaleCount == 0 {
 		return 0
@@ -117,13 +121,13 @@ func (c *MaleBalanceCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
 
-func (c *MaleBalanceCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
-	var errors []ShiftValidationError
+func (c *MaleBalanceCriterion) ValidateRotaState(state *rotageneration.RotaState) []rotageneration.ShiftValidationError {
+	var errors []rotageneration.ShiftValidationError
 
 	for _, shift := range state.Shifts {
 		// Check if shift has at least one male volunteer
 		if shift.MaleCount == 0 {
-			errors = append(errors, ShiftValidationError{
+			errors = append(errors, rotageneration.ShiftValidationError{
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),

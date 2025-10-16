@@ -1,4 +1,4 @@
-package rotageneration
+package allocator
 
 // IsShiftValidForGroup checks if a volunteer group can be allocated to a shift.
 //

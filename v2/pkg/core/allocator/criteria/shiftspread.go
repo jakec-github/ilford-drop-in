@@ -1,4 +1,8 @@
-package rotageneration
+package criteria
+
+import (
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+)
 
 // ShiftSpreadCriterion optimizes for shifts that are further from previous allocations.
 //
@@ -29,17 +33,17 @@ func (c *ShiftSpreadCriterion) Name() string {
 	return "ShiftSpread"
 }
 
-func (c *ShiftSpreadCriterion) PromoteVolunteerGroup(state *RotaState, group *VolunteerGroup) float64 {
+func (c *ShiftSpreadCriterion) PromoteVolunteerGroup(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup) float64 {
 	// No promotion logic for this criterion
 	return 0
 }
 
-func (c *ShiftSpreadCriterion) IsShiftValid(state *RotaState, group *VolunteerGroup, shift *Shift) bool {
+func (c *ShiftSpreadCriterion) IsShiftValid(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) bool {
 	// No validity constraints - all shifts are valid
 	return true
 }
 
-func (c *ShiftSpreadCriterion) CalculateShiftAffinity(state *RotaState, group *VolunteerGroup, shift *Shift) float64 {
+func (c *ShiftSpreadCriterion) CalculateShiftAffinity(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup, shift *rotageneration.Shift) float64 {
 	// Calculate the minimum distance to any already allocated shift
 	// Higher affinity for shifts that are further away from previous allocations
 
@@ -100,7 +104,7 @@ func (c *ShiftSpreadCriterion) CalculateShiftAffinity(state *RotaState, group *V
 
 // getLastHistoricalIndex returns the index of the last historical shift this group was allocated to.
 // Returns -1 if the group was not allocated to any historical shift.
-func (c *ShiftSpreadCriterion) getLastHistoricalIndex(state *RotaState, group *VolunteerGroup) int {
+func (c *ShiftSpreadCriterion) getLastHistoricalIndex(state *rotageneration.RotaState, group *rotageneration.VolunteerGroup) int {
 	// Iterate backwards through historical shifts to find the most recent allocation
 	for i := len(state.HistoricalShifts) - 1; i >= 0; i-- {
 		historicalShift := state.HistoricalShifts[i]
@@ -122,8 +126,8 @@ func (c *ShiftSpreadCriterion) AffinityWeight() float64 {
 	return c.affinityWeight
 }
 
-func (c *ShiftSpreadCriterion) ValidateRotaState(state *RotaState) []ShiftValidationError {
+func (c *ShiftSpreadCriterion) ValidateRotaState(state *rotageneration.RotaState) []rotageneration.ShiftValidationError {
 	// No validity constraints - all shifts are valid
-	var errors []ShiftValidationError
+	var errors []rotageneration.ShiftValidationError
 	return errors
 }

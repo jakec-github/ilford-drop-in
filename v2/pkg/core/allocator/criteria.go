@@ -1,4 +1,4 @@
-package rotageneration
+package allocator
 
 // ShiftValidationError represents a validation error for a specific shift
 type ShiftValidationError struct {
