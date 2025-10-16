@@ -214,14 +214,3 @@ func SendAvailabilityReminders(
 
 	return remindersSent, failedEmails, nil
 }
-
-// filterSentRequestsByRotaID filters availability requests to only those for a specific rota that were sent
-func filterSentRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
-	filtered := []db.AvailabilityRequest{}
-	for _, req := range requests {
-		if req.RotaID == rotaID && req.FormSent {
-			filtered = append(filtered, req)
-		}
-	}
-	return filtered
-}

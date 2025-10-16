@@ -47,6 +47,17 @@ func filterRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []
 	return filtered
 }
 
+// filterSentRequestsByRotaID filters availability requests to only those for a specific rota that were sent
+func filterSentRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
+	filtered := []db.AvailabilityRequest{}
+	for _, req := range requests {
+		if req.RotaID == rotaID && req.FormSent {
+			filtered = append(filtered, req)
+		}
+	}
+	return filtered
+}
+
 // filterActiveVolunteers filters volunteers to only those with "Active" status (case-insensitive)
 func filterActiveVolunteers(volunteers []model.Volunteer) []model.Volunteer {
 	active := make([]model.Volunteer, 0)
