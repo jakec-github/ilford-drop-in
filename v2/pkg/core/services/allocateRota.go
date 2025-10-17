@@ -75,6 +75,7 @@ type AllocateRotaStore interface {
 
 // AllocateRota runs the allocation algorithm to assign volunteers to shifts
 // If dryRun is true, allocations are not saved to the database
+// If forceCommit is true, allocations are saved even if validation fails
 func AllocateRota(
 	ctx context.Context,
 	database AllocateRotaStore,
@@ -83,9 +84,11 @@ func AllocateRota(
 	cfg *config.Config,
 	logger *zap.Logger,
 	dryRun bool,
+	forceCommit bool,
 ) (*AllocateRotaResult, error) {
 	logger.Debug("Starting allocateRota",
-		zap.Bool("dry_run", dryRun))
+		zap.Bool("dry_run", dryRun),
+		zap.Bool("force_commit", forceCommit))
 
 	// Step 1: DB query - Fetch rota list
 	logger.Debug("Fetching rotations")
@@ -217,9 +220,13 @@ func AllocateRota(
 			zap.String("description", verr.Description))
 	}
 
-	// If not dry run, save allocations to database
-	if !dryRun && outcome.Success {
-		logger.Info("Saving allocations to database")
+	// Determine if we should save allocations to database
+	shouldSave := !dryRun && (outcome.Success || forceCommit)
+
+	if shouldSave {
+		logger.Info("Saving allocations to database",
+			zap.Bool("success", outcome.Success),
+			zap.Bool("forced", forceCommit && !outcome.Success))
 		dbAllocations := convertToDBAllocations(targetRota.ID, outcome.State.Shifts)
 		if err := database.InsertAllocations(dbAllocations); err != nil {
 			return nil, fmt.Errorf("failed to save allocations: %w", err)
@@ -228,7 +235,7 @@ func AllocateRota(
 	} else if dryRun {
 		logger.Info("Dry run mode - allocations not saved")
 	} else {
-		logger.Warn("Allocation unsuccessful - not saving to database")
+		logger.Warn("Allocation unsuccessful - not saving to database (use forceCommit to save anyway)")
 	}
 
 	return &AllocateRotaResult{

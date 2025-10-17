@@ -28,10 +28,10 @@
 - Complete allocator ✅
 - Improve allocations DB schema to account for custom allocations ✅
 - Basic allocate rota service ✅
-- Support for team leads in the volunteer model
+- Support for team leads in the volunteer model ✅
+- Support db inserts for unsuccessful shifts ✅
 - Allocate rota command
 - Handle historical shifts
 - Handle rota overrides
-- Support db inserts for unsuccessful shifts
 
 ## Phase 4 - Remaining commands

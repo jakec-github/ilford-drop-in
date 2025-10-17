@@ -146,8 +146,8 @@ func TestAllocateRota_SuccessfulAllocation(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	// Run allocation
-	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false)
+	// Run allocation (not dry-run, no force commit)
+	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false, false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -239,8 +239,8 @@ func TestAllocateRota_DryRun(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	// Run allocation in dry-run mode
-	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, true)
+	// Run allocation in dry-run mode (forceCommit is ignored in dry-run)
+	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, true, false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -272,7 +272,7 @@ func TestAllocateRota_NoRotations(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	result, err := AllocateRota(ctx, store, nil, nil, cfg, logger, false)
+	result, err := AllocateRota(ctx, store, nil, nil, cfg, logger, false, false)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "no rotations found")
@@ -294,7 +294,7 @@ func TestAllocateRota_NoAvailabilityRequests(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	result, err := AllocateRota(ctx, store, nil, nil, cfg, logger, false)
+	result, err := AllocateRota(ctx, store, nil, nil, cfg, logger, false, false)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "no availability requests found")
@@ -331,7 +331,7 @@ func TestAllocateRota_InsufficientVolunteers(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false)
+	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false, false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -386,7 +386,7 @@ func TestAllocateRota_UnsuccessfulAllocation_NotSaved(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false)
+	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false, false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -404,8 +404,66 @@ func TestAllocateRota_UnsuccessfulAllocation_NotSaved(t *testing.T) {
 	}
 	assert.True(t, hasTeamLeadError, "Should have TeamLead validation error")
 
-	// Allocations should NOT be saved when validation fails
+	// Allocations should NOT be saved when validation fails (without forceCommit)
 	assert.Empty(t, store.insertedAllocations, "Unsuccessful allocations should not be saved")
+}
+
+func TestAllocateRota_ForceCommit_SavesUnsuccessfulAllocation(t *testing.T) {
+	// Test that forceCommit allows saving unsuccessful allocations
+	// This is the same scenario as UnsuccessfulAllocation_NotSaved, but with forceCommit=true
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
+		},
+		availabilityRequests: []db.AvailabilityRequest{
+			{FormID: "form-1", VolunteerID: "alice", RotaID: "rota-1", FormSent: true},
+			{FormID: "form-1", VolunteerID: "bob", RotaID: "rota-1", FormSent: true},
+			{FormID: "form-1", VolunteerID: "charlie", RotaID: "rota-1", FormSent: true},
+			{FormID: "form-1", VolunteerID: "dave", RotaID: "rota-1", FormSent: true},
+		},
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{
+			// No team leads - all regular volunteers (will cause TeamLead validation to fail)
+			{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", Status: "Active", Role: model.RoleVolunteer},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Gender: "Male", Status: "Active", Role: model.RoleVolunteer},
+			{ID: "charlie", FirstName: "Charlie", LastName: "C", Gender: "Male", Status: "Active", Role: model.RoleVolunteer},
+			{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male", Status: "Active", Role: model.RoleVolunteer},
+		},
+	}
+
+	formsClient := &mockFormsClientWithResponses{
+		responses: map[string]*formsclient.FormResponse{
+			"Alice A":   {HasResponded: true, UnavailableDates: []string{}},
+			"Bob B":     {HasResponded: true, UnavailableDates: []string{}},
+			"Charlie C": {HasResponded: true, UnavailableDates: []string{}},
+			"Dave D":    {HasResponded: true, UnavailableDates: []string{}},
+		},
+	}
+
+	cfg := &config.Config{
+		MaxAllocationFrequency: 1.0,
+		DefaultShiftSize:       2,
+	}
+
+	logger := zap.NewNop()
+	ctx := context.Background()
+
+	// Run allocation with forceCommit=true
+	result, err := AllocateRota(ctx, store, volunteerClient, formsClient, cfg, logger, false, true)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should still have validation errors
+	assert.False(t, result.Success, "Allocation should fail without team leads")
+	assert.NotEmpty(t, result.ValidationErrors, "Should have validation errors")
+
+	// But allocations SHOULD be saved because of forceCommit
+	assert.NotEmpty(t, store.insertedAllocations, "Allocations should be saved with forceCommit=true")
+
+	// Verify we got the expected number of allocations (2 shifts * 2 volunteers each = 4)
+	assert.Equal(t, 4, len(store.insertedAllocations), "Should have 4 volunteer allocations")
 }
 
 func TestConvertToDBAllocations(t *testing.T) {
