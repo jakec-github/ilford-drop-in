@@ -25,7 +25,7 @@ type Allocation struct {
 	ShiftDate     string `ssql_header:"shift_date" ssql_type:"date"`
 	Role          string `ssql_header:"role" ssql_type:"text"`
 	VolunteerID   string `ssql_header:"volunteer_id" ssql_type:"text"`
-	Preallocation string `sqql_header:"preallocation" ssql_type:"text"`
+	Preallocation string `ssql_header:"preallocated" ssql_type:"text"`
 }
 
 // Cover represents a database cover record
