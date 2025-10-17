@@ -30,8 +30,8 @@
 - Basic allocate rota service ✅
 - Support for team leads in the volunteer model ✅
 - Support db inserts for unsuccessful shifts ✅
-- Allocate rota command
-- Handle historical shifts
+- Allocate rota command ✅
 - Handle rota overrides
+- Handle historical shifts
 
 ## Phase 4 - Remaining commands
