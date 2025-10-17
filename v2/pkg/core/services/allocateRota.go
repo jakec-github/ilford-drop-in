@@ -166,7 +166,6 @@ func AllocateRota(
 	// Convert model volunteers to allocator volunteers
 	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
 	logger.Debug("Converted volunteers for allocator", zap.Int("count", len(allocatorVolunteers)))
-
 	// Convert shift dates to strings for allocator
 	shiftDateStrings := make([]string, len(shiftDates))
 	for i, date := range shiftDates {
@@ -296,16 +295,13 @@ func fetchAvailabilityResponses(
 func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volunteer {
 	result := make([]allocator.Volunteer, len(volunteers))
 	for i, vol := range volunteers {
-		// TODO: Determine IsTeamLead from volunteer data
-		// Currently assuming no team leads until we have the field in the spreadsheet
-		isTeamLead := false
 
 		result[i] = allocator.Volunteer{
 			ID:         vol.ID,
 			FirstName:  vol.FirstName,
 			LastName:   vol.LastName,
 			Gender:     vol.Gender,
-			IsTeamLead: isTeamLead,
+			IsTeamLead: vol.Role == model.RoleTeamLead,
 			GroupKey:   vol.GroupKey,
 		}
 	}
@@ -328,7 +324,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 				allocations = append(allocations, db.Allocation{
 					RotaID:        rotaID,
 					ShiftDate:     shift.Date,
-					Role:          "volunteer",
+					Role:          string(model.RoleVolunteer),
 					VolunteerID:   member.ID,
 					Preallocation: "",
 				})
@@ -340,7 +336,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 			allocations = append(allocations, db.Allocation{
 				RotaID:        rotaID,
 				ShiftDate:     shift.Date,
-				Role:          "team_lead",
+				Role:          string(model.RoleTeamLead),
 				VolunteerID:   shift.TeamLead.ID,
 				Preallocation: "",
 			})
@@ -351,7 +347,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 			allocations = append(allocations, db.Allocation{
 				RotaID:        rotaID,
 				ShiftDate:     shift.Date,
-				Role:          "volunteer",
+				Role:          string(model.RoleVolunteer),
 				VolunteerID:   "",
 				Preallocation: preAllocatedID,
 			})

@@ -12,6 +12,7 @@ var volunteerFields = []string{
 	"Unique ID",
 	"First name",
 	"Last name",
+	"Role",
 	"Status",
 	"Sex/Gender",
 	"Email",
@@ -89,10 +90,16 @@ func parseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 			continue
 		}
 
+		role := model.Role(getField("Role", row))
+		if !role.IsValid() {
+			return nil, fmt.Errorf("invalid role for volunteer in row %d", i)
+		}
+
 		volunteer := model.Volunteer{
 			ID:        getField("Unique ID", row),
 			FirstName: firstName,
 			LastName:  getField("Last name", row),
+			Role:      role,
 			Status:    getField("Status", row),
 			Gender:    getField("Sex/Gender", row),
 			Email:     getField("Email", row),

@@ -1,10 +1,22 @@
 package model
 
+type Role string
+
+const (
+	RoleTeamLead  Role = "Team lead"
+	RoleVolunteer Role = "Service volunteer"
+)
+
+func (r Role) IsValid() bool {
+	return r == RoleTeamLead || r == RoleVolunteer
+}
+
 // Volunteer represents a service volunteer
 type Volunteer struct {
 	ID        string
 	FirstName string
 	LastName  string
+	Role      Role
 	Status    string
 	Gender    string
 	Email     string
