@@ -124,7 +124,7 @@ func TestRequestAvailability_CreatesRequestsForVolunteersWithoutRequests(t *test
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", false)
 
 	require.NoError(t, err)
 	require.NotNil(t, sentForms)
@@ -195,7 +195,7 @@ func TestRequestAvailability_NoVolunteersNeedRequests(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", false)
 
 	require.NoError(t, err)
 	require.NotNil(t, sentForms)
@@ -235,7 +235,7 @@ func TestRequestAvailability_OnlyCreatesForLatestRota(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", false)
 
 	require.NoError(t, err)
 	require.NotNil(t, sentForms)
@@ -278,7 +278,7 @@ func TestRequestAvailability_PartialEmailFailures(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", false)
 
 	require.NoError(t, err)
 	require.NotNil(t, sentForms)
@@ -344,7 +344,7 @@ func TestRequestAvailability_AllEmailsFail(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{}
 
-	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15")
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", false)
 
 	require.Error(t, err)
 	assert.Nil(t, sentForms)

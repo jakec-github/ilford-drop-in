@@ -4,18 +4,22 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
 // RequestAvailabilityCmd creates the requestAvailability command
 func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "requestAvailability <deadline>",
 		Short: "Request availability from volunteers with the given deadline",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deadline := args[0]
+			skipEmail, _ := cmd.Flags().GetBool("skip-email")
+
+			app.Logger.Debug("requestAvailability command", zap.Bool("skip_email", skipEmail))
 
 			// Call the service
 			sentForms, failedEmails, err := services.RequestAvailability(
@@ -27,6 +31,7 @@ func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
 				app.Cfg,
 				app.Logger,
 				deadline,
+				skipEmail,
 			)
 			if err != nil {
 				return err
@@ -58,4 +63,8 @@ func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().Bool("skip-email", false, "Skip sending emails (for testing)")
+
+	return cmd
 }

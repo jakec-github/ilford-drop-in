@@ -54,6 +54,7 @@ type GmailClient interface {
 // RequestAvailability creates availability forms for volunteers, sends emails, and returns results
 // It fetches the latest rota, creates forms for volunteers without requests, sends emails,
 // and inserts DB records. Returns volunteers who were successfully sent forms and those that failed.
+// If skipEmail is true, emails will not be sent (useful for testing).
 func RequestAvailability(
 	ctx context.Context,
 	database AvailabilityRequestStore,
@@ -63,6 +64,7 @@ func RequestAvailability(
 	cfg *config.Config,
 	logger *zap.Logger,
 	deadline string,
+	skipEmail bool,
 ) ([]SentForm, []FailedEmail, error) {
 	logger.Debug("Starting requestAvailability", zap.String("deadline", deadline))
 
@@ -192,33 +194,39 @@ func RequestAvailability(
 		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
 		formInfo := formsByVolunteer[volunteer.ID]
 
-		// Send email with form link
-		subject := fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
-		body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s:\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
-			volunteer.FirstName, formInfo.formURL, deadline)
+		// Send email with form link (unless skipEmail is true)
+		if !skipEmail {
+			subject := fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
+			body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s:\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
+				volunteer.FirstName, formInfo.formURL, deadline)
 
-		logger.Debug("Sending email",
-			zap.String("volunteer_id", volunteer.ID),
-			zap.String("email", volunteer.Email))
-
-		if err := gmailClient.SendEmail(volunteer.Email, subject, body); err != nil {
-			logger.Warn("Failed to send email",
+			logger.Debug("Sending email",
 				zap.String("volunteer_id", volunteer.ID),
-				zap.String("email", volunteer.Email),
-				zap.Error(err))
+				zap.String("email", volunteer.Email))
 
-			failedEmails = append(failedEmails, FailedEmail{
-				VolunteerID:   volunteer.ID,
-				VolunteerName: volunteerName,
-				Email:         volunteer.Email,
-				Error:         err.Error(),
-			})
-			continue
+			if err := gmailClient.SendEmail(volunteer.Email, subject, body); err != nil {
+				logger.Warn("Failed to send email",
+					zap.String("volunteer_id", volunteer.ID),
+					zap.String("email", volunteer.Email),
+					zap.Error(err))
+
+				failedEmails = append(failedEmails, FailedEmail{
+					VolunteerID:   volunteer.ID,
+					VolunteerName: volunteerName,
+					Email:         volunteer.Email,
+					Error:         err.Error(),
+				})
+				continue
+			}
+
+			logger.Info("Email sent successfully",
+				zap.String("volunteer_id", volunteer.ID),
+				zap.String("email", volunteer.Email))
+		} else {
+			logger.Debug("Skipping email",
+				zap.String("volunteer_id", volunteer.ID),
+				zap.String("email", volunteer.Email))
 		}
-
-		logger.Info("Email sent successfully",
-			zap.String("volunteer_id", volunteer.ID),
-			zap.String("email", volunteer.Email))
 
 		// Add to sent forms list
 		sentForms = append(sentForms, SentForm{
