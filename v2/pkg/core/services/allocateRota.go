@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -329,6 +330,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 				}
 
 				allocations = append(allocations, db.Allocation{
+					ID:            uuid.New().String(),
 					RotaID:        rotaID,
 					ShiftDate:     shift.Date,
 					Role:          string(model.RoleVolunteer),
@@ -341,6 +343,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		// Add team lead allocation
 		if shift.TeamLead != nil {
 			allocations = append(allocations, db.Allocation{
+				ID:            uuid.New().String(),
 				RotaID:        rotaID,
 				ShiftDate:     shift.Date,
 				Role:          string(model.RoleTeamLead),
@@ -352,6 +355,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		// Add pre-allocated volunteers
 		for _, preAllocatedID := range shift.PreAllocatedVolunteers {
 			allocations = append(allocations, db.Allocation{
+				ID:            uuid.New().String(),
 				RotaID:        rotaID,
 				ShiftDate:     shift.Date,
 				Role:          string(model.RoleVolunteer),
