@@ -126,15 +126,15 @@ func TestAllocateRota_SuccessfulAllocation(t *testing.T) {
 
 	formsClient := &mockFormsClientWithResponses{
 		responses: map[string]*formsclient.FormResponse{
-			"Alice Smith":     {HasResponded: true, UnavailableDates: []string{}},
-			"Bob Jones":       {HasResponded: true, UnavailableDates: []string{}},
-			"Charlie Brown":   {HasResponded: true, UnavailableDates: []string{}},
-			"Dave Wilson":     {HasResponded: true, UnavailableDates: []string{}},
-			"Eve Davis":       {HasResponded: true, UnavailableDates: []string{}},
-			"Frank Miller":    {HasResponded: true, UnavailableDates: []string{}},
-			"Grace Taylor":    {HasResponded: true, UnavailableDates: []string{}},
-			"Henry Anderson":  {HasResponded: true, UnavailableDates: []string{}},
-			"Iris Thomas":     {HasResponded: true, UnavailableDates: []string{}},
+			"Alice Smith":    {HasResponded: true, UnavailableDates: []string{}},
+			"Bob Jones":      {HasResponded: true, UnavailableDates: []string{}},
+			"Charlie Brown":  {HasResponded: true, UnavailableDates: []string{}},
+			"Dave Wilson":    {HasResponded: true, UnavailableDates: []string{}},
+			"Eve Davis":      {HasResponded: true, UnavailableDates: []string{}},
+			"Frank Miller":   {HasResponded: true, UnavailableDates: []string{}},
+			"Grace Taylor":   {HasResponded: true, UnavailableDates: []string{}},
+			"Henry Anderson": {HasResponded: true, UnavailableDates: []string{}},
+			"Iris Thomas":    {HasResponded: true, UnavailableDates: []string{}},
 		},
 	}
 
@@ -180,9 +180,9 @@ func TestAllocateRota_SuccessfulAllocation(t *testing.T) {
 	volunteerCount := 0
 	for _, alloc := range store.insertedAllocations {
 		switch alloc.Role {
-		case "team_lead":
+		case string(model.RoleTeamLead):
 			teamLeadCount++
-		case "volunteer":
+		case string(model.RoleVolunteer):
 			volunteerCount++
 		}
 	}
@@ -443,8 +443,8 @@ func TestConvertToDBAllocations(t *testing.T) {
 		assert.Equal(t, "2025-01-05", alloc.ShiftDate)
 	}
 
-	assert.Equal(t, 1, roles["team_lead"], "Should have 1 team lead")
-	assert.Equal(t, 2, roles["volunteer"], "Should have 2 volunteers (Bob + external)")
+	assert.Equal(t, 1, roles[string(model.RoleTeamLead)], "Should have 1 team lead")
+	assert.Equal(t, 2, roles[string(model.RoleVolunteer)], "Should have 2 volunteers (Bob + external)")
 
 	// Check pre-allocated volunteer has correct field
 	found := false
