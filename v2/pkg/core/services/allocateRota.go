@@ -72,6 +72,7 @@ type AllocateRotaResult struct {
 type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
+	GetAllocations(ctx context.Context) ([]db.Allocation, error)
 	InsertAllocations(allocations []db.Allocation) error
 }
 
@@ -171,11 +172,27 @@ func AllocateRota(
 	// Convert model volunteers to allocator volunteers
 	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
 	logger.Debug("Converted volunteers for allocator", zap.Int("count", len(allocatorVolunteers)))
+
 	// Convert shift dates to strings for allocator
 	shiftDateStrings := make([]string, len(shiftDates))
 	for i, date := range shiftDates {
 		shiftDateStrings[i] = date.Format("2006-01-02")
 	}
+
+	// Step 7: Fetch and build historical shifts from previous rota
+	logger.Debug("Fetching allocations for historical shifts")
+	historicalShifts, err := buildHistoricalShifts(
+		ctx,
+		database,
+		rotations,
+		targetRota,
+		allocatorVolunteers,
+		logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build historical shifts: %w", err)
+	}
+	logger.Debug("Built historical shifts", zap.Int("count", len(historicalShifts)))
 
 	// Configure allocation criteria
 	allocationCriteria := []allocator.Criterion{
@@ -198,7 +215,7 @@ func AllocateRota(
 	allocConfig := allocator.AllocationConfig{
 		Criteria:                       allocationCriteria,
 		MaxAllocationFrequency:         cfg.MaxAllocationFrequency,
-		HistoricalShifts:               []*allocator.Shift{}, // TODO: Load from previous rotas
+		HistoricalShifts:               historicalShifts,
 		Volunteers:                     allocatorVolunteers,
 		Availability:                   availability,
 		ShiftDates:                     shiftDateStrings,
@@ -432,4 +449,137 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 	}
 
 	return result, nil
+}
+
+// buildHistoricalShifts fetches allocations from the previous rota and builds historical shift objects.
+// Only includes Date and AllocatedGroups fields. Filters out inactive volunteers.
+// If any volunteers from a group have been allocated, includes the entire group.
+func buildHistoricalShifts(
+	ctx context.Context,
+	database AllocateRotaStore,
+	allRotations []db.Rotation,
+	targetRota *db.Rotation,
+	activeVolunteers []allocator.Volunteer,
+	logger *zap.Logger,
+) ([]*allocator.Shift, error) {
+	// Find the previous rota (the one before the target rota)
+	previousRota := findPreviousRotation(allRotations, targetRota)
+	if previousRota == nil {
+		logger.Info("No previous rota found, historical shifts will be empty")
+		return []*allocator.Shift{}, nil
+	}
+
+	logger.Debug("Found previous rota",
+		zap.String("id", previousRota.ID),
+		zap.String("start", previousRota.Start))
+
+	// Fetch all allocations
+	allAllocations, err := database.GetAllocations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
+	}
+
+	// Filter to allocations from previous rota only
+	previousRotaAllocations := filterAllocationsByRotaID(allAllocations, previousRota.ID)
+	logger.Debug("Filtered allocations from previous rota", zap.Int("count", len(previousRotaAllocations)))
+
+	if len(previousRotaAllocations) == 0 {
+		logger.Info("No allocations found in previous rota")
+		return []*allocator.Shift{}, nil
+	}
+
+	// Build a map of active volunteers by ID for quick lookup
+	volunteersByID := make(map[string]allocator.Volunteer)
+	for _, vol := range activeVolunteers {
+		volunteersByID[vol.ID] = vol
+	}
+
+	// Group allocations by shift date
+	allocationsByDate := make(map[string][]db.Allocation)
+	for _, allocation := range previousRotaAllocations {
+		// Skip allocations for inactive volunteers (not in volunteersByID) or custom entries
+		if allocation.VolunteerID == "" {
+			continue
+		}
+		if _, isActive := volunteersByID[allocation.VolunteerID]; !isActive {
+			continue
+		}
+		allocationsByDate[allocation.ShiftDate] = append(allocationsByDate[allocation.ShiftDate], allocation)
+	}
+
+	// Build historical shifts
+	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByDate))
+	for shiftDate, allocations := range allocationsByDate {
+		// Group volunteers by their GroupKey to reconstruct volunteer groups
+		volunteersByGroup := make(map[string][]allocator.Volunteer)
+		for _, allocation := range allocations {
+			volunteer, exists := volunteersByID[allocation.VolunteerID]
+			if !exists {
+				continue
+			}
+			volunteersByGroup[volunteer.GroupKey] = append(volunteersByGroup[volunteer.GroupKey], volunteer)
+		}
+
+		// Build AllocatedGroups for this shift using the allocator's BuildVolunteerGroup helper
+		allocatedGroups := make([]*allocator.VolunteerGroup, 0, len(volunteersByGroup))
+		for groupKey, members := range volunteersByGroup {
+			group := allocator.BuildVolunteerGroup(groupKey, members)
+			allocatedGroups = append(allocatedGroups, group)
+		}
+
+		// Create the historical shift with only Date and AllocatedGroups
+		historicalShifts = append(historicalShifts, &allocator.Shift{
+			Date:            shiftDate,
+			AllocatedGroups: allocatedGroups,
+		})
+	}
+
+	logger.Debug("Built historical shifts", zap.Int("shift_count", len(historicalShifts)))
+
+	return historicalShifts, nil
+}
+
+// findPreviousRotation finds the rotation immediately before the target rotation
+func findPreviousRotation(rotations []db.Rotation, targetRota *db.Rotation) *db.Rotation {
+	targetDate, err := time.Parse("2006-01-02", targetRota.Start)
+	if err != nil {
+		return nil
+	}
+
+	var previousRota *db.Rotation
+	var previousDate time.Time
+
+	for i := range rotations {
+		rota := &rotations[i]
+		if rota.ID == targetRota.ID {
+			continue
+		}
+
+		rotaDate, err := time.Parse("2006-01-02", rota.Start)
+		if err != nil {
+			continue
+		}
+
+		// Only consider rotas that start before the target rota
+		if rotaDate.Before(targetDate) {
+			// If this is our first match or it's more recent than our current previous
+			if previousRota == nil || rotaDate.After(previousDate) {
+				previousRota = rota
+				previousDate = rotaDate
+			}
+		}
+	}
+
+	return previousRota
+}
+
+// filterAllocationsByRotaID filters allocations to only those for the specified rota
+func filterAllocationsByRotaID(allocations []db.Allocation, rotaID string) []db.Allocation {
+	filtered := make([]db.Allocation, 0)
+	for _, allocation := range allocations {
+		if allocation.RotaID == rotaID {
+			filtered = append(filtered, allocation)
+		}
+	}
+	return filtered
 }

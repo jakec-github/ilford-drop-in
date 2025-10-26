@@ -20,9 +20,11 @@ import (
 type mockAllocateRotaStore struct {
 	rotations            []db.Rotation
 	availabilityRequests []db.AvailabilityRequest
+	allocations          []db.Allocation
 	insertedAllocations  []db.Allocation
 	getRotationsErr      error
 	getAvailabilityErr   error
+	getAllocationsErr    error
 	insertAllocationsErr error
 }
 
@@ -38,6 +40,13 @@ func (m *mockAllocateRotaStore) GetAvailabilityRequests(ctx context.Context) ([]
 		return nil, m.getAvailabilityErr
 	}
 	return m.availabilityRequests, nil
+}
+
+func (m *mockAllocateRotaStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
+	if m.getAllocationsErr != nil {
+		return nil, m.getAllocationsErr
+	}
+	return m.allocations, nil
 }
 
 func (m *mockAllocateRotaStore) InsertAllocations(allocations []db.Allocation) error {

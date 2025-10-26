@@ -72,16 +72,9 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 	for groupKey, members := range groupMap {
 		// Validate: No group can have more than 1 team lead
 		teamLeadCount := 0
-		maleCount := 0
-		hasTeamLead := false
-
 		for _, member := range members {
 			if member.IsTeamLead {
 				teamLeadCount++
-				hasTeamLead = true
-			}
-			if member.Gender == GenderMale {
-				maleCount++
 			}
 		}
 
@@ -136,19 +129,13 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 			continue
 		}
 
-		// Calculate historical allocation count for this group
-		historicalAllocationCount := calculateHistoricalAllocationCount(groupKey, input.HistoricalShifts)
+		// Create the volunteer group using the shared builder
+		group := BuildVolunteerGroup(groupKey, members)
 
-		// Create the volunteer group
-		group := &VolunteerGroup{
-			GroupKey:                  groupKey,
-			Members:                   members,
-			AvailableShiftIndices:     availableShiftIndices,
-			AllocatedShiftIndices:     []int{},
-			HistoricalAllocationCount: historicalAllocationCount,
-			HasTeamLead:               hasTeamLead,
-			MaleCount:                 maleCount,
-		}
+		// Set context-specific fields
+		group.AvailableShiftIndices = availableShiftIndices
+		group.AllocatedShiftIndices = []int{}
+		group.HistoricalAllocationCount = calculateHistoricalAllocationCount(group.GroupKey, input.HistoricalShifts)
 
 		groups = append(groups, group)
 	}
@@ -170,6 +157,47 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 	}
 
 	return volunteerState, nil
+}
+
+// BuildVolunteerGroup creates a VolunteerGroup from a list of volunteers.
+// This function encapsulates the logic for building a group with correct metadata.
+// It handles individual volunteers (empty GroupKey) by creating a unique group key.
+//
+// Parameters:
+//   - groupKey: The group key (empty string for individual volunteers)
+//   - members: The volunteers in this group
+//
+// Returns a VolunteerGroup with calculated metadata (HasTeamLead, MaleCount)
+// Note: AvailableShiftIndices, AllocatedShiftIndices, and HistoricalAllocationCount
+// must be set by the caller as they depend on context.
+func BuildVolunteerGroup(groupKey string, members []Volunteer) *VolunteerGroup {
+	// For individual volunteers, create a unique group key
+	effectiveGroupKey := groupKey
+	if effectiveGroupKey == "" && len(members) > 0 {
+		effectiveGroupKey = "individual_" + members[0].ID
+	}
+
+	// Calculate group metadata
+	hasTeamLead := false
+	maleCount := 0
+
+	for _, member := range members {
+		if member.IsTeamLead {
+			hasTeamLead = true
+		}
+		if member.Gender == GenderMale {
+			maleCount++
+		}
+	}
+
+	return &VolunteerGroup{
+		GroupKey:    effectiveGroupKey,
+		Members:     members,
+		HasTeamLead: hasTeamLead,
+		MaleCount:   maleCount,
+		// Note: Caller must set AvailableShiftIndices, AllocatedShiftIndices,
+		// and HistoricalAllocationCount based on their context
+	}
 }
 
 // calculateHistoricalAllocationCount counts how many times a group was allocated in historical shifts
