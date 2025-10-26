@@ -109,9 +109,7 @@ func TestAllocator_EndToEnd(t *testing.T) {
 	// This tests NoDoubleShifts criterion across rota boundaries and ShiftSpread with historical data
 	historicalShifts := []*Shift{
 		{
-			Index: 0, // Only shift of previous rota
-			Date:  "2023-12-25",
-			Size:  2,
+			Date: "2023-12-25",
 			AllocatedGroups: []*VolunteerGroup{
 				// Alice/Bob were allocated to the last historical shift
 				// This should prevent them from being allocated to shift 0 (2024-01-01) due to NoDoubleShifts
@@ -139,15 +137,6 @@ func TestAllocator_EndToEnd(t *testing.T) {
 					HistoricalAllocationCount: 1,
 				},
 			},
-			TeamLead: &Volunteer{
-				ID:         "alice",
-				FirstName:  "Alice",
-				LastName:   "Smith",
-				Gender:     "Female",
-				IsTeamLead: true,
-				GroupKey:   "couple_alice_bob",
-			},
-			MaleCount: 1,
 		},
 	}
 
@@ -307,13 +296,13 @@ func TestAllocator_EndToEnd(t *testing.T) {
 func TestAllocator_ErrorHandling(t *testing.T) {
 	t.Run("no shift dates", func(t *testing.T) {
 		config := AllocationConfig{
-		WeightCurrentRotaUrgency:       1.0,
-		WeightOverallFrequencyFairness: 1.0,
-		WeightPromoteGroup:             1.0,
-			Criteria:               []Criterion{},
-			MaxAllocationFrequency: 0.5,
-			Volunteers:             []Volunteer{{ID: "v1"}},
-			ShiftDates:             []string{},
+			WeightCurrentRotaUrgency:       1.0,
+			WeightOverallFrequencyFairness: 1.0,
+			WeightPromoteGroup:             1.0,
+			Criteria:                       []Criterion{},
+			MaxAllocationFrequency:         0.5,
+			Volunteers:                     []Volunteer{{ID: "v1"}},
+			ShiftDates:                     []string{},
 		}
 		_, err := Allocate(config)
 		assert.Error(t, err)
@@ -322,13 +311,13 @@ func TestAllocator_ErrorHandling(t *testing.T) {
 
 	t.Run("no volunteers", func(t *testing.T) {
 		config := AllocationConfig{
-		WeightCurrentRotaUrgency:       1.0,
-		WeightOverallFrequencyFairness: 1.0,
-		WeightPromoteGroup:             1.0,
-			Criteria:               []Criterion{},
-			MaxAllocationFrequency: 0.5,
-			Volunteers:             []Volunteer{},
-			ShiftDates:             []string{"2024-01-01"},
+			WeightCurrentRotaUrgency:       1.0,
+			WeightOverallFrequencyFairness: 1.0,
+			WeightPromoteGroup:             1.0,
+			Criteria:                       []Criterion{},
+			MaxAllocationFrequency:         0.5,
+			Volunteers:                     []Volunteer{},
+			ShiftDates:                     []string{"2024-01-01"},
 		}
 		_, err := Allocate(config)
 		assert.Error(t, err)
@@ -337,13 +326,13 @@ func TestAllocator_ErrorHandling(t *testing.T) {
 
 	t.Run("invalid frequency", func(t *testing.T) {
 		config := AllocationConfig{
-		WeightCurrentRotaUrgency:       1.0,
-		WeightOverallFrequencyFairness: 1.0,
-		WeightPromoteGroup:             1.0,
-			Criteria:               []Criterion{},
-			MaxAllocationFrequency: 1.5,
-			Volunteers:             []Volunteer{{ID: "v1"}},
-			ShiftDates:             []string{"2024-01-01"},
+			WeightCurrentRotaUrgency:       1.0,
+			WeightOverallFrequencyFairness: 1.0,
+			WeightPromoteGroup:             1.0,
+			Criteria:                       []Criterion{},
+			MaxAllocationFrequency:         1.5,
+			Volunteers:                     []Volunteer{{ID: "v1"}},
+			ShiftDates:                     []string{"2024-01-01"},
 		}
 		_, err := Allocate(config)
 		assert.Error(t, err)
@@ -352,14 +341,14 @@ func TestAllocator_ErrorHandling(t *testing.T) {
 
 	t.Run("negative shift size", func(t *testing.T) {
 		config := AllocationConfig{
-		WeightCurrentRotaUrgency:       1.0,
-		WeightOverallFrequencyFairness: 1.0,
-		WeightPromoteGroup:             1.0,
-			Criteria:               []Criterion{},
-			MaxAllocationFrequency: 0.5,
-			Volunteers:             []Volunteer{{ID: "v1"}},
-			ShiftDates:             []string{"2024-01-01"},
-			DefaultShiftSize:       -1,
+			WeightCurrentRotaUrgency:       1.0,
+			WeightOverallFrequencyFairness: 1.0,
+			WeightPromoteGroup:             1.0,
+			Criteria:                       []Criterion{},
+			MaxAllocationFrequency:         0.5,
+			Volunteers:                     []Volunteer{{ID: "v1"}},
+			ShiftDates:                     []string{"2024-01-01"},
+			DefaultShiftSize:               -1,
 		}
 		_, err := Allocate(config)
 		assert.Error(t, err)
