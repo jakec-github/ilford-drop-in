@@ -482,8 +482,8 @@ func TestConvertToDBAllocations(t *testing.T) {
 					},
 				},
 			},
-			TeamLead:               &allocator.Volunteer{ID: "alice", IsTeamLead: true},
-			PreAllocatedVolunteers: []string{"external_john"},
+			TeamLead:             &allocator.Volunteer{ID: "alice", IsTeamLead: true},
+			CustomPreallocations: []string{"external_john"},
 		},
 	}
 

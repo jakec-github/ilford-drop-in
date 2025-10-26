@@ -162,7 +162,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				}
 
 				// Add pre-allocated volunteers
-				for _, preAlloc := range shift.PreAllocatedVolunteers {
+				for _, preAlloc := range shift.CustomPreallocations {
 					volunteers = append(volunteers, fmt.Sprintf("%s[%s]%s", colorYellow, preAlloc, colorReset))
 				}
 

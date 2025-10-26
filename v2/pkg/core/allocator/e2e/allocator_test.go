@@ -149,15 +149,15 @@ func TestAllocator_EndToEnd(t *testing.T) {
 			AppliesTo: func(date string) bool {
 				return date == "2024-01-01" // First shift
 			},
-			ShiftSize:              &firstShiftSize,
-			PreAllocatedVolunteers: []string{}, // No pre-allocations for first shift
+			ShiftSize:            &firstShiftSize,
+			CustomPreallocations: []string{}, // No pre-allocations for first shift
 		},
 		{
 			AppliesTo: func(date string) bool {
 				return date == "2024-02-12" // Last shift
 			},
-			ShiftSize:              nil,                       // Use default size
-			PreAllocatedVolunteers: []string{"external_john"}, // External volunteer from outside the regular group
+			ShiftSize:            nil,                       // Use default size
+			CustomPreallocations: []string{"external_john"}, // External volunteer from outside the regular group
 		},
 	}
 
@@ -199,7 +199,7 @@ func TestAllocator_EndToEnd(t *testing.T) {
 			shift.TeamLead != nil,
 			shift.MaleCount,
 			len(shift.AllocatedGroups),
-			shift.PreAllocatedVolunteers)
+			shift.CustomPreallocations)
 		for _, group := range shift.AllocatedGroups {
 			memberNames := ""
 			for i, member := range group.Members {
@@ -237,7 +237,7 @@ func TestAllocator_EndToEnd(t *testing.T) {
 
 		// Last shift should have the pre-allocated external volunteer
 		if shift.Date == "2024-02-12" {
-			assert.Contains(t, shift.PreAllocatedVolunteers, "external_john", "Last shift should have external_john pre-allocated")
+			assert.Contains(t, shift.CustomPreallocations, "external_john", "Last shift should have external_john pre-allocated")
 		}
 	}
 

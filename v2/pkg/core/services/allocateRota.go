@@ -362,7 +362,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		}
 
 		// Add pre-allocated volunteers
-		for _, preAllocatedID := range shift.PreAllocatedVolunteers {
+		for _, preAllocatedID := range shift.CustomPreallocations {
 			allocations = append(allocations, db.Allocation{
 				ID:            uuid.New().String(),
 				RotaID:        rotaID,
@@ -419,9 +419,9 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 		}
 
 		result = append(result, allocator.ShiftOverride{
-			AppliesTo:              appliesTo,
-			ShiftSize:              override.ShiftSize,
-			PreAllocatedVolunteers: override.CustomPreallocations,
+			AppliesTo:            appliesTo,
+			ShiftSize:            override.ShiftSize,
+			CustomPreallocations: override.CustomPreallocations,
 		})
 
 		logger.Debug("Converted override",

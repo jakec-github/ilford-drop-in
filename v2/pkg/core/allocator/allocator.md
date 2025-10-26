@@ -55,7 +55,7 @@ Represents a single shift to be filled:
 - `Index` - Position in shifts array
 - `Size` - Target number of volunteers (excludes team lead)
 - `AllocatedGroups` - Groups assigned to this shift
-- `PreAllocatedVolunteers` - String IDs of manually pre-assigned volunteers (count toward Size)
+- `CustomPreallocations` - String IDs of manually pre-assigned volunteers (count toward Size)
 - `TeamLead` - Pointer to team lead volunteer (separate from Size, can be nil)
 - `MaleCount` - Number of males in AllocatedGroups (excludes TeamLead and pre-allocated)
 - `AvailableGroups` - Pointers to groups that expressed availability for this shift
@@ -80,7 +80,7 @@ Represents a single shift to be filled:
 3. **Initialize Shifts**
 
    - Set `TeamLead` to nil
-   - Populate `PreAllocatedVolunteers` from overrides
+   - Populate `CustomPreallocations` from overrides
    - Set `Size` from defaults or overrides
    - Populate `AvailableGroups` - pointers to groups that are available for each shift
    - Initialize `MaleCount` to 0

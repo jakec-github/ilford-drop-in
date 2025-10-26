@@ -52,9 +52,9 @@ func TestConvertRotaOverrides_WeeklyOverride(t *testing.T) {
 	assert.Equal(t, 3, *override.ShiftSize)
 
 	// Verify pre-allocated volunteers
-	require.Len(t, override.PreAllocatedVolunteers, 2)
-	assert.Contains(t, override.PreAllocatedVolunteers, "external_john")
-	assert.Contains(t, override.PreAllocatedVolunteers, "external_jane")
+	require.Len(t, override.CustomPreallocations, 2)
+	assert.Contains(t, override.CustomPreallocations, "external_john")
+	assert.Contains(t, override.CustomPreallocations, "external_jane")
 }
 
 func TestConvertRotaOverrides_SpecificDate(t *testing.T) {
@@ -96,8 +96,8 @@ func TestConvertRotaOverrides_SpecificDate(t *testing.T) {
 	assert.Nil(t, override.ShiftSize)
 
 	// Verify pre-allocated volunteer
-	require.Len(t, override.PreAllocatedVolunteers, 1)
-	assert.Equal(t, "holiday_cover", override.PreAllocatedVolunteers[0])
+	require.Len(t, override.CustomPreallocations, 1)
+	assert.Equal(t, "holiday_cover", override.CustomPreallocations[0])
 }
 
 func TestConvertRotaOverrides_MultipleOverrides(t *testing.T) {
@@ -199,7 +199,7 @@ func TestConvertRotaOverrides_NoPreallocations(t *testing.T) {
 	require.Len(t, allocatorOverrides, 1)
 
 	override := allocatorOverrides[0]
-	assert.Empty(t, override.PreAllocatedVolunteers)
+	assert.Empty(t, override.CustomPreallocations)
 	assert.NotNil(t, override.ShiftSize)
 	assert.Equal(t, 5, *override.ShiftSize)
 }
@@ -257,6 +257,6 @@ func TestConvertRotaOverrides_YearSpanningRota(t *testing.T) {
 	// Verify override properties
 	assert.NotNil(t, override.ShiftSize)
 	assert.Equal(t, 4, *override.ShiftSize)
-	require.Len(t, override.PreAllocatedVolunteers, 1)
-	assert.Equal(t, "weekend_volunteer", override.PreAllocatedVolunteers[0])
+	require.Len(t, override.CustomPreallocations, 1)
+	assert.Equal(t, "weekend_volunteer", override.CustomPreallocations[0])
 }

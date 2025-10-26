@@ -196,8 +196,8 @@ type ShiftOverride struct {
 	// ShiftSize overrides the default shift size (if set)
 	ShiftSize *int
 
-	// PreAllocatedVolunteers are volunteers manually assigned to this shift.
-	PreAllocatedVolunteers []string
+	// CustomPreallocations are volunteers manually assigned to this shift.
+	CustomPreallocations []string
 }
 
 // InitShiftsInput contains the data needed to initialize shifts
@@ -231,7 +231,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		shiftSize := input.DefaultShiftSize
 
 		// Track pre-allocated volunteers
-		var preAllocatedVolunteers []string
+		var customPreallocations []string
 
 		// Apply overrides for this date
 		for _, override := range input.Overrides {
@@ -242,7 +242,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 				}
 
 				// Add pre-allocated volunteers
-				preAllocatedVolunteers = append(preAllocatedVolunteers, override.PreAllocatedVolunteers...)
+				customPreallocations = append(customPreallocations, override.CustomPreallocations...)
 			}
 		}
 
@@ -255,14 +255,14 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		}
 
 		shifts[i] = &Shift{
-			Date:                   date,
-			Index:                  i,
-			Size:                   shiftSize,
-			AllocatedGroups:        []*VolunteerGroup{},
-			PreAllocatedVolunteers: preAllocatedVolunteers,
-			TeamLead:               nil, // Will be set when a team lead is allocated
-			MaleCount:              0,   // Will be updated when groups are allocated
-			AvailableGroups:        availableGroups,
+			Date:                 date,
+			Index:                i,
+			Size:                 shiftSize,
+			AllocatedGroups:      []*VolunteerGroup{},
+			CustomPreallocations: customPreallocations,
+			TeamLead:             nil, // Will be set when a team lead is allocated
+			MaleCount:            0,   // Will be updated when groups are allocated
+			AvailableGroups:      availableGroups,
 		}
 	}
 

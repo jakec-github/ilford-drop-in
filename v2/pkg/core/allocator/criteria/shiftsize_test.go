@@ -34,10 +34,10 @@ func TestShiftSizeCriterion_IsShiftValid_EmptyShift(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Index:                  0,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{},
-		PreAllocatedVolunteers: []string{},
+		Index:                0,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with 3 ordinary volunteers
@@ -71,7 +71,7 @@ func TestShiftSizeCriterion_IsShiftValid_ExactFit(t *testing.T) {
 				},
 			},
 		},
-		PreAllocatedVolunteers: []string{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with 3 ordinary volunteers - exactly fills remaining capacity
@@ -107,7 +107,7 @@ func TestShiftSizeCriterion_IsShiftValid_WouldOverfill(t *testing.T) {
 				},
 			},
 		},
-		PreAllocatedVolunteers: []string{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with 2 ordinary volunteers - would exceed capacity
@@ -142,7 +142,7 @@ func TestShiftSizeCriterion_IsShiftValid_TeamLeadDoesNotCount(t *testing.T) {
 				},
 			},
 		},
-		PreAllocatedVolunteers: []string{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with 1 team lead and 1 ordinary volunteer
@@ -175,7 +175,7 @@ func TestShiftSizeCriterion_IsShiftValid_WithPreAllocated(t *testing.T) {
 				},
 			},
 		},
-		PreAllocatedVolunteers: []string{"p1", "p2", "p3"},
+		CustomPreallocations: []string{"p1", "p2", "p3"},
 	}
 
 	// Group with 2 ordinary volunteers - would exceed capacity (3 + 1 + 2 = 6 > 5)
@@ -211,7 +211,7 @@ func TestShiftSizeCriterion_IsShiftValid_TeamLeadOnlyGroup(t *testing.T) {
 				},
 			},
 		},
-		PreAllocatedVolunteers: []string{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with only a team lead
@@ -246,11 +246,11 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_EmptyShift(t *testing.T) {
 
 	// Empty shift with 5 remaining capacity and 1 available group (2 volunteers)
 	shift := &Shift{
-		Index:                  0,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        []*VolunteerGroup{group}, // group is available
+		Index:                0,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
+		AvailableGroups:      []*VolunteerGroup{group}, // group is available
 	}
 
 	// Empty shift = 5 capacity / 2 available volunteers = 2.5, clamped to 1.0
@@ -290,11 +290,11 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_HalfFull(t *testing.T) {
 
 	// Half-full shift (5 spots remaining)
 	shift := &Shift{
-		Index:                  0,
-		Size:                   10,
-		AllocatedGroups:        []*VolunteerGroup{allocatedGroup},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        []*VolunteerGroup{group}, // group is available
+		Index:                0,
+		Size:                 10,
+		AllocatedGroups:      []*VolunteerGroup{allocatedGroup},
+		CustomPreallocations: []string{},
+		AvailableGroups:      []*VolunteerGroup{group}, // group is available
 	}
 
 	// Half full = 5 capacity / 1 available volunteer = 5.0, clamped to 1.0
@@ -336,11 +336,11 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_NearlyFull(t *testing.T) {
 
 	// Nearly full shift (1 spot remaining)
 	shift := &Shift{
-		Index:                  0,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{allocatedGroup},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        groups, // 5 groups available
+		Index:                0,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{allocatedGroup},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups, // 5 groups available
 	}
 
 	// Nearly full = 1 capacity / 5 available volunteers (5 groups x 1 volunteer each) = 0.2 affinity
@@ -355,10 +355,10 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_TeamLeadOnlyGroup(t *testing.
 
 	// Empty shift
 	shift := &Shift{
-		Index:                  0,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{},
-		PreAllocatedVolunteers: []string{},
+		Index:                0,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with only team lead
@@ -394,11 +394,11 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_MixedGroup(t *testing.T) {
 
 	// Empty shift
 	shift := &Shift{
-		Index:                  0,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        []*VolunteerGroup{group},
+		Index:                0,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
+		AvailableGroups:      []*VolunteerGroup{group},
 	}
 
 	// Has ordinary volunteers, so should calculate affinity normally
@@ -414,10 +414,10 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_ZeroSizeShift(t *testing.T) {
 
 	// Shift with size 0 (edge case)
 	shift := &Shift{
-		Index:                  0,
-		Size:                   0,
-		AllocatedGroups:        []*VolunteerGroup{},
-		PreAllocatedVolunteers: []string{},
+		Index:                0,
+		Size:                 0,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
 	}
 
 	// Group with ordinary volunteers
@@ -474,20 +474,20 @@ func TestShiftSizeCriterion_PrefersUnpopularShifts(t *testing.T) {
 
 	// Empty shift (unpopular) - 5 capacity / 5 available volunteers = 1.0
 	emptyShift := &Shift{
-		Index:                  0,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        groups, // 5 groups available
+		Index:                0,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups, // 5 groups available
 	}
 
 	// Nearly full shift (popular) - 1 capacity / 5 available volunteers = 0.2
 	fullShift := &Shift{
-		Index:                  1,
-		Size:                   5,
-		AllocatedGroups:        []*VolunteerGroup{allocatedGroup},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        groups, // 5 groups available
+		Index:                1,
+		Size:                 5,
+		AllocatedGroups:      []*VolunteerGroup{allocatedGroup},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups, // 5 groups available
 	}
 
 	emptyAffinity := criterion.CalculateShiftAffinity(state, group, emptyShift)
@@ -551,8 +551,8 @@ func TestShiftSizeCriterion_CalculateShiftAffinity_ExcludesTooLargeGroups(t *tes
 				},
 			},
 		},
-		PreAllocatedVolunteers: []string{},
-		AvailableGroups:        allGroups, // all 3 groups available
+		CustomPreallocations: []string{},
+		AvailableGroups:      allGroups, // all 3 groups available
 	}
 
 	// Should only count volunteers from groups that fit
@@ -583,7 +583,7 @@ func TestShiftSizeCriterion_ValidateRotaState_AllShiftsFilled(t *testing.T) {
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 			{
 				Index: 1,
@@ -597,7 +597,7 @@ func TestShiftSizeCriterion_ValidateRotaState_AllShiftsFilled(t *testing.T) {
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 		},
 	}
@@ -623,7 +623,7 @@ func TestShiftSizeCriterion_ValidateRotaState_UnderfillDetected(t *testing.T) {
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 			{
 				Index: 1,
@@ -636,7 +636,7 @@ func TestShiftSizeCriterion_ValidateRotaState_UnderfillDetected(t *testing.T) {
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 		},
 	}
@@ -678,7 +678,7 @@ func TestShiftSizeCriterion_ValidateRotaState_OverfillDetected(t *testing.T) {
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 		},
 	}
@@ -712,7 +712,7 @@ func TestShiftSizeCriterion_ValidateRotaState_TeamLeadDoesNotCount(t *testing.T)
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 		},
 	}
@@ -738,7 +738,7 @@ func TestShiftSizeCriterion_ValidateRotaState_WithPreAllocated(t *testing.T) {
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{"p1", "p2", "p3"},
+				CustomPreallocations: []string{"p1", "p2", "p3"},
 			},
 		},
 	}
@@ -765,7 +765,7 @@ func TestShiftSizeCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T)
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 			{
 				Index: 1,
@@ -778,7 +778,7 @@ func TestShiftSizeCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T)
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 			{
 				Index: 2,
@@ -792,7 +792,7 @@ func TestShiftSizeCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T)
 						},
 					},
 				},
-				PreAllocatedVolunteers: []string{},
+				CustomPreallocations: []string{},
 			},
 		},
 	}

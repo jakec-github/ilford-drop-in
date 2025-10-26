@@ -94,9 +94,9 @@ type Shift struct {
 	// AllocatedGroups tracks which volunteer groups have been assigned
 	AllocatedGroups []*VolunteerGroup
 
-	// PreAllocatedVolunteers are volunteer IDs manually assigned before generation
+	// CustomPreallocations are volunteer IDs manually assigned before generation
 	// These count toward Size but don't affect TeamLead or MaleCount
-	PreAllocatedVolunteers []string
+	CustomPreallocations []string
 
 	// TeamLead is the team lead assigned to this shift (nil if none assigned)
 	// Does not count toward Size
@@ -113,7 +113,7 @@ type Shift struct {
 
 // CurrentSize returns the current number of volunteers allocated to this shift
 func (s *Shift) CurrentSize() int {
-	size := len(s.PreAllocatedVolunteers)
+	size := len(s.CustomPreallocations)
 	for _, group := range s.AllocatedGroups {
 		for _, member := range group.Members {
 			if !member.IsTeamLead {

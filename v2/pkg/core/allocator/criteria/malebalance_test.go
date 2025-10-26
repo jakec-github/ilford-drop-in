@@ -82,10 +82,10 @@ func TestMaleBalanceCriterion_IsShiftValid_WouldFillWithoutMale(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Size:                   5,
-		MaleCount:              0,
-		TeamLead:               &Volunteer{Gender: "Female"},
-		PreAllocatedVolunteers: []string{"pre1", "pre2", "pre3"}, // 3 already allocated
+		Size:                 5,
+		MaleCount:            0,
+		TeamLead:             &Volunteer{Gender: "Female"},
+		CustomPreallocations: []string{"pre1", "pre2", "pre3"}, // 3 already allocated
 	}
 
 	// Group of 2 females would fill the shift (3 + 2 = 5)
@@ -106,10 +106,10 @@ func TestMaleBalanceCriterion_IsShiftValid_WouldNotFillShift(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Size:                   5,
-		MaleCount:              0,
-		TeamLead:               &Volunteer{Gender: "Female"},
-		PreAllocatedVolunteers: []string{"pre1"}, // Only 1 allocated
+		Size:                 5,
+		MaleCount:            0,
+		TeamLead:             &Volunteer{Gender: "Female"},
+		CustomPreallocations: []string{"pre1"}, // Only 1 allocated
 	}
 
 	// Group of 2 females would not fill the shift (1 + 2 = 3 < 5)
@@ -131,10 +131,10 @@ func TestMaleBalanceCriterion_IsShiftValid_NoTeamLeadAssigned(t *testing.T) {
 	state := &RotaState{}
 
 	shift := &Shift{
-		Size:                   5,
-		MaleCount:              0,
-		TeamLead:               nil,                                      // No team lead assigned yet
-		PreAllocatedVolunteers: []string{"pre1", "pre2", "pre3", "pre4"}, // Shift is full
+		Size:                 5,
+		MaleCount:            0,
+		TeamLead:             nil,                                      // No team lead assigned yet
+		CustomPreallocations: []string{"pre1", "pre2", "pre3", "pre4"}, // Shift is full
 	}
 
 	// Group with only a female team lead (no ordinary volunteers)
