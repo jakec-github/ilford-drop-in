@@ -339,12 +339,12 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 				}
 
 				allocations = append(allocations, db.Allocation{
-					ID:            uuid.New().String(),
-					RotaID:        rotaID,
-					ShiftDate:     shift.Date,
-					Role:          string(model.RoleVolunteer),
-					VolunteerID:   member.ID,
-					Preallocation: "",
+					ID:          uuid.New().String(),
+					RotaID:      rotaID,
+					ShiftDate:   shift.Date,
+					Role:        string(model.RoleVolunteer),
+					VolunteerID: member.ID,
+					CustomEntry: "",
 				})
 			}
 		}
@@ -352,24 +352,24 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		// Add team lead allocation
 		if shift.TeamLead != nil {
 			allocations = append(allocations, db.Allocation{
-				ID:            uuid.New().String(),
-				RotaID:        rotaID,
-				ShiftDate:     shift.Date,
-				Role:          string(model.RoleTeamLead),
-				VolunteerID:   shift.TeamLead.ID,
-				Preallocation: "",
+				ID:          uuid.New().String(),
+				RotaID:      rotaID,
+				ShiftDate:   shift.Date,
+				Role:        string(model.RoleTeamLead),
+				VolunteerID: shift.TeamLead.ID,
+				CustomEntry: "",
 			})
 		}
 
 		// Add pre-allocated volunteers
 		for _, preAllocatedID := range shift.CustomPreallocations {
 			allocations = append(allocations, db.Allocation{
-				ID:            uuid.New().String(),
-				RotaID:        rotaID,
-				ShiftDate:     shift.Date,
-				Role:          string(model.RoleVolunteer),
-				VolunteerID:   "",
-				Preallocation: preAllocatedID,
+				ID:          uuid.New().String(),
+				RotaID:      rotaID,
+				ShiftDate:   shift.Date,
+				Role:        string(model.RoleVolunteer),
+				VolunteerID: "",
+				CustomEntry: preAllocatedID,
 			})
 		}
 	}

@@ -20,12 +20,12 @@ type AvailabilityRequest struct {
 
 // Allocation represents a database allocation record
 type Allocation struct {
-	ID            string `ssql_header:"id" ssql_type:"uuid"`
-	RotaID        string `ssql_header:"rota_id" ssql_type:"uuid"`
-	ShiftDate     string `ssql_header:"shift_date" ssql_type:"date"`
-	Role          string `ssql_header:"role" ssql_type:"text"`
-	VolunteerID   string `ssql_header:"volunteer_id" ssql_type:"text"`
-	Preallocation string `ssql_header:"preallocated" ssql_type:"text"`
+	ID          string `ssql_header:"id" ssql_type:"uuid"`
+	RotaID      string `ssql_header:"rota_id" ssql_type:"uuid"`
+	ShiftDate   string `ssql_header:"shift_date" ssql_type:"date"`
+	Role        string `ssql_header:"role" ssql_type:"text"`
+	VolunteerID string `ssql_header:"volunteer_id" ssql_type:"text"`
+	CustomEntry string `ssql_header:"custom_entry" ssql_type:"text"`
 }
 
 // Cover represents a database cover record

@@ -507,7 +507,7 @@ func TestConvertToDBAllocations(t *testing.T) {
 	// Check pre-allocated volunteer has correct field
 	found := false
 	for _, alloc := range allocations {
-		if alloc.Preallocation == "external_john" {
+		if alloc.CustomEntry == "external_john" {
 			found = true
 			assert.Equal(t, "", alloc.VolunteerID, "Pre-allocated should have empty VolunteerID")
 		}
