@@ -421,14 +421,14 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 		result = append(result, allocator.ShiftOverride{
 			AppliesTo:              appliesTo,
 			ShiftSize:              override.ShiftSize,
-			PreAllocatedVolunteers: override.PrefilledAllocations,
+			PreAllocatedVolunteers: override.CustomPreallocations,
 		})
 
 		logger.Debug("Converted override",
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
 			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("preallocated_count", len(override.PrefilledAllocations)))
+			zap.Int("preallocated_count", len(override.CustomPreallocations)))
 	}
 
 	return result, nil

@@ -16,7 +16,7 @@ func TestConvertRotaOverrides_WeeklyOverride(t *testing.T) {
 	configOverrides := []config.RotaOverride{
 		{
 			RRule:                "FREQ=WEEKLY;BYDAY=SU",
-			PrefilledAllocations: []string{"external_john", "external_jane"},
+			CustomPreallocations: []string{"external_john", "external_jane"},
 			ShiftSize:            &shiftSize,
 		},
 	}
@@ -62,7 +62,7 @@ func TestConvertRotaOverrides_SpecificDate(t *testing.T) {
 	configOverrides := []config.RotaOverride{
 		{
 			RRule:                "FREQ=YEARLY;BYMONTH=1;BYDAY=1MO",
-			PrefilledAllocations: []string{"holiday_cover"},
+			CustomPreallocations: []string{"holiday_cover"},
 			ShiftSize:            nil,
 		},
 	}
@@ -107,12 +107,12 @@ func TestConvertRotaOverrides_MultipleOverrides(t *testing.T) {
 	configOverrides := []config.RotaOverride{
 		{
 			RRule:                "FREQ=WEEKLY;BYDAY=SA",
-			PrefilledAllocations: []string{"weekend_team"},
+			CustomPreallocations: []string{"weekend_team"},
 			ShiftSize:            &shiftSize1,
 		},
 		{
 			RRule:                "FREQ=MONTHLY;BYDAY=-1FR",
-			PrefilledAllocations: []string{"special_event"},
+			CustomPreallocations: []string{"special_event"},
 			ShiftSize:            &shiftSize2,
 		},
 	}
@@ -148,7 +148,7 @@ func TestConvertRotaOverrides_InvalidRRule(t *testing.T) {
 	configOverrides := []config.RotaOverride{
 		{
 			RRule:                "INVALID_RRULE_SYNTAX",
-			PrefilledAllocations: []string{"test"},
+			CustomPreallocations: []string{"test"},
 		},
 	}
 
@@ -182,7 +182,7 @@ func TestConvertRotaOverrides_NoPreallocations(t *testing.T) {
 	configOverrides := []config.RotaOverride{
 		{
 			RRule:                "FREQ=WEEKLY;BYDAY=MO",
-			PrefilledAllocations: []string{},
+			CustomPreallocations: []string{},
 			ShiftSize:            &shiftSize,
 		},
 	}
@@ -210,7 +210,7 @@ func TestConvertRotaOverrides_YearSpanningRota(t *testing.T) {
 		{
 			// Every Sunday
 			RRule:                "FREQ=WEEKLY;BYDAY=SU",
-			PrefilledAllocations: []string{"weekend_volunteer"},
+			CustomPreallocations: []string{"weekend_volunteer"},
 			ShiftSize:            &shiftSize,
 		},
 	}

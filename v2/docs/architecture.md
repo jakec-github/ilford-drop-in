@@ -123,7 +123,7 @@ Config will be kept in `drop_in_config.yaml`. The CLI runner will look for the f
             "description": "An rrule to match shifts",
             "type": "string"
           },
-          "prefilledAllocations": {
+          "customPreallocations": {
             "description": "A list of volunteer names to add to the rota",
             "type": "array",
             "items": { "type": "string" }

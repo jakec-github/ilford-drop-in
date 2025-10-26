@@ -23,7 +23,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "FREQ=WEEKLY;BYDAY=SU",
-				PrefilledAllocations: []string{"John Doe", "Jane Smith"},
+				CustomPreallocations: []string{"John Doe", "Jane Smith"},
 				ShiftSize:            &shiftSize,
 			},
 		},
@@ -74,7 +74,7 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "INVALID_RRULE_SYNTAX",
-				PrefilledAllocations: []string{"John Doe"},
+				CustomPreallocations: []string{"John Doe"},
 			},
 		},
 	}
@@ -120,7 +120,7 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "",
-				PrefilledAllocations: []string{"John Doe"},
+				CustomPreallocations: []string{"John Doe"},
 			},
 		},
 	}
@@ -165,7 +165,7 @@ maxAllocationFrequency: 0.25
 defaultShiftSize: 2
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    prefilledAllocations:
+    customPreallocations:
       - "John Doe"
       - "Jane Smith"
     shiftSize: 5
@@ -189,9 +189,9 @@ rotaOverrides:
 	require.Len(t, cfg.RotaOverrides, 1)
 	override := cfg.RotaOverrides[0]
 	assert.Equal(t, "FREQ=WEEKLY;BYDAY=SU", override.RRule)
-	assert.Len(t, override.PrefilledAllocations, 2)
-	assert.Contains(t, override.PrefilledAllocations, "John Doe")
-	assert.Contains(t, override.PrefilledAllocations, "Jane Smith")
+	assert.Len(t, override.CustomPreallocations, 2)
+	assert.Contains(t, override.CustomPreallocations, "John Doe")
+	assert.Contains(t, override.CustomPreallocations, "Jane Smith")
 	require.NotNil(t, override.ShiftSize)
 	assert.Equal(t, 5, *override.ShiftSize)
 }
@@ -210,7 +210,7 @@ maxAllocationFrequency: 0.25
 defaultShiftSize: 2
 rotaOverrides:
   - rrule: "INVALID_RRULE_SYNTAX"
-    prefilledAllocations:
+    customPreallocations:
       - "John Doe"
 `
 
@@ -303,7 +303,7 @@ gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
 rotaOverrides:
-  - prefilledAllocations:
+  - customPreallocations:
       - "John Doe"
     shiftSize: 5
 `
@@ -330,7 +330,7 @@ maxAllocationFrequency: 0.25
 defaultShiftSize: 2
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    prefilledAllocations:
+    customPreallocations:
       - "John Doe"
 `
 

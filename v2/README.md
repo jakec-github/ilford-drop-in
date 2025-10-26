@@ -59,7 +59,7 @@ defaultShiftSize: 2 # Default volunteers per shift (excluding team lead)
 # Optional rota overrides
 rotaOverrides:
   rrule: 'FREQ=WEEKLY;BYDAY=SU' # Weekly shifts on Sunday
-  prefilledAllocations: # Volunteers to be manually scheduled
+  customPreallocations: # Volunteers to be manually scheduled
       - "John Doe"
       - "Jane Smith"
     shiftSize: 5 # Custom shift size

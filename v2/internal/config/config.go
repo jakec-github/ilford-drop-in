@@ -13,21 +13,21 @@ import (
 // RotaOverride defines overrides to apply when generating rotas
 type RotaOverride struct {
 	RRule                string   `yaml:"rrule" validate:"required"`
-	PrefilledAllocations []string `yaml:"prefilledAllocations,omitempty"`
+	CustomPreallocations []string `yaml:"customPreallocations,omitempty"`
 	ShiftSize            *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
 }
 
 // Config represents the application configuration
 type Config struct {
-	VolunteerSheetID        string         `yaml:"volunteerSheetID" validate:"required"`
-	ServiceVolunteersTab    string         `yaml:"serviceVolunteersTab" validate:"required"`
-	RotaSheetID             string         `yaml:"rotaSheetID" validate:"required"`
-	DatabaseSheetID         string         `yaml:"databaseSheetID" validate:"required"`
-	RotaOverrides           []RotaOverride `yaml:"rotaOverrides,omitempty" validate:"dive"`
-	GmailUserID             string         `yaml:"gmailUserID" validate:"required"`
-	GmailSender             string         `yaml:"gmailSender,omitempty"`
-	MaxAllocationFrequency  float64        `yaml:"maxAllocationFrequency" validate:"required,gt=0,lte=1"`
-	DefaultShiftSize        int            `yaml:"defaultShiftSize" validate:"required,min=1"`
+	VolunteerSheetID       string         `yaml:"volunteerSheetID" validate:"required"`
+	ServiceVolunteersTab   string         `yaml:"serviceVolunteersTab" validate:"required"`
+	RotaSheetID            string         `yaml:"rotaSheetID" validate:"required"`
+	DatabaseSheetID        string         `yaml:"databaseSheetID" validate:"required"`
+	RotaOverrides          []RotaOverride `yaml:"rotaOverrides,omitempty" validate:"dive"`
+	GmailUserID            string         `yaml:"gmailUserID" validate:"required"`
+	GmailSender            string         `yaml:"gmailSender,omitempty"`
+	MaxAllocationFrequency float64        `yaml:"maxAllocationFrequency" validate:"required,gt=0,lte=1"`
+	DefaultShiftSize       int            `yaml:"defaultShiftSize" validate:"required,min=1"`
 }
 
 var validate *validator.Validate
