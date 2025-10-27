@@ -336,3 +336,4 @@ approach where there's a chance of swapping ranking or affinity in close calls.
 
 - Check if a volunteer was pre-allocated during init
 - NoDoubleShifts within calendar month (popular demand but probably not satisfiable)
+- Better handling of Historical Shifts. Currently using the allocator Shift type. This type is not really appopriate and a lot of work is placed on the caller to create them. Plenty of room for confusion
