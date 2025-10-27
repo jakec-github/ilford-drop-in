@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -48,14 +49,16 @@ func TestPublishRota_Success(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
 	// Call PublishRota
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "rota-1")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	// Assertions
-	assert.Equal(t, "rota-1", result.RotaID)
+	assert.Equal(t, "2025-01-05", result.StartDate)
+	assert.Equal(t, 2, result.ShiftCount)
 	require.Len(t, result.Rows, 2)
 
 	// Check first shift
@@ -100,8 +103,9 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "rota-1")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -140,8 +144,9 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "rota-1")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
 	require.NoError(t, err)
 	require.Len(t, result.Rows, 1)
 
@@ -165,9 +170,10 @@ func TestPublishRota_RotaNotFound(t *testing.T) {
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
 	// Try to publish non-existent rota
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "rota-999")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-999")
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "rota not found")
@@ -186,8 +192,9 @@ func TestPublishRota_NoAllocations(t *testing.T) {
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "rota-1")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -224,8 +231,9 @@ func TestPublishRota_MissingVolunteer(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "rota-1")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "volunteer not found")
@@ -256,14 +264,16 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
 	// Call with empty rotaID to trigger default behavior
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	// Should use rota-2 (the latest)
-	assert.Equal(t, "rota-2", result.RotaID)
+	assert.Equal(t, "2025-01-19", result.StartDate)
+	assert.Equal(t, 1, result.ShiftCount)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "Sun Jan 19 2025", result.Rows[0].Date)
 	assert.Equal(t, "Alice Smith", result.Rows[0].TeamLead)
@@ -281,8 +291,9 @@ func TestPublishRota_NoRotations(t *testing.T) {
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
 	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
 
-	result, err := PublishRota(ctx, store, volunteerClient, cfg, logger, "")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "")
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "no rotations found")
@@ -300,4 +311,13 @@ func (m *mockPublishRotaStore) GetRotations(ctx context.Context) ([]db.Rotation,
 
 func (m *mockPublishRotaStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
 	return m.allocations, nil
+}
+
+// mockSheetsClient implements SheetsClient for testing
+type mockSheetsClient struct {
+	publishRotaError error
+}
+
+func (m *mockSheetsClient) PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota) error {
+	return m.publishRotaError
 }

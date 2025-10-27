@@ -8,24 +8,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
-
-// PublishedRotaRow represents a single row in the published rota
-type PublishedRotaRow struct {
-	Date       string   // Format: "Sun Jun 08 2025"
-	TeamLead   string   // Full name of team lead
-	Volunteers []string // Full names of volunteers
-	HotFood    string   // Leave blank for now
-	Collection string   // Leave blank for now
-}
-
-// PublishedRota represents the complete published rota data
-type PublishedRota struct {
-	RotaID string
-	Rows   []PublishedRotaRow
-}
 
 // PublishRotaStore defines the database operations needed for publishing a rota
 type PublishRotaStore interface {
@@ -33,18 +19,24 @@ type PublishRotaStore interface {
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
 }
 
-// PublishRota builds the data structure for publishing a rota to Google Sheets
+// SheetsClient defines the sheets operations needed for publishing a rota
+type SheetsClient interface {
+	PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota) error
+}
+
+// PublishRota publishes a rota to Google Sheets
 // It fetches the rota, allocations, and volunteer information, then constructs
-// the rows with formatted dates, team leads, and volunteers
+// the rows with formatted dates, team leads, and volunteers, and publishes to sheets
 // If rotaID is empty, it defaults to the latest rota
 func PublishRota(
 	ctx context.Context,
 	database PublishRotaStore,
+	sheetsClient SheetsClient,
 	volunteerClient VolunteerClient,
 	cfg *config.Config,
 	logger *zap.Logger,
 	rotaID string,
-) (*PublishedRota, error) {
+) (*sheetsclient.PublishedRota, error) {
 	logger.Debug("Starting publishRota", zap.String("rota_id", rotaID))
 
 	// Step 1: Fetch the target rota
@@ -120,13 +112,13 @@ func PublishRota(
 	}
 
 	// Step 6: Build the published rota rows
-	rows := make([]PublishedRotaRow, 0, len(shiftDates))
+	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shiftDates))
 
 	for _, shiftDate := range shiftDates {
 		dateStr := shiftDate.Format("2006-01-02")
 		allocations := allocationsByDate[dateStr]
 
-		row := PublishedRotaRow{
+		row := sheetsclient.PublishedRotaRow{
 			Date:       shiftDate.Format("Mon Jan 02 2006"),
 			TeamLead:   "",
 			Volunteers: []string{},
@@ -165,12 +157,25 @@ func PublishRota(
 		rows = append(rows, row)
 	}
 
+	publishedRota := &sheetsclient.PublishedRota{
+		StartDate:  targetRota.Start,
+		ShiftCount: targetRota.ShiftCount,
+		Rows:       rows,
+	}
+
 	logger.Info("Published rota built successfully",
 		zap.String("rota_id", targetRota.ID),
 		zap.Int("shift_count", len(rows)))
 
-	return &PublishedRota{
-		RotaID: targetRota.ID,
-		Rows:   rows,
-	}, nil
+	// Step 7: Publish to Google Sheets
+	logger.Debug("Publishing to Google Sheets", zap.String("spreadsheet_id", cfg.RotaSheetID))
+	err = sheetsClient.PublishRota(cfg.RotaSheetID, publishedRota)
+	if err != nil {
+		return nil, fmt.Errorf("failed to publish to Google Sheets: %w", err)
+	}
+
+	logger.Info("Rota published successfully to Google Sheets",
+		zap.String("rota_id", targetRota.ID))
+
+	return publishedRota, nil
 }
