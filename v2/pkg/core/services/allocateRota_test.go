@@ -559,3 +559,165 @@ func TestCalcShiftDates_Invalid(t *testing.T) {
 	_, err := calculateShiftDates("invalid-date", 4)
 	assert.Error(t, err)
 }
+
+func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
+	// Test that buildHistoricalShifts correctly filters out inactive volunteers
+	// and only includes active volunteers in historical shifts
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	// Setup: Two rotas - old (rota-0) and current (rota-1)
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 2}, // Old rota
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}, // Current rota
+		},
+		// Allocations from the old rota (rota-0)
+		// Alice and Bob are a couple (group_alice_bob)
+		// Charlie is inactive (should be filtered out)
+		// Dave is individual
+		allocations: []db.Allocation{
+			// Shift 1 - Dec 1: Alice (group), Bob (group), Charlie (individual)
+			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "bob", Role: string(model.RoleTeamLead)},
+			{ID: "alloc-3", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Inactive
+			// Shift 2 - Dec 8: Dave (individual), Charlie (individual)
+			{ID: "alloc-4", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "dave", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-5", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Inactive
+			// Allocations from current rota (should be ignored)
+			{ID: "alloc-6", RotaID: "rota-1", ShiftDate: "2025-01-05", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+		},
+	}
+
+	// Active volunteers (Charlie is inactive)
+	activeVolunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: "group_alice_bob", IsTeamLead: false},
+		{ID: "bob", FirstName: "Bob", LastName: "B", Gender: "Male", GroupKey: "group_alice_bob", IsTeamLead: true},
+		{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male", GroupKey: "", IsTeamLead: false}, // Individual
+		// Charlie is NOT in the active list (inactive)
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
+
+	// Call buildHistoricalShifts
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
+	require.NoError(t, err)
+
+	// Assertions
+	require.Len(t, historicalShifts, 2, "Should have 2 historical shifts")
+
+	// Sort shifts by date for consistent assertions
+	if len(historicalShifts) == 2 && historicalShifts[0].Date > historicalShifts[1].Date {
+		historicalShifts[0], historicalShifts[1] = historicalShifts[1], historicalShifts[0]
+	}
+
+	// Check first shift (Dec 1) - should only have Alice and Bob (Charlie filtered out)
+	shift1 := historicalShifts[0]
+	assert.Equal(t, "2024-12-01", shift1.Date)
+	assert.Len(t, shift1.AllocatedGroups, 1, "Should have 1 group (Alice+Bob)")
+
+	// Verify the group
+	group1 := shift1.AllocatedGroups[0]
+	assert.Equal(t, "group_alice_bob", group1.GroupKey)
+	assert.Len(t, group1.Members, 2, "Group should have 2 members")
+	assert.True(t, group1.HasTeamLead, "Group should have a team lead")
+	assert.Equal(t, 1, group1.MaleCount, "Group should have 1 male (Bob)")
+
+	// Verify members
+	memberIDs := make([]string, len(group1.Members))
+	for i, member := range group1.Members {
+		memberIDs[i] = member.ID
+	}
+	assert.Contains(t, memberIDs, "alice")
+	assert.Contains(t, memberIDs, "bob")
+
+	// Check second shift (Dec 8) - should only have Dave (Charlie filtered out)
+	shift2 := historicalShifts[1]
+	assert.Equal(t, "2024-12-08", shift2.Date)
+	assert.Len(t, shift2.AllocatedGroups, 1, "Should have 1 group (Dave)")
+
+	// Verify Dave's individual group (should have individual_ prefix)
+	group2 := shift2.AllocatedGroups[0]
+	assert.Equal(t, "individual_dave", group2.GroupKey, "Individual volunteer should have individual_ prefix")
+	assert.Len(t, group2.Members, 1, "Group should have 1 member")
+	assert.Equal(t, "dave", group2.Members[0].ID)
+	assert.False(t, group2.HasTeamLead, "Dave is not a team lead")
+	assert.Equal(t, 1, group2.MaleCount, "Dave is male")
+}
+
+func TestBuildHistoricalShifts_NoPreviousRota(t *testing.T) {
+	// Test that buildHistoricalShifts returns empty array when there's no previous rota
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}, // Only one rota (current)
+		},
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
+	activeVolunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
+	}
+
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
+	require.NoError(t, err)
+	assert.Empty(t, historicalShifts, "Should have no historical shifts when there's no previous rota")
+}
+
+func TestBuildHistoricalShifts_NoPreviousAllocations(t *testing.T) {
+	// Test that buildHistoricalShifts returns empty array when previous rota has no allocations
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 2}, // Old rota
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}, // Current rota
+		},
+		allocations: []db.Allocation{}, // No allocations
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
+	activeVolunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
+	}
+
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
+	require.NoError(t, err)
+	assert.Empty(t, historicalShifts, "Should have no historical shifts when previous rota has no allocations")
+}
+
+func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
+	// Test that custom entries (allocations with empty VolunteerID) are ignored
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 1},
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			// Regular allocation
+			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			// Custom entry (should be ignored)
+			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "", CustomEntry: "External John", Role: string(model.RoleVolunteer)},
+		},
+	}
+
+	activeVolunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: ""},
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}
+
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
+	require.NoError(t, err)
+	require.Len(t, historicalShifts, 1)
+
+	// Should only have Alice's individual group (custom entry ignored)
+	assert.Len(t, historicalShifts[0].AllocatedGroups, 1)
+	assert.Equal(t, "individual_alice", historicalShifts[0].AllocatedGroups[0].GroupKey)
+}

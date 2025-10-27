@@ -32,6 +32,6 @@
 - Support db inserts for unsuccessful shifts ✅
 - Allocate rota command ✅
 - Handle rota overrides ✅
-- Handle historical shifts
+- Handle historical shifts ✅
 
 ## Phase 4 - Remaining commands
