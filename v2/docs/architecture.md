@@ -273,15 +273,15 @@ The tool will support the following actions and queries. For each one there is a
 `publishRota`
 
 - Accepts:
-  - Zilch
+  - Rota ID - string (optional)
 - DB query: Fetches rota list
-- Finds latest rota
+- Finds rota by ID (latest if not supplied)
 - DB query: Fetches allocations
 - Finds allocations for latest rota
 - DB query: Fetches covers
 - Sheets query: Fetches volunteers
 - Matches volunteer ids to names
-- Rebuilds rota
+- Resolves the allocated shifts for the rota.
 - Sheets query: Publishes rota
 - Shows confirmation
 

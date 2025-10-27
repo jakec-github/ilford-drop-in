@@ -35,3 +35,8 @@
 - Handle historical shifts ✅
 
 ## Phase 4 - Remaining commands
+
+- publish_rota
+- Support cover resolution in historic shift evaluation
+- Support cover resolution in rota publishing
+- add_cover
