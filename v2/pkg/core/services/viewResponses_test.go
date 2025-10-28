@@ -346,3 +346,249 @@ func TestAggregateByGroup_AvailableForAll(t *testing.T) {
 	assert.Contains(t, group.AvailableDates, "Sun Jan 19 2025")
 	assert.NotContains(t, group.AvailableDates, "Sun Jan 12 2025")
 }
+
+func TestIdentifyShiftsWithoutTeamLead_NoTeamLeads(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {
+			ID:        "v1",
+			FirstName: "Alice",
+			LastName:  "Smith",
+			Status:    "Active",
+			Role:      model.RoleVolunteer, // Not a team lead
+		},
+		"v2": {
+			ID:        "v2",
+			FirstName: "Bob",
+			LastName:  "Jones",
+			Status:    "Active",
+			Role:      model.RoleVolunteer, // Not a team lead
+		},
+	}
+
+	responses := []VolunteerResponse{
+		{
+			VolunteerID:      "v1",
+			VolunteerName:    "Alice Smith",
+			HasResponded:     true,
+			UnavailableDates: []string{},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
+		},
+		{
+			VolunteerID:      "v2",
+			VolunteerName:    "Bob Jones",
+			HasResponded:     true,
+			UnavailableDates: []string{},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
+		},
+	}
+
+	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
+	// All shifts should be without team leads since no one is a team lead
+	require.Len(t, result, 3)
+	assert.Contains(t, result, "Sun Jan 5 2025")
+	assert.Contains(t, result, "Sun Jan 12 2025")
+	assert.Contains(t, result, "Sun Jan 19 2025")
+}
+
+func TestIdentifyShiftsWithoutTeamLead_TeamLeadAvailableForAll(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {
+			ID:        "v1",
+			FirstName: "Alice",
+			LastName:  "Smith",
+			Status:    "Active",
+			Role:      model.RoleTeamLead,
+		},
+		"v2": {
+			ID:        "v2",
+			FirstName: "Bob",
+			LastName:  "Jones",
+			Status:    "Active",
+			Role:      model.RoleVolunteer,
+		},
+	}
+
+	responses := []VolunteerResponse{
+		{
+			VolunteerID:      "v1",
+			VolunteerName:    "Alice Smith",
+			HasResponded:     true,
+			UnavailableDates: []string{},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
+		},
+		{
+			VolunteerID:      "v2",
+			VolunteerName:    "Bob Jones",
+			HasResponded:     true,
+			UnavailableDates: []string{},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
+		},
+	}
+
+	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
+	// No shifts should be without team leads
+	assert.Empty(t, result)
+}
+
+func TestIdentifyShiftsWithoutTeamLead_TeamLeadUnavailableForSomeShifts(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {
+			ID:        "v1",
+			FirstName: "Alice",
+			LastName:  "Smith",
+			Status:    "Active",
+			Role:      model.RoleTeamLead,
+		},
+	}
+
+	responses := []VolunteerResponse{
+		{
+			VolunteerID:      "v1",
+			VolunteerName:    "Alice Smith",
+			HasResponded:     true,
+			UnavailableDates: []string{"Sun Jan 5 2025", "Sun Jan 19 2025"},
+			AvailableDates:   []string{"Sun Jan 12 2025"},
+		},
+	}
+
+	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
+	// Only Jan 5 and Jan 19 should be without team leads
+	require.Len(t, result, 2)
+	assert.Contains(t, result, "Sun Jan 5 2025")
+	assert.Contains(t, result, "Sun Jan 19 2025")
+	assert.NotContains(t, result, "Sun Jan 12 2025")
+}
+
+func TestIdentifyShiftsWithoutTeamLead_MultipleTeamLeads(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {
+			ID:        "v1",
+			FirstName: "Alice",
+			LastName:  "Smith",
+			Status:    "Active",
+			Role:      model.RoleTeamLead,
+		},
+		"v2": {
+			ID:        "v2",
+			FirstName: "Bob",
+			LastName:  "Jones",
+			Status:    "Active",
+			Role:      model.RoleTeamLead,
+		},
+	}
+
+	responses := []VolunteerResponse{
+		{
+			VolunteerID:      "v1",
+			VolunteerName:    "Alice Smith",
+			HasResponded:     true,
+			UnavailableDates: []string{"Sun Jan 5 2025"},
+			AvailableDates:   []string{"Sun Jan 12 2025", "Sun Jan 19 2025"},
+		},
+		{
+			VolunteerID:      "v2",
+			VolunteerName:    "Bob Jones",
+			HasResponded:     true,
+			UnavailableDates: []string{"Sun Jan 12 2025"},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 19 2025"},
+		},
+	}
+
+	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
+	// All shifts have at least one team lead available
+	assert.Empty(t, result)
+}
+
+func TestIdentifyShiftsWithoutTeamLead_TeamLeadNotResponded(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {
+			ID:        "v1",
+			FirstName: "Alice",
+			LastName:  "Smith",
+			Status:    "Active",
+			Role:      model.RoleTeamLead,
+		},
+	}
+
+	responses := []VolunteerResponse{
+		{
+			VolunteerID:  "v1",
+			VolunteerName: "Alice Smith",
+			HasResponded: false, // Not responded
+		},
+	}
+
+	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
+	// All shifts should be without team leads since the team lead hasn't responded
+	require.Len(t, result, 2)
+	assert.Contains(t, result, "Sun Jan 5 2025")
+	assert.Contains(t, result, "Sun Jan 12 2025")
+}
+
+func TestIdentifyShiftsWithoutTeamLead_InactiveTeamLead(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {
+			ID:        "v1",
+			FirstName: "Alice",
+			LastName:  "Smith",
+			Status:    "Inactive", // Inactive
+			Role:      model.RoleTeamLead,
+		},
+	}
+
+	responses := []VolunteerResponse{
+		{
+			VolunteerID:      "v1",
+			VolunteerName:    "Alice Smith",
+			HasResponded:     true,
+			UnavailableDates: []string{},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025"},
+		},
+	}
+
+	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
+	// All shifts should be without team leads since the team lead is inactive
+	require.Len(t, result, 2)
+	assert.Contains(t, result, "Sun Jan 5 2025")
+	assert.Contains(t, result, "Sun Jan 12 2025")
+}

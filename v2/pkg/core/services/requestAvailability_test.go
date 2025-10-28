@@ -410,18 +410,18 @@ func TestRequestAvailability_AllEmailsFail(t *testing.T) {
 }
 
 // Helper function tests
-func TestFilterVolunteersWithoutRequests(t *testing.T) {
+func TestFilterVolunteersWithoutSentRequests(t *testing.T) {
 	volunteers := []model.Volunteer{
 		{ID: "vol-1"},
 		{ID: "vol-2"},
 		{ID: "vol-3"},
 	}
-	withRequests := map[string]bool{
+	withSentRequests := map[string]bool{
 		"vol-1": true,
 		"vol-3": true,
 	}
 
-	without := filterVolunteersWithoutRequests(volunteers, withRequests)
+	without := filterVolunteersWithoutSentRequests(volunteers, withSentRequests)
 
 	require.Len(t, without, 1)
 	assert.Equal(t, "vol-2", without[0].ID)

@@ -39,14 +39,15 @@ type GroupResponse struct {
 
 // ViewResponsesResult contains the response data for display
 type ViewResponsesResult struct {
-	RotaID            string
-	RotaStart         string
-	ShiftCount        int
-	ShiftDates        []time.Time
-	GroupResponses    []GroupResponse
-	RespondedCount    int
-	NotRespondedCount int
-	TotalActiveCount  int
+	RotaID               string
+	RotaStart            string
+	ShiftCount           int
+	ShiftDates           []time.Time
+	GroupResponses       []GroupResponse
+	RespondedCount       int
+	NotRespondedCount    int
+	TotalActiveCount     int
+	ShiftsWithoutTeamLead []string // Dates where no team lead is available
 }
 
 // ViewResponsesStore defines the database operations needed for viewing responses
@@ -211,22 +212,27 @@ func ViewResponses(
 		return groupResponses[i].GroupName < groupResponses[j].GroupName
 	})
 
+	// Identify shifts with no team lead available
+	shiftsWithoutTeamLead := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+
 	logger.Debug("View responses completed",
 		zap.Int("total_requests", len(responses)),
 		zap.Int("responded", respondedCount),
 		zap.Int("not_responded", notRespondedCount),
 		zap.Int("total_active", activeCount),
-		zap.Int("total_groups", len(groupResponses)))
+		zap.Int("total_groups", len(groupResponses)),
+		zap.Int("shifts_without_team_lead", len(shiftsWithoutTeamLead)))
 
 	return &ViewResponsesResult{
-		RotaID:            targetRota.ID,
-		RotaStart:         targetRota.Start,
-		ShiftCount:        targetRota.ShiftCount,
-		ShiftDates:        shiftDates,
-		GroupResponses:    groupResponses,
-		RespondedCount:    respondedCount,
-		NotRespondedCount: notRespondedCount,
-		TotalActiveCount:  activeCount,
+		RotaID:               targetRota.ID,
+		RotaStart:            targetRota.Start,
+		ShiftCount:           targetRota.ShiftCount,
+		ShiftDates:           shiftDates,
+		GroupResponses:       groupResponses,
+		RespondedCount:       respondedCount,
+		NotRespondedCount:    notRespondedCount,
+		TotalActiveCount:     activeCount,
+		ShiftsWithoutTeamLead: shiftsWithoutTeamLead,
 	}, nil
 }
 
@@ -312,4 +318,51 @@ func aggregateByGroup(responses []VolunteerResponse, shiftDates []time.Time, vol
 	}
 
 	return groupResponses
+}
+
+// identifyShiftsWithoutTeamLead identifies shifts where no active team lead is available
+func identifyShiftsWithoutTeamLead(responses []VolunteerResponse, shiftDates []time.Time, volunteersByID map[string]model.Volunteer) []string {
+	shiftsWithoutTeamLead := []string{}
+
+	// For each shift date, check if there's at least one available team lead
+	for _, date := range shiftDates {
+		dateStr := date.Format("Mon Jan 2 2006")
+		hasAvailableTeamLead := false
+
+		for _, resp := range responses {
+			volunteer := volunteersByID[resp.VolunteerID]
+
+			// Skip if not an active team lead
+			if volunteer.Status != "Active" || volunteer.Role != model.RoleTeamLead {
+				continue
+			}
+
+			// Skip if they haven't responded (we don't know their availability)
+			if !resp.HasResponded {
+				continue
+			}
+
+			// Check if this date is in their unavailable dates
+			isUnavailable := false
+			for _, unavailDate := range resp.UnavailableDates {
+				if unavailDate == dateStr {
+					isUnavailable = true
+					break
+				}
+			}
+
+			// If they're available for this date, we have a team lead
+			if !isUnavailable {
+				hasAvailableTeamLead = true
+				break
+			}
+		}
+
+		// If no team lead is available for this shift, add it to the list
+		if !hasAvailableTeamLead {
+			shiftsWithoutTeamLead = append(shiftsWithoutTeamLead, dateStr)
+		}
+	}
+
+	return shiftsWithoutTeamLead
 }
