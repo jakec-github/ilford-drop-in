@@ -52,8 +52,9 @@ type GmailClient interface {
 }
 
 // RequestAvailability creates availability forms for volunteers, sends emails, and returns results
-// It fetches the latest rota, creates forms for volunteers without requests, sends emails,
-// and inserts DB records. Returns volunteers who were successfully sent forms and those that failed.
+// It fetches the latest rota, identifies volunteers without form_sent=true requests, creates forms
+// for those who need them (or reuses existing unsent forms), sends emails, and inserts DB records.
+// Returns volunteers who were successfully sent forms and those that failed.
 // If skipEmail is true, emails will not be sent (useful for testing).
 func RequestAvailability(
 	ctx context.Context,
@@ -105,12 +106,19 @@ func RequestAvailability(
 	requestsForRota := filterRequestsByRotaID(allRequests, latestRota.ID)
 	logger.Debug("Filtered requests for latest rota", zap.Int("count", len(requestsForRota)))
 
-	// Build set of volunteer IDs who already have requests for this rota
-	volunteerIDsWithRequests := make(map[string]bool)
+	// Build set of volunteer IDs who already have SENT requests for this rota
+	volunteerIDsWithSentRequests := make(map[string]bool)
+	unsentRequestsByVolunteer := make(map[string]db.AvailabilityRequest)
 	for _, req := range requestsForRota {
-		volunteerIDsWithRequests[req.VolunteerID] = true
+		if req.FormSent {
+			volunteerIDsWithSentRequests[req.VolunteerID] = true
+		} else {
+			// Track unsent requests so we can reuse the form URL
+			unsentRequestsByVolunteer[req.VolunteerID] = req
+		}
 	}
-	logger.Debug("Volunteers with existing requests", zap.Int("count", len(volunteerIDsWithRequests)))
+	logger.Debug("Volunteers with sent requests", zap.Int("count", len(volunteerIDsWithSentRequests)))
+	logger.Debug("Volunteers with unsent requests", zap.Int("count", len(unsentRequestsByVolunteer)))
 
 	// Step 5: Fetch volunteers
 	logger.Debug("Fetching volunteers")
@@ -124,55 +132,73 @@ func RequestAvailability(
 	activeVolunteers := filterActiveVolunteers(allVolunteers)
 	logger.Debug("Filtered to active volunteers", zap.Int("count", len(activeVolunteers)))
 
-	// Step 7: Find volunteers without availability requests
-	volunteersWithoutRequests := filterVolunteersWithoutRequests(activeVolunteers, volunteerIDsWithRequests)
-	logger.Debug("Found volunteers without requests",
-		zap.Int("count", len(volunteersWithoutRequests)),
-		zap.Strings("volunteer_ids", getVolunteerIDs(volunteersWithoutRequests)))
+	// Step 7: Find volunteers without SENT availability requests
+	volunteersNeedingEmails := filterVolunteersWithoutSentRequests(activeVolunteers, volunteerIDsWithSentRequests)
+	logger.Debug("Found volunteers needing emails (no sent requests)",
+		zap.Int("count", len(volunteersNeedingEmails)),
+		zap.Strings("volunteer_ids", getVolunteerIDs(volunteersNeedingEmails)))
 
-	// Step 8: Create forms for volunteers without requests
-	logger.Debug("Creating forms for volunteers", zap.Int("count", len(volunteersWithoutRequests)))
-	unsentRequests := make([]db.AvailabilityRequest, 0, len(volunteersWithoutRequests))
+	// Step 8: Create forms for volunteers who need them (those without unsent requests)
+	logger.Debug("Processing volunteers needing emails", zap.Int("count", len(volunteersNeedingEmails)))
+	unsentRequests := make([]db.AvailabilityRequest, 0)
 
 	// Map to track form details by volunteer ID for email sending
 	type formDetails struct {
 		requestID string
 		formURL   string
+		formID    string
 	}
 	formsByVolunteer := make(map[string]formDetails)
 
-	for _, volunteer := range volunteersWithoutRequests {
+	for _, volunteer := range volunteersNeedingEmails {
 		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
-		logger.Debug("Creating form for volunteer",
-			zap.String("volunteer_id", volunteer.ID),
-			zap.String("volunteer_name", volunteerName))
 
-		// Create the form
-		formResult, err := formsClient.CreateAvailabilityForm(volunteerName, shiftDates)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create form for volunteer %s: %w", volunteer.ID, err)
-		}
+		// Check if this volunteer has an existing unsent request
+		if unsentReq, exists := unsentRequestsByVolunteer[volunteer.ID]; exists {
+			// Reuse the existing form
+			logger.Debug("Reusing existing form for volunteer",
+				zap.String("volunteer_id", volunteer.ID),
+				zap.String("volunteer_name", volunteerName),
+				zap.String("existing_form_id", unsentReq.FormID))
 
-		logger.Debug("Form created",
-			zap.String("volunteer_id", volunteer.ID),
-			zap.String("form_id", formResult.FormID),
-			zap.String("form_url", formResult.ResponderURI))
+			formsByVolunteer[volunteer.ID] = formDetails{
+				requestID: unsentReq.ID,
+				formURL:   unsentReq.FormURL,
+				formID:    unsentReq.FormID,
+			}
+		} else {
+			// Create a new form
+			logger.Debug("Creating new form for volunteer",
+				zap.String("volunteer_id", volunteer.ID),
+				zap.String("volunteer_name", volunteerName))
 
-		// Build availability request record with form_sent=false
-		requestID := uuid.New().String()
-		unsentRequests = append(unsentRequests, db.AvailabilityRequest{
-			ID:          requestID,
-			RotaID:      latestRota.ID,
-			ShiftDate:   latestRota.Start,
-			VolunteerID: volunteer.ID,
-			FormID:      formResult.FormID,
-			FormURL:     formResult.ResponderURI,
-			FormSent:    false,
-		})
+			formResult, err := formsClient.CreateAvailabilityForm(volunteerName, shiftDates)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create form for volunteer %s: %w", volunteer.ID, err)
+			}
 
-		formsByVolunteer[volunteer.ID] = formDetails{
-			requestID: requestID,
-			formURL:   formResult.ResponderURI,
+			logger.Debug("Form created",
+				zap.String("volunteer_id", volunteer.ID),
+				zap.String("form_id", formResult.FormID),
+				zap.String("form_url", formResult.ResponderURI))
+
+			// Build availability request record with form_sent=false
+			requestID := uuid.New().String()
+			unsentRequests = append(unsentRequests, db.AvailabilityRequest{
+				ID:          requestID,
+				RotaID:      latestRota.ID,
+				ShiftDate:   latestRota.Start,
+				VolunteerID: volunteer.ID,
+				FormID:      formResult.FormID,
+				FormURL:     formResult.ResponderURI,
+				FormSent:    false,
+			})
+
+			formsByVolunteer[volunteer.ID] = formDetails{
+				requestID: requestID,
+				formURL:   formResult.ResponderURI,
+				formID:    formResult.FormID,
+			}
 		}
 	}
 
@@ -186,11 +212,11 @@ func RequestAvailability(
 	}
 
 	// Step 9: Send emails and create form_sent=true records for successful sends
-	sentRequests := make([]db.AvailabilityRequest, 0, len(volunteersWithoutRequests))
+	sentRequests := make([]db.AvailabilityRequest, 0, len(volunteersNeedingEmails))
 	sentForms := []SentForm{}
 	failedEmails := []FailedEmail{}
 
-	for _, volunteer := range volunteersWithoutRequests {
+	for _, volunteer := range volunteersNeedingEmails {
 		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
 		formInfo := formsByVolunteer[volunteer.ID]
 
@@ -236,28 +262,19 @@ func RequestAvailability(
 		})
 
 		// Create form_sent=true record for successful email
-		// Find the original request to get the FormID
-		var originalFormID string
-		for _, req := range unsentRequests {
-			if req.VolunteerID == volunteer.ID {
-				originalFormID = req.FormID
-				break
-			}
-		}
-
 		sentRequests = append(sentRequests, db.AvailabilityRequest{
 			ID:          formInfo.requestID, // Same ID as unsent record
 			RotaID:      latestRota.ID,
 			ShiftDate:   latestRota.Start,
 			VolunteerID: volunteer.ID,
-			FormID:      originalFormID,
+			FormID:      formInfo.formID,
 			FormURL:     formInfo.formURL,
 			FormSent:    true,
 		})
 	}
 
 	// If all emails failed, return error
-	if len(failedEmails) == len(volunteersWithoutRequests) && len(volunteersWithoutRequests) > 0 {
+	if len(failedEmails) == len(volunteersNeedingEmails) && len(volunteersNeedingEmails) > 0 {
 		return nil, nil, fmt.Errorf("all %d email send attempts failed", len(failedEmails))
 	}
 
@@ -271,18 +288,18 @@ func RequestAvailability(
 	}
 
 	logger.Debug("Request availability completed",
-		zap.Int("forms_created", len(volunteersWithoutRequests)),
+		zap.Int("volunteers_processed", len(volunteersNeedingEmails)),
 		zap.Int("emails_sent", len(sentForms)),
 		zap.Int("emails_failed", len(failedEmails)))
 
 	return sentForms, failedEmails, nil
 }
 
-// filterVolunteersWithoutRequests filters volunteers to only those who don't have requests yet
-func filterVolunteersWithoutRequests(volunteers []model.Volunteer, volunteerIDsWithRequests map[string]bool) []model.Volunteer {
+// filterVolunteersWithoutSentRequests filters volunteers to only those who don't have sent requests yet
+func filterVolunteersWithoutSentRequests(volunteers []model.Volunteer, volunteerIDsWithSentRequests map[string]bool) []model.Volunteer {
 	without := make([]model.Volunteer, 0)
 	for _, vol := range volunteers {
-		if !volunteerIDsWithRequests[vol.ID] {
+		if !volunteerIDsWithSentRequests[vol.ID] {
 			without = append(without, vol)
 		}
 	}
