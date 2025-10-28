@@ -12,17 +12,21 @@ import (
 
 // ViewResponsesCmd creates the viewResponses command
 func ViewResponsesCmd(app *AppContext) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "viewResponses [rota_id]",
 		Short: "View availability responses (defaults to latest rota)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			showAllocation, _ := cmd.Flags().GetBool("show-allocation")
+
 			var rotaID string
 			if len(args) > 0 {
 				rotaID = args[0]
 			}
 
-			app.Logger.Debug("viewResponses command", zap.String("rota_id", rotaID))
+			app.Logger.Debug("viewResponses command",
+				zap.String("rota_id", rotaID),
+				zap.Bool("show_allocation", showAllocation))
 
 			// Call the service
 			result, err := services.ViewResponses(
@@ -33,6 +37,7 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				app.Cfg,
 				app.Logger,
 				rotaID,
+				showAllocation,
 			)
 			if err != nil {
 				return err
@@ -172,7 +177,48 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				fmt.Println()
 			}
 
+			// Display allocation results if requested
+			if result.AllocationResult != nil {
+				const (
+					colorReset = "\033[0m"
+					colorGreen = "\033[32m"
+					colorRed   = "\033[31m"
+					colorBold  = "\033[1m"
+				)
+
+				fmt.Printf("📊 Allocation Results (Dry Run):\n\n")
+
+				if result.AllocationResult.Success {
+					fmt.Printf("Status: %s✓ SUCCESS%s - All shifts allocated successfully\n\n", colorGreen, colorReset)
+				} else {
+					fmt.Printf("Status: %s✗ FAILED%s - Unable to allocate all shifts\n\n", colorRed, colorReset)
+				}
+
+				// Display validation errors
+				if len(result.AllocationResult.ValidationErrors) > 0 {
+					fmt.Printf("%sValidation Errors:%s\n", colorBold, colorReset)
+					for _, err := range result.AllocationResult.ValidationErrors {
+						fmt.Printf("  %s✗%s %s: %s\n", colorRed, colorReset, err.ShiftDate, err.Description)
+					}
+					fmt.Println()
+				}
+
+				// Display underutilized groups if any
+				if len(result.AllocationResult.UnderutilizedGroups) > 0 {
+					fmt.Printf("%sUnderutilized Groups:%s\n", colorBold, colorReset)
+					fmt.Printf("  These groups are available but weren't assigned to maximize diversity:\n")
+					for _, group := range result.AllocationResult.UnderutilizedGroups {
+						fmt.Printf("  • %s\n", group.GroupKey)
+					}
+					fmt.Println()
+				}
+			}
+
 			return nil
 		},
 	}
+
+	cmd.Flags().Bool("show-allocation", false, "Run allocation algorithm (dry-run) and show results")
+
+	return cmd
 }

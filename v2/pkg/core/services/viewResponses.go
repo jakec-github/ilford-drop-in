@@ -58,12 +58,15 @@ type ViewResponsesResult struct {
 	RespondedCount    int
 	NotRespondedCount int
 	TotalActiveCount  int
+	AllocationResult  *AllocateRotaResult // Optional allocation result (when showAllocation=true)
 }
 
 // ViewResponsesStore defines the database operations needed for viewing responses
 type ViewResponsesStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
+	GetAllocations(ctx context.Context) ([]db.Allocation, error)
+	InsertAllocations(allocations []db.Allocation) error
 }
 
 // FormsClientWithResponses defines the operations needed to fetch form responses
@@ -73,6 +76,7 @@ type FormsClientWithResponses interface {
 }
 
 // ViewResponses fetches and displays availability responses for a given rota (or latest if rotaID is empty)
+// If showAllocation is true, also runs allocation algorithm in dry-run mode
 func ViewResponses(
 	ctx context.Context,
 	database ViewResponsesStore,
@@ -81,8 +85,11 @@ func ViewResponses(
 	cfg *config.Config,
 	logger *zap.Logger,
 	rotaID string,
+	showAllocation bool,
 ) (*ViewResponsesResult, error) {
-	logger.Debug("Starting viewResponses", zap.String("rota_id", rotaID))
+	logger.Debug("Starting viewResponses",
+		zap.String("rota_id", rotaID),
+		zap.Bool("show_allocation", showAllocation))
 
 	// Step 1: Fetch all rotations
 	logger.Debug("Fetching rotations")
@@ -241,6 +248,29 @@ func ViewResponses(
 		zap.Int("total_groups", len(groupResponses)),
 		zap.Int("shifts_without_team_lead", shiftsWithoutTeamLead))
 
+	// Optionally run allocation algorithm in dry-run mode
+	var allocationResult *AllocateRotaResult
+	if showAllocation {
+		logger.Debug("Running allocation algorithm (dry-run)")
+		allocResult, err := AllocateRota(
+			ctx,
+			database,
+			volunteerClient,
+			formsClient,
+			cfg,
+			logger,
+			true,  // dryRun
+			false, // forceCommit
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to run allocation: %w", err)
+		}
+		allocationResult = allocResult
+		logger.Debug("Allocation completed",
+			zap.Bool("success", allocResult.Success),
+			zap.Int("validation_errors", len(allocResult.ValidationErrors)))
+	}
+
 	return &ViewResponsesResult{
 		RotaID:            targetRota.ID,
 		RotaStart:         targetRota.Start,
@@ -251,6 +281,7 @@ func ViewResponses(
 		RespondedCount:    respondedCount,
 		NotRespondedCount: notRespondedCount,
 		TotalActiveCount:  activeCount,
+		AllocationResult:  allocationResult,
 	}, nil
 }
 
