@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/teambition/rrule-go"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -37,17 +38,26 @@ type GroupResponse struct {
 	AvailableDates   []string // Dates where ALL members are available
 }
 
+// ShiftAvailabilityInfo contains availability information for a specific shift
+type ShiftAvailabilityInfo struct {
+	Date              string // Formatted date string
+	ShiftSize         int    // Number of volunteers needed (from config + RRule overrides)
+	AvailableCount    int    // Number of available volunteers (excluding team lead)
+	Delta             int    // AvailableCount - ShiftSize (0 = exact, negative = understaffed)
+	HasTeamLead       bool   // Whether an active team lead is available for this shift
+}
+
 // ViewResponsesResult contains the response data for display
 type ViewResponsesResult struct {
-	RotaID               string
-	RotaStart            string
-	ShiftCount           int
-	ShiftDates           []time.Time
-	GroupResponses       []GroupResponse
-	RespondedCount       int
-	NotRespondedCount    int
-	TotalActiveCount     int
-	ShiftsWithoutTeamLead []string // Dates where no team lead is available
+	RotaID            string
+	RotaStart         string
+	ShiftCount        int
+	ShiftDates        []time.Time
+	ShiftAvailability []ShiftAvailabilityInfo // Per-shift availability information
+	GroupResponses    []GroupResponse
+	RespondedCount    int
+	NotRespondedCount int
+	TotalActiveCount  int
 }
 
 // ViewResponsesStore defines the database operations needed for viewing responses
@@ -212,8 +222,16 @@ func ViewResponses(
 		return groupResponses[i].GroupName < groupResponses[j].GroupName
 	})
 
-	// Identify shifts with no team lead available
-	shiftsWithoutTeamLead := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+	// Calculate shift availability information (includes team lead availability)
+	shiftAvailability := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	// Count shifts without team lead for logging
+	shiftsWithoutTeamLead := 0
+	for _, shift := range shiftAvailability {
+		if !shift.HasTeamLead {
+			shiftsWithoutTeamLead++
+		}
+	}
 
 	logger.Debug("View responses completed",
 		zap.Int("total_requests", len(responses)),
@@ -221,18 +239,18 @@ func ViewResponses(
 		zap.Int("not_responded", notRespondedCount),
 		zap.Int("total_active", activeCount),
 		zap.Int("total_groups", len(groupResponses)),
-		zap.Int("shifts_without_team_lead", len(shiftsWithoutTeamLead)))
+		zap.Int("shifts_without_team_lead", shiftsWithoutTeamLead))
 
 	return &ViewResponsesResult{
-		RotaID:               targetRota.ID,
-		RotaStart:            targetRota.Start,
-		ShiftCount:           targetRota.ShiftCount,
-		ShiftDates:           shiftDates,
-		GroupResponses:       groupResponses,
-		RespondedCount:       respondedCount,
-		NotRespondedCount:    notRespondedCount,
-		TotalActiveCount:     activeCount,
-		ShiftsWithoutTeamLead: shiftsWithoutTeamLead,
+		RotaID:            targetRota.ID,
+		RotaStart:         targetRota.Start,
+		ShiftCount:        targetRota.ShiftCount,
+		ShiftDates:        shiftDates,
+		ShiftAvailability: shiftAvailability,
+		GroupResponses:    groupResponses,
+		RespondedCount:    respondedCount,
+		NotRespondedCount: notRespondedCount,
+		TotalActiveCount:  activeCount,
 	}, nil
 }
 
@@ -320,49 +338,183 @@ func aggregateByGroup(responses []VolunteerResponse, shiftDates []time.Time, vol
 	return groupResponses
 }
 
-// identifyShiftsWithoutTeamLead identifies shifts where no active team lead is available
-func identifyShiftsWithoutTeamLead(responses []VolunteerResponse, shiftDates []time.Time, volunteersByID map[string]model.Volunteer) []string {
-	shiftsWithoutTeamLead := []string{}
+// calculateShiftAvailability calculates availability information for each shift
+// including shift size (from config + overrides), available volunteer count, and delta
+// Uses group-based counting: if ANY member of a group has responded, ALL active members
+// are counted as available unless they explicitly marked themselves unavailable
+func calculateShiftAvailability(
+	responses []VolunteerResponse,
+	shiftDates []time.Time,
+	cfg *config.Config,
+	volunteersByID map[string]model.Volunteer,
+	logger *zap.Logger,
+) []ShiftAvailabilityInfo {
+	result := make([]ShiftAvailabilityInfo, 0, len(shiftDates))
 
-	// For each shift date, check if there's at least one available team lead
-	for _, date := range shiftDates {
-		dateStr := date.Format("Mon Jan 2 2006")
-		hasAvailableTeamLead := false
+	// Build shift size calculator
+	shiftSizeCalc := buildShiftSizeCalculator(cfg, shiftDates, logger)
 
-		for _, resp := range responses {
-			volunteer := volunteersByID[resp.VolunteerID]
+	// Group responses by GroupKey (same logic as aggregateByGroup)
+	groupMap := make(map[string][]VolunteerResponse)
+	for _, resp := range responses {
+		volunteer := volunteersByID[resp.VolunteerID]
+		groupKey := volunteer.GroupKey
 
-			// Skip if not an active team lead
-			if volunteer.Status != "Active" || volunteer.Role != model.RoleTeamLead {
-				continue
-			}
+		// If volunteer has no group, create a unique group for them
+		if groupKey == "" {
+			groupKey = "individual_" + resp.VolunteerID
+		}
 
-			// Skip if they haven't responded (we don't know their availability)
-			if !resp.HasResponded {
-				continue
-			}
+		groupMap[groupKey] = append(groupMap[groupKey], resp)
+	}
 
-			// Check if this date is in their unavailable dates
-			isUnavailable := false
-			for _, unavailDate := range resp.UnavailableDates {
-				if unavailDate == dateStr {
-					isUnavailable = true
+	for _, shiftDate := range shiftDates {
+		dateStr := shiftDate.Format("Mon Jan 2 2006")
+		dateKey := shiftDate.Format("2006-01-02")
+
+		// Calculate shift size for this date
+		shiftSize := shiftSizeCalc(dateKey)
+
+		// Count available volunteers for this shift using group-based logic
+		availableCount := 0
+		hasTeamLead := false
+
+		// Iterate through groups
+		for _, memberResponses := range groupMap {
+			// Check if ANY member of this group has responded
+			groupHasResponded := false
+			for _, resp := range memberResponses {
+				if resp.HasResponded {
+					groupHasResponded = true
 					break
 				}
 			}
 
-			// If they're available for this date, we have a team lead
-			if !isUnavailable {
-				hasAvailableTeamLead = true
-				break
+			// Skip this group if no one has responded
+			if !groupHasResponded {
+				continue
+			}
+
+			// Check if ANY responding member is unavailable for this date
+			groupUnavailable := false
+			for _, resp := range memberResponses {
+				if resp.HasResponded {
+					for _, unavailDate := range resp.UnavailableDates {
+						if unavailDate == dateStr {
+							groupUnavailable = true
+							break
+						}
+					}
+					if groupUnavailable {
+						break
+					}
+				}
+			}
+
+			// If group is unavailable for this date, skip counting its members
+			if groupUnavailable {
+				continue
+			}
+
+			// Group is available - count ALL active members
+			for _, resp := range memberResponses {
+				volunteer := volunteersByID[resp.VolunteerID]
+
+				// Skip if not active
+				if volunteer.Status != "Active" {
+					continue
+				}
+
+				// Check role and count appropriately
+				if volunteer.Role == model.RoleTeamLead {
+					// Available team lead found
+					hasTeamLead = true
+				} else if volunteer.Role == model.RoleVolunteer {
+					// Available volunteer - count them
+					availableCount++
+				}
 			}
 		}
 
-		// If no team lead is available for this shift, add it to the list
-		if !hasAvailableTeamLead {
-			shiftsWithoutTeamLead = append(shiftsWithoutTeamLead, dateStr)
-		}
+		// Calculate delta
+		delta := availableCount - shiftSize
+
+		result = append(result, ShiftAvailabilityInfo{
+			Date:           dateStr,
+			ShiftSize:      shiftSize,
+			AvailableCount: availableCount,
+			Delta:          delta,
+			HasTeamLead:    hasTeamLead,
+		})
 	}
 
-	return shiftsWithoutTeamLead
+	return result
+}
+
+// buildShiftSizeCalculator creates a function that returns the shift size for a given date
+// It considers the default shift size and any RRule-based overrides
+func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger *zap.Logger) func(dateKey string) int {
+	// Parse all RRule overrides and create matchers
+	type overrideMatcher struct {
+		matches   func(string) bool
+		shiftSize int
+	}
+	matchers := make([]overrideMatcher, 0)
+
+	// Determine the date range for RRule generation
+	var rotaStart, rotaEnd time.Time
+	if len(shiftDates) > 0 {
+		rotaStart = shiftDates[0]
+		rotaEnd = shiftDates[len(shiftDates)-1]
+	}
+
+	for i, override := range cfg.RotaOverrides {
+		// Skip if no shift size specified
+		if override.ShiftSize == nil {
+			continue
+		}
+
+		// Parse the RRule
+		rule, err := rrule.StrToRRule(override.RRule)
+		if err != nil {
+			logger.Warn("Failed to parse rrule for shift size override",
+				zap.Int("override_index", i),
+				zap.String("rrule", override.RRule),
+				zap.Error(err))
+			continue
+		}
+
+		// Create matcher function
+		shiftSize := *override.ShiftSize
+		ruleForClosure := rule
+		matcher := func(dateKey string) bool {
+			searchStart := rotaStart.AddDate(0, 0, -7)
+			searchEnd := rotaEnd.AddDate(0, 0, 7)
+			ruleForClosure.DTStart(searchStart)
+			occurrences := ruleForClosure.Between(searchStart, searchEnd, true)
+			for _, occurrence := range occurrences {
+				if occurrence.Format("2006-01-02") == dateKey {
+					return true
+				}
+			}
+			return false
+		}
+
+		matchers = append(matchers, overrideMatcher{
+			matches:   matcher,
+			shiftSize: shiftSize,
+		})
+	}
+
+	// Return calculator function
+	return func(dateKey string) int {
+		// Check if any override matches this date
+		for _, matcher := range matchers {
+			if matcher.matches(dateKey) {
+				return matcher.shiftSize
+			}
+		}
+		// No override matches, use default
+		return cfg.DefaultShiftSize
+	}
 }

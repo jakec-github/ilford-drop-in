@@ -6,7 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
@@ -347,248 +349,330 @@ func TestAggregateByGroup_AvailableForAll(t *testing.T) {
 	assert.NotContains(t, group.AvailableDates, "Sun Jan 12 2025")
 }
 
-func TestIdentifyShiftsWithoutTeamLead_NoTeamLeads(t *testing.T) {
+
+func TestCalculateShiftAvailability_DefaultShiftSize(t *testing.T) {
 	shiftDates := []time.Time{
 		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
 		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
+	}
+
+	cfg := &config.Config{
+		DefaultShiftSize: 5,
+		RotaOverrides:    []config.RotaOverride{},
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {
-			ID:        "v1",
-			FirstName: "Alice",
-			LastName:  "Smith",
-			Status:    "Active",
-			Role:      model.RoleVolunteer, // Not a team lead
-		},
-		"v2": {
-			ID:        "v2",
-			FirstName: "Bob",
-			LastName:  "Jones",
-			Status:    "Active",
-			Role:      model.RoleVolunteer, // Not a team lead
-		},
+		"v1": {ID: "v1", FirstName: "Alice", LastName: "Smith", Status: "Active", Role: model.RoleVolunteer},
+		"v2": {ID: "v2", FirstName: "Bob", LastName: "Jones", Status: "Active", Role: model.RoleVolunteer},
+		"v3": {ID: "v3", FirstName: "Charlie", LastName: "Brown", Status: "Active", Role: model.RoleVolunteer},
 	}
 
 	responses := []VolunteerResponse{
 		{
 			VolunteerID:      "v1",
-			VolunteerName:    "Alice Smith",
-			HasResponded:     true,
-			UnavailableDates: []string{},
-			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
-		},
-		{
-			VolunteerID:      "v2",
-			VolunteerName:    "Bob Jones",
-			HasResponded:     true,
-			UnavailableDates: []string{},
-			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
-		},
-	}
-
-	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
-
-	// All shifts should be without team leads since no one is a team lead
-	require.Len(t, result, 3)
-	assert.Contains(t, result, "Sun Jan 5 2025")
-	assert.Contains(t, result, "Sun Jan 12 2025")
-	assert.Contains(t, result, "Sun Jan 19 2025")
-}
-
-func TestIdentifyShiftsWithoutTeamLead_TeamLeadAvailableForAll(t *testing.T) {
-	shiftDates := []time.Time{
-		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
-	}
-
-	volunteersByID := map[string]model.Volunteer{
-		"v1": {
-			ID:        "v1",
-			FirstName: "Alice",
-			LastName:  "Smith",
-			Status:    "Active",
-			Role:      model.RoleTeamLead,
-		},
-		"v2": {
-			ID:        "v2",
-			FirstName: "Bob",
-			LastName:  "Jones",
-			Status:    "Active",
-			Role:      model.RoleVolunteer,
-		},
-	}
-
-	responses := []VolunteerResponse{
-		{
-			VolunteerID:      "v1",
-			VolunteerName:    "Alice Smith",
-			HasResponded:     true,
-			UnavailableDates: []string{},
-			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
-		},
-		{
-			VolunteerID:      "v2",
-			VolunteerName:    "Bob Jones",
-			HasResponded:     true,
-			UnavailableDates: []string{},
-			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025", "Sun Jan 19 2025"},
-		},
-	}
-
-	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
-
-	// No shifts should be without team leads
-	assert.Empty(t, result)
-}
-
-func TestIdentifyShiftsWithoutTeamLead_TeamLeadUnavailableForSomeShifts(t *testing.T) {
-	shiftDates := []time.Time{
-		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
-	}
-
-	volunteersByID := map[string]model.Volunteer{
-		"v1": {
-			ID:        "v1",
-			FirstName: "Alice",
-			LastName:  "Smith",
-			Status:    "Active",
-			Role:      model.RoleTeamLead,
-		},
-	}
-
-	responses := []VolunteerResponse{
-		{
-			VolunteerID:      "v1",
-			VolunteerName:    "Alice Smith",
-			HasResponded:     true,
-			UnavailableDates: []string{"Sun Jan 5 2025", "Sun Jan 19 2025"},
-			AvailableDates:   []string{"Sun Jan 12 2025"},
-		},
-	}
-
-	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
-
-	// Only Jan 5 and Jan 19 should be without team leads
-	require.Len(t, result, 2)
-	assert.Contains(t, result, "Sun Jan 5 2025")
-	assert.Contains(t, result, "Sun Jan 19 2025")
-	assert.NotContains(t, result, "Sun Jan 12 2025")
-}
-
-func TestIdentifyShiftsWithoutTeamLead_MultipleTeamLeads(t *testing.T) {
-	shiftDates := []time.Time{
-		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
-	}
-
-	volunteersByID := map[string]model.Volunteer{
-		"v1": {
-			ID:        "v1",
-			FirstName: "Alice",
-			LastName:  "Smith",
-			Status:    "Active",
-			Role:      model.RoleTeamLead,
-		},
-		"v2": {
-			ID:        "v2",
-			FirstName: "Bob",
-			LastName:  "Jones",
-			Status:    "Active",
-			Role:      model.RoleTeamLead,
-		},
-	}
-
-	responses := []VolunteerResponse{
-		{
-			VolunteerID:      "v1",
-			VolunteerName:    "Alice Smith",
-			HasResponded:     true,
-			UnavailableDates: []string{"Sun Jan 5 2025"},
-			AvailableDates:   []string{"Sun Jan 12 2025", "Sun Jan 19 2025"},
-		},
-		{
-			VolunteerID:      "v2",
-			VolunteerName:    "Bob Jones",
-			HasResponded:     true,
-			UnavailableDates: []string{"Sun Jan 12 2025"},
-			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 19 2025"},
-		},
-	}
-
-	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
-
-	// All shifts have at least one team lead available
-	assert.Empty(t, result)
-}
-
-func TestIdentifyShiftsWithoutTeamLead_TeamLeadNotResponded(t *testing.T) {
-	shiftDates := []time.Time{
-		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
-	}
-
-	volunteersByID := map[string]model.Volunteer{
-		"v1": {
-			ID:        "v1",
-			FirstName: "Alice",
-			LastName:  "Smith",
-			Status:    "Active",
-			Role:      model.RoleTeamLead,
-		},
-	}
-
-	responses := []VolunteerResponse{
-		{
-			VolunteerID:  "v1",
-			VolunteerName: "Alice Smith",
-			HasResponded: false, // Not responded
-		},
-	}
-
-	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
-
-	// All shifts should be without team leads since the team lead hasn't responded
-	require.Len(t, result, 2)
-	assert.Contains(t, result, "Sun Jan 5 2025")
-	assert.Contains(t, result, "Sun Jan 12 2025")
-}
-
-func TestIdentifyShiftsWithoutTeamLead_InactiveTeamLead(t *testing.T) {
-	shiftDates := []time.Time{
-		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
-	}
-
-	volunteersByID := map[string]model.Volunteer{
-		"v1": {
-			ID:        "v1",
-			FirstName: "Alice",
-			LastName:  "Smith",
-			Status:    "Inactive", // Inactive
-			Role:      model.RoleTeamLead,
-		},
-	}
-
-	responses := []VolunteerResponse{
-		{
-			VolunteerID:      "v1",
-			VolunteerName:    "Alice Smith",
 			HasResponded:     true,
 			UnavailableDates: []string{},
 			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025"},
 		},
+		{
+			VolunteerID:      "v2",
+			HasResponded:     true,
+			UnavailableDates: []string{},
+			AvailableDates:   []string{"Sun Jan 5 2025", "Sun Jan 12 2025"},
+		},
+		{
+			VolunteerID:      "v3",
+			HasResponded:     true,
+			UnavailableDates: []string{"Sun Jan 5 2025"},
+			AvailableDates:   []string{"Sun Jan 12 2025"},
+		},
 	}
 
-	result := identifyShiftsWithoutTeamLead(responses, shiftDates, volunteersByID)
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
 
-	// All shifts should be without team leads since the team lead is inactive
 	require.Len(t, result, 2)
-	assert.Contains(t, result, "Sun Jan 5 2025")
-	assert.Contains(t, result, "Sun Jan 12 2025")
+
+	// First shift: 2 available (v1, v2), need 5, delta = -3, no team lead
+	assert.Equal(t, "Sun Jan 5 2025", result[0].Date)
+	assert.Equal(t, 5, result[0].ShiftSize)
+	assert.Equal(t, 2, result[0].AvailableCount)
+	assert.Equal(t, -3, result[0].Delta)
+	assert.False(t, result[0].HasTeamLead)
+
+	// Second shift: 3 available (v1, v2, v3), need 5, delta = -2, no team lead
+	assert.Equal(t, "Sun Jan 12 2025", result[1].Date)
+	assert.Equal(t, 5, result[1].ShiftSize)
+	assert.Equal(t, 3, result[1].AvailableCount)
+	assert.Equal(t, -2, result[1].Delta)
+	assert.False(t, result[1].HasTeamLead)
+}
+
+func TestCalculateShiftAvailability_WithRRuleOverrides(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 4, 0, 0, 0, 0, time.UTC),  // Saturday
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),  // Sunday
+		time.Date(2025, 1, 11, 0, 0, 0, 0, time.UTC), // Saturday
+	}
+
+	shiftSize3 := 3
+	cfg := &config.Config{
+		DefaultShiftSize: 5, // Default is 5
+		RotaOverrides: []config.RotaOverride{
+			{
+				RRule:     "FREQ=WEEKLY;BYDAY=SA", // Saturdays have different shift size
+				ShiftSize: &shiftSize3,             // Override to 3 for Saturdays
+			},
+		},
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {ID: "v1", Status: "Active", Role: model.RoleVolunteer},
+		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
+		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+		"v4": {ID: "v4", Status: "Active", Role: model.RoleVolunteer},
+	}
+
+	responses := []VolunteerResponse{
+		{VolunteerID: "v1", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v2", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v3", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v4", HasResponded: true, UnavailableDates: []string{}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 3)
+
+	// Saturday Jan 4: 4 available, need 3 (override), delta = +1, no team lead
+	assert.Equal(t, "Sat Jan 4 2025", result[0].Date)
+	assert.Equal(t, 3, result[0].ShiftSize)
+	assert.Equal(t, 4, result[0].AvailableCount)
+	assert.Equal(t, 1, result[0].Delta)
+	assert.False(t, result[0].HasTeamLead)
+
+	// Sunday Jan 5: 4 available, need 5 (default), delta = -1, no team lead
+	assert.Equal(t, "Sun Jan 5 2025", result[1].Date)
+	assert.Equal(t, 5, result[1].ShiftSize)
+	assert.Equal(t, 4, result[1].AvailableCount)
+	assert.Equal(t, -1, result[1].Delta)
+	assert.False(t, result[1].HasTeamLead)
+
+	// Saturday Jan 11: 4 available, need 3 (override), delta = +1, no team lead
+	assert.Equal(t, "Sat Jan 11 2025", result[2].Date)
+	assert.Equal(t, 3, result[2].ShiftSize)
+	assert.Equal(t, 4, result[2].AvailableCount)
+	assert.Equal(t, 1, result[2].Delta)
+	assert.False(t, result[2].HasTeamLead)
+}
+
+func TestCalculateShiftAvailability_ExcludesTeamLeadsFromCount(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+	}
+
+	cfg := &config.Config{
+		DefaultShiftSize: 3,
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {ID: "v1", Status: "Active", Role: model.RoleTeamLead}, // Team lead - should not be counted but HasTeamLead should be true
+		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
+		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+	}
+
+	responses := []VolunteerResponse{
+		{VolunteerID: "v1", HasResponded: true, UnavailableDates: []string{}}, // Available team lead
+		{VolunteerID: "v2", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v3", HasResponded: true, UnavailableDates: []string{}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 1)
+
+	// Only count volunteers, not team leads: 2 available, need 3, delta = -1
+	// But HasTeamLead should be true
+	assert.Equal(t, 3, result[0].ShiftSize)
+	assert.Equal(t, 2, result[0].AvailableCount)
+	assert.Equal(t, -1, result[0].Delta)
+	assert.True(t, result[0].HasTeamLead, "Should have team lead available")
+}
+
+func TestCalculateShiftAvailability_ExcludesInactive(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+	}
+
+	cfg := &config.Config{
+		DefaultShiftSize: 3,
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {ID: "v1", Status: "Inactive", Role: model.RoleVolunteer}, // Inactive
+		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
+		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+	}
+
+	responses := []VolunteerResponse{
+		{VolunteerID: "v1", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v2", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v3", HasResponded: true, UnavailableDates: []string{}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 1)
+
+	// Only count active volunteers: 2 available, need 3, delta = -1, no team lead
+	assert.Equal(t, 3, result[0].ShiftSize)
+	assert.Equal(t, 2, result[0].AvailableCount)
+	assert.Equal(t, -1, result[0].Delta)
+	assert.False(t, result[0].HasTeamLead)
+}
+
+func TestCalculateShiftAvailability_ExcludesNonResponders(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+	}
+
+	cfg := &config.Config{
+		DefaultShiftSize: 3,
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {ID: "v1", Status: "Active", Role: model.RoleVolunteer},
+		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
+		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+	}
+
+	responses := []VolunteerResponse{
+		{VolunteerID: "v1", HasResponded: false}, // Hasn't responded
+		{VolunteerID: "v2", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v3", HasResponded: true, UnavailableDates: []string{}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 1)
+
+	// Only count responders: 2 available, need 3, delta = -1, no team lead
+	assert.Equal(t, 3, result[0].ShiftSize)
+	assert.Equal(t, 2, result[0].AvailableCount)
+	assert.Equal(t, -1, result[0].Delta)
+	assert.False(t, result[0].HasTeamLead)
+}
+
+func TestCalculateShiftAvailability_TeamLeadAvailability(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),
+	}
+
+	cfg := &config.Config{
+		DefaultShiftSize: 2,
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"tl1": {ID: "tl1", Role: model.RoleTeamLead, Status: "Active"},
+		"tl2": {ID: "tl2", Role: model.RoleTeamLead, Status: "Active"},
+		"v1":  {ID: "v1", Role: model.RoleVolunteer, Status: "Active"},
+		"v2":  {ID: "v2", Role: model.RoleVolunteer, Status: "Active"},
+		"v3":  {ID: "v3", Role: model.RoleVolunteer, Status: "Active"},
+		"v4":  {ID: "v4", Role: model.RoleVolunteer, Status: "Active"},
+	}
+
+	responses := []VolunteerResponse{
+		// tl1: Available for Jan 5 only
+		{VolunteerID: "tl1", HasResponded: true, UnavailableDates: []string{"Sun Jan 12 2025", "Sun Jan 19 2025"}},
+		// tl2: Available for Jan 12 only
+		{VolunteerID: "tl2", HasResponded: true, UnavailableDates: []string{"Sun Jan 5 2025", "Sun Jan 19 2025"}},
+		// v1: Available for Jan 5 and Jan 19
+		{VolunteerID: "v1", HasResponded: true, UnavailableDates: []string{"Sun Jan 12 2025"}},
+		// v2: Available for Jan 5 and Jan 19
+		{VolunteerID: "v2", HasResponded: true, UnavailableDates: []string{"Sun Jan 12 2025"}},
+		// v3: Available for Jan 12 only
+		{VolunteerID: "v3", HasResponded: true, UnavailableDates: []string{"Sun Jan 5 2025", "Sun Jan 19 2025"}},
+		// v4: Available for Jan 12 only
+		{VolunteerID: "v4", HasResponded: true, UnavailableDates: []string{"Sun Jan 5 2025", "Sun Jan 19 2025"}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 3)
+
+	// Jan 5: Has team lead (tl1), 2 volunteers (v1, v2) available
+	assert.Equal(t, "Sun Jan 5 2025", result[0].Date)
+	assert.Equal(t, 2, result[0].ShiftSize)
+	assert.Equal(t, 2, result[0].AvailableCount)
+	assert.Equal(t, 0, result[0].Delta)
+	assert.True(t, result[0].HasTeamLead)
+
+	// Jan 12: Has team lead (tl2), 2 volunteers (v3, v4) available
+	assert.Equal(t, "Sun Jan 12 2025", result[1].Date)
+	assert.Equal(t, 2, result[1].ShiftSize)
+	assert.Equal(t, 2, result[1].AvailableCount)
+	assert.Equal(t, 0, result[1].Delta)
+	assert.True(t, result[1].HasTeamLead)
+
+	// Jan 19: No team lead, 2 volunteers (v1, v2) available
+	assert.Equal(t, "Sun Jan 19 2025", result[2].Date)
+	assert.Equal(t, 2, result[2].ShiftSize)
+	assert.Equal(t, 2, result[2].AvailableCount)
+	assert.Equal(t, 0, result[2].Delta)
+	assert.False(t, result[2].HasTeamLead)
+}
+
+func TestCalculateShiftAvailability_GroupBasedCounting(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+	}
+
+	cfg := &config.Config{
+		DefaultShiftSize: 2,
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		// Group "couple1" - Alice and Bob
+		"alice": {ID: "alice", Role: model.RoleVolunteer, Status: "Active", GroupKey: "couple1"},
+		"bob":   {ID: "bob", Role: model.RoleVolunteer, Status: "Active", GroupKey: "couple1"},
+		// Individual volunteer
+		"charlie": {ID: "charlie", Role: model.RoleVolunteer, Status: "Active", GroupKey: ""},
+	}
+
+	responses := []VolunteerResponse{
+		// Only Alice from couple1 responds - but Bob should still be counted as available
+		{VolunteerID: "alice", HasResponded: true, UnavailableDates: []string{"Sun Jan 12 2025"}},
+		// Bob hasn't responded, but should be counted because Alice (his group member) responded
+		{VolunteerID: "bob", HasResponded: false, UnavailableDates: []string{}},
+		// Charlie responds individually
+		{VolunteerID: "charlie", HasResponded: true, UnavailableDates: []string{}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 2)
+
+	// Jan 5: Should count Alice (responded), Bob (group member), and Charlie (responded) = 3 volunteers
+	assert.Equal(t, "Sun Jan 5 2025", result[0].Date)
+	assert.Equal(t, 2, result[0].ShiftSize)
+	assert.Equal(t, 3, result[0].AvailableCount) // Alice + Bob + Charlie
+	assert.Equal(t, 1, result[0].Delta)
+	assert.False(t, result[0].HasTeamLead)
+
+	// Jan 12: Alice (group member) marked unavailable, so entire couple1 group is unavailable
+	// Should only count Charlie = 1 volunteer
+	assert.Equal(t, "Sun Jan 12 2025", result[1].Date)
+	assert.Equal(t, 2, result[1].ShiftSize)
+	assert.Equal(t, 1, result[1].AvailableCount) // Only Charlie
+	assert.Equal(t, -1, result[1].Delta)
+	assert.False(t, result[1].HasTeamLead)
 }

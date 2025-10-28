@@ -103,6 +103,41 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				}
 				fmt.Println()
 
+				// Print team lead availability row
+				fmt.Printf("%s%-*s%s", colorBold, nameColWidth, "Team Lead", colorReset)
+				for _, shift := range result.ShiftAvailability {
+					if shift.HasTeamLead {
+						fmt.Printf("  %s%-6s%s", colorGreen, "  ✓", colorReset)
+					} else {
+						fmt.Printf("  %s%-6s%s", colorRed, "  ✗", colorReset)
+					}
+				}
+				fmt.Println()
+
+				// Print availability delta row
+				fmt.Printf("%s%-*s%s", colorBold, nameColWidth, "Availability", colorReset)
+				for _, shift := range result.ShiftAvailability {
+					deltaStr := fmt.Sprintf("%+d", shift.Delta)
+					if shift.Delta < 0 {
+						// Understaffed - red
+						fmt.Printf("  %s%-6s%s", colorRed, deltaStr, colorReset)
+					} else if shift.Delta >= 3 {
+						// Well staffed - green
+						fmt.Printf("  %s%-6s%s", colorGreen, deltaStr, colorReset)
+					} else {
+						// Adequately staffed (0, +1, +2) - normal
+						fmt.Printf("  %-6s", deltaStr)
+					}
+				}
+				fmt.Println()
+
+				// Print separator
+				fmt.Print(strings.Repeat("-", nameColWidth))
+				for range result.ShiftDates {
+					fmt.Print("  ------")
+				}
+				fmt.Println()
+
 				// Print each group's availability
 				for _, resp := range respondedGroups {
 					// Create a map of available dates for quick lookup
