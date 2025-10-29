@@ -223,7 +223,7 @@ func RequestAvailability(
 		// Send email with form link (unless skipEmail is true)
 		if !skipEmail {
 			subject := fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
-			body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s:\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
+			body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
 				volunteer.FirstName, formInfo.formURL, deadline)
 
 			logger.Debug("Sending email",

@@ -169,7 +169,7 @@ func SendAvailabilityReminders(
 
 		// Send reminder email with form link
 		subject := fmt.Sprintf("Reminder: Ilford drop-in availability (please complete by %s)", deadline)
-		body := fmt.Sprintf("Hey %s\n\nThis is a reminder to please complete your availability form if you haven't already.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
+		body := fmt.Sprintf("Hey %s\n\nThis is a reminder to please complete your availability form.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
 			volunteer.FirstName, req.FormURL, deadline)
 
 		logger.Info("Sending reminder email",
