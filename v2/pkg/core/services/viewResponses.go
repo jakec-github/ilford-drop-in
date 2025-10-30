@@ -502,6 +502,9 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 	for i, override := range cfg.RotaOverrides {
 		// Skip if no shift size specified
 		if override.ShiftSize == nil {
+			logger.Debug("Skipping override without shift size",
+				zap.Int("override_index", i),
+				zap.String("rrule", override.RRule))
 			continue
 		}
 
@@ -515,8 +518,14 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 			continue
 		}
 
+		logger.Debug("Added shift size override",
+			zap.Int("override_index", i),
+			zap.String("rrule", override.RRule),
+			zap.Int("shift_size", *override.ShiftSize))
+
 		// Create matcher function
 		shiftSize := *override.ShiftSize
+		overrideIndex := i
 		ruleForClosure := rule
 		matcher := func(dateKey string) bool {
 			searchStart := rotaStart.AddDate(0, 0, -7)
@@ -525,6 +534,10 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 			occurrences := ruleForClosure.Between(searchStart, searchEnd, true)
 			for _, occurrence := range occurrences {
 				if occurrence.Format("2006-01-02") == dateKey {
+					logger.Debug("Override matched date",
+						zap.Int("override_index", overrideIndex),
+						zap.String("date", dateKey),
+						zap.Int("shift_size", shiftSize))
 					return true
 				}
 			}
@@ -546,6 +559,9 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 			}
 		}
 		// No override matches, use default
+		logger.Debug("Using default shift size",
+			zap.String("date", dateKey),
+			zap.Int("default_shift_size", cfg.DefaultShiftSize))
 		return cfg.DefaultShiftSize
 	}
 }
