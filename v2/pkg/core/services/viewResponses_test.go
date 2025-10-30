@@ -676,3 +676,84 @@ func TestCalculateShiftAvailability_GroupBasedCounting(t *testing.T) {
 	assert.Equal(t, -1, result[1].Delta)
 	assert.False(t, result[1].HasTeamLead)
 }
+
+func TestCalculateShiftAvailability_WithPreallocations(t *testing.T) {
+	shiftDates := []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),  // Sunday
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC), // Sunday
+		time.Date(2025, 1, 18, 0, 0, 0, 0, time.UTC), // Saturday
+	}
+
+	// Config with multiple overrides:
+	// Rule 1: Sundays have shift size 5
+	// Rule 2: Sundays have 2 preallocations (John, Jane)
+	// Rule 3: First Sunday of month has 1 additional preallocation (Bob)
+	// So Jan 5 (first Sunday): size 5, preallocations 3 (John + Jane + Bob) = effective 2
+	// Jan 12 (regular Sunday): size 5, preallocations 2 (John + Jane) = effective 3
+	// Jan 18 (Saturday): default size 4, no preallocations = effective 4
+	cfg := &config.Config{
+		DefaultShiftSize: 4,
+		RotaOverrides: []config.RotaOverride{
+			{
+				// All Sundays: shift size 5
+				RRule:     "DTSTART:20250105T000000Z\nRRULE:FREQ=WEEKLY;BYDAY=SU",
+				ShiftSize: intPtr(5),
+			},
+			{
+				// All Sundays: preallocate John and Jane
+				RRule:                "DTSTART:20250105T000000Z\nRRULE:FREQ=WEEKLY;BYDAY=SU",
+				CustomPreallocations: []string{"External John", "External Jane"},
+			},
+			{
+				// First Sunday of month: additional preallocation Bob
+				RRule:                "DTSTART:20250105T000000Z\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
+				CustomPreallocations: []string{"External Bob"},
+			},
+		},
+	}
+
+	volunteersByID := map[string]model.Volunteer{
+		"v1": {ID: "v1", Role: model.RoleVolunteer, Status: "Active"},
+		"v2": {ID: "v2", Role: model.RoleVolunteer, Status: "Active"},
+		"v3": {ID: "v3", Role: model.RoleVolunteer, Status: "Active"},
+		"v4": {ID: "v4", Role: model.RoleVolunteer, Status: "Active"},
+	}
+
+	responses := []VolunteerResponse{
+		{VolunteerID: "v1", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v2", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v3", HasResponded: true, UnavailableDates: []string{}},
+		{VolunteerID: "v4", HasResponded: true, UnavailableDates: []string{}},
+	}
+
+	logger := zap.NewNop()
+	result := calculateShiftAvailability(responses, shiftDates, cfg, volunteersByID, logger)
+
+	require.Len(t, result, 3)
+
+	// Jan 5 (first Sunday): shift size 5, preallocations 3 (John+Jane from rule 2, Bob from rule 3) = effective 2
+	// Have 4 volunteers available, so delta = +2
+	assert.Equal(t, "Sun Jan 5 2025", result[0].Date)
+	assert.Equal(t, 2, result[0].ShiftSize) // 5 - 3 preallocations
+	assert.Equal(t, 4, result[0].AvailableCount)
+	assert.Equal(t, 2, result[0].Delta)
+
+	// Jan 12 (regular Sunday): shift size 5, preallocations 2 (John+Jane from rule 2) = effective 3
+	// Have 4 volunteers available, so delta = +1
+	assert.Equal(t, "Sun Jan 12 2025", result[1].Date)
+	assert.Equal(t, 3, result[1].ShiftSize) // 5 - 2 preallocations
+	assert.Equal(t, 4, result[1].AvailableCount)
+	assert.Equal(t, 1, result[1].Delta)
+
+	// Jan 18 (Saturday): default size 4, no preallocations = effective 4
+	// Have 4 volunteers available, so delta = 0
+	assert.Equal(t, "Sat Jan 18 2025", result[2].Date)
+	assert.Equal(t, 4, result[2].ShiftSize) // default, no preallocations
+	assert.Equal(t, 4, result[2].AvailableCount)
+	assert.Equal(t, 0, result[2].Delta)
+}
+
+// Helper function to create int pointer
+func intPtr(i int) *int {
+	return &i
+}

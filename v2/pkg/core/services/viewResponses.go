@@ -483,12 +483,16 @@ func calculateShiftAvailability(
 }
 
 // buildShiftSizeCalculator creates a function that returns the shift size for a given date
-// It considers the default shift size and any RRule-based overrides
+// It considers the default shift size, any RRule-based overrides, and subtracts custom preallocations
+// Shift size comes from the first matching rule with an explicit shiftSize
+// Preallocations are summed across ALL matching rules
 func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger *zap.Logger) func(dateKey string) int {
 	// Parse all RRule overrides and create matchers
 	type overrideMatcher struct {
-		matches   func(string) bool
-		shiftSize int
+		matches              func(string) bool
+		shiftSize            *int     // nil if not specified
+		preallocationCount   int
+		overrideIndex        int
 	}
 	matchers := make([]overrideMatcher, 0)
 
@@ -500,31 +504,30 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 	}
 
 	for i, override := range cfg.RotaOverrides {
-		// Skip if no shift size specified
-		if override.ShiftSize == nil {
-			logger.Debug("Skipping override without shift size",
-				zap.Int("override_index", i),
-				zap.String("rrule", override.RRule))
-			continue
-		}
-
 		// Parse the RRule
 		rule, err := rrule.StrToRRule(override.RRule)
 		if err != nil {
-			logger.Warn("Failed to parse rrule for shift size override",
+			logger.Warn("Failed to parse rrule for override",
 				zap.Int("override_index", i),
 				zap.String("rrule", override.RRule),
 				zap.Error(err))
 			continue
 		}
 
-		logger.Debug("Added shift size override",
+		preallocationCount := len(override.CustomPreallocations)
+
+		var shiftSizePtr *int
+		if override.ShiftSize != nil {
+			shiftSizePtr = override.ShiftSize
+		}
+
+		logger.Debug("Added override",
 			zap.Int("override_index", i),
 			zap.String("rrule", override.RRule),
-			zap.Int("shift_size", *override.ShiftSize))
+			zap.Any("shift_size", shiftSizePtr),
+			zap.Int("preallocation_count", preallocationCount))
 
 		// Create matcher function
-		shiftSize := *override.ShiftSize
 		overrideIndex := i
 		ruleForClosure := rule
 		matcher := func(dateKey string) bool {
@@ -534,10 +537,6 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 			occurrences := ruleForClosure.Between(searchStart, searchEnd, true)
 			for _, occurrence := range occurrences {
 				if occurrence.Format("2006-01-02") == dateKey {
-					logger.Debug("Override matched date",
-						zap.Int("override_index", overrideIndex),
-						zap.String("date", dateKey),
-						zap.Int("shift_size", shiftSize))
 					return true
 				}
 			}
@@ -545,23 +544,63 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 		}
 
 		matchers = append(matchers, overrideMatcher{
-			matches:   matcher,
-			shiftSize: shiftSize,
+			matches:            matcher,
+			shiftSize:          shiftSizePtr,
+			preallocationCount: preallocationCount,
+			overrideIndex:      overrideIndex,
 		})
 	}
 
 	// Return calculator function
 	return func(dateKey string) int {
-		// Check if any override matches this date
+		// Find base shift size (first matching rule with explicit shiftSize, or default)
+		var baseShiftSize int
+		foundShiftSize := false
+
 		for _, matcher := range matchers {
-			if matcher.matches(dateKey) {
-				return matcher.shiftSize
+			if matcher.matches(dateKey) && matcher.shiftSize != nil {
+				baseShiftSize = *matcher.shiftSize
+				foundShiftSize = true
+				logger.Debug("Found shift size from override",
+					zap.Int("override_index", matcher.overrideIndex),
+					zap.String("date", dateKey),
+					zap.Int("shift_size", baseShiftSize))
+				break
 			}
 		}
-		// No override matches, use default
-		logger.Debug("Using default shift size",
+
+		if !foundShiftSize {
+			baseShiftSize = cfg.DefaultShiftSize
+			logger.Debug("Using default shift size",
+				zap.String("date", dateKey),
+				zap.Int("default_shift_size", baseShiftSize))
+		}
+
+		// Sum preallocations from ALL matching rules
+		totalPreallocations := 0
+		for _, matcher := range matchers {
+			if matcher.matches(dateKey) && matcher.preallocationCount > 0 {
+				totalPreallocations += matcher.preallocationCount
+				logger.Debug("Adding preallocations from override",
+					zap.Int("override_index", matcher.overrideIndex),
+					zap.String("date", dateKey),
+					zap.Int("preallocation_count", matcher.preallocationCount),
+					zap.Int("total_so_far", totalPreallocations))
+			}
+		}
+
+		// Calculate effective shift size
+		effectiveSize := baseShiftSize - totalPreallocations
+		if effectiveSize < 0 {
+			effectiveSize = 0
+		}
+
+		logger.Debug("Calculated effective shift size",
 			zap.String("date", dateKey),
-			zap.Int("default_shift_size", cfg.DefaultShiftSize))
-		return cfg.DefaultShiftSize
+			zap.Int("base_shift_size", baseShiftSize),
+			zap.Int("total_preallocations", totalPreallocations),
+			zap.Int("effective_shift_size", effectiveSize))
+
+		return effectiveSize
 	}
 }
