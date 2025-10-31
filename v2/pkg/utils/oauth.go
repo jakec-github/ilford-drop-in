@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -15,9 +17,12 @@ import (
 )
 
 const (
-	AuthPort     = 3000
-	authTimeout  = 5 * time.Minute
-	callbackPath = "/oauth/callback"
+	AuthPort       = 3000
+	authTimeout    = 5 * time.Minute
+	callbackPath   = "/oauth/callback"
+	tokenDirName   = ".ilford-drop-in/tokens"
+	tokenFilePerms = 0600 // Read/write for owner only
+	tokenDirPerms  = 0700 // Read/write/execute for owner only
 )
 
 var (
@@ -61,14 +66,53 @@ func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) 
 
 // GetTokenWithFlow performs the full OAuth flow including user authorization
 // This function is thread-safe and ensures only one OAuth flow runs at a time
-func GetTokenWithFlow(ctx context.Context, oauthConfig *oauth2.Config) (*oauth2.Token, error) {
+// Tokens are persisted to disk for the given environment and automatically refreshed when expired
+func GetTokenWithFlow(ctx context.Context, oauthConfig *oauth2.Config, env string) (*oauth2.Token, error) {
 	tokenCacheMu.Lock()
 	defer tokenCacheMu.Unlock()
 
-	// Check if token is already cached and valid
+	// Check if token is already cached in memory and valid
 	if tokenCache != nil && tokenCache.Valid() {
 		return tokenCache, nil
 	}
+
+	// Try to load token from file
+	fileToken, err := LoadTokenFromFile(env)
+	if err != nil {
+		fmt.Printf("Warning: failed to load token from file: %v\n", err)
+	}
+
+	if fileToken != nil {
+		// Check if token is valid or can be refreshed
+		if fileToken.Valid() {
+			// Token is still valid, cache and return it
+			tokenCache = fileToken
+			return fileToken, nil
+		}
+
+		// Token expired but might have refresh token
+		if fileToken.RefreshToken != "" {
+			tokenSource := oauthConfig.TokenSource(ctx, fileToken)
+			refreshedToken, err := tokenSource.Token()
+			if err == nil && refreshedToken.AccessToken != fileToken.AccessToken {
+				// Token was successfully refreshed
+				fmt.Println("Token refreshed successfully")
+
+				// Save refreshed token to file
+				if err := SaveTokenToFile(env, refreshedToken); err != nil {
+					fmt.Printf("Warning: failed to save refreshed token: %v\n", err)
+					// Continue anyway - token is still valid in memory
+				}
+
+				// Cache and return refreshed token
+				tokenCache = refreshedToken
+				return refreshedToken, nil
+			}
+		}
+	}
+
+	// No valid cached token - perform OAuth flow
+	fmt.Println("No valid token found - starting OAuth flow")
 
 	// Generate auth URL
 	authURL := oauthConfig.AuthCodeURL("state", oauth2.AccessTypeOffline)
@@ -84,6 +128,12 @@ func GetTokenWithFlow(ctx context.Context, oauthConfig *oauth2.Config) (*oauth2.
 	token, err := oauthConfig.Exchange(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code for token: %w", err)
+	}
+
+	// Save token to file
+	if err := SaveTokenToFile(env, token); err != nil {
+		fmt.Printf("Warning: failed to save token to file: %v\n", err)
+		// Continue anyway - token is still valid in memory
 	}
 
 	// Save token to memory cache
@@ -164,4 +214,84 @@ func ClearToken() {
 	tokenCacheMu.Lock()
 	defer tokenCacheMu.Unlock()
 	tokenCache = nil
+}
+
+// getTokenFilePath returns the path to the token file for the given environment
+func getTokenFilePath(env string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	tokenDir := filepath.Join(homeDir, tokenDirName)
+	return filepath.Join(tokenDir, fmt.Sprintf("token-%s.json", env)), nil
+}
+
+// ensureTokenDir creates the token directory if it doesn't exist
+func ensureTokenDir() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	tokenDir := filepath.Join(homeDir, tokenDirName)
+	if err := os.MkdirAll(tokenDir, tokenDirPerms); err != nil {
+		return fmt.Errorf("failed to create token directory: %w", err)
+	}
+
+	return nil
+}
+
+// LoadTokenFromFile loads an OAuth token from the file system for the given environment
+// Returns nil if the file doesn't exist (not an error - just means no cached token)
+func LoadTokenFromFile(env string) (*oauth2.Token, error) {
+	tokenPath, err := getTokenFilePath(env)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
+		return nil, nil // No token file exists yet
+	}
+
+	// Read token file
+	data, err := os.ReadFile(tokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read token file: %w", err)
+	}
+
+	// Parse token
+	var token oauth2.Token
+	if err := json.Unmarshal(data, &token); err != nil {
+		return nil, fmt.Errorf("failed to parse token file: %w", err)
+	}
+
+	return &token, nil
+}
+
+// SaveTokenToFile saves an OAuth token to the file system for the given environment
+func SaveTokenToFile(env string, token *oauth2.Token) error {
+	// Ensure token directory exists
+	if err := ensureTokenDir(); err != nil {
+		return err
+	}
+
+	tokenPath, err := getTokenFilePath(env)
+	if err != nil {
+		return err
+	}
+
+	// Marshal token to JSON
+	data, err := json.Marshal(token)
+	if err != nil {
+		return fmt.Errorf("failed to marshal token: %w", err)
+	}
+
+	// Write token file with secure permissions
+	if err := os.WriteFile(tokenPath, data, tokenFilePerms); err != nil {
+		return fmt.Errorf("failed to write token file: %w", err)
+	}
+
+	return nil
 }

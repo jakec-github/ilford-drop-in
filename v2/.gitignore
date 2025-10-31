@@ -10,3 +10,8 @@
 # Config files with secrets
 **/oauthClient*.json
 **/drop_in_config*.yaml
+
+# OAuth tokens (stored in ~/.ilford-drop-in/tokens/ by default)
+# Added here in case tokens are generated in project directory
+.ilford-drop-in/
+**/.ilford-drop-in/

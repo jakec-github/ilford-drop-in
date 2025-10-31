@@ -21,15 +21,16 @@ type Client struct {
 
 // NewClient creates a new Sheets client using OAuth credentials and performs OAuth flow if needed
 // Requests all necessary scopes upfront (sheets, forms, gmail) so the token can be shared across clients
-func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig) (*Client, error) {
+// Tokens are persisted to disk for the given environment
+func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig, env string) (*Client, error) {
 	// Get OAuth config with all required scopes for the application
 	oauthConfig, err := utils.GetOAuthConfig(oauthCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get oauth config: %w", err)
 	}
 
-	// Get token (will perform OAuth flow if needed)
-	token, err := utils.GetTokenWithFlow(ctx, oauthConfig)
+	// Get token (will perform OAuth flow if needed, tokens are persisted to disk)
+	token, err := utils.GetTokenWithFlow(ctx, oauthConfig, env)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get oauth token: %w", err)
 	}

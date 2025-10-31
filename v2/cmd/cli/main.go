@@ -119,7 +119,7 @@ func initApp() error {
 
 	// Initialize sheets client
 	logger.Debug("Initializing sheets client")
-	sheetsClient, err := sheetsclient.NewClient(ctx, oauthCfg)
+	sheetsClient, err := sheetsclient.NewClient(ctx, oauthCfg, env)
 	if err != nil {
 		return fmt.Errorf("failed to create sheets client: %w", err)
 	}
