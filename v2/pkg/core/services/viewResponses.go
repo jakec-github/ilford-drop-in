@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/teambition/rrule-go"
@@ -164,12 +165,15 @@ func ViewResponses(
 		volunteersByID[vol.ID] = vol
 	}
 
-	// Step 5: For each request, fetch the form response and build result
-	responses := make([]VolunteerResponse, 0, len(requestsForRota))
-	respondedCount := 0
-	notRespondedCount := 0
-	activeCount := 0
+	// Step 5: For each request, fetch the form response and build result (in parallel)
+	// First, filter out volunteers that don't exist or are inactive
+	type fetchRequest struct {
+		req           db.AvailabilityRequest
+		volunteer     model.Volunteer
+		volunteerName string
+	}
 
+	fetchRequests := make([]fetchRequest, 0, len(requestsForRota))
 	for _, req := range requestsForRota {
 		volunteer, exists := volunteersByID[req.VolunteerID]
 		if !exists {
@@ -186,39 +190,84 @@ func ViewResponses(
 			continue
 		}
 
-		activeCount++
 		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
+		fetchRequests = append(fetchRequests, fetchRequest{
+			req:           req,
+			volunteer:     volunteer,
+			volunteerName: volunteerName,
+		})
+	}
 
-		logger.Debug("Fetching response for volunteer",
-			zap.String("volunteer_id", volunteer.ID),
-			zap.String("volunteer_name", volunteerName),
-			zap.String("form_id", req.FormID))
+	logger.Debug("Fetching form responses in parallel", zap.Int("count", len(fetchRequests)))
 
-		// Get form response
-		formResp, err := formsClient.GetFormResponse(req.FormID, volunteerName, shiftDates)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get form response for volunteer %s: %w", volunteer.ID, err)
+	// Fetch responses in parallel
+	type fetchResult struct {
+		response VolunteerResponse
+		err      error
+	}
+
+	resultChan := make(chan fetchResult, len(fetchRequests))
+	var wg sync.WaitGroup
+
+	for _, fr := range fetchRequests {
+		wg.Add(1)
+		go func(fr fetchRequest) {
+			defer wg.Done()
+
+			logger.Debug("Fetching response for volunteer",
+				zap.String("volunteer_id", fr.volunteer.ID),
+				zap.String("volunteer_name", fr.volunteerName),
+				zap.String("form_id", fr.req.FormID))
+
+			// Get form response
+			formResp, err := formsClient.GetFormResponse(fr.req.FormID, fr.volunteerName, shiftDates)
+			if err != nil {
+				resultChan <- fetchResult{
+					err: fmt.Errorf("failed to get form response for volunteer %s: %w", fr.volunteer.ID, err),
+				}
+				return
+			}
+
+			resultChan <- fetchResult{
+				response: VolunteerResponse{
+					VolunteerID:      fr.volunteer.ID,
+					VolunteerName:    fr.volunteerName,
+					Email:            fr.volunteer.Email,
+					Status:           fr.volunteer.Status,
+					HasResponded:     formResp.HasResponded,
+					AvailableForAll:  formResp.AvailableForAll,
+					UnavailableDates: formResp.UnavailableDates,
+					AvailableDates:   formResp.AvailableDates,
+					FormURL:          fr.req.FormURL,
+				},
+			}
+		}(fr)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(resultChan)
+
+	// Collect results
+	responses := make([]VolunteerResponse, 0, len(fetchRequests))
+	respondedCount := 0
+	notRespondedCount := 0
+
+	for result := range resultChan {
+		if result.err != nil {
+			return nil, result.err
 		}
 
-		// Track response counts
-		if formResp.HasResponded {
+		if result.response.HasResponded {
 			respondedCount++
 		} else {
 			notRespondedCount++
 		}
 
-		responses = append(responses, VolunteerResponse{
-			VolunteerID:      volunteer.ID,
-			VolunteerName:    volunteerName,
-			Email:            volunteer.Email,
-			Status:           volunteer.Status,
-			HasResponded:     formResp.HasResponded,
-			AvailableForAll:  formResp.AvailableForAll,
-			UnavailableDates: formResp.UnavailableDates,
-			AvailableDates:   formResp.AvailableDates,
-			FormURL:          req.FormURL,
-		})
+		responses = append(responses, result.response)
 	}
+
+	activeCount := len(responses)
 
 	// Aggregate responses by group
 	groupResponses := aggregateByGroup(responses, shiftDates, volunteersByID)
