@@ -187,7 +187,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				fmt.Println("  (Groups with remaining availability that weren't fully allocated)")
 				for _, group := range result.UnderutilizedGroups {
 					allocated := len(group.AllocatedShiftIndices)
-					available := len(group.AvailableShiftIndices)
+					available := min(maxAllocationCount(result.ShiftCount, app.Cfg.MaxAllocationFrequency), len(group.AvailableShiftIndices))
 					fmt.Printf("  • %s: allocated %d/%d shifts\n", group.GroupKey, allocated, available)
 				}
 				fmt.Println()
@@ -213,4 +213,8 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 	cmd.Flags().Bool("force-commit", false, "Save allocations even if validation fails")
 
 	return cmd
+}
+
+func maxAllocationCount(shiftCount int, maxAllocationFrequency float64) int {
+	return int(float64(shiftCount) * maxAllocationFrequency)
 }

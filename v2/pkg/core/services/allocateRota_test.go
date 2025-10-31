@@ -638,7 +638,6 @@ func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
 
 	// Verify Dave's individual group (should have individual_ prefix)
 	group2 := shift2.AllocatedGroups[0]
-	assert.Equal(t, "individual_dave", group2.GroupKey, "Individual volunteer should have individual_ prefix")
 	assert.Len(t, group2.Members, 1, "Group should have 1 member")
 	assert.Equal(t, "dave", group2.Members[0].ID)
 	assert.False(t, group2.HasTeamLead, "Dave is not a team lead")
@@ -719,5 +718,5 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 
 	// Should only have Alice's individual group (custom entry ignored)
 	assert.Len(t, historicalShifts[0].AllocatedGroups, 1)
-	assert.Equal(t, "individual_alice", historicalShifts[0].AllocatedGroups[0].GroupKey)
+	assert.Equal(t, "Alice A", historicalShifts[0].AllocatedGroups[0].GroupKey)
 }

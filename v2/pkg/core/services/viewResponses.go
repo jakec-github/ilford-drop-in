@@ -177,13 +177,17 @@ func ViewResponses(
 			continue
 		}
 
-		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
-
-		// Only count active volunteers
-		isActive := volunteer.Status == "Active"
-		if isActive {
-			activeCount++
+		// Skip inactive volunteers entirely
+		if volunteer.Status != "Active" {
+			logger.Debug("Skipping inactive volunteer",
+				zap.String("volunteer_id", volunteer.ID),
+				zap.String("volunteer_name", fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)),
+				zap.String("status", volunteer.Status))
+			continue
 		}
+
+		activeCount++
+		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
 
 		logger.Debug("Fetching response for volunteer",
 			zap.String("volunteer_id", volunteer.ID),
@@ -196,13 +200,11 @@ func ViewResponses(
 			return nil, fmt.Errorf("failed to get form response for volunteer %s: %w", volunteer.ID, err)
 		}
 
-		// Track response counts (only for active volunteers)
-		if isActive {
-			if formResp.HasResponded {
-				respondedCount++
-			} else {
-				notRespondedCount++
-			}
+		// Track response counts
+		if formResp.HasResponded {
+			respondedCount++
+		} else {
+			notRespondedCount++
 		}
 
 		responses = append(responses, VolunteerResponse{

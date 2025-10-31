@@ -77,7 +77,6 @@ func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 
 	for _, g := range volunteerState.VolunteerGroups {
 		assert.Len(t, g.Members, 1, "Individual volunteers should be in single-member groups")
-		assert.Contains(t, g.GroupKey, "individual_", "Individual group keys should have prefix")
 	}
 }
 

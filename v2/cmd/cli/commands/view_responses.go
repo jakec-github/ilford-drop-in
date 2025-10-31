@@ -206,7 +206,7 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				// Display underutilized groups if any
 				if len(result.AllocationResult.UnderutilizedGroups) > 0 {
 					fmt.Printf("%sUnderutilized Groups:%s\n", colorBold, colorReset)
-					fmt.Printf("  These groups are available but weren't assigned to maximize diversity:\n")
+					fmt.Printf("  These groups were not allocated maximally:\n")
 					for _, group := range result.AllocationResult.UnderutilizedGroups {
 						fmt.Printf("  • %s\n", group.GroupKey)
 					}

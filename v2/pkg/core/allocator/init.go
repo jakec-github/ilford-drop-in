@@ -59,9 +59,9 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 
 	for _, volunteer := range input.Volunteers {
 		groupKey := volunteer.GroupKey
-		if groupKey == "" {
+		if groupKey == "" || groupKey == "None" { // Tha value "None" may be set in the spreadsheet. This does not equate to a group
 			// Individual volunteer - create unique group key
-			groupKey = "individual_" + volunteer.ID
+			groupKey = volunteer.FirstName + " " + volunteer.LastName
 		}
 		groupMap[groupKey] = append(groupMap[groupKey], volunteer)
 	}
@@ -174,7 +174,7 @@ func BuildVolunteerGroup(groupKey string, members []Volunteer) *VolunteerGroup {
 	// For individual volunteers, create a unique group key
 	effectiveGroupKey := groupKey
 	if effectiveGroupKey == "" && len(members) > 0 {
-		effectiveGroupKey = "individual_" + members[0].ID
+		effectiveGroupKey = members[0].FirstName + " " + members[0].LastName
 	}
 
 	// Calculate group metadata
