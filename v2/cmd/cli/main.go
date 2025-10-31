@@ -52,7 +52,6 @@ func main() {
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.AddCoverCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.InteractiveCmd))
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
