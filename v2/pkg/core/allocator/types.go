@@ -109,6 +109,10 @@ type Shift struct {
 	// AvailableGroups contains volunteer groups that expressed availability for this shift
 	// (populated during initialization)
 	AvailableGroups []*VolunteerGroup
+
+	// Closed indicates this shift is closed (no allocations should be made)
+	// Closed shifts appear in the rota but remain empty
+	Closed bool
 }
 
 // CurrentSize returns the current number of volunteers allocated to this shift

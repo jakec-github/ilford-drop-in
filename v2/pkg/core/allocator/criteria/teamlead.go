@@ -93,6 +93,11 @@ func (c *TeamLeadCriterion) ValidateRotaState(state *allocator.RotaState) []allo
 	var errors []allocator.ShiftValidationError
 
 	for _, shift := range state.Shifts {
+		// Skip closed shifts (they don't need team leads)
+		if shift.Closed {
+			continue
+		}
+
 		if shift.TeamLead == nil {
 			errors = append(errors, allocator.ShiftValidationError{
 				ShiftIndex:    shift.Index,

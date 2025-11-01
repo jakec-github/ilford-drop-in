@@ -125,6 +125,11 @@ func (c *MaleBalanceCriterion) ValidateRotaState(state *rotageneration.RotaState
 	var errors []rotageneration.ShiftValidationError
 
 	for _, shift := range state.Shifts {
+		// Skip closed shifts (they don't need male volunteers)
+		if shift.Closed {
+			continue
+		}
+
 		// Check if shift has at least one male volunteer
 		if shift.MaleCount == 0 {
 			errors = append(errors, rotageneration.ShiftValidationError{

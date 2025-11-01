@@ -439,13 +439,15 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 			AppliesTo:            appliesTo,
 			ShiftSize:            override.ShiftSize,
 			CustomPreallocations: override.CustomPreallocations,
+			Closed:               override.Closed,
 		})
 
 		logger.Debug("Converted override",
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
 			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("preallocated_count", len(override.CustomPreallocations)))
+			zap.Int("preallocated_count", len(override.CustomPreallocations)),
+			zap.Bool("closed", override.Closed))
 	}
 
 	return result, nil

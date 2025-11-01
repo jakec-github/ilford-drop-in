@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
+	"github.com/teambition/rrule-go"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -118,12 +120,22 @@ func PublishRota(
 		dateStr := shiftDate.Format("2006-01-02")
 		allocations := allocationsByDate[dateStr]
 
+		// Check if this shift is closed
+		isClosed := isShiftClosed(dateStr, cfg.RotaOverrides, shiftDates, logger)
+
 		row := sheetsclient.PublishedRotaRow{
 			Date:       shiftDate.Format("Mon Jan 02 2006"),
 			TeamLead:   "",
 			Volunteers: []string{},
 			HotFood:    "",
 			Collection: "",
+		}
+
+		// For closed shifts, display "CLOSED" instead of processing allocations
+		if isClosed {
+			row.TeamLead = "CLOSED"
+			rows = append(rows, row)
+			continue
 		}
 
 		// Process allocations for this shift
@@ -178,4 +190,43 @@ func PublishRota(
 		zap.String("rota_id", targetRota.ID))
 
 	return publishedRota, nil
+}
+
+// isShiftClosed checks if a shift is marked as closed by any matching RotaOverride
+func isShiftClosed(dateStr string, overrides []config.RotaOverride, shiftDates []time.Time, logger *zap.Logger) bool {
+	// Determine the date range for RRule generation
+	var rotaStart, rotaEnd time.Time
+	if len(shiftDates) > 0 {
+		rotaStart = shiftDates[0]
+		rotaEnd = shiftDates[len(shiftDates)-1]
+	}
+
+	for _, override := range overrides {
+		// Skip if not marked as closed
+		if !override.Closed {
+			continue
+		}
+
+		// Parse the RRule
+		rule, err := rrule.StrToRRule(override.RRule)
+		if err != nil {
+			logger.Warn("Failed to parse rrule for closed check",
+				zap.String("rrule", override.RRule),
+				zap.Error(err))
+			continue
+		}
+
+		// Check if this date matches the RRule
+		searchStart := rotaStart.AddDate(0, 0, -7)
+		searchEnd := rotaEnd.AddDate(0, 0, 7)
+		rule.DTStart(searchStart)
+		occurrences := rule.Between(searchStart, searchEnd, true)
+		for _, occurrence := range occurrences {
+			if occurrence.Format("2006-01-02") == dateStr {
+				return true
+			}
+		}
+	}
+
+	return false
 }

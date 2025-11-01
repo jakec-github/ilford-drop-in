@@ -184,23 +184,30 @@ func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *rotageneration.RotaSt
 	for i := 0; i < len(state.Shifts); i++ {
 		shift := state.Shifts[i]
 
+		// Skip closed shifts (they have no allocations to validate)
+		if shift.Closed {
+			continue
+		}
+
 		// Build a map of groups allocated to this shift
 		currentGroups := make(map[string]bool)
 		for _, group := range shift.AllocatedGroups {
 			currentGroups[group.GroupKey] = true
 		}
 
-		// Check against previous shift
+		// Check against previous shift (skip if previous was closed)
 		if i > 0 {
 			prevShift := state.Shifts[i-1]
-			for _, prevGroup := range prevShift.AllocatedGroups {
-				if currentGroups[prevGroup.GroupKey] {
-					errors = append(errors, rotageneration.ShiftValidationError{
-						ShiftIndex:    shift.Index,
-						ShiftDate:     shift.Date,
-						CriterionName: c.Name(),
-						Description:   fmt.Sprintf("Group '%s' is allocated to adjacent shifts %d and %d", prevGroup.GroupKey, i-1, i),
-					})
+			if !prevShift.Closed {
+				for _, prevGroup := range prevShift.AllocatedGroups {
+					if currentGroups[prevGroup.GroupKey] {
+						errors = append(errors, rotageneration.ShiftValidationError{
+							ShiftIndex:    shift.Index,
+							ShiftDate:     shift.Date,
+							CriterionName: c.Name(),
+							Description:   fmt.Sprintf("Group '%s' is allocated to adjacent shifts %d and %d", prevGroup.GroupKey, i-1, i),
+						})
+					}
 				}
 			}
 		}

@@ -15,6 +15,7 @@ type RotaOverride struct {
 	RRule                string   `yaml:"rrule" validate:"required"`
 	CustomPreallocations []string `yaml:"customPreallocations,omitempty"`
 	ShiftSize            *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
+	Closed               bool     `yaml:"closed,omitempty"`
 }
 
 // Config represents the application configuration

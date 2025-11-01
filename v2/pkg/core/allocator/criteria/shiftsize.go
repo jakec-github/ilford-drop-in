@@ -99,6 +99,11 @@ func (c *ShiftSizeCriterion) ValidateRotaState(state *rotageneration.RotaState) 
 	var errors []rotageneration.ShiftValidationError
 
 	for _, shift := range state.Shifts {
+		// Skip closed shifts (they're allowed to be empty)
+		if shift.Closed {
+			continue
+		}
+
 		currentSize := shift.CurrentSize()
 		if currentSize < shift.Size {
 			errors = append(errors, rotageneration.ShiftValidationError{

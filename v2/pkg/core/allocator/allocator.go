@@ -129,6 +129,11 @@ func (a *Allocator) findBestShift(group *VolunteerGroup) *Shift {
 	var bestAffinity float64
 
 	for _, shift := range a.state.Shifts {
+		// Skip closed shifts (no allocations allowed)
+		if shift.Closed {
+			continue
+		}
+
 		// Skip full shifts
 		if shift.IsFull() {
 			continue
@@ -178,8 +183,14 @@ func (a *Allocator) exhaustGroup(group *VolunteerGroup) {
 }
 
 // allShiftsFull checks if all shifts have reached their target size
+// Closed shifts are always considered "full" since they don't need allocation
 func (a *Allocator) allShiftsFull() bool {
 	for _, shift := range a.state.Shifts {
+		// Closed shifts don't need to be filled
+		if shift.Closed {
+			continue
+		}
+
 		if !shift.IsFull() {
 			return false
 		}

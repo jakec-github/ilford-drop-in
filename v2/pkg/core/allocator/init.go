@@ -226,6 +226,9 @@ type ShiftOverride struct {
 
 	// CustomPreallocations are volunteers manually assigned to this shift.
 	CustomPreallocations []string
+
+	// Closed indicates whether this shift should be marked as closed (no allocations)
+	Closed bool
 }
 
 // InitShiftsInput contains the data needed to initialize shifts
@@ -261,6 +264,9 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		// Track pre-allocated volunteers
 		var customPreallocations []string
 
+		// Track if shift is closed
+		isClosed := false
+
 		// Apply overrides for this date
 		for _, override := range input.Overrides {
 			if override.AppliesTo(date) {
@@ -269,16 +275,26 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 					shiftSize = *override.ShiftSize
 				}
 
-				// Add pre-allocated volunteers
-				customPreallocations = append(customPreallocations, override.CustomPreallocations...)
+				// Add pre-allocated volunteers (only if not closed)
+				if !override.Closed {
+					customPreallocations = append(customPreallocations, override.CustomPreallocations...)
+				}
+
+				// Mark as closed if any override marks it closed
+				if override.Closed {
+					isClosed = true
+					customPreallocations = []string{}
+				}
 			}
 		}
 
-		// Populate available groups for this shift
+		// Populate available groups for this shift (skip if closed)
 		availableGroups := make([]*VolunteerGroup, 0)
-		for _, group := range input.VolunteerState.VolunteerGroups {
-			if group.IsAvailable(i) {
-				availableGroups = append(availableGroups, group)
+		if !isClosed {
+			for _, group := range input.VolunteerState.VolunteerGroups {
+				if group.IsAvailable(i) {
+					availableGroups = append(availableGroups, group)
+				}
 			}
 		}
 
@@ -291,6 +307,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			TeamLead:             nil, // Will be set when a team lead is allocated
 			MaleCount:            0,   // Will be updated when groups are allocated
 			AvailableGroups:      availableGroups,
+			Closed:               isClosed,
 		}
 	}
 
