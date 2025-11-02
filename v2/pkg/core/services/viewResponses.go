@@ -41,11 +41,11 @@ type GroupResponse struct {
 
 // ShiftAvailabilityInfo contains availability information for a specific shift
 type ShiftAvailabilityInfo struct {
-	Date              string // Formatted date string
-	ShiftSize         int    // Number of volunteers needed (from config + RRule overrides)
-	AvailableCount    int    // Number of available volunteers (excluding team lead)
-	Delta             int    // AvailableCount - ShiftSize (0 = exact, negative = understaffed)
-	HasTeamLead       bool   // Whether an active team lead is available for this shift
+	Date           string // Formatted date string
+	ShiftSize      int    // Number of volunteers needed (from config + RRule overrides)
+	AvailableCount int    // Number of available volunteers (excluding team lead)
+	Delta          int    // AvailableCount - ShiftSize (0 = exact, negative = understaffed)
+	HasTeamLead    bool   // Whether an active team lead is available for this shift
 }
 
 // ViewResponsesResult contains the response data for display
@@ -272,11 +272,15 @@ func ViewResponses(
 	// Aggregate responses by group
 	groupResponses := aggregateByGroup(responses, shiftDates, volunteersByID)
 
-	// Sort group responses: responded first, then by name
+	// Sort group responses: responded first, then by availability, then by name
 	sort.Slice(groupResponses, func(i, j int) bool {
 		if groupResponses[i].HasResponded != groupResponses[j].HasResponded {
 			return groupResponses[i].HasResponded
 		}
+		if len(groupResponses[i].UnavailableDates) != len(groupResponses[j].UnavailableDates) {
+			return len(groupResponses[i].UnavailableDates) < len(groupResponses[j].UnavailableDates)
+		}
+
 		return groupResponses[i].GroupName < groupResponses[j].GroupName
 	})
 
@@ -540,10 +544,10 @@ func calculateShiftAvailability(
 func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger *zap.Logger) func(dateKey string) int {
 	// Parse all RRule overrides and create matchers
 	type overrideMatcher struct {
-		matches              func(string) bool
-		shiftSize            *int     // nil if not specified
-		preallocationCount   int
-		overrideIndex        int
+		matches            func(string) bool
+		shiftSize          *int // nil if not specified
+		preallocationCount int
+		overrideIndex      int
 	}
 	matchers := make([]overrideMatcher, 0)
 
