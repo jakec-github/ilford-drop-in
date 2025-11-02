@@ -113,6 +113,14 @@ type Shift struct {
 	// Closed indicates this shift is closed (no allocations should be made)
 	// Closed shifts appear in the rota but remain empty
 	Closed bool
+
+	// PreallocatedVolunteerIDs are volunteer IDs to preallocate (as ordinary volunteers)
+	// These are processed during initialization and then allocated as proper groups
+	PreallocatedVolunteerIDs []string
+
+	// PreallocatedTeamLeadID is the volunteer ID to preallocate as team lead
+	// This is processed during initialization and then allocated as a proper group
+	PreallocatedTeamLeadID string
 }
 
 // CurrentSize returns the current number of volunteers allocated to this shift

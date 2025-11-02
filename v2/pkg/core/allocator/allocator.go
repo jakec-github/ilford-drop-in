@@ -76,7 +76,33 @@ func Allocate(config AllocationConfig) (*AllocationOutcome, error) {
 		return nil, err
 	}
 
+	// Apply preallocations before main allocation loop
+	// This allocates volunteers specified in overrides regardless of availability
+	err = allocator.ApplyPreallocations(allocator.state)
+	if err != nil {
+		return nil, err
+	}
+
+	// Re-rank volunteer groups after preallocations
+	// This ensures groups that are now at max frequency are properly prioritized/excluded
+	RankVolunteerGroups(allocator.state, allocator.criteria, config.MaxAllocationFrequency)
+
 	volunteers := allocator.state.VolunteerState
+
+	// Exhaust groups that are already at max frequency after preallocations
+	maxAllocationCount := allocator.state.MaxAllocationCount()
+	groupsToKeep := make([]*VolunteerGroup, 0)
+	for _, group := range volunteers.VolunteerGroups {
+		allocationCount := len(group.AllocatedShiftIndices)
+		availabilityCount := len(group.AvailableShiftIndices)
+		if allocationCount >= min(availabilityCount, maxAllocationCount) {
+			// Group is at max, exhaust it
+			allocator.exhaustGroup(group)
+		} else {
+			groupsToKeep = append(groupsToKeep, group)
+		}
+	}
+	volunteers.VolunteerGroups = groupsToKeep
 
 	// Main allocation loop
 	for {
@@ -99,19 +125,12 @@ func Allocate(config AllocationConfig) (*AllocationOutcome, error) {
 		}
 
 		// Allocate group to shift
-		allocator.allocateGroupToShift(group, bestShift)
+		groupExhausted := allocator.allocateGroupToShift(group, bestShift)
 
-		// Check if group is now exhausted
-		allocationCount := len(group.AllocatedShiftIndices)
-		availabilityCount := len(group.AvailableShiftIndices)
-		maxAllocationCount := allocator.state.MaxAllocationCount()
-		if allocationCount == min(availabilityCount, maxAllocationCount) {
-			allocator.exhaustGroup(group)
-			continue
+		if !groupExhausted {
+			//Re-insert group at new ranking
+			allocator.reinsertGroup(group)
 		}
-
-		//Re-insert group at new ranking
-		allocator.reinsertGroup(group)
 
 		// Check if all shifts are full
 		if allocator.allShiftsFull() {
@@ -156,7 +175,8 @@ func (a *Allocator) findBestShift(group *VolunteerGroup) *Shift {
 }
 
 // allocateGroupToShift assigns a group to a shift and updates state
-func (a *Allocator) allocateGroupToShift(group *VolunteerGroup, shift *Shift) {
+// Returns a boolean indicating whether this volunteer is exhausted
+func (a *Allocator) allocateGroupToShift(group *VolunteerGroup, shift *Shift) bool {
 	// Add group to shift's allocated groups
 	shift.AllocatedGroups = append(shift.AllocatedGroups, group)
 
@@ -176,6 +196,16 @@ func (a *Allocator) allocateGroupToShift(group *VolunteerGroup, shift *Shift) {
 
 	// Update male count
 	shift.MaleCount += group.MaleCount
+
+	// Check if group is now exhausted
+	allocationCount := len(group.AllocatedShiftIndices)
+	availabilityCount := len(group.AvailableShiftIndices)
+	maxAllocationCount := a.state.MaxAllocationCount()
+	if allocationCount == min(availabilityCount, maxAllocationCount) {
+		a.exhaustGroup(group)
+		return true
+	}
+	return false
 }
 
 func (a *Allocator) exhaustGroup(group *VolunteerGroup) {

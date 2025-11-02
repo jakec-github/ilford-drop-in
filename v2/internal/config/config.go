@@ -12,10 +12,12 @@ import (
 
 // RotaOverride defines overrides to apply when generating rotas
 type RotaOverride struct {
-	RRule                string   `yaml:"rrule" validate:"required"`
-	CustomPreallocations []string `yaml:"customPreallocations,omitempty"`
-	ShiftSize            *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
-	Closed               bool     `yaml:"closed,omitempty"`
+	RRule                     string   `yaml:"rrule" validate:"required"`
+	CustomPreallocations      []string `yaml:"customPreallocations,omitempty"`
+	ShiftSize                 *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
+	Closed                    bool     `yaml:"closed,omitempty"`
+	PreallocatedVolunteerIDs  []string `yaml:"preallocatedVolunteerIDs,omitempty"`
+	PreallocatedTeamLeadID    string   `yaml:"preallocatedTeamLeadID,omitempty"`
 }
 
 // Config represents the application configuration

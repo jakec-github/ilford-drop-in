@@ -229,6 +229,12 @@ type ShiftOverride struct {
 
 	// Closed indicates whether this shift should be marked as closed (no allocations)
 	Closed bool
+
+	// PreallocatedVolunteerIDs are volunteer IDs to preallocate to this shift (as ordinary volunteers)
+	PreallocatedVolunteerIDs []string
+
+	// PreallocatedTeamLeadID is the volunteer ID to preallocate as team lead for this shift
+	PreallocatedTeamLeadID string
 }
 
 // InitShiftsInput contains the data needed to initialize shifts
@@ -263,6 +269,8 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 
 		// Track pre-allocated volunteers
 		var customPreallocations []string
+		var preallocatedVolunteerIDs []string
+		var preallocatedTeamLeadID string
 
 		// Track if shift is closed
 		isClosed := false
@@ -278,12 +286,18 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 				// Add pre-allocated volunteers (only if not closed)
 				if !override.Closed {
 					customPreallocations = append(customPreallocations, override.CustomPreallocations...)
+					preallocatedVolunteerIDs = append(preallocatedVolunteerIDs, override.PreallocatedVolunteerIDs...)
+					if override.PreallocatedTeamLeadID != "" {
+						preallocatedTeamLeadID = override.PreallocatedTeamLeadID
+					}
 				}
 
 				// Mark as closed if any override marks it closed
 				if override.Closed {
 					isClosed = true
 					customPreallocations = []string{}
+					preallocatedVolunteerIDs = []string{}
+					preallocatedTeamLeadID = ""
 				}
 			}
 		}
@@ -299,19 +313,111 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		}
 
 		shifts[i] = &Shift{
-			Date:                 date,
-			Index:                i,
-			Size:                 shiftSize,
-			AllocatedGroups:      []*VolunteerGroup{},
-			CustomPreallocations: customPreallocations,
-			TeamLead:             nil, // Will be set when a team lead is allocated
-			MaleCount:            0,   // Will be updated when groups are allocated
-			AvailableGroups:      availableGroups,
-			Closed:               isClosed,
+			Date:                     date,
+			Index:                    i,
+			Size:                     shiftSize,
+			AllocatedGroups:          []*VolunteerGroup{},
+			CustomPreallocations:     customPreallocations,
+			TeamLead:                 nil, // Will be set when a team lead is allocated
+			MaleCount:                0,   // Will be updated when groups are allocated
+			AvailableGroups:          availableGroups,
+			Closed:                   isClosed,
+			PreallocatedVolunteerIDs: preallocatedVolunteerIDs,
+			PreallocatedTeamLeadID:   preallocatedTeamLeadID,
 		}
 	}
 
 	return shifts, nil
+}
+
+// ApplyPreallocations processes preallocated volunteer IDs and allocates them to shifts
+// This runs after volunteer groups are initialized but before the main allocation loop
+// Preallocated volunteers are allocated regardless of their availability responses
+func (a Allocator) ApplyPreallocations(state *RotaState) error {
+	// Build a map of volunteer ID -> group for quick lookup
+	volunteerToGroup := make(map[string]*VolunteerGroup)
+	for _, group := range state.VolunteerState.VolunteerGroups {
+		for _, member := range group.Members {
+			volunteerToGroup[member.ID] = group
+		}
+	}
+
+	// Process each shift
+	for _, shift := range state.Shifts {
+		// Skip closed shifts
+		if shift.Closed {
+			continue
+		}
+
+		groupsToAllocate := []*VolunteerGroup{}
+
+		// Process preallocated team lead
+		if shift.PreallocatedTeamLeadID != "" {
+			// Find the matching group
+			group, exists := volunteerToGroup[shift.PreallocatedTeamLeadID]
+			if !exists {
+				return fmt.Errorf("preallocated team lead not found: volunteer ID %s for shift %s",
+					shift.PreallocatedTeamLeadID, shift.Date)
+			}
+
+			// Find the actual team lead volunteer in the group
+			var teamLead *Volunteer
+			for i := range group.Members {
+				if group.Members[i].ID == shift.PreallocatedTeamLeadID {
+					if !group.Members[i].IsTeamLead {
+						return fmt.Errorf("preallocated team lead ID %s is not marked as team lead for shift %s",
+							shift.PreallocatedTeamLeadID, shift.Date)
+					}
+					teamLead = &group.Members[i]
+					break
+				}
+			}
+
+			if teamLead == nil {
+				return fmt.Errorf("team lead volunteer %s not found in group for shift %s",
+					shift.PreallocatedTeamLeadID, shift.Date)
+			}
+
+			// Check if shift already has a team lead
+			// TODO: team leads are kinda half handled by a criterion and half not. Fix that
+			if shift.TeamLead != nil {
+				return fmt.Errorf("shift %s already has a team lead, cannot preallocate %s",
+					shift.Date, shift.PreallocatedTeamLeadID)
+			}
+
+			groupsToAllocate = append(groupsToAllocate, group)
+		}
+
+		// Process preallocated ordinary volunteers
+		for _, volunteerID := range shift.PreallocatedVolunteerIDs {
+			group, exists := volunteerToGroup[volunteerID]
+			if !exists {
+				return fmt.Errorf("preallocated volunteer not found: volunteer ID %s for shift %s",
+					volunteerID, shift.Date)
+			}
+
+			// Check if this group is already allocated to this shift
+			alreadyAllocated := false
+			for _, allocatedGroup := range shift.AllocatedGroups {
+				if allocatedGroup.GroupKey == group.GroupKey {
+					alreadyAllocated = true
+					break
+				}
+			}
+
+			if alreadyAllocated {
+				// Group already allocated (possibly via team lead preallocation)
+				continue
+			}
+
+			groupsToAllocate = append(groupsToAllocate, group)
+		}
+		for _, group := range groupsToAllocate {
+			a.allocateGroupToShift(group, shift)
+		}
+	}
+
+	return nil
 }
 
 func InitAllocation(config AllocationConfig) (Allocator, error) {

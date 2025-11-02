@@ -436,17 +436,21 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 		}
 
 		result = append(result, allocator.ShiftOverride{
-			AppliesTo:            appliesTo,
-			ShiftSize:            override.ShiftSize,
-			CustomPreallocations: override.CustomPreallocations,
-			Closed:               override.Closed,
+			AppliesTo:                appliesTo,
+			ShiftSize:                override.ShiftSize,
+			CustomPreallocations:     override.CustomPreallocations,
+			Closed:                   override.Closed,
+			PreallocatedVolunteerIDs: override.PreallocatedVolunteerIDs,
+			PreallocatedTeamLeadID:   override.PreallocatedTeamLeadID,
 		})
 
 		logger.Debug("Converted override",
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
 			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("preallocated_count", len(override.CustomPreallocations)),
+			zap.Int("custom_preallocated_count", len(override.CustomPreallocations)),
+			zap.Int("preallocated_volunteer_count", len(override.PreallocatedVolunteerIDs)),
+			zap.Bool("has_preallocated_team_lead", override.PreallocatedTeamLeadID != ""),
 			zap.Bool("closed", override.Closed))
 	}
 
