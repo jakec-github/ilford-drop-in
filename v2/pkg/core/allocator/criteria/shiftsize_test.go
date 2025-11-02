@@ -804,3 +804,43 @@ func TestShiftSizeCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T)
 	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
 	assert.Contains(t, errors[0].Description, "underfilled")
 }
+
+func TestShiftSizeCriterion_ValidateRotaState_SkipsClosedShifts(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:                0,
+				Date:                 "2024-01-01",
+				Size:                 5,
+				AllocatedGroups:      []*VolunteerGroup{},
+				CustomPreallocations: []string{},
+				Closed:               true, // Closed shift - should be skipped
+			},
+			{
+				Index: 1,
+				Date:  "2024-01-08",
+				Size:  3,
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+						},
+					},
+				},
+				CustomPreallocations: []string{},
+				Closed:               false, // Regular shift - should be validated
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+
+	// Should only detect the underfilled open shift, not the closed shift
+	assert.Len(t, errors, 1, "Should skip closed shift validation")
+	assert.Equal(t, 1, errors[0].ShiftIndex, "Error should be for shift 1 (the open shift)")
+	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
+	assert.Contains(t, errors[0].Description, "underfilled")
+	assert.Contains(t, errors[0].Description, "has 1 volunteers but size is 3")
+}

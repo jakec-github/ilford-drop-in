@@ -281,3 +281,104 @@ func TestInitVolunteerGroups_NonRespondingMembersIgnored(t *testing.T) {
 	// Bob's non-response should NOT make all dates unavailable
 	assert.ElementsMatch(t, []int{1, 2}, group.AvailableShiftIndices)
 }
+
+func TestInitShifts_ClosedShifts(t *testing.T) {
+	volunteers := []Volunteer{
+		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
+	}
+	availability := []VolunteerAvailability{
+		{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
+	}
+
+	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+		Volunteers:       volunteers,
+		Availability:     availability,
+		TotalShifts:      3,
+		HistoricalShifts: []*Shift{},
+	})
+	require.NoError(t, err)
+
+	// Create overrides - shift 1 is closed
+	overrides := []ShiftOverride{
+		{
+			AppliesTo: func(date string) bool {
+				return date == "2025-01-12" // Second shift
+			},
+			ShiftSize: nil,
+			Closed:    true,
+		},
+	}
+
+	input := InitShiftsInput{
+		ShiftDates:       []string{"2025-01-05", "2025-01-12", "2025-01-19"},
+		DefaultShiftSize: 4,
+		Overrides:        overrides,
+		VolunteerState:   volunteerState,
+	}
+
+	shifts, err := InitShifts(input)
+	require.NoError(t, err)
+	require.Len(t, shifts, 3)
+
+	// Shift 0 should be open
+	assert.False(t, shifts[0].Closed)
+	assert.NotEmpty(t, shifts[0].AvailableGroups, "Open shift should have available groups")
+	assert.Equal(t, 4, shifts[0].Size)
+
+	// Shift 1 should be closed
+	assert.True(t, shifts[1].Closed, "Shift 1 should be marked as closed")
+	assert.Empty(t, shifts[1].AvailableGroups, "Closed shift should have no available groups")
+	assert.Equal(t, 4, shifts[1].Size, "Closed shift should still have default size")
+
+	// Shift 2 should be open
+	assert.False(t, shifts[2].Closed)
+	assert.NotEmpty(t, shifts[2].AvailableGroups, "Open shift should have available groups")
+}
+
+func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
+	volunteers := []Volunteer{
+		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
+	}
+	availability := []VolunteerAvailability{
+		{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
+	}
+
+	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+		Volunteers:       volunteers,
+		Availability:     availability,
+		TotalShifts:      2,
+		HistoricalShifts: []*Shift{},
+	})
+	require.NoError(t, err)
+
+	// Create override with preallocations on a closed shift
+	overrides := []ShiftOverride{
+		{
+			AppliesTo: func(date string) bool {
+				return date == "2025-01-05"
+			},
+			ShiftSize:            nil,
+			CustomPreallocations: []string{"John", "Jane"}, // Should be ignored
+			Closed:               true,
+		},
+	}
+
+	input := InitShiftsInput{
+		ShiftDates:       []string{"2025-01-05", "2025-01-12"},
+		DefaultShiftSize: 4,
+		Overrides:        overrides,
+		VolunteerState:   volunteerState,
+	}
+
+	shifts, err := InitShifts(input)
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+
+	// Closed shift should ignore preallocations
+	assert.True(t, shifts[0].Closed)
+	assert.Empty(t, shifts[0].CustomPreallocations, "Closed shift should ignore preallocations")
+
+	// Non-closed shift should be normal
+	assert.False(t, shifts[1].Closed)
+	assert.Empty(t, shifts[1].CustomPreallocations)
+}

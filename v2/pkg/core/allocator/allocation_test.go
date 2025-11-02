@@ -358,3 +358,118 @@ func (m *mockCriterionWithValidity) IsShiftValid(state *RotaState, group *Volunt
 func (m *mockCriterionWithValidity) ValidateRotaState(state *RotaState) []ShiftValidationError {
 	return nil
 }
+
+func TestAllocate_ClosedShifts(t *testing.T) {
+	// Test that closed shifts are skipped during allocation and treated as "full"
+	config := AllocationConfig{
+		Volunteers: []Volunteer{
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: ""},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: ""},
+			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: ""},
+			{ID: "v4", FirstName: "Diana", LastName: "Green", Gender: "Female", IsTeamLead: false, GroupKey: ""},
+		},
+		Availability: []VolunteerAvailability{
+			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
+			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{}},
+			{VolunteerID: "v3", HasResponded: true, UnavailableShiftIndices: []int{}},
+			{VolunteerID: "v4", HasResponded: true, UnavailableShiftIndices: []int{}},
+		},
+		ShiftDates: []string{"2025-01-05", "2025-01-12", "2025-01-19"},
+		Overrides: []ShiftOverride{
+			{
+				AppliesTo: func(date string) bool {
+					return date == "2025-01-12" // Middle shift is closed
+				},
+				Closed: true,
+			},
+		},
+		DefaultShiftSize:               2,
+		MaxAllocationFrequency:         1.0,
+		HistoricalShifts:               []*Shift{},
+		Criteria: []Criterion{
+			&mockCriterion{
+				name:           "test",
+				affinityValue:  1.0,
+				affinityWeight: 1.0,
+			},
+		},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
+	}
+
+	outcome, err := Allocate(config)
+	assert.NoError(t, err)
+	assert.NotNil(t, outcome)
+
+	// Verify the middle shift is marked as closed
+	assert.True(t, outcome.State.Shifts[1].Closed, "Middle shift should be closed")
+
+	// Verify closed shift has no allocations
+	assert.Empty(t, outcome.State.Shifts[1].AllocatedGroups, "Closed shift should have no allocated groups")
+	assert.Nil(t, outcome.State.Shifts[1].TeamLead, "Closed shift should have no team lead")
+
+	// Verify open shifts have allocations
+	assert.NotEmpty(t, outcome.State.Shifts[0].AllocatedGroups, "First shift should have allocations")
+	assert.NotEmpty(t, outcome.State.Shifts[2].AllocatedGroups, "Third shift should have allocations")
+
+	// Allocation should be considered successful despite closed shift being empty
+	assert.True(t, outcome.Success, "Allocation should succeed with closed shifts")
+}
+
+func TestAllocate_MultipleClosedShifts(t *testing.T) {
+	// Test that multiple closed shifts work correctly
+	config := AllocationConfig{
+		Volunteers: []Volunteer{
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: ""},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: ""},
+			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: ""},
+			{ID: "v4", FirstName: "Diana", LastName: "Green", Gender: "Female", IsTeamLead: false, GroupKey: ""},
+		},
+		Availability: []VolunteerAvailability{
+			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
+			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{}},
+			{VolunteerID: "v3", HasResponded: true, UnavailableShiftIndices: []int{}},
+			{VolunteerID: "v4", HasResponded: true, UnavailableShiftIndices: []int{}},
+		},
+		ShiftDates: []string{"2025-01-05", "2025-01-12", "2025-01-19", "2025-01-26"},
+		Overrides: []ShiftOverride{
+			{
+				AppliesTo: func(date string) bool {
+					return date == "2025-01-12" || date == "2025-01-26"
+				},
+				Closed: true,
+			},
+		},
+		DefaultShiftSize:               2,
+		MaxAllocationFrequency:         1.0,
+		HistoricalShifts:               []*Shift{},
+		Criteria: []Criterion{
+			&mockCriterion{
+				name:           "test",
+				affinityValue:  1.0,
+				affinityWeight: 1.0,
+			},
+		},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
+	}
+
+	outcome, err := Allocate(config)
+	assert.NoError(t, err)
+	assert.NotNil(t, outcome)
+
+	// Verify both closed shifts are empty
+	assert.True(t, outcome.State.Shifts[1].Closed)
+	assert.Empty(t, outcome.State.Shifts[1].AllocatedGroups)
+
+	assert.True(t, outcome.State.Shifts[3].Closed)
+	assert.Empty(t, outcome.State.Shifts[3].AllocatedGroups)
+
+	// Verify open shifts have allocations
+	assert.NotEmpty(t, outcome.State.Shifts[0].AllocatedGroups, "First shift should have allocations")
+	assert.NotEmpty(t, outcome.State.Shifts[2].AllocatedGroups, "Third shift should have allocations")
+
+	assert.True(t, outcome.Success, "Allocation should succeed with multiple closed shifts")
+}

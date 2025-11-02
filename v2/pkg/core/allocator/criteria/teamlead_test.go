@@ -614,3 +614,41 @@ func TestTeamLeadCriterion_ValidateRotaState_GroupWithoutTeamLeadDoesNotCount(t 
 	errors := criterion.ValidateRotaState(state)
 	assert.Empty(t, errors, "Groups without team leads should not be counted")
 }
+
+func TestTeamLeadCriterion_ValidateRotaState_SkipsClosedShifts(t *testing.T) {
+	criterion := NewTeamLeadCriterion(1.0, 1.0)
+
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index:           0,
+				Date:            "2024-01-01",
+				TeamLead:        nil, // No team lead
+				AllocatedGroups: []*VolunteerGroup{},
+				Closed:          true, // Closed shift - should be skipped
+			},
+			{
+				Index:    1,
+				Date:     "2024-01-08",
+				TeamLead: nil, // No team lead
+				AllocatedGroups: []*VolunteerGroup{
+					{
+						HasTeamLead: false,
+						Members: []Volunteer{
+							{ID: "v1", IsTeamLead: false},
+						},
+					},
+				},
+				Closed: false, // Regular shift - should be validated
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+
+	// Should only detect the missing team lead in the open shift, not the closed shift
+	assert.Len(t, errors, 1, "Should skip closed shift validation")
+	assert.Equal(t, 1, errors[0].ShiftIndex, "Error should be for shift 1 (the open shift)")
+	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
+	assert.Equal(t, "Shift has no team lead", errors[0].Description)
+}

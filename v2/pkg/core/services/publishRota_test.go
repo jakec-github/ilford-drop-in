@@ -321,3 +321,75 @@ type mockSheetsClient struct {
 func (m *mockSheetsClient) PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota) error {
 	return m.publishRotaError
 }
+
+func TestPublishRota_ClosedShifts(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockPublishRotaStore{
+		rotations: []db.Rotation{
+			{
+				ID:         "rota-1",
+				Start:      "2025-01-05", // Sunday, Jan 5, 2025
+				ShiftCount: 3,
+			},
+		},
+		allocations: []db.Allocation{
+			// Shift 1 - Jan 5 (open shift)
+			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "alloc-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			// Shift 2 - Jan 12 (closed - no allocations in DB)
+			// Shift 3 - Jan 19 (open shift)
+			{ID: "alloc-3", RotaID: "rota-1", ShiftDate: "2025-01-19", Role: string(model.RoleTeamLead), VolunteerID: "charlie"},
+			{ID: "alloc-4", RotaID: "rota-1", ShiftDate: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "dave"},
+		},
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
+			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Brown"},
+			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
+		},
+	}
+
+	// Configure closed shift for Jan 12
+	cfg := &config.Config{
+		RotaOverrides: []config.RotaOverride{
+			{
+				RRule:  "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=12", // January 12 every year
+				Closed: true,
+			},
+		},
+	}
+	sheetsClient := &mockSheetsClient{}
+
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Len(t, result.Rows, 3)
+
+	// Check first shift (open)
+	shift1 := result.Rows[0]
+	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
+	assert.Equal(t, "Alice Smith", shift1.TeamLead)
+	assert.Len(t, shift1.Volunteers, 1)
+	assert.Contains(t, shift1.Volunteers, "Bob Jones")
+
+	// Check second shift (closed)
+	shift2 := result.Rows[1]
+	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
+	assert.Equal(t, "CLOSED", shift2.TeamLead, "Closed shift should display 'CLOSED' in TeamLead column")
+	assert.Empty(t, shift2.Volunteers, "Closed shift should have no volunteers")
+	assert.Equal(t, "", shift2.HotFood)
+	assert.Equal(t, "", shift2.Collection)
+
+	// Check third shift (open)
+	shift3 := result.Rows[2]
+	assert.Equal(t, "Sun Jan 19 2025", shift3.Date)
+	assert.Equal(t, "Charlie Brown", shift3.TeamLead)
+	assert.Len(t, shift3.Volunteers, 1)
+	assert.Contains(t, shift3.Volunteers, "Dave Wilson")
+}
