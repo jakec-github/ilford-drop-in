@@ -47,7 +47,7 @@ const (
 
 	// MaleBalance criterion weights
 	WeightMaleBalanceGroup    = 0.5 // Slightly prioritize groups with males
-	WeightMaleBalanceAffinity = 1.0 // Prefer shifts that need male volunteers
+	WeightMaleBalanceAffinity = 3.0 // Strongly prefer shifts that need male volunteers
 
 	// NoDoubleShifts criterion weights
 	WeightNoDoubleShiftsAffinity = 1.0 // Prefer shifts that preserve more options
