@@ -97,18 +97,33 @@ func (c *MaleBalanceCriterion) CalculateShiftAffinity(state *rotageneration.Rota
 		}
 	}
 
-	// Calculate affinity: need / number of available male volunteers
+	// Calculate urgency based on remaining capacity
+	// The fewer spots left, the more urgent it is to place a male NOW
+	// Examples:
+	//   - 1 spot left → urgency = 3.0 (critical!)
+	//   - 2 spots left → urgency = 1.5 (urgent)
+	//   - 3 spots left → urgency = 1.0 (moderate)
+	//   - 5+ spots left → urgency = 1.0 (normal)
+	remainingCapacity := shift.RemainingCapacity()
+	urgency := 1.0
+	if remainingCapacity > 0 {
+		urgency = max(3.0/float64(remainingCapacity), 1.0)
+	}
+
+	// Calculate affinity: (need * urgency) / number of available male volunteers
 	// remainingMaleVolunteers will never be less than 1 but we make extra sure not to divide by zero
 	// Higher affinity when:
 	// - Shift has fewer males already (higher need)
+	// - Shift has fewer spots remaining (higher urgency)
 	// - Fewer male volunteers are available (unpopular shift for males)
 	//
 	// Examples:
-	//   - Shift has 0 males, 10 available male volunteers → 1.0/10 = 0.1 (low priority)
-	//   - Shift has 0 males, 2 available male volunteers → 1.0/2 = 0.5 (moderate)
-	//   - Shift has 0 males, 1 available male volunteer → 1.0/1 = 1.0 (urgent!)
-	//   - Shift has 1 male, 5 available male volunteers → 0.5/5 = 0.1 (low priority)
-	affinity := need / max(float64(remainingMaleVolunteers), 1)
+	//   - Shift has 0 males, 10 spots left, 10 male volunteers → (1.0*1.0)/10 = 0.1 (low priority)
+	//   - Shift has 0 males, 2 spots left, 5 male volunteers → (1.0*1.5)/5 = 0.3 (urgent)
+	//   - Shift has 0 males, 1 spot left, 5 male volunteers → (1.0*3.0)/5 = 0.6 (critical!)
+	//   - Shift has 0 males, 1 spot left, 1 male volunteer → (1.0*3.0)/1 = 3.0 (extremely urgent!)
+	//   - Shift has 1 male, 5 spots left, 5 male volunteers → (0.5*1.0)/5 = 0.1 (low priority)
+	affinity := (need * urgency) / max(float64(remainingMaleVolunteers), 1)
 
 	return affinity
 }

@@ -553,3 +553,94 @@ func TestMaleBalanceCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.
 	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
 	assert.Contains(t, errors[0].Description, "no male volunteers")
 }
+
+func TestMaleBalanceCriterion_CalculateShiftAffinity_UrgencyScaling(t *testing.T) {
+	// Test that urgency increases as remaining capacity decreases
+	criterion := NewMaleBalanceCriterion(1.0, 1.0)
+
+	maleGroup := &VolunteerGroup{
+		GroupKey:  "male_group",
+		MaleCount: 1,
+		Members:   []Volunteer{{ID: "v1", Gender: "Male"}},
+	}
+
+	// Create 5 available male groups for consistent denominator
+	maleGroups := make([]*VolunteerGroup, 5)
+	for i := 0; i < 5; i++ {
+		maleGroups[i] = &VolunteerGroup{
+			GroupKey:  string(rune('a' + i)),
+			MaleCount: 1,
+			Members:   []Volunteer{{ID: string(rune('a' + i)), Gender: "Male"}},
+		}
+	}
+
+	state := &RotaState{
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          maleGroups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+	}
+
+	// Scenario 1: Shift with 10 spots left (lots of room)
+	// Need = 1.0, Urgency = max(3.0/10, 1.0) = 1.0, Affinity = (1.0 * 1.0) / 5 = 0.2
+	shiftManySpots := &Shift{
+		Index: 0,
+		Size:  10,
+		AllocatedGroups: []*VolunteerGroup{}, // Empty shift
+		CustomPreallocations: []string{},
+		MaleCount:            0,
+		AvailableGroups:      maleGroups,
+	}
+	affinityManySpots := criterion.CalculateShiftAffinity(state, maleGroup, shiftManySpots)
+	assert.InDelta(t, 0.2, affinityManySpots, 0.01, "10 spots left should have normal urgency")
+
+	// Scenario 2: Shift with 3 spots left (moderate urgency)
+	// Need = 1.0, Urgency = max(3.0/3, 1.0) = 1.0, Affinity = (1.0 * 1.0) / 5 = 0.2
+	shiftModerateSpots := &Shift{
+		Index: 1,
+		Size:  10,
+		AllocatedGroups: []*VolunteerGroup{
+			{Members: []Volunteer{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}, {ID: "a4"}, {ID: "a5"}, {ID: "a6"}, {ID: "a7"}}},
+		},
+		CustomPreallocations: []string{},
+		MaleCount:            0,
+		AvailableGroups:      maleGroups,
+	}
+	affinityModerateSpots := criterion.CalculateShiftAffinity(state, maleGroup, shiftModerateSpots)
+	assert.InDelta(t, 0.2, affinityModerateSpots, 0.01, "3 spots left should have normal urgency")
+
+	// Scenario 3: Shift with 2 spots left (urgent)
+	// Need = 1.0, Urgency = max(3.0/2, 1.0) = 1.5, Affinity = (1.0 * 1.5) / 5 = 0.3
+	shiftTwoSpots := &Shift{
+		Index: 2,
+		Size:  10,
+		AllocatedGroups: []*VolunteerGroup{
+			{Members: []Volunteer{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}, {ID: "a4"}, {ID: "a5"}, {ID: "a6"}, {ID: "a7"}, {ID: "a8"}}},
+		},
+		CustomPreallocations: []string{},
+		MaleCount:            0,
+		AvailableGroups:      maleGroups,
+	}
+	affinityTwoSpots := criterion.CalculateShiftAffinity(state, maleGroup, shiftTwoSpots)
+	assert.InDelta(t, 0.3, affinityTwoSpots, 0.01, "2 spots left should have higher urgency (1.5x)")
+
+	// Scenario 4: Shift with 1 spot left (critical!)
+	// Need = 1.0, Urgency = max(3.0/1, 1.0) = 3.0, Affinity = (1.0 * 3.0) / 5 = 0.6
+	shiftOneSpot := &Shift{
+		Index: 3,
+		Size:  10,
+		AllocatedGroups: []*VolunteerGroup{
+			{Members: []Volunteer{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}, {ID: "a4"}, {ID: "a5"}, {ID: "a6"}, {ID: "a7"}, {ID: "a8"}, {ID: "a9"}}},
+		},
+		CustomPreallocations: []string{},
+		MaleCount:            0,
+		AvailableGroups:      maleGroups,
+	}
+	affinityOneSpot := criterion.CalculateShiftAffinity(state, maleGroup, shiftOneSpot)
+	assert.InDelta(t, 0.6, affinityOneSpot, 0.01, "1 spot left should have critical urgency (3.0x)")
+
+	// Verify urgency scales correctly: 1 spot > 2 spots > 3 spots > 10 spots
+	assert.Greater(t, affinityOneSpot, affinityTwoSpots, "1 spot should be more urgent than 2 spots")
+	assert.Greater(t, affinityTwoSpots, affinityModerateSpots, "2 spots should be more urgent than 3 spots")
+	assert.GreaterOrEqual(t, affinityModerateSpots, affinityManySpots, "3 spots should be at least as urgent as 10 spots")
+}
