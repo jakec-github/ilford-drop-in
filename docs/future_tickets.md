@@ -8,7 +8,7 @@ Improve volunteer ranking by switching to the winner-stays-on selection method. 
 
 Distinguish between incomplete rotas and invalid rotas after allocation.
 
-SkipEmail should have name changed and should not set form_sent to true
+Add tests for --no-email flag
 
 Deduplicate the rrule resolution logic into a util
 

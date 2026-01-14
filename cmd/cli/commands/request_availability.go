@@ -17,9 +17,9 @@ func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deadline := args[0]
-			skipEmail, _ := cmd.Flags().GetBool("skip-email")
+			noEmail, _ := cmd.Flags().GetBool("no-email")
 
-			app.Logger.Debug("requestAvailability command", zap.Bool("skip_email", skipEmail))
+			app.Logger.Debug("requestAvailability command", zap.Bool("no_email", noEmail))
 
 			// Call the service
 			sentForms, failedEmails, err := services.RequestAvailability(
@@ -31,7 +31,7 @@ func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
 				app.Cfg,
 				app.Logger,
 				deadline,
-				skipEmail,
+				noEmail,
 			)
 			if err != nil {
 				return err
@@ -64,7 +64,7 @@ func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Bool("skip-email", false, "Skip sending emails (for testing)")
+	cmd.Flags().Bool("no-email", false, "Create forms only, don't send emails or mark as sent")
 
 	return cmd
 }

@@ -55,7 +55,7 @@ type GmailClient interface {
 // It fetches the latest rota, identifies volunteers without form_sent=true requests, creates forms
 // for those who need them (or reuses existing unsent forms), sends emails, and inserts DB records.
 // Returns volunteers who were successfully sent forms and those that failed.
-// If skipEmail is true, emails will not be sent (useful for testing).
+// If noEmail is true, forms are created but emails are not sent and records are not marked as sent.
 func RequestAvailability(
 	ctx context.Context,
 	database AvailabilityRequestStore,
@@ -65,7 +65,7 @@ func RequestAvailability(
 	cfg *config.Config,
 	logger *zap.Logger,
 	deadline string,
-	skipEmail bool,
+	noEmail bool,
 ) ([]SentForm, []FailedEmail, error) {
 	logger.Debug("Starting requestAvailability", zap.String("deadline", deadline))
 
@@ -211,6 +211,14 @@ func RequestAvailability(
 		logger.Debug("Unsent availability requests inserted successfully")
 	}
 
+	// If noEmail flag is set, exit early without sending emails or marking as sent
+	if noEmail {
+		logger.Info("No-email mode: forms created but emails not sent",
+			zap.Int("forms_created", len(unsentRequests)),
+			zap.Int("forms_reused", len(volunteersNeedingEmails)-len(unsentRequests)))
+		return []SentForm{}, []FailedEmail{}, nil
+	}
+
 	// Step 9: Send emails and create form_sent=true records for successful sends
 	sentRequests := make([]db.AvailabilityRequest, 0, len(volunteersNeedingEmails))
 	sentForms := []SentForm{}
@@ -220,39 +228,32 @@ func RequestAvailability(
 		displayName := volunteer.DisplayName
 		formInfo := formsByVolunteer[volunteer.ID]
 
-		// Send email with form link (unless skipEmail is true)
-		if !skipEmail {
-			subject := fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
-			body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
-				volunteer.FirstName, formInfo.formURL, deadline)
+		subject := fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
+		body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
+			volunteer.FirstName, formInfo.formURL, deadline)
 
-			logger.Debug("Sending email",
+		logger.Debug("Sending email",
+			zap.String("volunteer_id", volunteer.ID),
+			zap.String("email", volunteer.Email))
+
+		if err := gmailClient.SendEmail(volunteer.Email, subject, body); err != nil {
+			logger.Warn("Failed to send email",
 				zap.String("volunteer_id", volunteer.ID),
-				zap.String("email", volunteer.Email))
+				zap.String("email", volunteer.Email),
+				zap.Error(err))
 
-			if err := gmailClient.SendEmail(volunteer.Email, subject, body); err != nil {
-				logger.Warn("Failed to send email",
-					zap.String("volunteer_id", volunteer.ID),
-					zap.String("email", volunteer.Email),
-					zap.Error(err))
-
-				failedEmails = append(failedEmails, FailedEmail{
-					VolunteerID:   volunteer.ID,
-					VolunteerName: displayName,
-					Email:         volunteer.Email,
-					Error:         err.Error(),
-				})
-				continue
-			}
-
-			logger.Info("Email sent successfully",
-				zap.String("volunteer_id", volunteer.ID),
-				zap.String("email", volunteer.Email))
-		} else {
-			logger.Debug("Skipping email",
-				zap.String("volunteer_id", volunteer.ID),
-				zap.String("email", volunteer.Email))
+			failedEmails = append(failedEmails, FailedEmail{
+				VolunteerID:   volunteer.ID,
+				VolunteerName: displayName,
+				Email:         volunteer.Email,
+				Error:         err.Error(),
+			})
+			continue
 		}
+
+		logger.Info("Email sent successfully",
+			zap.String("volunteer_id", volunteer.ID),
+			zap.String("email", volunteer.Email))
 
 		// Add to sent forms list
 		sentForms = append(sentForms, SentForm{
