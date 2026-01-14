@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +26,7 @@ const (
 	tokenDirName   = ".ilford-drop-in/tokens"
 	tokenFilePerms = 0600 // Read/write for owner only
 	tokenDirPerms  = 0700 // Read/write/execute for owner only
+	tokenInfoURL   = "https://oauth2.googleapis.com/tokeninfo"
 )
 
 var (
@@ -38,6 +42,16 @@ const (
 	ScopeGmailSend              = "https://www.googleapis.com/auth/gmail.send"
 )
 
+// requiredScopes returns all scopes required by the application
+func requiredScopes() []string {
+	return []string{
+		ScopeSheets,
+		ScopeFormsBody,
+		ScopeFormsResponsesReadonly,
+		ScopeGmailSend,
+	}
+}
+
 // GetOAuthConfig creates an OAuth2 config from the OAuth client configuration
 // Requests all necessary scopes for the application upfront (sheets, forms, gmail)
 func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) {
@@ -46,12 +60,7 @@ func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) 
 		return nil, fmt.Errorf("failed to marshal oauth config: %w", err)
 	}
 
-	scopes := []string{
-		ScopeSheets,
-		ScopeFormsBody,
-		ScopeFormsResponsesReadonly,
-		ScopeGmailSend,
-	}
+	scopes := requiredScopes()
 
 	googleConfig, err := google.ConfigFromJSON(oauthConfigJSON, scopes...)
 	if err != nil {
@@ -62,6 +71,47 @@ func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) 
 	googleConfig.RedirectURL = fmt.Sprintf("http://localhost:%d%s", AuthPort, callbackPath)
 
 	return googleConfig, nil
+}
+
+// validateTokenScopes checks that the token has all required scopes by calling Google's tokeninfo endpoint
+// Returns an error listing any missing scopes if validation fails
+func validateTokenScopes(ctx context.Context, token *oauth2.Token) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", tokenInfoURL+"?access_token="+token.AccessToken, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create tokeninfo request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to call tokeninfo endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("tokeninfo request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenInfo struct {
+		Scope string `json:"scope"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenInfo); err != nil {
+		return fmt.Errorf("failed to decode tokeninfo response: %w", err)
+	}
+
+	grantedScopes := strings.Split(tokenInfo.Scope, " ")
+	var missingScopes []string
+	for _, required := range requiredScopes() {
+		if !slices.Contains(grantedScopes, required) {
+			missingScopes = append(missingScopes, required)
+		}
+	}
+
+	if len(missingScopes) > 0 {
+		return fmt.Errorf("token is missing required scopes: %v\nPlease ensure all permissions are granted during the OAuth flow", missingScopes)
+	}
+
+	return nil
 }
 
 // GetTokenWithFlow performs the full OAuth flow including user authorization
@@ -85,28 +135,39 @@ func GetTokenWithFlow(ctx context.Context, oauthConfig *oauth2.Config, env strin
 	if fileToken != nil {
 		// Check if token is valid or can be refreshed
 		if fileToken.Valid() {
-			// Token is still valid, cache and return it
-			tokenCache = fileToken
-			return fileToken, nil
-		}
-
-		// Token expired but might have refresh token
-		if fileToken.RefreshToken != "" {
+			// Validate that the cached token has all required scopes
+			if err := validateTokenScopes(ctx, fileToken); err != nil {
+				fmt.Printf("Cached token is missing required scopes: %v\n", err)
+				fmt.Println("Deleting invalid token and starting new OAuth flow...")
+				DeleteTokenFile(env)
+			} else {
+				// Token is still valid with all required scopes, cache and return it
+				tokenCache = fileToken
+				return fileToken, nil
+			}
+		} else if fileToken.RefreshToken != "" {
+			// Token expired but might have refresh token
 			tokenSource := oauthConfig.TokenSource(ctx, fileToken)
 			refreshedToken, err := tokenSource.Token()
 			if err == nil && refreshedToken.AccessToken != fileToken.AccessToken {
-				// Token was successfully refreshed
-				fmt.Println("Token refreshed successfully")
+				// Token was successfully refreshed, now validate scopes
+				if err := validateTokenScopes(ctx, refreshedToken); err != nil {
+					fmt.Printf("Refreshed token is missing required scopes: %v\n", err)
+					fmt.Println("Deleting invalid token and starting new OAuth flow...")
+					DeleteTokenFile(env)
+				} else {
+					fmt.Println("Token refreshed successfully")
 
-				// Save refreshed token to file
-				if err := SaveTokenToFile(env, refreshedToken); err != nil {
-					fmt.Printf("Warning: failed to save refreshed token: %v\n", err)
-					// Continue anyway - token is still valid in memory
+					// Save refreshed token to file
+					if err := SaveTokenToFile(env, refreshedToken); err != nil {
+						fmt.Printf("Warning: failed to save refreshed token: %v\n", err)
+						// Continue anyway - token is still valid in memory
+					}
+
+					// Cache and return refreshed token
+					tokenCache = refreshedToken
+					return refreshedToken, nil
 				}
-
-				// Cache and return refreshed token
-				tokenCache = refreshedToken
-				return refreshedToken, nil
 			}
 		}
 	}
@@ -128,6 +189,11 @@ func GetTokenWithFlow(ctx context.Context, oauthConfig *oauth2.Config, env strin
 	token, err := oauthConfig.Exchange(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code for token: %w", err)
+	}
+
+	// Validate that the token has all required scopes before saving
+	if err := validateTokenScopes(ctx, token); err != nil {
+		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
 
 	// Save token to file
@@ -291,6 +357,20 @@ func SaveTokenToFile(env string, token *oauth2.Token) error {
 	// Write token file with secure permissions
 	if err := os.WriteFile(tokenPath, data, tokenFilePerms); err != nil {
 		return fmt.Errorf("failed to write token file: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteTokenFile deletes the token file for the given environment
+func DeleteTokenFile(env string) error {
+	tokenPath, err := getTokenFilePath(env)
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete token file: %w", err)
 	}
 
 	return nil
