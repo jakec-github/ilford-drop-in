@@ -28,8 +28,6 @@ Always use the same sheet for the latest rota so the link to latest is stable
 
 Highlight custom entries with square brackets or something
 
-Better display names. Preference order. First name only, First name + initial, full name
-
 Covers to add:
 
 - Plus Angela Beckles on 2025-11-16

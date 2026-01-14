@@ -72,12 +72,13 @@ type VolunteerGroup struct {
 
 // Volunteer represents an individual volunteer
 type Volunteer struct {
-	ID         string
-	FirstName  string
-	LastName   string
-	Gender     string
-	IsTeamLead bool
-	GroupKey   string
+	ID          string
+	FirstName   string
+	LastName    string
+	DisplayName string
+	Gender      string
+	IsTeamLead  bool
+	GroupKey    string
 }
 
 // Shift represents a single shift that needs to be filled

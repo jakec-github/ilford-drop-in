@@ -231,7 +231,7 @@ func ViewResponses(
 			resultChan <- fetchResult{
 				response: VolunteerResponse{
 					VolunteerID:      fr.volunteer.ID,
-					VolunteerName:    fr.volunteerName,
+					VolunteerName:    fr.volunteer.DisplayName,
 					Email:            fr.volunteer.Email,
 					Status:           fr.volunteer.Status,
 					HasResponded:     formResp.HasResponded,

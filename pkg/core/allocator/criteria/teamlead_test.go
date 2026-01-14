@@ -475,7 +475,7 @@ func TestTeamLeadCriterion_ValidateRotaState_MultipleTeamLeads(t *testing.T) {
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl2", FirstName: "Bob", LastName: "Jones", IsTeamLead: true}, // Different team lead as ordinary volunteer
+							{ID: "tl2", FirstName: "Bob", LastName: "Jones", DisplayName: "Bob Jones", IsTeamLead: true}, // Different team lead as ordinary volunteer
 						},
 					},
 				},
@@ -506,13 +506,13 @@ func TestTeamLeadCriterion_ValidateRotaState_ThreeTeamLeads(t *testing.T) {
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl2", FirstName: "Bob", LastName: "Jones", IsTeamLead: true}, // Different team lead
+							{ID: "tl2", FirstName: "Bob", LastName: "Jones", DisplayName: "Bob", IsTeamLead: true}, // Different team lead
 						},
 					},
 					{
 						HasTeamLead: true,
 						Members: []Volunteer{
-							{ID: "tl3", FirstName: "Charlie", LastName: "Brown", IsTeamLead: true}, // Another different team lead
+							{ID: "tl3", FirstName: "Charlie", LastName: "Brown", DisplayName: "Charlie", IsTeamLead: true}, // Another different team lead
 						},
 					},
 				},

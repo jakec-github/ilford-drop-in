@@ -331,12 +331,13 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 	for i, vol := range volunteers {
 
 		result[i] = allocator.Volunteer{
-			ID:         vol.ID,
-			FirstName:  vol.FirstName,
-			LastName:   vol.LastName,
-			Gender:     vol.Gender,
-			IsTeamLead: vol.Role == model.RoleTeamLead,
-			GroupKey:   vol.GroupKey,
+			ID:          vol.ID,
+			FirstName:   vol.FirstName,
+			LastName:    vol.LastName,
+			DisplayName: vol.DisplayName,
+			Gender:      vol.Gender,
+			IsTeamLead:  vol.Role == model.RoleTeamLead,
+			GroupKey:    vol.GroupKey,
 		}
 	}
 	return result

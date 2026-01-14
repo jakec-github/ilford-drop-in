@@ -82,7 +82,7 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 			// Invalid group - return error with details
 			memberNames := make([]string, len(members))
 			for i, member := range members {
-				memberNames[i] = member.FirstName + " " + member.LastName
+				memberNames[i] = member.DisplayName
 			}
 			return nil, fmt.Errorf("group '%s' has %d team leads (max 1 allowed): %v",
 				groupKey, teamLeadCount, memberNames)

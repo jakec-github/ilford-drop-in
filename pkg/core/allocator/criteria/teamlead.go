@@ -116,7 +116,7 @@ func (c *TeamLeadCriterion) ValidateRotaState(state *allocator.RotaState) []allo
 						ShiftIndex:    shift.Index,
 						ShiftDate:     shift.Date,
 						CriterionName: c.Name(),
-						Description:   fmt.Sprintf("Shift has team lead (%s %s) as ordinary volunteer", member.FirstName, member.LastName),
+						Description:   fmt.Sprintf("Shift has team lead (%s) as ordinary volunteer", member.DisplayName),
 					})
 				}
 			}

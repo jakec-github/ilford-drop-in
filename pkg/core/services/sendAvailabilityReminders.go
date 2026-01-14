@@ -165,7 +165,7 @@ func SendAvailabilityReminders(
 
 	for _, req := range volunteersNeedingReminders {
 		volunteer := volunteersByID[req.VolunteerID]
-		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
+		volunteerName := volunteer.DisplayName
 
 		// Send reminder email with form link
 		subject := fmt.Sprintf("Reminder: Ilford drop-in availability (please complete by %s)", deadline)

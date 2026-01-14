@@ -61,22 +61,22 @@ func TestPublishRota_Success(t *testing.T) {
 	assert.Equal(t, 2, result.ShiftCount)
 	require.Len(t, result.Rows, 2)
 
-	// Check first shift
+	// Check first shift (all first names are unique, so DisplayName = FirstName only)
 	shift1 := result.Rows[0]
 	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
-	assert.Equal(t, "Alice Smith", shift1.TeamLead)
+	assert.Equal(t, "Alice", shift1.TeamLead)
 	assert.Len(t, shift1.Volunteers, 2)
-	assert.Contains(t, shift1.Volunteers, "Bob Jones")
-	assert.Contains(t, shift1.Volunteers, "Charlie Brown")
+	assert.Contains(t, shift1.Volunteers, "Bob")
+	assert.Contains(t, shift1.Volunteers, "Charlie")
 	assert.Equal(t, "", shift1.HotFood)
 	assert.Equal(t, "", shift1.Collection)
 
 	// Check second shift
 	shift2 := result.Rows[1]
 	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
-	assert.Equal(t, "Dave Wilson", shift2.TeamLead)
+	assert.Equal(t, "Dave", shift2.TeamLead)
 	assert.Len(t, shift2.Volunteers, 1)
-	assert.Contains(t, shift2.Volunteers, "Eve Davis")
+	assert.Contains(t, shift2.Volunteers, "Eve")
 }
 
 func TestPublishRota_WithCustomEntries(t *testing.T) {
@@ -111,9 +111,9 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
-	assert.Equal(t, "Alice Smith", shift.TeamLead)
+	assert.Equal(t, "Alice", shift.TeamLead)
 	assert.Len(t, shift.Volunteers, 2)
-	assert.Contains(t, shift.Volunteers, "Bob Jones")
+	assert.Contains(t, shift.Volunteers, "Bob")
 	assert.Contains(t, shift.Volunteers, "External John")
 }
 
@@ -150,12 +150,12 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Rows, 1)
 
-	// Volunteers should be sorted alphabetically
+	// Volunteers should be sorted alphabetically (first names are unique, so DisplayName = FirstName)
 	volunteers := result.Rows[0].Volunteers
 	require.Len(t, volunteers, 3)
-	assert.Equal(t, "Bob Jones", volunteers[0])
-	assert.Equal(t, "Mike Anderson", volunteers[1])
-	assert.Equal(t, "Zebra Last", volunteers[2])
+	assert.Equal(t, "Bob", volunteers[0])
+	assert.Equal(t, "Mike", volunteers[1])
+	assert.Equal(t, "Zebra", volunteers[2])
 }
 
 func TestPublishRota_RotaNotFound(t *testing.T) {
@@ -276,8 +276,8 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 	assert.Equal(t, 1, result.ShiftCount)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "Sun Jan 19 2025", result.Rows[0].Date)
-	assert.Equal(t, "Alice Smith", result.Rows[0].TeamLead)
-	assert.Contains(t, result.Rows[0].Volunteers, "Bob Jones")
+	assert.Equal(t, "Alice", result.Rows[0].TeamLead)
+	assert.Contains(t, result.Rows[0].Volunteers, "Bob")
 }
 
 func TestPublishRota_NoRotations(t *testing.T) {
@@ -371,12 +371,12 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 
 	require.Len(t, result.Rows, 3)
 
-	// Check first shift (open)
+	// Check first shift (open) - first names are unique, so DisplayName = FirstName
 	shift1 := result.Rows[0]
 	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
-	assert.Equal(t, "Alice Smith", shift1.TeamLead)
+	assert.Equal(t, "Alice", shift1.TeamLead)
 	assert.Len(t, shift1.Volunteers, 1)
-	assert.Contains(t, shift1.Volunteers, "Bob Jones")
+	assert.Contains(t, shift1.Volunteers, "Bob")
 
 	// Check second shift (closed)
 	shift2 := result.Rows[1]
@@ -389,7 +389,7 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 	// Check third shift (open)
 	shift3 := result.Rows[2]
 	assert.Equal(t, "Sun Jan 19 2025", shift3.Date)
-	assert.Equal(t, "Charlie Brown", shift3.TeamLead)
+	assert.Equal(t, "Charlie", shift3.TeamLead)
 	assert.Len(t, shift3.Volunteers, 1)
-	assert.Contains(t, shift3.Volunteers, "Dave Wilson")
+	assert.Contains(t, shift3.Volunteers, "Dave")
 }

@@ -13,14 +13,15 @@ func (r Role) IsValid() bool {
 
 // Volunteer represents a service volunteer
 type Volunteer struct {
-	ID        string
-	FirstName string
-	LastName  string
-	Role      Role
-	Status    string
-	Gender    string
-	Email     string
-	GroupKey  string // Empty string if no group
+	ID          string
+	FirstName   string
+	LastName    string
+	DisplayName string // Computed by ComputeDisplayNames based on uniqueness
+	Role        Role
+	Status      string
+	Gender      string
+	Email       string
+	GroupKey    string // Empty string if no group
 }
 
 // Rotation represents a rota rotation

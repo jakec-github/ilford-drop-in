@@ -84,7 +84,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			maxVolunteersLen := 40
 			for _, shift := range result.AllocatedShifts {
 				if shift.TeamLead != nil {
-					nameLen := len(shift.TeamLead.FirstName) + len(shift.TeamLead.LastName) + 1
+					nameLen := len(shift.TeamLead.DisplayName)
 					if nameLen > maxTeamLeadLen {
 						maxTeamLeadLen = nameLen
 					}
@@ -95,7 +95,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				for _, group := range shift.AllocatedGroups {
 					for _, member := range group.Members {
 						if shift.TeamLead == nil || member.ID != shift.TeamLead.ID {
-							totalLen += len(member.FirstName) + len(member.LastName) + 3
+							totalLen += len(member.DisplayName) + 2
 						}
 					}
 				}
@@ -134,16 +134,15 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				// Format team lead
 				teamLeadStr := "—"
 				if shift.TeamLead != nil {
-					teamLeadStr = fmt.Sprintf("%s%s %s%s",
+					teamLeadStr = fmt.Sprintf("%s%s%s",
 						colorGreen,
-						shift.TeamLead.FirstName,
-						shift.TeamLead.LastName,
+						shift.TeamLead.DisplayName,
 						colorReset)
 				}
 				// Calculate display width without color codes
 				teamLeadDisplayWidth := 0
 				if shift.TeamLead != nil {
-					teamLeadDisplayWidth = len(shift.TeamLead.FirstName) + len(shift.TeamLead.LastName) + 1
+					teamLeadDisplayWidth = len(shift.TeamLead.DisplayName)
 				} else {
 					teamLeadDisplayWidth = 1
 				}
@@ -157,7 +156,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 						if shift.TeamLead != nil && member.ID == shift.TeamLead.ID {
 							continue
 						}
-						volunteers = append(volunteers, fmt.Sprintf("%s %s", member.FirstName, member.LastName))
+						volunteers = append(volunteers, member.DisplayName)
 					}
 				}
 
@@ -188,7 +187,12 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				for _, group := range result.UnderutilizedGroups {
 					allocated := len(group.AllocatedShiftIndices)
 					available := min(maxAllocationCount(result.ShiftCount, app.Cfg.MaxAllocationFrequency), len(group.AvailableShiftIndices))
-					fmt.Printf("  • %s: allocated %d/%d shifts\n", group.GroupKey, allocated, available)
+					// Use DisplayName for individual volunteers, GroupKey for actual groups
+					displayName := group.GroupKey
+					if len(group.Members) == 1 {
+						displayName = group.Members[0].DisplayName
+					}
+					fmt.Printf("  • %s: allocated %d/%d shifts\n", displayName, allocated, available)
 				}
 				fmt.Println()
 			}

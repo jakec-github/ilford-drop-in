@@ -37,7 +37,54 @@ func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
 		return nil, fmt.Errorf("failed to parse volunteers: %w", err)
 	}
 
+	// Compute display names for all volunteers (ensures uniqueness across entire list)
+	ComputeDisplayNames(volunteers)
+
 	return volunteers, nil
+}
+
+// ComputeDisplayNames calculates display names for a list of volunteers based on uniqueness:
+// - If first name is unique: use first name only
+// - If first name + first letter of surname is unique: use "FirstName L."
+// - Otherwise: use full name "FirstName LastName"
+func ComputeDisplayNames(volunteers []model.Volunteer) {
+	// Count occurrences of each first name
+	firstNameCounts := make(map[string]int)
+	for _, v := range volunteers {
+		firstNameCounts[v.FirstName]++
+	}
+
+	// Count occurrences of each "FirstName L." format
+	firstNameInitialCounts := make(map[string]int)
+	for _, v := range volunteers {
+		if v.LastName != "" {
+			key := v.FirstName + " " + string(v.LastName[0]) + "."
+			firstNameInitialCounts[key]++
+		}
+	}
+
+	// Assign display names
+	for i := range volunteers {
+		v := &volunteers[i]
+
+		// Try first name only
+		if firstNameCounts[v.FirstName] == 1 {
+			v.DisplayName = v.FirstName
+			continue
+		}
+
+		// Try first name + initial
+		if v.LastName != "" {
+			initialKey := v.FirstName + " " + string(v.LastName[0]) + "."
+			if firstNameInitialCounts[initialKey] == 1 {
+				v.DisplayName = initialKey
+				continue
+			}
+		}
+
+		// Fall back to full name
+		v.DisplayName = v.FirstName + " " + v.LastName
+	}
 }
 
 // parseVolunteers converts raw spreadsheet data into Volunteer structs

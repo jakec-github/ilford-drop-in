@@ -217,7 +217,7 @@ func RequestAvailability(
 	failedEmails := []FailedEmail{}
 
 	for _, volunteer := range volunteersNeedingEmails {
-		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
+		displayName := volunteer.DisplayName
 		formInfo := formsByVolunteer[volunteer.ID]
 
 		// Send email with form link (unless skipEmail is true)
@@ -238,7 +238,7 @@ func RequestAvailability(
 
 				failedEmails = append(failedEmails, FailedEmail{
 					VolunteerID:   volunteer.ID,
-					VolunteerName: volunteerName,
+					VolunteerName: displayName,
 					Email:         volunteer.Email,
 					Error:         err.Error(),
 				})
@@ -257,7 +257,7 @@ func RequestAvailability(
 		// Add to sent forms list
 		sentForms = append(sentForms, SentForm{
 			VolunteerID:   volunteer.ID,
-			VolunteerName: volunteerName,
+			VolunteerName: displayName,
 			Email:         volunteer.Email,
 		})
 

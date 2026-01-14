@@ -11,6 +11,7 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -67,6 +68,8 @@ func (m *mockVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, e
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
+	// Compute display names like the real client does
+	sheetsclient.ComputeDisplayNames(m.volunteers)
 	return m.volunteers, nil
 }
 

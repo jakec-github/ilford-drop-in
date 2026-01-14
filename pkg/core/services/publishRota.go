@@ -153,7 +153,7 @@ func PublishRota(
 					allocation.VolunteerID, allocation.ID, dateStr)
 			}
 
-			fullName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
+			fullName := volunteer.DisplayName
 
 			// Check if this is a team lead allocation
 			if allocation.Role == string(model.RoleTeamLead) {
