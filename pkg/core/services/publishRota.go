@@ -140,9 +140,9 @@ func PublishRota(
 
 		// Process allocations for this shift
 		for _, allocation := range allocations {
-			// Handle custom entries (pre-allocated volunteers)
+			// Handle custom entries (pre-allocated volunteers) - wrap in brackets to distinguish
 			if allocation.VolunteerID == "" && allocation.CustomEntry != "" {
-				row.Volunteers = append(row.Volunteers, allocation.CustomEntry)
+				row.Volunteers = append(row.Volunteers, "["+allocation.CustomEntry+"]")
 				continue
 			}
 

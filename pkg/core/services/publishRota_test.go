@@ -114,7 +114,7 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 	assert.Equal(t, "Alice", shift.TeamLead)
 	assert.Len(t, shift.Volunteers, 2)
 	assert.Contains(t, shift.Volunteers, "Bob")
-	assert.Contains(t, shift.Volunteers, "External John")
+	assert.Contains(t, shift.Volunteers, "[External John]")
 }
 
 func TestPublishRota_VolunteersSorted(t *testing.T) {

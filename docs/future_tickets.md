@@ -26,8 +26,6 @@ If I try to allocate a rota and allocations already exist for that rota it shoul
 
 Always use the same sheet for the latest rota so the link to latest is stable
 
-Highlight custom entries with square brackets or something
-
 Covers to add:
 
 - Plus Angela Beckles on 2025-11-16
