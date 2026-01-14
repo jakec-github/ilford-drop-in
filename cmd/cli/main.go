@@ -29,6 +29,15 @@ func main() {
 		Short: "Ilford Drop-In CLI - Manage volunteer rotas",
 		Long:  `A CLI tool for managing volunteer rotas, availability requests, and shift scheduling.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Skip initialization for help commands - no need for OAuth/API clients or env flag
+			helpFlag, _ := cmd.Flags().GetBool("help")
+			if helpFlag || cmd.Name() == "help" {
+				return nil
+			}
+			// Validate env flag (required for non-help commands)
+			if env == "" {
+				return fmt.Errorf("required flag \"env\" not set")
+			}
 			return initApp()
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -38,9 +47,8 @@ func main() {
 		},
 	}
 
-	// Add persistent environment flag
+	// Add persistent environment flag (validated in PersistentPreRunE, not here, so help works without it)
 	rootCmd.PersistentFlags().StringVarP(&env, "env", "e", "", "Environment (required: test, prod, etc.)")
-	rootCmd.MarkPersistentFlagRequired("env")
 
 	// Add commands with lazy initialization
 	// These will use the app context after it's initialized by PersistentPreRunE

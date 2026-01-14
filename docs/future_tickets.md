@@ -10,8 +10,6 @@ Distinguish between incomplete rotas and invalid rotas after allocation.
 
 SkipEmail should have name changed and should not set form_sent to true
 
-Running help command should not init the full app (log in etc.)
-
 Deduplicate the rrule resolution logic into a util
 
 Improve shift spread criteria where it looks at the expected distriubtion of shifts based on the frequency and promotes shifts on that basis
