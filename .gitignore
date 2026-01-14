@@ -1,24 +1,30 @@
-node_modules
-secrets
-out
 .DS_Store
-config.json
 
-# OAuth and authentication secrets
+# Binaries (executable files, not directories)
+/cli
+/server
+/cmd/cli/cli
+/cmd/server/server
+
+# Logs
+**/logs/
+
+# Config files with secrets
+**/oauthClient*.json
+**/drop_in_config*.yaml
+drop_in_config.*.yaml
 oauthClient.*.json
 serviceAccount.*.json
 .token.json
-
-# Configuration with sensitive data
-drop_in_config.*.yaml
 
 # Any other secrets
 *.secret
 *.key
 
-# Test coverage
-*.out
-coverage.html
+# OAuth tokens (stored in ~/.ilford-drop-in/tokens/ by default)
+# Added here in case tokens are generated in project directory
+.ilford-drop-in/
+**/.ilford-drop-in/
 
 # IDE
 .vscode/

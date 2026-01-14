@@ -1,20 +1,18 @@
-# Block all modifications by default
-**/*
-
-# Allow only v2/
-!v2/**/*
-
 # OAuth and authentication secrets
-**/oauthClient.*.json
-**/serviceAccount.*.json
-**/.token.json
+
+**/oauthClient.\*.json
+**/serviceAccount.\*.json
+\*\*/.token.json
 
 # Configuration with sensitive data
-**/drop_in_config.*.yaml
+
+\*_/drop_in_config._.yaml
 
 # Log files
-**/logs/
+
+\*\*/logs/
 
 # Any other secrets
-**/*.secret
-**/*.key
+
+**/\*.secret
+**/\*.key
