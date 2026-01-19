@@ -16,6 +16,8 @@ import (
 //   - Increases affinity for shifts with more remaining capacity (unpopular shifts)
 //   - Only considers ordinary volunteers (non-team leads) in the group
 //   - Returns 0 if the group has no ordinary volunteers (team lead only)
+//   - In resource-constrained scenarios (when a complete rota is not possible),
+//     adds a deficit ratio to spread volunteers more evenly across shifts
 type ShiftSizeCriterion struct {
 	groupWeight    float64
 	affinityWeight float64
@@ -67,24 +69,54 @@ func (c *ShiftSizeCriterion) CalculateShiftAffinity(state *rotageneration.RotaSt
 		return 0
 	}
 
-	// Calculate affinity as: remainingCapacity / remainingAvailableVolunteers
-	// Higher affinity when there's more capacity to fill relative to available volunteers
+	// Calculate base urgency: remainingCapacity / remainingAvailableVolunteers
+	// Higher urgency when there's more capacity to fill relative to available volunteers
 	// Examples:
 	//   - Shift needs 5, has 10 available volunteers → 5/10 = 0.5 (moderate)
 	//   - Shift needs 5, has 5 available volunteers → 5/5 = 1.0 (urgent!)
 	//   - Shift needs 1, has 10 available volunteers → 1/10 = 0.1 (low priority)
 	//   - Shift needs 3, has 6 available volunteers (from 3 groups of 2) → 3/6 = 0.5
-	affinity := float64(remainingCapacity) / float64(remainingAvailableVolunteers)
+	urgency := float64(remainingCapacity) / float64(remainingAvailableVolunteers)
 
-	// Clamp to [0, 1] range
-	if affinity > 1.0 {
-		affinity = 1.0
+	// Clamp urgency to [0, 1] range
+	if urgency > 1.0 {
+		urgency = 1.0
 	}
-	if affinity < 0 {
-		affinity = 0
+	if urgency < 0 {
+		urgency = 0
 	}
 
-	return affinity
+	// In resource-constrained scenarios, we want to spread volunteers more evenly
+	// rather than filling some shifts completely while leaving others understaffed.
+	// Once a shift reaches its "fair share" (expected fill), affinity drops to zero.
+	if state.IsResourceConstrained() && shift.Size > 0 {
+		expectedFill := state.ExpectedFillPerShift()
+		currentFill := float64(shift.CurrentSize())
+
+		// If shift has reached or exceeded its fair share, return 0 affinity
+		// This expresses "no preference" from size perspective - similar to being full
+		// Other criteria can still contribute positive affinity if needed
+		if currentFill >= expectedFill {
+			return 0
+		}
+
+		// For shifts below expected fill, boost based on how far below they are
+		// deficitRatio: how far below expected fill is this shift?
+		// 1.0 = empty, 0.0 = at expected fill
+		deficitRatio := (expectedFill - currentFill) / expectedFill
+
+		// Multiply urgency by (1 + deficitRatio) to boost emptier shifts
+		affinity := urgency * (1.0 + deficitRatio)
+
+		// Clamp to [0, 1] range
+		if affinity > 1.0 {
+			affinity = 1.0
+		}
+
+		return affinity
+	}
+
+	return urgency
 }
 
 func (c *ShiftSizeCriterion) GroupWeight() float64 {

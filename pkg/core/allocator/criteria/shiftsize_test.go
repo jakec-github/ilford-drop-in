@@ -844,3 +844,272 @@ func TestShiftSizeCriterion_ValidateRotaState_SkipsClosedShifts(t *testing.T) {
 	assert.Contains(t, errors[0].Description, "underfilled")
 	assert.Contains(t, errors[0].Description, "has 1 volunteers but size is 3")
 }
+
+func TestShiftSizeCriterion_CalculateShiftAffinity_ResourceConstrained_BoostsEmptyShifts(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	// Create groups for testing
+	group := &VolunteerGroup{
+		GroupKey: "test_group",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+		},
+	}
+
+	// Create 5 available groups (each with 1 volunteer)
+	groups := make([]*VolunteerGroup, 5)
+	for i := 0; i < 5; i++ {
+		groups[i] = &VolunteerGroup{
+			GroupKey: fmt.Sprintf("group_%d", i),
+			Members: []Volunteer{
+				{ID: fmt.Sprintf("v%d", i+10), IsTeamLead: false},
+			},
+		}
+	}
+	groups[0] = group // Include our test group
+
+	// Resource constrained state: less capacity than needed
+	// 10 capacity / 5 shifts = 2.0 expected fill per shift
+	state := &RotaState{
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+		TotalVolunteerCapacity: 10, // Only 10 slots can be filled
+		TotalSlotsNeeded:       20, // But 20 slots needed
+		OpenShiftCount:         5,  // 5 shifts → expected fill = 2.0
+	}
+
+	// Empty shift (size 4, 0 allocated) - below expected fill of 2
+	emptyShift := &Shift{
+		Index:                0,
+		Size:                 4,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	// Shift at expected fill (size 4, 2 allocated) - at expected fill of 2
+	atExpectedShift := &Shift{
+		Index: 1,
+		Size:  4,
+		AllocatedGroups: []*VolunteerGroup{
+			{
+				Members: []Volunteer{
+					{ID: "a1", IsTeamLead: false},
+					{ID: "a2", IsTeamLead: false},
+				},
+			},
+		},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	// Shift above expected fill (size 4, 3 allocated) - above expected fill of 2
+	aboveExpectedShift := &Shift{
+		Index: 2,
+		Size:  4,
+		AllocatedGroups: []*VolunteerGroup{
+			{
+				Members: []Volunteer{
+					{ID: "a3", IsTeamLead: false},
+					{ID: "a4", IsTeamLead: false},
+					{ID: "a5", IsTeamLead: false},
+				},
+			},
+		},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	emptyAffinity := criterion.CalculateShiftAffinity(state, group, emptyShift)
+	atExpectedAffinity := criterion.CalculateShiftAffinity(state, group, atExpectedShift)
+	aboveExpectedAffinity := criterion.CalculateShiftAffinity(state, group, aboveExpectedShift)
+
+	// Empty shift: below expected fill, gets boosted
+	// urgency = 4/5 = 0.8, deficitRatio = (2-0)/2 = 1.0, affinity = 0.8 * 2.0 = 1.6 → clamped to 1.0
+	assert.Equal(t, 1.0, emptyAffinity)
+
+	// At expected fill: returns 0 (no preference from size perspective)
+	assert.Equal(t, 0.0, atExpectedAffinity)
+
+	// Above expected fill: returns 0 (no preference from size perspective)
+	assert.Equal(t, 0.0, aboveExpectedAffinity)
+
+	// Empty should have much higher affinity than at/above expected
+	assert.Greater(t, emptyAffinity, atExpectedAffinity)
+	assert.Greater(t, emptyAffinity, aboveExpectedAffinity)
+}
+
+func TestShiftSizeCriterion_CalculateShiftAffinity_NotResourceConstrained_NormalBehavior(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	// Create groups for testing
+	group := &VolunteerGroup{
+		GroupKey: "test_group",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+		},
+	}
+
+	// Create 5 available groups
+	groups := make([]*VolunteerGroup, 5)
+	for i := 0; i < 5; i++ {
+		groups[i] = &VolunteerGroup{
+			GroupKey: fmt.Sprintf("group_%d", i),
+			Members: []Volunteer{
+				{ID: fmt.Sprintf("v%d", i+10), IsTeamLead: false},
+			},
+		}
+	}
+	groups[0] = group
+
+	// NOT resource constrained: more capacity than needed
+	state := &RotaState{
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+		TotalVolunteerCapacity: 30, // Plenty of capacity
+		TotalSlotsNeeded:       20, // Less slots needed
+		OpenShiftCount:         5,
+	}
+
+	// Empty shift
+	emptyShift := &Shift{
+		Index:                0,
+		Size:                 4,
+		AllocatedGroups:      []*VolunteerGroup{},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	// Nearly full shift
+	nearlyFullShift := &Shift{
+		Index: 1,
+		Size:  4,
+		AllocatedGroups: []*VolunteerGroup{
+			{
+				Members: []Volunteer{
+					{ID: "a1", IsTeamLead: false},
+					{ID: "a2", IsTeamLead: false},
+					{ID: "a3", IsTeamLead: false},
+				},
+			},
+		},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	emptyAffinity := criterion.CalculateShiftAffinity(state, group, emptyShift)
+	nearlyFullAffinity := criterion.CalculateShiftAffinity(state, group, nearlyFullShift)
+
+	// In normal mode, behavior should be as before (no deficit ratio boost)
+	// Empty: urgency = 4/5 = 0.8
+	// Nearly full: urgency = 1/5 = 0.2
+	assert.Greater(t, emptyAffinity, nearlyFullAffinity, "Empty shift should still have higher urgency")
+	assert.Equal(t, 0.8, emptyAffinity)
+	assert.Equal(t, 0.2, nearlyFullAffinity)
+}
+
+func TestShiftSizeCriterion_CalculateShiftAffinity_ResourceConstrained_BelowExpectedFill(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	group := &VolunteerGroup{
+		GroupKey: "test_group",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+		},
+	}
+
+	// Create 10 available groups
+	groups := make([]*VolunteerGroup, 10)
+	for i := 0; i < 10; i++ {
+		groups[i] = &VolunteerGroup{
+			GroupKey: fmt.Sprintf("group_%d", i),
+			Members: []Volunteer{
+				{ID: fmt.Sprintf("v%d", i+10), IsTeamLead: false},
+			},
+		}
+	}
+	groups[0] = group
+
+	// Resource constrained state
+	// 10 capacity / 4 shifts = 2.5 expected fill per shift
+	state := &RotaState{
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+		TotalVolunteerCapacity: 10,
+		TotalSlotsNeeded:       20,
+		OpenShiftCount:         4, // Expected fill = 10/4 = 2.5
+	}
+
+	// Shift with 1 volunteer (below expected fill of 2.5)
+	belowExpectedShift := &Shift{
+		Index: 0,
+		Size:  4,
+		AllocatedGroups: []*VolunteerGroup{
+			{
+				Members: []Volunteer{
+					{ID: "a1", IsTeamLead: false},
+				},
+			},
+		},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	affinity := criterion.CalculateShiftAffinity(state, group, belowExpectedShift)
+
+	// Below expected fill (1 < 2.5): gets boosted
+	// urgency = 3/10 = 0.3, deficitRatio = (2.5-1)/2.5 = 0.6, affinity = 0.3 * 1.6 = 0.48
+	assert.InDelta(t, 0.48, affinity, 0.001)
+}
+
+func TestShiftSizeCriterion_CalculateShiftAffinity_ResourceConstrained_AtExpectedFillThreshold(t *testing.T) {
+	criterion := NewShiftSizeCriterion(1.0, 1.0)
+
+	group := &VolunteerGroup{
+		GroupKey: "test_group",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+		},
+	}
+
+	groups := []*VolunteerGroup{group}
+
+	// 6 capacity / 2 shifts = 3.0 expected fill per shift
+	state := &RotaState{
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          groups,
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+		TotalVolunteerCapacity: 6,
+		TotalSlotsNeeded:       10,
+		OpenShiftCount:         2, // Expected fill = 6/2 = 3.0
+	}
+
+	// Shift exactly at expected fill (3 volunteers)
+	atExpectedShift := &Shift{
+		Index: 0,
+		Size:  5,
+		AllocatedGroups: []*VolunteerGroup{
+			{
+				Members: []Volunteer{
+					{ID: "a1", IsTeamLead: false},
+					{ID: "a2", IsTeamLead: false},
+					{ID: "a3", IsTeamLead: false},
+				},
+			},
+		},
+		CustomPreallocations: []string{},
+		AvailableGroups:      groups,
+	}
+
+	affinity := criterion.CalculateShiftAffinity(state, group, atExpectedShift)
+
+	// At expected fill (3 >= 3.0): returns 0 (no preference from size perspective)
+	assert.Equal(t, 0.0, affinity)
+}

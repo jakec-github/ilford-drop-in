@@ -27,6 +27,11 @@ Represents the current state during allocation:
 - `VolunteerState` - Manages volunteer groups and exhaustion tracking (see VolunteerState below)
 - `HistoricalShifts` - Previous rota data (read-only, for pattern analysis and fairness)
 - `MaxAllocationFrequency` - Frequency ratio (e.g., 0.5 = 50%, 0.33 = 33%). The max allocation count is: `floor(len(Shifts) * MaxAllocationFrequency)`
+- `TotalVolunteerCapacity` - Total shift slots that can be filled by all groups based on availability and max frequency. Calculated as: `sum of min(maxAllocationCount, availableShifts) * ordinaryVolunteerCount` for each group
+- `TotalSlotsNeeded` - Total shift slots to fill across all non-closed shifts. Calculated as: `sum of shift.Size` for non-closed shifts
+- `OpenShiftCount` - Number of shifts that are not closed (need allocation)
+- `IsResourceConstrained()` - Returns true when `TotalVolunteerCapacity < TotalSlotsNeeded`, indicating a complete rota is not possible. Criteria can use this to adapt their behavior (e.g., spreading volunteers more evenly)
+- `ExpectedFillPerShift()` - Returns `TotalVolunteerCapacity / OpenShiftCount`. Used in resource-constrained mode to determine when a shift has reached its "fair share" of volunteers
 
 ### VolunteerState
 
@@ -72,13 +77,11 @@ Represents a single shift to be filled:
 1. **Define Criteria** - Configure which allocation criteria to apply with weights
 
 2. **Group Volunteers** - Create VolunteerGroups
-
    - No group can have more than 1 team lead
    - Calculate `HasTeamLead` and `MaleCount` for each group
    - Discard invalid groups (no availability)
 
 3. **Initialize Shifts**
-
    - Set `TeamLead` to nil
    - Populate `CustomPreallocations` from overrides
    - Set `Size` from defaults or overrides
@@ -120,7 +123,6 @@ The allocator provides an outcome report including:
 The allocator is extensible via a criteria interface. Each criterion implements three methods:
 
 1. **PromoteVolunteerGroup(state, group)** → float64
-
    - Returns value between -1 and 1
    - Multiplied by `GroupWeight`
    - Used in ranking to prioritize certain groups
@@ -128,7 +130,6 @@ The allocator is extensible via a criteria interface. Each criterion implements 
 Note that this method is used to sort all groups ON INIT ONLY. Allocated volunteers will be reinserted in their correct new position but do not implement a method that sorts groups based on the allocation of others as this will not work as expected.
 
 2. **IsShiftValid(state, group, shift)** → bool
-
    - Returns false to block allocation
    - Hard constraint enforcement
 
@@ -152,12 +153,18 @@ Note that if a volunteer cannot be assigned due to invalid shifts they will be e
 
 **Affinity:**
 
-- Formula: `remainingCapacity / remainingAvailableVolunteers`
+- Base formula (normal mode): `remainingCapacity / remainingAvailableVolunteers`
 - Higher when shift has more capacity relative to available volunteers
 - Uses `Shift.RemainingAvailableVolunteers()` which counts actual volunteers and excludes:
   - Exhausted groups
   - Already allocated groups
   - Groups too large to fit
+- **Resource-constrained mode:** When `TotalVolunteerCapacity < TotalSlotsNeeded`:
+  - Calculates `expectedFill = TotalVolunteerCapacity / OpenShiftCount`
+  - If shift's current size >= expectedFill: returns 0 (no preference from size perspective)
+  - If shift's current size < expectedFill: boosts based on deficit from expected fill
+  - Formula for below-expected: `urgency * (1 + deficitRatio)` where `deficitRatio = (expectedFill - currentSize) / expectedFill`
+  - This ensures all shifts reach their "fair share" before any get extra volunteers
 
 **Promotion:** None
 
@@ -252,20 +259,17 @@ Note that if a volunteer cannot be assigned due to invalid shifts they will be e
 Groups are ranked by summing:
 
 1. **Current Rota Urgency** - `remainingNeededThisRota / remainingAvailability`
-
    - Prioritizes groups that need more allocations relative to their available shifts
    - Minimum value of 1.0 (groups that have met their quota still get base score)
    - Multiplied by `WeightCurrentRotaUrgency`
 
 2. **Overall Frequency Fairness** - Based on `DesiredRemainingAllocations()`
-
    - Formula: `desiredRemaining / totalShiftsInCurrentRota`
    - Groups under their target frequency over time get higher priority
    - Clamped to range [-1.0, 1.0]
    - Multiplied by `WeightOverallFrequencyFairness`
 
 3. **Group Promotion** - Promote groups over individuals
-
    - Groups with more than 1 member get +1.0 bonus
    - Schedule groups early to ensure space availability
    - Multiplied by `WeightPromoteGroup`

@@ -216,6 +216,34 @@ func calculateHistoricalAllocationCount(groupKey string, historicalShifts []*Shi
 	return count
 }
 
+// calculateCapacityMetrics computes the total volunteer capacity, total slots needed,
+// and non-closed shift count for the rota. This allows criteria to detect resource-constrained
+// scenarios and calculate expected fill per shift.
+//
+// TotalVolunteerCapacity: For each group, calculates min(maxAllocationCount, availableShifts)
+// multiplied by the number of ordinary volunteers in the group, then sums across all groups.
+//
+// TotalSlotsNeeded: Sum of shift.Size for all non-closed shifts.
+//
+// OpenShiftCount: Number of shifts that are not closed.
+func calculateCapacityMetrics(volunteerState *VolunteerState, shifts []*Shift, maxAllocationCount int) (totalCapacity int, totalSlotsNeeded int, openShiftCount int) {
+	// Calculate total volunteer capacity
+	for _, group := range volunteerState.VolunteerGroups {
+		effectiveAllocations := min(maxAllocationCount, len(group.AvailableShiftIndices))
+		totalCapacity += effectiveAllocations * group.OrdinaryVolunteerCount()
+	}
+
+	// Calculate total slots needed and count non-closed shifts
+	for _, shift := range shifts {
+		if !shift.Closed {
+			totalSlotsNeeded += shift.Size
+			openShiftCount++
+		}
+	}
+
+	return totalCapacity, totalSlotsNeeded, openShiftCount
+}
+
 // ShiftOverride allows customizing specific shifts based on date patterns
 type ShiftOverride struct {
 	// AppliesTo is a function that returns true if this override applies to the given shift date
@@ -459,6 +487,10 @@ func InitAllocation(config AllocationConfig) (Allocator, error) {
 		return Allocator{}, err
 	}
 
+	// Calculate capacity metrics for resource-constrained detection
+	maxAllocationCount := int(float64(len(shifts)) * config.MaxAllocationFrequency)
+	totalCapacity, totalSlotsNeeded, openShiftCount := calculateCapacityMetrics(volunteerState, shifts, maxAllocationCount)
+
 	// Create initial rota state
 	state := &RotaState{
 		Shifts:                         shifts,
@@ -468,6 +500,9 @@ func InitAllocation(config AllocationConfig) (Allocator, error) {
 		WeightCurrentRotaUrgency:       config.WeightCurrentRotaUrgency,
 		WeightOverallFrequencyFairness: config.WeightOverallFrequencyFairness,
 		WeightPromoteGroup:             config.WeightPromoteGroup,
+		TotalVolunteerCapacity:         totalCapacity,
+		TotalSlotsNeeded:               totalSlotsNeeded,
+		OpenShiftCount:                 openShiftCount,
 	}
 
 	RankVolunteerGroups(state, config.Criteria, config.MaxAllocationFrequency)

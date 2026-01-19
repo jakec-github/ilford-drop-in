@@ -37,12 +37,44 @@ type RotaState struct {
 	WeightCurrentRotaUrgency       float64
 	WeightOverallFrequencyFairness float64
 	WeightPromoteGroup             float64
+
+	// TotalVolunteerCapacity is the total number of shift slots that can be filled
+	// by all volunteer groups based on their availability and max allocation frequency.
+	// Calculated as: sum of min(maxAllocationCount, availableShifts) * ordinaryVolunteerCount for each group
+	TotalVolunteerCapacity int
+
+	// TotalSlotsNeeded is the total number of shift slots that need to be filled
+	// across all non-closed shifts. Calculated as: sum of shift.Size for all non-closed shifts
+	TotalSlotsNeeded int
+
+	// OpenShiftCount is the number of shifts that are not closed (need allocation)
+	OpenShiftCount int
 }
 
 // MaxAllocationCount returns the maximum number of shifts a group can be allocated to
 // based on the frequency ratio and the total number of shifts
 func (rs *RotaState) MaxAllocationCount() int {
 	return int(float64(len(rs.Shifts)) * rs.MaxAllocationFrequency)
+}
+
+// IsResourceConstrained returns true if the total volunteer capacity is less than
+// the total slots needed. In this case, a complete rota is not possible and
+// criteria may want to adjust their behavior to spread volunteers more evenly.
+func (rs *RotaState) IsResourceConstrained() bool {
+	return rs.TotalVolunteerCapacity < rs.TotalSlotsNeeded
+}
+
+// ExpectedFillPerShift returns the average number of volunteers each shift should
+// have when resources are constrained. This is calculated as:
+// TotalVolunteerCapacity / OpenShiftCount
+//
+// Used by criteria to determine when a shift has reached its "fair share" of
+// volunteers and should have lower priority for additional allocations.
+func (rs *RotaState) ExpectedFillPerShift() float64 {
+	if rs.OpenShiftCount == 0 {
+		return 0
+	}
+	return float64(rs.TotalVolunteerCapacity) / float64(rs.OpenShiftCount)
 }
 
 // VolunteerGroup represents a group of volunteers that are allocated together

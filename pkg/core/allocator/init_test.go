@@ -382,3 +382,185 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 	assert.False(t, shifts[1].Closed)
 	assert.Empty(t, shifts[1].CustomPreallocations)
 }
+
+func TestCalculateCapacityMetrics_BasicCalculation(t *testing.T) {
+	// Create volunteer groups
+	group1 := &VolunteerGroup{
+		GroupKey: "group_1",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+			{ID: "v2", IsTeamLead: false},
+		},
+		AvailableShiftIndices: []int{0, 1, 2}, // Available for 3 shifts
+	}
+	group2 := &VolunteerGroup{
+		GroupKey: "group_2",
+		Members: []Volunteer{
+			{ID: "v3", IsTeamLead: false},
+		},
+		AvailableShiftIndices: []int{0, 1}, // Available for 2 shifts
+	}
+
+	volunteerState := &VolunteerState{
+		VolunteerGroups:          []*VolunteerGroup{group1, group2},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	}
+
+	shifts := []*Shift{
+		{Index: 0, Size: 4, Closed: false},
+		{Index: 1, Size: 3, Closed: false},
+		{Index: 2, Size: 4, Closed: false},
+	}
+
+	// maxAllocationCount = 2 (assume 50% frequency with 4 shifts = 2)
+	maxAllocationCount := 2
+
+	totalCapacity, totalSlotsNeeded, openShiftCount := calculateCapacityMetrics(volunteerState, shifts, maxAllocationCount)
+
+	// group1: min(2, 3) = 2 allocations * 2 ordinary volunteers = 4 slot-fills
+	// group2: min(2, 2) = 2 allocations * 1 ordinary volunteer = 2 slot-fills
+	// Total capacity: 4 + 2 = 6
+	assert.Equal(t, 6, totalCapacity)
+
+	// Slots needed: 4 + 3 + 4 = 11
+	assert.Equal(t, 11, totalSlotsNeeded)
+
+	// Non-closed shifts: 3
+	assert.Equal(t, 3, openShiftCount)
+}
+
+func TestCalculateCapacityMetrics_ClosedShiftsExcluded(t *testing.T) {
+	group := &VolunteerGroup{
+		GroupKey: "group_1",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+		},
+		AvailableShiftIndices: []int{0, 1, 2},
+	}
+
+	volunteerState := &VolunteerState{
+		VolunteerGroups:          []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	}
+
+	shifts := []*Shift{
+		{Index: 0, Size: 4, Closed: false},
+		{Index: 1, Size: 4, Closed: true}, // Closed - should not count toward needed
+		{Index: 2, Size: 4, Closed: false},
+	}
+
+	maxAllocationCount := 3
+
+	_, totalSlotsNeeded, openShiftCount := calculateCapacityMetrics(volunteerState, shifts, maxAllocationCount)
+
+	// Only count non-closed shifts: 4 + 4 = 8 (not 12)
+	assert.Equal(t, 8, totalSlotsNeeded)
+
+	// Non-closed shifts: 2 (not 3)
+	assert.Equal(t, 2, openShiftCount)
+}
+
+func TestCalculateCapacityMetrics_TeamLeadsExcluded(t *testing.T) {
+	// Group with team lead - only ordinary volunteers count
+	group := &VolunteerGroup{
+		GroupKey: "group_1",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: true},  // Team lead - doesn't count
+			{ID: "v2", IsTeamLead: false}, // Ordinary - counts
+		},
+		AvailableShiftIndices: []int{0, 1, 2},
+	}
+
+	volunteerState := &VolunteerState{
+		VolunteerGroups:          []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	}
+
+	shifts := []*Shift{
+		{Index: 0, Size: 4, Closed: false},
+		{Index: 1, Size: 4, Closed: false},
+	}
+
+	maxAllocationCount := 2
+
+	totalCapacity, _, _ := calculateCapacityMetrics(volunteerState, shifts, maxAllocationCount)
+
+	// group: min(2, 3) = 2 allocations * 1 ordinary volunteer = 2 slot-fills
+	assert.Equal(t, 2, totalCapacity)
+}
+
+func TestCalculateCapacityMetrics_LimitedAvailability(t *testing.T) {
+	// Group with limited availability (less than maxAllocationCount)
+	group := &VolunteerGroup{
+		GroupKey: "group_1",
+		Members: []Volunteer{
+			{ID: "v1", IsTeamLead: false},
+			{ID: "v2", IsTeamLead: false},
+		},
+		AvailableShiftIndices: []int{0}, // Only available for 1 shift
+	}
+
+	volunteerState := &VolunteerState{
+		VolunteerGroups:          []*VolunteerGroup{group},
+		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+	}
+
+	shifts := []*Shift{
+		{Index: 0, Size: 4, Closed: false},
+		{Index: 1, Size: 4, Closed: false},
+		{Index: 2, Size: 4, Closed: false},
+	}
+
+	maxAllocationCount := 3 // Could do 3, but only available for 1
+
+	totalCapacity, _, _ := calculateCapacityMetrics(volunteerState, shifts, maxAllocationCount)
+
+	// group: min(3, 1) = 1 allocation * 2 ordinary volunteers = 2 slot-fills
+	assert.Equal(t, 2, totalCapacity)
+}
+
+func TestIsResourceConstrained(t *testing.T) {
+	// Resource constrained case
+	constrainedState := &RotaState{
+		TotalVolunteerCapacity: 10,
+		TotalSlotsNeeded:       20,
+	}
+	assert.True(t, constrainedState.IsResourceConstrained())
+
+	// Not constrained case - exact match
+	exactState := &RotaState{
+		TotalVolunteerCapacity: 20,
+		TotalSlotsNeeded:       20,
+	}
+	assert.False(t, exactState.IsResourceConstrained())
+
+	// Not constrained case - surplus
+	surplusState := &RotaState{
+		TotalVolunteerCapacity: 30,
+		TotalSlotsNeeded:       20,
+	}
+	assert.False(t, surplusState.IsResourceConstrained())
+}
+
+func TestExpectedFillPerShift(t *testing.T) {
+	// Basic calculation: 12 capacity / 4 shifts = 3.0
+	state := &RotaState{
+		TotalVolunteerCapacity: 12,
+		OpenShiftCount:         4,
+	}
+	assert.Equal(t, 3.0, state.ExpectedFillPerShift())
+
+	// Fractional result: 10 capacity / 4 shifts = 2.5
+	fractionalState := &RotaState{
+		TotalVolunteerCapacity: 10,
+		OpenShiftCount:         4,
+	}
+	assert.Equal(t, 2.5, fractionalState.ExpectedFillPerShift())
+
+	// Zero shifts (edge case): returns 0
+	zeroShiftsState := &RotaState{
+		TotalVolunteerCapacity: 10,
+		OpenShiftCount:         0,
+	}
+	assert.Equal(t, 0.0, zeroShiftsState.ExpectedFillPerShift())
+}
