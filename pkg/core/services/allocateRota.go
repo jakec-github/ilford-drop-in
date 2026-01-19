@@ -23,7 +23,7 @@ const (
 	// WeightCurrentRotaUrgency is the weight applied based on how difficult this group
 	// is to schedule. More difficult volunteers are allocated first to ensure they get
 	// the shifts they want.
-	WeightCurrentRotaUrgency = 1
+	WeightCurrentRotaUrgency = 5
 
 	// WeightOverallFrequencyFairness is the weight applied based on how many allocations
 	// the group needs to reach their target frequency over time (historical + current).
