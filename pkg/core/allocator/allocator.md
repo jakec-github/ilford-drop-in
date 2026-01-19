@@ -222,6 +222,7 @@ Note that if a volunteer cannot be assigned due to invalid shifts they will be e
 - Higher for shifts that preserve more options (edge shifts better than middle)
 - **Historical integration:** When checking if shift 0 is valid, considers if group was in last historical shift
 - Returns 0 if no currently valid shifts
+- **Target frequency protection:** Sharply reduces affinity (90% penalty) if allocating to a shift would prevent the group from reaching their MaxAllocationFrequency when they otherwise could have
 
 **Promotion:** None
 

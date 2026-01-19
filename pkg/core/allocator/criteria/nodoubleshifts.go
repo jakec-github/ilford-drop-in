@@ -15,6 +15,8 @@ import (
 // Affinity:
 //   - Increases affinity for shifts that preserve more valid shift options for future allocations
 //   - Lower affinity for shifts that would reduce the number of valid shifts available
+//   - Sharply reduces affinity (90% penalty) if allocating to a shift would prevent the group
+//     from reaching their target frequency (MaxAllocationFrequency) when they otherwise could have
 //
 // Promotion:
 //   - No promotion logic for this criterion
@@ -165,6 +167,25 @@ func (c *NoDoubleShiftsCriterion) CalculateShiftAffinity(state *rotageneration.R
 	//   - 5 valid shifts currently, 2 would remain → 2/5 = 0.4 (worse)
 	//   - 3 valid shifts currently, 0 would remain → 0/3 = 0.0 (bad - would strand the group)
 	affinity := float64(remainingValidCount) / float64(currentlyValidCount)
+
+	// Check if allocating this shift would prevent the group from reaching their target frequency
+	// If they can currently reach their target but won't be able to after this allocation,
+	// sharply reduce affinity to prefer shifts that preserve their ability to reach target
+	maxAllocationCount := state.MaxAllocationCount()
+	currentAllocations := len(group.AllocatedShiftIndices)
+	remainingNeeded := maxAllocationCount - currentAllocations
+	remainingNeededAfterThis := remainingNeeded - 1
+
+	// Current valid options include the shift we're considering (+1)
+	currentValidOptions := currentlyValidCount + 1
+	canCurrentlyReachTarget := currentValidOptions >= remainingNeeded
+	canReachTargetAfterThis := remainingValidCount >= remainingNeededAfterThis
+
+	if canCurrentlyReachTarget && !canReachTargetAfterThis && remainingNeededAfterThis > 0 {
+		// This allocation would prevent the group from reaching their target frequency
+		// Apply a sharp penalty (reduce to 10% of original affinity)
+		affinity *= 0.1
+	}
 
 	return affinity
 }

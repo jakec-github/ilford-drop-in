@@ -667,3 +667,163 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_GroupNotInHistorical(t *testi
 	errors := criterion.ValidateRotaState(state)
 	assert.Empty(t, errors, "Should not detect violation when different group is in historical shift")
 }
+
+func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_SharplyReducedWhenPreventsTargetFrequency(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0)
+
+	// 6 shifts with 50% max frequency = 3 max allocations
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0},
+			{Index: 1},
+			{Index: 2},
+			{Index: 3},
+			{Index: 4},
+			{Index: 5},
+		},
+		MaxAllocationFrequency: 0.5, // Max 3 allocations
+	}
+
+	group := &VolunteerGroup{
+		AvailableShiftIndices: []int{0, 1, 2, 3, 4, 5},
+		AllocatedShiftIndices: []int{}, // No allocations yet, needs 3 more
+	}
+
+	// With no allocations:
+	// - Max allocation count = 3
+	// - Remaining needed = 3
+	// - Currently valid shifts: all 6 (excluding shift being considered = 5)
+	// - Can reach target: 6 >= 3 (yes)
+
+	// Allocating to shift 2 (middle):
+	// - Would make shifts 1 and 3 invalid (adjacent)
+	// - Remaining valid after: shifts 0, 4, 5 = 3 shifts
+	// - Remaining needed after this allocation: 2
+	// - Can still reach target: 3 >= 2 (yes)
+	// - No penalty should be applied
+	affinityMiddle := criterion.CalculateShiftAffinity(state, group, state.Shifts[2])
+	// Expected: 3/5 = 0.6 (no penalty)
+	assert.InDelta(t, 0.6, affinityMiddle, 0.001)
+
+	// Now test a case where allocation would prevent reaching target
+	// Group with only 3 consecutive available shifts and needs 2 allocations
+	limitedGroup := &VolunteerGroup{
+		AvailableShiftIndices: []int{1, 2, 3}, // Only shifts 1, 2, 3 available
+		AllocatedShiftIndices: []int{},        // No allocations yet, needs 3
+	}
+
+	// With these 3 shifts, group can only reach 2 allocations max (due to no double shifts)
+	// E.g., can allocate to shifts 1 and 3, but not 2 and anything else
+	// Allocating to shift 2 would make shifts 1 and 3 invalid
+	// - Currently valid: 1, 2, 3 (excluding 2 = 2 valid: 1 and 3)
+	// - After allocating to 2: shifts 1 and 3 become invalid
+	// - Remaining valid after: 0
+	// - Can currently reach target: 3 >= 3 (yes, barely)
+	// - Remaining needed after this: 2
+	// - Can reach after: 0 >= 2 (no!)
+	// Penalty should be applied
+	affinityPenalized := criterion.CalculateShiftAffinity(state, limitedGroup, state.Shifts[2])
+
+	// Allocating to edge shift 1:
+	// - Would make shift 2 invalid
+	// - Remaining valid after: shift 3 only = 1 shift
+	// - Remaining needed after: 2
+	// - Can reach after: 1 >= 2 (no!)
+	// Penalty should also be applied
+	affinityEdge := criterion.CalculateShiftAffinity(state, limitedGroup, state.Shifts[1])
+
+	// Both should have reduced affinity, but let's verify the penalty is applied
+	// The base affinity for shift 2 would be 0/2 = 0.0 (no valid shifts remain)
+	// 0.0 * 0.1 = 0.0
+	assert.Equal(t, 0.0, affinityPenalized)
+
+	// The base affinity for shift 1 would be 1/2 = 0.5
+	// With penalty: 0.5 * 0.1 = 0.05
+	assert.InDelta(t, 0.05, affinityEdge, 0.001)
+}
+
+func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_NoPenaltyWhenAlreadyCannotReachTarget(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0)
+
+	// 6 shifts with 50% max frequency = 3 max allocations
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0},
+			{Index: 1},
+			{Index: 2},
+			{Index: 3},
+			{Index: 4},
+			{Index: 5},
+		},
+		MaxAllocationFrequency: 0.5, // Max 3 allocations
+	}
+
+	// Group with only 2 available shifts - can never reach target of 3
+	group := &VolunteerGroup{
+		AvailableShiftIndices: []int{0, 2}, // Only shifts 0 and 2 available
+		AllocatedShiftIndices: []int{},     // No allocations yet, needs 3
+	}
+
+	// Currently valid options: shifts 0 and 2 (2 options)
+	// Remaining needed: 3
+	// Can currently reach target: 2 >= 3 (no!)
+	// Since they can't already reach target, no penalty should be applied
+
+	affinityShift0 := criterion.CalculateShiftAffinity(state, group, state.Shifts[0])
+	// Allocating to 0 doesn't affect 2 (not adjacent)
+	// Currently valid (excluding 0): just shift 2 = 1
+	// After allocation: shift 2 still valid = 1
+	// Base affinity: 1/1 = 1.0
+	// No penalty because they couldn't reach target anyway
+	assert.Equal(t, 1.0, affinityShift0)
+}
+
+func TestNoDoubleShiftsCriterion_CalculateShiftAffinity_NoPenaltyWhenTargetAlreadyMet(t *testing.T) {
+	criterion := NewNoDoubleShiftsCriterion(1.0)
+
+	// 6 shifts with 50% max frequency = 3 max allocations
+	state := &RotaState{
+		Shifts: []*Shift{
+			{Index: 0},
+			{Index: 1},
+			{Index: 2},
+			{Index: 3},
+			{Index: 4},
+			{Index: 5},
+		},
+		MaxAllocationFrequency: 0.5, // Max 3 allocations
+	}
+
+	// Group already has 3 allocations (target met)
+	group := &VolunteerGroup{
+		AvailableShiftIndices: []int{0, 1, 2, 3, 4, 5},
+		AllocatedShiftIndices: []int{0, 2, 4}, // Already at max
+	}
+
+	// Remaining needed: 3 - 3 = 0
+	// Remaining needed after this: -1
+	// Since remainingNeededAfterThis <= 0, no penalty should be applied
+	// Note: group has no valid shifts left (all are allocated or adjacent to allocated)
+	// so we test with a different group below
+
+	// Group with 2 allocations, needs 1 more to reach target (already can reach)
+	_ = group // silence unused warning
+	group2 := &VolunteerGroup{
+		AvailableShiftIndices: []int{0, 1, 2, 3, 4, 5},
+		AllocatedShiftIndices: []int{0, 5}, // 2 allocations, needs 1 more
+	}
+
+	// Remaining needed: 1
+	// After this: 0
+	// Since remainingNeededAfterThis = 0, no penalty should apply
+
+	// Valid shifts for this group: 2, 3 (not adjacent to 0 or 5)
+	affinityShift2 := criterion.CalculateShiftAffinity(state, group2, state.Shifts[2])
+
+	// Currently valid (excluding shift 2): shift 3 = 1
+	// After allocating to 2: shift 3 becomes invalid (adjacent)
+	// Remaining: 0
+	// Base affinity: 0/1 = 0.0
+	// No penalty because remainingNeededAfterThis = 0
+	assert.Equal(t, 0.0, affinityShift2)
+}

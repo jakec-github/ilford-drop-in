@@ -50,7 +50,7 @@ const (
 	WeightMaleBalanceAffinity = 2.0 // Strongly prefer shifts that need male volunteers
 
 	// NoDoubleShifts criterion weights
-	WeightNoDoubleShiftsAffinity = 1.0 // Prefer shifts that preserve more options
+	WeightNoDoubleShiftsAffinity = 2.0 // Prefer shifts that preserve more options
 
 	// ShiftSpread criterion weights
 	WeightShiftSpreadAffinity = 0.5 // Slightly prefer shifts that spread out allocations
