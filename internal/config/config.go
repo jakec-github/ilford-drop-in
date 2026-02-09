@@ -26,6 +26,7 @@ type Config struct {
 	ServiceVolunteersTab   string         `yaml:"serviceVolunteersTab" validate:"required"`
 	RotaSheetID            string         `yaml:"rotaSheetID" validate:"required"`
 	DatabaseSheetID        string         `yaml:"databaseSheetID" validate:"required"`
+	DatabaseURL            string         `yaml:"databaseURL,omitempty"`
 	RotaOverrides          []RotaOverride `yaml:"rotaOverrides,omitempty" validate:"dive"`
 	GmailUserID            string         `yaml:"gmailUserID" validate:"required"`
 	GmailSender            string         `yaml:"gmailSender,omitempty"`

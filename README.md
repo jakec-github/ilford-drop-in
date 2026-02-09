@@ -39,25 +39,28 @@ This file is downloaded from Google Cloud Console when creating your Desktop OAu
 
 ```yaml
 # Google Sheet IDs
-volunteer_sheet_id: 'your-volunteer-sheet-id'
-database_sheet_id: 'your-database-sheet-id'
-rota_sheet_id: 'your-rota-sheet-id'
+volunteerSheetID: 'your-volunteer-sheet-id'
+databaseSheetID: 'your-database-sheet-id'
+rotaSheetID: 'your-rota-sheet-id'
+
+# PostgreSQL connection (optional - for test env, see Test Database Setup)
+databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
 
 # Sheet tab names
-volunteers_tab: 'Volunteers'
+serviceVolunteersTab: 'Volunteers'
 
 # Gmail settings
-gmail_user_id: 'me'
-gmail_sender: 'your-email@gmail.com' # Defaults to match the above value
+gmailUserID: 'me'
+gmailSender: 'your-email@gmail.com'
 
 # Allocation settings
-maxAllocationFrequency: 0.25 # Max 1/4 of shifts per volunteer (e.g., 1/4 = 1 in 4 shifts)
+maxAllocationFrequency: 0.25 # Max 1/4 of shifts per volunteer
 defaultShiftSize: 2 # Default volunteers per shift (excluding team lead)
 
 # Optional rota overrides
 rotaOverrides:
-  rrule: 'FREQ=WEEKLY;BYDAY=SU' # Weekly shifts on Sunday
-  customPreallocations: # Volunteers to be manually scheduled
+  - rrule: 'FREQ=WEEKLY;BYDAY=SU' # Weekly shifts on Sunday
+    customPreallocations: # Volunteers to be manually scheduled
       - "John Doe"
       - "Jane Smith"
     shiftSize: 5 # Custom shift size
