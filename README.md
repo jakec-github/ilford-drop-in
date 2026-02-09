@@ -11,11 +11,9 @@ A CLI tool for managing volunteer rotas at the Ilford Drop-in Centre, which prov
 ### Google Cloud Setup
 
 1. **Create a Google Cloud Project**
-
    - Enable the Gmail, Google Sheets, and Google Forms APIs
 
 2. **Create an OAuth 2.0 Desktop Client**
-
    - Download the credentials JSON file
    - Save it as `oauthClient.<env>.json` (e.g., `oauthClient.test.json`)
 
@@ -181,6 +179,18 @@ Add a volunteer cover/swap for a shift:
 ```
 
 ## Development
+
+### Test Database Setup
+
+The test environment uses a local PostgreSQL database running in Docker. See the `./scripts/test-db.sh` helper script to set this up.
+
+Add this connection string to `drop_in_config.test.yaml`:
+
+```yaml
+database_url: postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable
+```
+
+**Requirements:** Docker must be installed and running.
 
 ### Running Tests
 
