@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -21,9 +22,11 @@ func (d *DB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	var rotations []db.Rotation
 	for rows.Next() {
 		var r db.Rotation
-		if err := rows.Scan(&r.ID, &r.Start, &r.ShiftCount); err != nil {
+		var start time.Time
+		if err := rows.Scan(&r.ID, &start, &r.ShiftCount); err != nil {
 			return nil, fmt.Errorf("failed to scan rotation: %w", err)
 		}
+		r.Start = start.Format("2006-01-02")
 		rotations = append(rotations, r)
 	}
 

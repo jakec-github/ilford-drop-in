@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -21,10 +22,12 @@ func (d *DB) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
 	var allocations []db.Allocation
 	for rows.Next() {
 		var a db.Allocation
+		var shiftDate time.Time
 		var volunteerID, customEntry *string
-		if err := rows.Scan(&a.ID, &a.RotaID, &a.ShiftDate, &a.Role, &volunteerID, &customEntry); err != nil {
+		if err := rows.Scan(&a.ID, &a.RotaID, &shiftDate, &a.Role, &volunteerID, &customEntry); err != nil {
 			return nil, fmt.Errorf("failed to scan allocation: %w", err)
 		}
+		a.ShiftDate = shiftDate.Format("2006-01-02")
 		if volunteerID != nil {
 			a.VolunteerID = *volunteerID
 		}

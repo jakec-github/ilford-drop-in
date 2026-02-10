@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -30,9 +31,11 @@ func (d *DB) GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequ
 
 	for rows.Next() {
 		var req db.AvailabilityRequest
-		if err := rows.Scan(&req.ID, &req.RotaID, &req.ShiftDate, &req.VolunteerID, &req.FormID, &req.FormURL, &req.FormSent); err != nil {
+		var shiftDate time.Time
+		if err := rows.Scan(&req.ID, &req.RotaID, &shiftDate, &req.VolunteerID, &req.FormID, &req.FormURL, &req.FormSent); err != nil {
 			return nil, fmt.Errorf("failed to scan availability request: %w", err)
 		}
+		req.ShiftDate = shiftDate.Format("2006-01-02")
 
 		state, exists := stateMap[req.ID]
 		if !exists {
