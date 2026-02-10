@@ -24,6 +24,14 @@ If I try to allocate a rota and allocations already exist for that rota it shoul
 
 Always use the same sheet for the latest rota so the link to latest is stable
 
+Trim values from the volunteer sheet of whitespace
+
+A good example of where the individual affinities system might need some more thinking. Look at the shiftSize. in a resource constrained scenario we want all shifts to reach the average. So affinities for shifts that haven't reached that yet need to be much higher than those that have. Once all have reached that stage you still want a clear signal but if they all have tiny affinities then any differences get drowned out.
+
+I think the solution is that affinity calculations have to keep track of the general state of the rota to know whether or not to give a particular shift a particular affinity. This could be done by calculating this from the state each time the hook is run. That requires no changes to the pattern. Or they could be stateful...
+
+Technically there is an edge case bug where all shifts have an affinity of 0 and the shift race interprets that as a no valid shifts scenario
+
 Covers to add:
 
 - Plus Angela Beckles on 2025-11-16
