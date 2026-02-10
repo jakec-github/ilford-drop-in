@@ -32,14 +32,7 @@ I think the solution is that affinity calculations have to keep track of the gen
 
 Technically there is an edge case bug where all shifts have an affinity of 0 and the shift race interprets that as a no valid shifts scenario
 
-Covers to add:
-
-- Plus Angela Beckles on 2025-11-16
-- swap Ruth on dec 14th for Jenny on dec 21st
-- Plus Partha Mulay on 2025-11-30
-- Plus Abena Assibey on 2025-12-21
-- Swap Burhan with Kanom on 2025-11-30 (Recheal suggested she might do this)
-- Swap Burhan on 4th Jan with Kate B on 18th of Jan
+Remove all references to sheets SQl. Waiting to be happy with the new DB.
 
 Quick rewrite of the alterations/covers plan.
 
