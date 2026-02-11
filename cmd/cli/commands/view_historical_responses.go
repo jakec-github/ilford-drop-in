@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -9,7 +10,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
 // ViewHistoricalResponsesCmd creates the viewHistoricalResponses command
@@ -88,6 +91,12 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 			}
 			fmt.Println()
 
+			// Sort volunteers by total availability (lowest first)
+			sort.Slice(result.Volunteers, func(i, j int) bool {
+				return totalAvailability(result.Volunteers[i], result.Rotations, result.Matrix) <
+					totalAvailability(result.Volunteers[j], result.Rotations, result.Matrix)
+			})
+
 			// Print each volunteer's row
 			for _, vol := range result.Volunteers {
 				fmt.Printf("%-*s", nameColWidth, vol.DisplayName)
@@ -136,6 +145,18 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 	cmd.Flags().StringSlice("volunteers", nil, "Comma-separated list of volunteer IDs to filter by")
 
 	return cmd
+}
+
+// totalAvailability sums a volunteer's available shift count across all rotations.
+// Non-"available" statuses (no_form, no_response, no_availability, form_error) count as 0.
+func totalAvailability(vol model.Volunteer, rotations []db.Rotation, matrix map[string]map[string]services.VolunteerRotaStatus) int {
+	total := 0
+	for _, rota := range rotations {
+		if status, ok := matrix[vol.ID][rota.ID]; ok && status.Status == "available" {
+			total += status.AvailableCount
+		}
+	}
+	return total
 }
 
 // availabilityColor returns the ANSI color for an availability count.
