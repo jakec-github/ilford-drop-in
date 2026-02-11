@@ -58,6 +58,10 @@ func (m *mockAllocateRotaStore) InsertAllocations(allocations []db.Allocation) e
 	return nil
 }
 
+func (m *mockAllocateRotaStore) SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error {
+	return nil
+}
+
 // mockVolClient implements VolunteerClient for testing
 type mockVolClient struct {
 	volunteers []model.Volunteer

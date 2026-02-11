@@ -2,9 +2,10 @@ package db
 
 // Rotation represents a database rotation record
 type Rotation struct {
-	ID         string `ssql_header:"id" ssql_type:"uuid"`
-	Start      string `ssql_header:"start" ssql_type:"date"`
-	ShiftCount int    `ssql_header:"shift_count" ssql_type:"int"`
+	ID                string `ssql_header:"id" ssql_type:"uuid"`
+	Start             string `ssql_header:"start" ssql_type:"date"`
+	ShiftCount        int    `ssql_header:"shift_count" ssql_type:"int"`
+	AllocatedDatetime string // TIMESTAMPTZ from postgres, empty string if NULL
 }
 
 // AvailabilityRequest represents a database availability request record

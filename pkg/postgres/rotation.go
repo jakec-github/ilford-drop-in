@@ -11,7 +11,7 @@ import (
 // GetRotations retrieves all rotation records
 func (d *DB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, start, shift_count
+		SELECT id, start, shift_count, allocated_datetime
 		FROM rotation
 	`)
 	if err != nil {
@@ -23,10 +23,14 @@ func (d *DB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	for rows.Next() {
 		var r db.Rotation
 		var start time.Time
-		if err := rows.Scan(&r.ID, &start, &r.ShiftCount); err != nil {
+		var allocatedDatetime *time.Time
+		if err := rows.Scan(&r.ID, &start, &r.ShiftCount, &allocatedDatetime); err != nil {
 			return nil, fmt.Errorf("failed to scan rotation: %w", err)
 		}
 		r.Start = start.Format("2006-01-02")
+		if allocatedDatetime != nil {
+			r.AllocatedDatetime = allocatedDatetime.UTC().Format(time.RFC3339)
+		}
 		rotations = append(rotations, r)
 	}
 
@@ -35,6 +39,17 @@ func (d *DB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	}
 
 	return rotations, nil
+}
+
+// SetRotationAllocatedDatetime sets the allocated_datetime for a rotation
+func (d *DB) SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error {
+	_, err := d.pool.Exec(ctx, `
+		UPDATE rotation SET allocated_datetime = $2 WHERE id = $1
+	`, rotaID, datetime.UTC())
+	if err != nil {
+		return fmt.Errorf("failed to set rotation allocated_datetime: %w", err)
+	}
+	return nil
 }
 
 // InsertRotation inserts a new rotation record

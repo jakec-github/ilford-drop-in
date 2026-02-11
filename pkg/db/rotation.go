@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/sheetssql"
 )
@@ -21,5 +22,10 @@ func (db *DB) InsertRotation(rotation *Rotation) error {
 	if err := sheetssql.InsertModel(db.ssql, *rotation); err != nil {
 		return fmt.Errorf("failed to insert rotation: %w", err)
 	}
+	return nil
+}
+
+// SetRotationAllocatedDatetime is a no-op for SheetsSQL (feature targets Postgres only)
+func (db *DB) SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error {
 	return nil
 }

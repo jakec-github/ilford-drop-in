@@ -3,6 +3,8 @@ package formsclient
 import (
 	"fmt"
 	"time"
+
+	"google.golang.org/api/forms/v1"
 )
 
 // FormResponse represents a parsed form response
@@ -14,6 +16,45 @@ type FormResponse struct {
 	AvailableForAll  bool
 	UnavailableDates []string
 	AvailableDates   []string
+}
+
+// GetFormResponseBefore fetches and parses the latest form response submitted before the given cutoff time.
+// Unlike GetFormResponse, this fetches all responses (no PageSize limit) and filters by timestamp.
+// If the Google Forms API filter parameter fails, it falls back to fetching all responses and filtering in code.
+func (c *Client) GetFormResponseBefore(formID string, volunteerName string, shiftDates []time.Time, before time.Time) (*FormResponse, error) {
+	// Try using the API's timestamp filter first
+	filterStr := "timestamp <= " + before.UTC().Format(time.RFC3339)
+	responses, err := c.service.Forms.Responses.List(formID).Filter(filterStr).Do()
+	if err != nil {
+		// Fall back to fetching all responses and filtering in code
+		responses, err = c.service.Forms.Responses.List(formID).Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to list form responses: %w", err)
+		}
+		// Filter responses by timestamp in code
+		var filtered []*forms.FormResponse
+		for _, resp := range responses.Responses {
+			if resp.LastSubmittedTime != "" {
+				submittedTime, parseErr := time.Parse(time.RFC3339, resp.LastSubmittedTime)
+				if parseErr == nil && !submittedTime.After(before) {
+					filtered = append(filtered, resp)
+				}
+			}
+		}
+		responses.Responses = filtered
+	}
+
+	if len(responses.Responses) == 0 {
+		return &FormResponse{
+			VolunteerName: volunteerName,
+			HasResponded:  false,
+		}, nil
+	}
+
+	// Take the last response (latest submission before cut-off)
+	response := responses.Responses[len(responses.Responses)-1]
+
+	return parseFormResponse(response, volunteerName, shiftDates), nil
 }
 
 // GetFormResponse fetches and parses a form response
@@ -33,8 +74,11 @@ func (c *Client) GetFormResponse(formID string, volunteerName string, shiftDates
 	}
 
 	// Parse the first (and should be only) response
-	response := responses.Responses[0]
+	return parseFormResponse(responses.Responses[0], volunteerName, shiftDates), nil
+}
 
+// parseFormResponse parses a Google Forms API response into our FormResponse type
+func parseFormResponse(response *forms.FormResponse, volunteerName string, shiftDates []time.Time) *FormResponse {
 	// Get respondent's email if available
 	email := ""
 	if response.RespondentEmail != "" {
@@ -49,7 +93,7 @@ func (c *Client) GetFormResponse(formID string, volunteerName string, shiftDates
 			Email:           email,
 			HasResponded:    true,
 			AvailableForAll: false,
-		}, nil
+		}
 	}
 
 	// Convert answers map to slice for easier processing
@@ -117,5 +161,5 @@ func (c *Client) GetFormResponse(formID string, volunteerName string, shiftDates
 		AvailableForAll:  availableForAll,
 		UnavailableDates: unavailableDates,
 		AvailableDates:   availableDates,
-	}, nil
+	}
 }

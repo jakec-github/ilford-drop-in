@@ -68,6 +68,7 @@ type ViewResponsesStore interface {
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
 	InsertAllocations(allocations []db.Allocation) error
+	SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error
 }
 
 // FormsClientWithResponses defines the operations needed to fetch form responses
