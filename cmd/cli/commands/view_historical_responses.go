@@ -24,7 +24,11 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 				return fmt.Errorf("count must be a positive integer, got: %s", args[0])
 			}
 
-			app.Logger.Debug("viewHistoricalResponses command", zap.Int("count", count))
+			volunteerIDs, _ := cmd.Flags().GetStringSlice("volunteers")
+
+			app.Logger.Debug("viewHistoricalResponses command",
+				zap.Int("count", count),
+				zap.Strings("volunteer_ids", volunteerIDs))
 
 			result, err := services.ViewHistoricalResponses(
 				app.Ctx,
@@ -34,6 +38,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 				app.Cfg,
 				app.Logger,
 				count,
+				volunteerIDs,
 			)
 			if err != nil {
 				return err
@@ -45,6 +50,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 				colorGreen  = "\033[32m"
 				colorRed    = "\033[31m"
 				colorYellow = "\033[33m"
+				colorOrange = "\033[38;5;208m"
 				colorDim    = "\033[2m"
 			)
 
@@ -96,12 +102,8 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 					switch status.Status {
 					case "available":
 						cell := fmt.Sprintf("%d/%d", status.AvailableCount, status.ShiftCount)
-						// Green if availability is more than half the shifts
-						if status.AvailableCount > status.ShiftCount/2 {
-							fmt.Printf("%s%-*s%s", colorGreen, rotaColWidth, cell, colorReset)
-						} else {
-							fmt.Printf("%-*s", rotaColWidth, cell)
-						}
+						color := availabilityColor(status.AvailableCount, status.ShiftCount, colorGreen, colorYellow, colorOrange)
+						fmt.Printf("%s%-*s%s", color, rotaColWidth, cell, colorReset)
 					case "no_availability":
 						cell := fmt.Sprintf("0/%d", status.ShiftCount)
 						fmt.Printf("%s%-*s%s", colorRed, rotaColWidth, cell, colorReset)
@@ -110,7 +112,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 					case "no_form":
 						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "No form", colorReset)
 					case "form_error":
-						fmt.Printf("%s%-*s%s", colorYellow, rotaColWidth, "Error", colorReset)
+						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "Error", colorReset)
 					}
 				}
 				fmt.Println()
@@ -119,15 +121,33 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 			// Legend
 			fmt.Println()
 			fmt.Println("Legend:")
-			fmt.Printf("  %sX/Y%s   = available for X of Y shifts\n", colorGreen, colorReset)
+			fmt.Printf("  %sX/Y%s   = available for more than half of shifts\n", colorGreen, colorReset)
+			fmt.Printf("  %sX/Y%s   = available for half or fewer shifts\n", colorYellow, colorReset)
+			fmt.Printf("  %sX/Y%s   = available for 3 or fewer shifts\n", colorOrange, colorReset)
 			fmt.Printf("  %s0/Y%s   = responded with no availability\n", colorRed, colorReset)
 			fmt.Printf("  %sNo response%s = form sent, no response before cut-off\n", colorRed, colorReset)
 			fmt.Printf("  %sNo form%s     = no form was sent\n", colorDim, colorReset)
-			fmt.Printf("  %sError%s       = form could not be accessed\n", colorYellow, colorReset)
+			fmt.Printf("  %sError%s       = form could not be accessed\n", colorDim, colorReset)
 
 			return nil
 		},
 	}
 
+	cmd.Flags().StringSlice("volunteers", nil, "Comma-separated list of volunteer IDs to filter by")
+
 	return cmd
+}
+
+// availabilityColor returns the ANSI color for an availability count.
+//   - > half of shifts: green
+//   - <= half but > 3: yellow
+//   - <= 3: orange
+func availabilityColor(available, total int, green, yellow, orange string) string {
+	if available <= 3 {
+		return orange
+	}
+	if available <= total/2 {
+		return yellow
+	}
+	return green
 }

@@ -42,7 +42,8 @@ type HistoricalFormsClient interface {
 
 const maxConcurrentFormRequests = 10
 
-// ViewHistoricalResponses fetches and summarises volunteer response status across recent allocated rotations
+// ViewHistoricalResponses fetches and summarises volunteer response status across recent allocated rotations.
+// If volunteerIDs is non-empty, only those volunteers are included; otherwise all volunteers with forms are shown.
 func ViewHistoricalResponses(
 	ctx context.Context,
 	database ViewHistoricalResponsesStore,
@@ -51,6 +52,7 @@ func ViewHistoricalResponses(
 	cfg *config.Config,
 	logger *zap.Logger,
 	count int,
+	volunteerIDs []string,
 ) (*ViewHistoricalResponsesResult, error) {
 	logger.Debug("Starting viewHistoricalResponses", zap.Int("count", count))
 
@@ -108,6 +110,19 @@ func ViewHistoricalResponses(
 		for _, req := range allRequests {
 			if req.RotaID == rota.ID && req.FormSent {
 				relevantVolunteerIDs[req.VolunteerID] = true
+			}
+		}
+	}
+
+	// If specific volunteer IDs were requested, restrict to those
+	if len(volunteerIDs) > 0 {
+		filterSet := make(map[string]bool, len(volunteerIDs))
+		for _, id := range volunteerIDs {
+			filterSet[id] = true
+		}
+		for id := range relevantVolunteerIDs {
+			if !filterSet[id] {
+				delete(relevantVolunteerIDs, id)
 			}
 		}
 	}
