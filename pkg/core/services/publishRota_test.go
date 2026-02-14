@@ -303,6 +303,7 @@ func TestPublishRota_NoRotations(t *testing.T) {
 type mockPublishRotaStore struct {
 	rotations   []db.Rotation
 	allocations []db.Allocation
+	alterations []db.Alteration
 }
 
 func (m *mockPublishRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -311,6 +312,10 @@ func (m *mockPublishRotaStore) GetRotations(ctx context.Context) ([]db.Rotation,
 
 func (m *mockPublishRotaStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
 	return m.allocations, nil
+}
+
+func (m *mockPublishRotaStore) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
+	return m.alterations, nil
 }
 
 // mockSheetsClient implements SheetsClient for testing
@@ -392,4 +397,85 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 	assert.Equal(t, "Charlie", shift3.TeamLead)
 	assert.Len(t, shift3.Volunteers, 1)
 	assert.Contains(t, shift3.Volunteers, "Dave")
+}
+
+func TestPublishRota_WithAlterations(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockPublishRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "alloc-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "alloc-3", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
+		},
+		alterations: []db.Alteration{
+			// Remove bob and add dave
+			{ID: "alt-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
+			{ID: "alt-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "add", VolunteerID: "dave", SetTime: "2025-01-01T01:00:00Z"},
+		},
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
+			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Brown"},
+			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
+		},
+	}
+
+	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
+
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Len(t, result.Rows, 1)
+	shift := result.Rows[0]
+	assert.Equal(t, "Alice", shift.TeamLead)
+	assert.Len(t, shift.Volunteers, 2)
+	assert.Contains(t, shift.Volunteers, "Charlie")
+	assert.Contains(t, shift.Volunteers, "Dave")
+	assert.NotContains(t, shift.Volunteers, "Bob")
+}
+
+func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockPublishRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "alloc-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+		alterations: []db.Alteration{}, // No alterations
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
+			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
+		},
+	}
+
+	cfg := &config.Config{}
+	sheetsClient := &mockSheetsClient{}
+
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Len(t, result.Rows, 1)
+	shift := result.Rows[0]
+	assert.Equal(t, "Alice", shift.TeamLead)
+	assert.Len(t, shift.Volunteers, 1)
+	assert.Contains(t, shift.Volunteers, "Bob")
 }

@@ -21,4 +21,5 @@ type AppContext struct {
 	Database     db.Database
 	Logger       *zap.Logger
 	Ctx          context.Context
+	UserEmail    string
 }

@@ -29,11 +29,22 @@ type Allocation struct {
 	CustomEntry string `ssql_header:"custom_entry" ssql_type:"text"`
 }
 
-// Cover represents a database cover record
+// Cover represents a database cover record (audit trail for rota changes)
 type Cover struct {
-	ID                  string `ssql_header:"id" ssql_type:"uuid"`
-	RotaID              string `ssql_header:"rota_id" ssql_type:"uuid"`
-	ShiftDate           string `ssql_header:"shift_date" ssql_type:"date"`
-	CoveredVolunteerID  string `ssql_header:"covered_volunteer_id" ssql_type:"text"`
-	CoveringVolunteerID string `ssql_header:"covering_volunteer_id" ssql_type:"text"`
+	ID        string // UUID
+	CreatedAt string // TIMESTAMPTZ
+	Reason    string
+	UserEmail string
+}
+
+// Alteration represents a database alteration record (individual change to a shift)
+type Alteration struct {
+	ID          string // UUID
+	ShiftDate   string // DATE
+	RotaID      string // UUID
+	Direction   string // "add" or "remove"
+	VolunteerID string // nullable
+	CustomValue string // nullable
+	CoverID     string // UUID
+	SetTime     string // TIMESTAMPTZ
 }

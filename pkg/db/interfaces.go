@@ -21,4 +21,7 @@ type Database interface {
 	InsertAvailabilityRequests(requests []AvailabilityRequest) error
 	GetAllocations(ctx context.Context) ([]Allocation, error)
 	InsertAllocations(allocations []Allocation) error
+	InsertCover(ctx context.Context, cover *Cover) error
+	InsertAlterations(ctx context.Context, alterations []Alteration) error
+	GetAlterations(ctx context.Context) ([]Alteration, error)
 }

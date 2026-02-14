@@ -19,6 +19,7 @@ import (
 type PublishRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
+	GetAlterations(ctx context.Context) ([]db.Alteration, error)
 }
 
 // SheetsClient defines the sheets operations needed for publishing a rota
@@ -112,6 +113,22 @@ func PublishRota(
 	for _, allocation := range rotaAllocations {
 		allocationsByDate[allocation.ShiftDate] = append(allocationsByDate[allocation.ShiftDate], allocation)
 	}
+
+	// Step 5b: Apply alterations
+	logger.Debug("Fetching alterations")
+	allAlterations, err := database.GetAlterations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
+	}
+
+	var rotaAlterations []db.Alteration
+	for _, a := range allAlterations {
+		if a.RotaID == targetRota.ID {
+			rotaAlterations = append(rotaAlterations, a)
+		}
+	}
+	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
+	allocationsByDate = ApplyAlterations(allocationsByDate, rotaAlterations)
 
 	// Step 6: Build the published rota rows
 	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shiftDates))

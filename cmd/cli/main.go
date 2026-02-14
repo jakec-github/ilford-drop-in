@@ -16,6 +16,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/postgres"
 	"github.com/jakechorley/ilford-drop-in/pkg/sheetssql"
+	"github.com/jakechorley/ilford-drop-in/pkg/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
 )
 
@@ -59,7 +60,7 @@ func main() {
 	rootCmd.AddCommand(newLazyCommand(commands.ViewResponsesCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.AllocateRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.AddCoverCmd))
+	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
 
@@ -150,6 +151,13 @@ func initApp() error {
 	}
 	logger.Debug("Gmail client initialized successfully")
 
+	// Get authenticated user email for audit trail (from token, no extra scopes needed)
+	userEmail, err := utils.GetTokenEmail(ctx, sheetsClient.Token())
+	if err != nil {
+		return fmt.Errorf("failed to get user email: %w", err)
+	}
+	logger.Debug("Resolved user email", zap.String("email", userEmail))
+
 	// Initialize database
 	var database db.Database
 	if cfg.DatabaseURL != "" {
@@ -172,7 +180,6 @@ func initApp() error {
 			db.Rotation{},
 			db.AvailabilityRequest{},
 			db.Allocation{},
-			db.Cover{},
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create database schema: %w", err)
@@ -197,6 +204,7 @@ func initApp() error {
 		Database:     database,
 		Logger:       logger,
 		Ctx:          ctx,
+		UserEmail:    userEmail,
 	}
 
 	return nil

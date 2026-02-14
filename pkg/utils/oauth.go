@@ -40,6 +40,7 @@ const (
 	ScopeFormsBody              = "https://www.googleapis.com/auth/forms.body"
 	ScopeFormsResponsesReadonly = "https://www.googleapis.com/auth/forms.responses.readonly"
 	ScopeGmailSend              = "https://www.googleapis.com/auth/gmail.send"
+	ScopeEmail                  = "https://www.googleapis.com/auth/userinfo.email"
 )
 
 // requiredScopes returns all scopes required by the application
@@ -49,6 +50,7 @@ func requiredScopes() []string {
 		ScopeFormsBody,
 		ScopeFormsResponsesReadonly,
 		ScopeGmailSend,
+		ScopeEmail,
 	}
 }
 
@@ -73,33 +75,47 @@ func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) 
 	return googleConfig, nil
 }
 
-// validateTokenScopes checks that the token has all required scopes by calling Google's tokeninfo endpoint
-// Returns an error listing any missing scopes if validation fails
-func validateTokenScopes(ctx context.Context, token *oauth2.Token) error {
+// tokenInfoResponse holds the fields we care about from Google's tokeninfo endpoint
+type tokenInfoResponse struct {
+	Scope string `json:"scope"`
+	Email string `json:"email"`
+}
+
+// fetchTokenInfo calls Google's tokeninfo endpoint and returns the parsed response
+func fetchTokenInfo(ctx context.Context, token *oauth2.Token) (*tokenInfoResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", tokenInfoURL+"?access_token="+token.AccessToken, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create tokeninfo request: %w", err)
+		return nil, fmt.Errorf("failed to create tokeninfo request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to call tokeninfo endpoint: %w", err)
+		return nil, fmt.Errorf("failed to call tokeninfo endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("tokeninfo request failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("tokeninfo request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var tokenInfo struct {
-		Scope string `json:"scope"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenInfo); err != nil {
-		return fmt.Errorf("failed to decode tokeninfo response: %w", err)
+	var info tokenInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("failed to decode tokeninfo response: %w", err)
 	}
 
-	grantedScopes := strings.Split(tokenInfo.Scope, " ")
+	return &info, nil
+}
+
+// validateTokenScopes checks that the token has all required scopes by calling Google's tokeninfo endpoint
+// Returns an error listing any missing scopes if validation fails
+func validateTokenScopes(ctx context.Context, token *oauth2.Token) error {
+	info, err := fetchTokenInfo(ctx, token)
+	if err != nil {
+		return err
+	}
+
+	grantedScopes := strings.Split(info.Scope, " ")
 	var missingScopes []string
 	for _, required := range requiredScopes() {
 		if !slices.Contains(grantedScopes, required) {
@@ -112,6 +128,21 @@ func validateTokenScopes(ctx context.Context, token *oauth2.Token) error {
 	}
 
 	return nil
+}
+
+// GetTokenEmail returns the email address associated with the given OAuth token
+// by calling Google's tokeninfo endpoint (no additional scopes required)
+func GetTokenEmail(ctx context.Context, token *oauth2.Token) (string, error) {
+	info, err := fetchTokenInfo(ctx, token)
+	if err != nil {
+		return "", err
+	}
+
+	if info.Email == "" {
+		return "", fmt.Errorf("tokeninfo response did not include an email address")
+	}
+
+	return info.Email, nil
 }
 
 // GetTokenWithFlow performs the full OAuth flow including user authorization
