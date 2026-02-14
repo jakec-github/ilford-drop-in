@@ -18,7 +18,7 @@ type AppContext struct {
 	SheetsClient *sheetsclient.Client
 	FormsClient  *formsclient.Client
 	GmailClient  *gmailclient.Client
-	Database     db.Database
+	Database     *db.DB
 	Logger       *zap.Logger
 	Ctx          context.Context
 	UserEmail    string

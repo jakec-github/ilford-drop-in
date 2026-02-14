@@ -17,10 +17,16 @@ type RotaResult struct {
 	ShiftDates []time.Time
 }
 
+// DefineRotaStore defines the database operations needed for defining a rota
+type DefineRotaStore interface {
+	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	InsertRotation(rotation *db.Rotation) error
+}
+
 // DefineRota creates a new rota with the specified number of shifts
 // It finds the latest existing rota, calculates the start date for the new rota,
 // creates the rotation record, and calculates all shift dates
-func DefineRota(ctx context.Context, database db.RotationStore, logger *zap.Logger, shiftCount int) (*RotaResult, error) {
+func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logger, shiftCount int) (*RotaResult, error) {
 	if shiftCount <= 0 {
 		return nil, fmt.Errorf("shift count must be positive, got %d", shiftCount)
 	}

@@ -40,11 +40,10 @@ This file is downloaded from Google Cloud Console when creating your Desktop OAu
 ```yaml
 # Google Sheet IDs
 volunteerSheetID: 'your-volunteer-sheet-id'
-databaseSheetID: 'your-database-sheet-id'
 rotaSheetID: 'your-rota-sheet-id'
 
-# PostgreSQL connection (optional - for test env, see Test Database Setup)
-databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
+# PostgreSQL connection
+databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin?sslmode=disable'
 
 # Sheet tab names
 serviceVolunteersTab: 'Volunteers'

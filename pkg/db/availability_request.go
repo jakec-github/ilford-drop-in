@@ -3,19 +3,22 @@ package db
 import (
 	"context"
 	"fmt"
-
-	"github.com/jakechorley/ilford-drop-in/pkg/sheetssql"
+	"time"
 )
 
 // GetAvailabilityRequests retrieves all availability request records, filtering out duplicates.
 // For duplicate records (same ID), only the record with form_sent=true is returned.
 // If no form_sent=true record exists, the form_sent=false record is returned.
-// Returns an error if multiple records exist with the same ID and same form_sent value (data integrity violation).
-func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityRequest, error) {
-	allRequests, err := sheetssql.GetTableAs[AvailabilityRequest](db.ssql, "availability_request")
+// Returns an error if multiple records exist with the same ID and same form_sent value.
+func (d *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityRequest, error) {
+	rows, err := d.pool.Query(ctx, `
+		SELECT id, rota_id, shift_date, volunteer_id, form_id, form_url, form_sent
+		FROM availability_request
+	`)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get availability requests: %w", err)
+		return nil, fmt.Errorf("failed to query availability requests: %w", err)
 	}
+	defer rows.Close()
 
 	// Track records by ID and form_sent state to detect integrity violations
 	type recordState struct {
@@ -24,9 +27,13 @@ func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityReques
 	}
 	stateMap := make(map[string]*recordState)
 
-	// First pass: group by ID and validate no duplicates per form_sent state
-	for i := range allRequests {
-		req := &allRequests[i]
+	for rows.Next() {
+		var req AvailabilityRequest
+		var shiftDate time.Time
+		if err := rows.Scan(&req.ID, &req.RotaID, &shiftDate, &req.VolunteerID, &req.FormID, &req.FormURL, &req.FormSent); err != nil {
+			return nil, fmt.Errorf("failed to scan availability request: %w", err)
+		}
+		req.ShiftDate = shiftDate.Format("2006-01-02")
 
 		state, exists := stateMap[req.ID]
 		if !exists {
@@ -41,7 +48,8 @@ func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityReques
 					req.ID, req.RotaID, req.ShiftDate, req.VolunteerID,
 				)
 			}
-			state.formSentTrue = req
+			r := req // copy to avoid loop variable issues
+			state.formSentTrue = &r
 		} else {
 			if state.formSentFalse != nil {
 				return nil, fmt.Errorf(
@@ -49,11 +57,16 @@ func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityReques
 					req.ID, req.RotaID, req.ShiftDate, req.VolunteerID,
 				)
 			}
-			state.formSentFalse = req
+			r := req
+			state.formSentFalse = &r
 		}
 	}
 
-	// Second pass: prefer form_sent=true over form_sent=false
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating availability requests: %w", err)
+	}
+
+	// Prefer form_sent=true over form_sent=false
 	result := make([]AvailabilityRequest, 0, len(stateMap))
 	for _, state := range stateMap {
 		if state.formSentTrue != nil {
@@ -67,9 +80,31 @@ func (db *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityReques
 }
 
 // InsertAvailabilityRequests inserts multiple availability request records in a batch
-func (db *DB) InsertAvailabilityRequests(requests []AvailabilityRequest) error {
-	if err := sheetssql.InsertModels(db.ssql, requests); err != nil {
-		return fmt.Errorf("failed to insert availability requests: %w", err)
+func (d *DB) InsertAvailabilityRequests(requests []AvailabilityRequest) error {
+	if len(requests) == 0 {
+		return nil
 	}
+
+	ctx := context.Background()
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, req := range requests {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO availability_request (id, rota_id, shift_date, volunteer_id, form_id, form_url, form_sent)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, req.ID, req.RotaID, req.ShiftDate, req.VolunteerID, req.FormID, req.FormURL, req.FormSent)
+		if err != nil {
+			return fmt.Errorf("failed to insert availability request: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }

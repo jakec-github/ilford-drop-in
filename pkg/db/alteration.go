@@ -1,15 +1,13 @@
-package postgres
+package db
 
 import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
 // InsertAlterations inserts alteration records into the database
-func (d *DB) InsertAlterations(ctx context.Context, alterations []db.Alteration) error {
+func (d *DB) InsertAlterations(ctx context.Context, alterations []Alteration) error {
 	if len(alterations) == 0 {
 		return nil
 	}
@@ -46,7 +44,7 @@ func (d *DB) InsertAlterations(ctx context.Context, alterations []db.Alteration)
 }
 
 // GetAlterations retrieves all alteration records
-func (d *DB) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
+func (d *DB) GetAlterations(ctx context.Context) ([]Alteration, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, set_time
 		FROM alteration
@@ -57,9 +55,9 @@ func (d *DB) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
 	}
 	defer rows.Close()
 
-	var alterations []db.Alteration
+	var alterations []Alteration
 	for rows.Next() {
-		var a db.Alteration
+		var a Alteration
 		var shiftDate time.Time
 		var setTime time.Time
 		var volunteerID, customValue *string

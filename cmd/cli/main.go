@@ -14,8 +14,6 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
-	"github.com/jakechorley/ilford-drop-in/pkg/postgres"
-	"github.com/jakechorley/ilford-drop-in/pkg/sheetssql"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
 )
@@ -159,41 +157,16 @@ func initApp() error {
 	logger.Debug("Resolved user email", zap.String("email", userEmail))
 
 	// Initialize database
-	var database db.Database
-	if cfg.DatabaseURL != "" {
-		// Use PostgreSQL
-		logger.Debug("Connecting to PostgreSQL database")
-		pgDB, err := postgres.NewDB(ctx, cfg.DatabaseURL)
-		if err != nil {
-			return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
-		}
-		logger.Debug("Running database migrations")
-		if err := pgDB.RunMigrations(ctx); err != nil {
-			return fmt.Errorf("failed to run migrations: %w", err)
-		}
-		database = pgDB
-		logger.Debug("PostgreSQL database initialized successfully")
-	} else {
-		// Use SheetsSQL (legacy)
-		logger.Debug("Initializing SheetsSQL database schema")
-		schema, err := sheetssql.SchemaFromModels(
-			db.Rotation{},
-			db.AvailabilityRequest{},
-			db.Allocation{},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create database schema: %w", err)
-		}
-		logger.Debug("Database schema created", zap.Int("tables", len(schema.Tables)))
-
-		logger.Debug("Connecting to SheetsSQL database", zap.String("spreadsheet_id", cfg.DatabaseSheetID))
-		ssqlDB, err := sheetssql.NewDB(sheetsClient, cfg.DatabaseSheetID, schema)
-		if err != nil {
-			return fmt.Errorf("failed to initialize database: %w", err)
-		}
-		database = db.NewDB(ssqlDB)
-		logger.Debug("SheetsSQL database initialized successfully")
+	logger.Debug("Connecting to PostgreSQL database")
+	database, err := db.NewDB(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}
+	logger.Debug("Running database migrations")
+	if err := database.RunMigrations(ctx); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	logger.Debug("PostgreSQL database initialized successfully")
 
 	// Initialize the global app context
 	app = &commands.AppContext{

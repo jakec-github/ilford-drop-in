@@ -14,7 +14,6 @@
 
 ## Tech debt
 
-- Remove all references to sheets SQl. Waiting to be happy with the new DB.
 - Assess use of DB. Lot of hangover from sheets SQL (no transactions, no filters etc.)
 - Add tests for --no-email flag
 - Deduplicate the rrule resolution logic into a util

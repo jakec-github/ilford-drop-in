@@ -15,7 +15,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 		VolunteerSheetID:       "sheet123",
 		ServiceVolunteersTab:   "Volunteers",
 		RotaSheetID:            "rota456",
-		DatabaseSheetID:        "db789",
+		DatabaseURL:            "postgres://localhost:5432/test",
 		GmailUserID:            "user@example.com",
 		GmailSender:            "sender@example.com",
 		MaxAllocationFrequency: 0.25,
@@ -38,7 +38,7 @@ func TestValidate_MinimalConfig(t *testing.T) {
 		VolunteerSheetID:       "sheet123",
 		ServiceVolunteersTab:   "Volunteers",
 		RotaSheetID:            "rota456",
-		DatabaseSheetID:        "db789",
+		DatabaseURL:            "postgres://localhost:5432/test",
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
@@ -53,7 +53,7 @@ func TestValidate_MissingRequiredField(t *testing.T) {
 		VolunteerSheetID:     "sheet123",
 		ServiceVolunteersTab: "Volunteers",
 		RotaSheetID:          "rota456",
-		// Missing DatabaseSheetID
+		// Missing DatabaseURL
 		GmailUserID: "user@example.com",
 	}
 
@@ -67,7 +67,7 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		VolunteerSheetID:       "sheet123",
 		ServiceVolunteersTab:   "Volunteers",
 		RotaSheetID:            "rota456",
-		DatabaseSheetID:        "db789",
+		DatabaseURL:            "postgres://localhost:5432/test",
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
@@ -89,7 +89,7 @@ func TestValidate_MultipleInvalidRRules(t *testing.T) {
 		VolunteerSheetID:       "sheet123",
 		ServiceVolunteersTab:   "Volunteers",
 		RotaSheetID:            "rota456",
-		DatabaseSheetID:        "db789",
+		DatabaseURL:            "postgres://localhost:5432/test",
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
@@ -113,7 +113,7 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		VolunteerSheetID:       "sheet123",
 		ServiceVolunteersTab:   "Volunteers",
 		RotaSheetID:            "rota456",
-		DatabaseSheetID:        "db789",
+		DatabaseURL:            "postgres://localhost:5432/test",
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
@@ -135,7 +135,7 @@ func TestValidate_ComplexValidRRule(t *testing.T) {
 		VolunteerSheetID:       "sheet123",
 		ServiceVolunteersTab:   "Volunteers",
 		RotaSheetID:            "rota456",
-		DatabaseSheetID:        "db789",
+		DatabaseURL:            "postgres://localhost:5432/test",
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
@@ -158,7 +158,7 @@ func TestLoadFromPath_ValidConfig(t *testing.T) {
 volunteerSheetID: "sheet123"
 serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
-databaseSheetID: "db789"
+databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
 maxAllocationFrequency: 0.25
@@ -181,7 +181,7 @@ rotaOverrides:
 	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	assert.Equal(t, "Volunteers", cfg.ServiceVolunteersTab)
 	assert.Equal(t, "rota456", cfg.RotaSheetID)
-	assert.Equal(t, "db789", cfg.DatabaseSheetID)
+	assert.Equal(t, "postgres://localhost:5432/test", cfg.DatabaseURL)
 	assert.Equal(t, "user@example.com", cfg.GmailUserID)
 	assert.Equal(t, "sender@example.com", cfg.GmailSender)
 
@@ -204,7 +204,7 @@ func TestLoadFromPath_InvalidRRule(t *testing.T) {
 volunteerSheetID: "sheet123"
 serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
-databaseSheetID: "db789"
+databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
@@ -230,7 +230,7 @@ func TestLoadFromPath_MinimalConfig(t *testing.T) {
 volunteerSheetID: "sheet123"
 serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
-databaseSheetID: "db789"
+databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
@@ -255,7 +255,7 @@ func TestLoadFromPath_MissingRequiredField(t *testing.T) {
 volunteerSheetID: "sheet123"
 serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
-# Missing databaseSheetID
+# Missing databaseURL
 gmailUserID: "user@example.com"
 `
 
@@ -298,7 +298,7 @@ func TestLoadFromPath_RotaOverrideWithoutRRule(t *testing.T) {
 volunteerSheetID: "sheet123"
 serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
-databaseSheetID: "db789"
+databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
@@ -324,7 +324,7 @@ func TestRotaOverride_NilShiftSize(t *testing.T) {
 volunteerSheetID: "sheet123"
 serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
-databaseSheetID: "db789"
+databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
