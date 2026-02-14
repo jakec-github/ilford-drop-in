@@ -15,6 +15,7 @@
 ## Tech debt
 
 - Remove all references to sheets SQl. Waiting to be happy with the new DB.
+- Assess use of DB. Lot of hangover from sheets SQL (no transactions, no filters etc.)
 - Add tests for --no-email flag
 - Deduplicate the rrule resolution logic into a util
 - Further dedupe grouping logic (bit tricky as it is done in and outside the allocator)
@@ -26,38 +27,3 @@
 - If I try to allocate a rota and allocations already exist for that rota it should fail
 - Always use the same sheet for the latest rota so the link to latest is stable
 - Trim values from the volunteer sheet of whitespace
-
-## Alterations/covers plan
-
-alterations schema
-
-- id
-- shift_date
-- rota_id (maybe)
-- type add/remove
-- volunteer_id
-- custom_value
-- cover_id (maybe)
-- sequence_number (Required to make sure they are applicable in order. How to increment? Maybe datetime is better)
-
-covers schema
-
-- id
-- datetime
-- reason
-- user_id
-
-join_table (probably not needed)
-
-- cover_id
-- alteration_id
-
-API (might need in/out customs)
-
-- date
-- in
-- out
-- swap_date
-- reason
-
-Do we warn on rota invalidation?
