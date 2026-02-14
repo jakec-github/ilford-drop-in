@@ -15,7 +15,6 @@
 ## Tech debt
 
 - Assess use of DB. Lot of hangover from sheets SQL (no transactions, no filters etc.)
-- Add tests for --no-email flag
 - Deduplicate the rrule resolution logic into a util
 - Further dedupe grouping logic (bit tricky as it is done in and outside the allocator)
 - Give all the clients the same signature and make them fetch the token independently.

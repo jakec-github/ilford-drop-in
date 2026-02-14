@@ -539,6 +539,135 @@ func TestRequestAvailability_NoEmail_SkipsVolunteersWithSentRequests(t *testing.
 	assert.Len(t, failedEmails, 0)
 }
 
+func TestRequestAvailability_NoEmail_AllAlreadySent(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		availabilityRequests: []db.AvailabilityRequest{
+			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormSent: true},
+			{ID: "req-2", RotaID: "rota-1", VolunteerID: "vol-2", FormSent: true},
+		},
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+			{ID: "vol-2", FirstName: "Jane", LastName: "Smith", Email: "jane@example.com", Status: "Active"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	cfg := &config.Config{}
+
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", true)
+
+	require.NoError(t, err)
+
+	// No records inserted, no forms created, no emails sent
+	assert.Len(t, mockStore.insertedRequests, 0)
+	assert.Len(t, mockFormsClient.createdForms, 0)
+	assert.Len(t, mockGmailClient.sentEmails, 0)
+	assert.Len(t, sentForms, 0)
+	assert.Len(t, failedEmails, 0)
+}
+
+func TestRequestAvailability_NoEmail_ThenSendEmails(t *testing.T) {
+	// Phase 1: noEmail creates forms and unsent records
+	store := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		availabilityRequests: []db.AvailabilityRequest{},
+	}
+	volunteers := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+			{ID: "vol-2", FirstName: "Jane", LastName: "Smith", Email: "jane@example.com", Status: "Active"},
+		},
+	}
+	formsClient := &mockFormsClient{}
+	gmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	cfg := &config.Config{}
+
+	sentForms, failedEmails, err := RequestAvailability(ctx, store, volunteers, formsClient, gmailClient, cfg, logger, "2024-01-15", true)
+	require.NoError(t, err)
+	assert.Len(t, sentForms, 0)
+	assert.Len(t, failedEmails, 0)
+
+	// Verify phase 1 created unsent records
+	require.Len(t, store.insertedRequests, 2)
+	for _, req := range store.insertedRequests {
+		assert.False(t, req.FormSent)
+	}
+	assert.Len(t, formsClient.createdForms, 2)
+	assert.Len(t, gmailClient.sentEmails, 0)
+
+	// Phase 2: normal run should reuse the unsent forms and send emails
+	// Simulate the unsent records being visible in the DB
+	store.availabilityRequests = append(store.availabilityRequests, store.insertedRequests...)
+	store.insertedRequests = nil
+	gmailClient.sentEmails = nil
+
+	sentForms, failedEmails, err = RequestAvailability(ctx, store, volunteers, formsClient, gmailClient, cfg, logger, "2024-01-15", false)
+	require.NoError(t, err)
+
+	// Should not create new forms (reuses existing unsent forms)
+	assert.Len(t, formsClient.createdForms, 2, "Should not create additional forms")
+
+	// Should send emails to both volunteers
+	assert.Len(t, gmailClient.sentEmails, 2)
+	assert.Contains(t, gmailClient.sentEmails, "john@example.com")
+	assert.Contains(t, gmailClient.sentEmails, "jane@example.com")
+
+	// Should create sent records only (no new unsent records)
+	require.Len(t, store.insertedRequests, 2)
+	for _, req := range store.insertedRequests {
+		assert.True(t, req.FormSent, "Phase 2 should only insert sent records")
+	}
+
+	assert.Len(t, sentForms, 2)
+	assert.Len(t, failedEmails, 0)
+}
+
+func TestRequestAvailability_NoEmail_FiltersInactiveVolunteers(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		availabilityRequests: []db.AvailabilityRequest{},
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+			{ID: "vol-2", FirstName: "Jane", LastName: "Smith", Email: "jane@example.com", Status: "Inactive"},
+			{ID: "vol-3", FirstName: "Bob", LastName: "Jones", Email: "bob@example.com", Status: "On Leave"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	cfg := &config.Config{}
+
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", true)
+
+	require.NoError(t, err)
+
+	// Only vol-1 (Active) should get a form
+	require.Len(t, mockStore.insertedRequests, 1)
+	assert.Equal(t, "vol-1", mockStore.insertedRequests[0].VolunteerID)
+	assert.False(t, mockStore.insertedRequests[0].FormSent)
+
+	assert.Len(t, mockFormsClient.createdForms, 1)
+	assert.Len(t, mockGmailClient.sentEmails, 0)
+	assert.Len(t, sentForms, 0)
+	assert.Len(t, failedEmails, 0)
+}
+
 // Helper function tests
 func TestFilterVolunteersWithoutSentRequests(t *testing.T) {
 	volunteers := []model.Volunteer{
