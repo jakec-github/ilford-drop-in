@@ -1,5 +1,7 @@
 # Future tickets
 
+CHANGE ROTA NEEDS MANUAL TESTING
+
 ## Allocator improvements
 
 - Proper scoring of shifts. Negative outcomes. Activation functions etc.
