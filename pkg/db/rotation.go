@@ -39,17 +39,6 @@ func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	return rotations, nil
 }
 
-// SetRotationAllocatedDatetime sets the allocated_datetime for a rotation
-func (d *DB) SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error {
-	_, err := d.pool.Exec(ctx, `
-		UPDATE rotation SET allocated_datetime = $2 WHERE id = $1
-	`, rotaID, datetime.UTC())
-	if err != nil {
-		return fmt.Errorf("failed to set rotation allocated_datetime: %w", err)
-	}
-	return nil
-}
-
 // InsertRotation inserts a new rotation record
 func (d *DB) InsertRotation(rotation *Rotation) error {
 	_, err := d.pool.Exec(context.Background(), `

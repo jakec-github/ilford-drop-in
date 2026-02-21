@@ -40,8 +40,12 @@ func ApplyAlterations(
 			allocationsByDate[dateStr] = filtered
 
 		case "add":
+			role := alt.Role
+			if role == "" {
+				role = string(model.RoleVolunteer)
+			}
 			newAlloc := db.Allocation{
-				Role: string(model.RoleVolunteer),
+				Role: role,
 			}
 			if alt.VolunteerID != "" {
 				newAlloc.VolunteerID = alt.VolunteerID

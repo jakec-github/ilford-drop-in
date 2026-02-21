@@ -1,0 +1,1 @@
+ALTER TABLE alteration ADD COLUMN role TEXT;

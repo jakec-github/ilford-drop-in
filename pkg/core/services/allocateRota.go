@@ -73,8 +73,7 @@ type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
-	InsertAllocations(allocations []db.Allocation) error
-	SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error
+	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
 // AllocateRota runs the allocation algorithm to assign volunteers to shifts
@@ -256,16 +255,10 @@ func AllocateRota(
 			zap.Bool("success", outcome.Success),
 			zap.Bool("forced", forceCommit && !outcome.Success))
 		dbAllocations := convertToDBAllocations(targetRota.ID, outcome.State.Shifts)
-		if err := database.InsertAllocations(dbAllocations); err != nil {
+		if err := database.InsertAllocationsAndSetAllocated(ctx, dbAllocations, targetRota.ID, time.Now().UTC()); err != nil {
 			return nil, fmt.Errorf("failed to save allocations: %w", err)
 		}
-		logger.Info("Allocations saved", zap.Int("count", len(dbAllocations)))
-
-		// Set the allocated_datetime cut-off for historical response tracking
-		if err := database.SetRotationAllocatedDatetime(ctx, targetRota.ID, time.Now().UTC()); err != nil {
-			return nil, fmt.Errorf("failed to set rotation allocated datetime: %w", err)
-		}
-		logger.Info("Set rotation allocated_datetime")
+		logger.Info("Allocations saved and rotation marked as allocated", zap.Int("count", len(dbAllocations)))
 	} else if dryRun {
 		logger.Info("Dry run mode - allocations not saved")
 	} else {

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -34,15 +35,34 @@ func (m *mockChangeRotaStore) GetAlterations(ctx context.Context) ([]db.Alterati
 	return m.alterations, nil
 }
 
-func (m *mockChangeRotaStore) InsertCover(ctx context.Context, cover *db.Cover) error {
+func (m *mockChangeRotaStore) InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error {
 	m.insertedCover = cover
-	return nil
-}
-
-func (m *mockChangeRotaStore) InsertAlterations(ctx context.Context, alterations []db.Alteration) error {
 	m.insertedAlterations = alterations
 	return nil
 }
+
+// mockChangeRotaVolClient implements VolunteerClient for changeRota tests
+type mockChangeRotaVolClient struct {
+	volunteers []model.Volunteer
+}
+
+func (m *mockChangeRotaVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+	return m.volunteers, nil
+}
+
+// defaultVolunteers returns a standard set of test volunteers
+func defaultVolunteers() *mockChangeRotaVolClient {
+	return &mockChangeRotaVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleVolunteer},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleVolunteer},
+			{ID: "charlie", FirstName: "Charlie", LastName: "C", Role: model.RoleVolunteer},
+			{ID: "dave", FirstName: "Dave", LastName: "D", Role: model.RoleVolunteer},
+		},
+	}
+}
+
+var testCfg = &config.Config{}
 
 func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	ctx := context.Background()
@@ -67,7 +87,7 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -125,7 +145,7 @@ func TestChangeRota_SwapDate(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -181,7 +201,7 @@ func TestChangeRota_CustomInOut(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -215,7 +235,7 @@ func TestChangeRota_NoInputsError(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one of")
 }
@@ -237,7 +257,7 @@ func TestChangeRota_DateNotInAnyRota(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not in any rota")
 }
@@ -262,7 +282,7 @@ func TestChangeRota_RemoveVolunteerNotOnShift(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not on the shift")
 }
@@ -287,7 +307,7 @@ func TestChangeRota_AddVolunteerAlreadyOnShift(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already on the shift")
 }
@@ -312,7 +332,7 @@ func TestChangeRota_RemoveCustomNotOnShift(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not on the shift")
 }
@@ -338,7 +358,7 @@ func TestChangeRota_AddDuplicateCustomAllowed(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -375,7 +395,7 @@ func TestChangeRota_SwapDateValidation(t *testing.T) {
 	}
 
 	// Swap date validation checks reversed: out=bob (ok, bob is there), in=alice (fail, alice is already there)
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "swap date")
 	assert.Contains(t, err.Error(), "already on the shift")
@@ -393,7 +413,7 @@ func TestChangeRota_MissingReason(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--reason is required")
 }
@@ -418,7 +438,7 @@ func TestChangeRota_OnlyOut(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -447,7 +467,7 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -482,7 +502,7 @@ func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, params, logger)
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -526,7 +546,220 @@ func TestChangeRota_RespectsExistingAlterations(t *testing.T) {
 		UserEmail: "test@example.com",
 	}
 
-	_, err := ChangeRota(ctx, store, params, logger)
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not on the shift")
+}
+
+func TestChangeRota_InvalidInVolunteerID(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "nonexistent",
+		Reason:    "Test",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "volunteer nonexistent not found")
+}
+
+func TestChangeRota_InvalidOutVolunteerID(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "nonexistent",
+		Reason:    "Test",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "volunteer nonexistent not found")
+}
+
+func TestChangeRota_TeamLeadGetsCorrectRole(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+		},
+	}
+
+	// bob is a team lead in the volunteer list
+	volClient := &mockChangeRotaVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleVolunteer},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleTeamLead},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "bob",
+		Reason:    "Adding team lead",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, volClient, testCfg, params, logger)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Find the add alteration
+	var addAlt *db.Alteration
+	for i := range store.insertedAlterations {
+		if store.insertedAlterations[i].Direction == "add" {
+			addAlt = &store.insertedAlterations[i]
+		}
+	}
+
+	require.NotNil(t, addAlt)
+	assert.Equal(t, "bob", addAlt.VolunteerID)
+	assert.Equal(t, string(model.RoleTeamLead), addAlt.Role)
+}
+
+func TestChangeRota_VolunteerReplacesTeamLead_InheritsRole(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+	}
+
+	// dave is a regular volunteer replacing alice (team lead)
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		In:        "dave",
+		Reason:    "Replacing team lead",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var addAlt *db.Alteration
+	for i := range store.insertedAlterations {
+		if store.insertedAlterations[i].Direction == "add" {
+			addAlt = &store.insertedAlterations[i]
+		}
+	}
+
+	require.NotNil(t, addAlt)
+	assert.Equal(t, "dave", addAlt.VolunteerID)
+	assert.Equal(t, string(model.RoleTeamLead), addAlt.Role, "volunteer replacing team lead should inherit team lead role")
+}
+
+func TestChangeRota_TeamLeadReplacesVolunteer_InheritsRole(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+	}
+
+	// eve is a team lead replacing bob (volunteer)
+	volClient := &mockChangeRotaVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleTeamLead},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleVolunteer},
+			{ID: "eve", FirstName: "Eve", LastName: "E", Role: model.RoleTeamLead},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "bob",
+		In:        "eve",
+		Reason:    "Team lead filling volunteer slot",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, volClient, testCfg, params, logger)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var addAlt *db.Alteration
+	for i := range store.insertedAlterations {
+		if store.insertedAlterations[i].Direction == "add" {
+			addAlt = &store.insertedAlterations[i]
+		}
+	}
+
+	require.NotNil(t, addAlt)
+	assert.Equal(t, "eve", addAlt.VolunteerID)
+	assert.Equal(t, string(model.RoleVolunteer), addAlt.Role, "team lead replacing volunteer should inherit volunteer role")
+}
+
+func TestChangeRota_TeamLeadAddedToShiftWithExistingTeamLead_Downgraded(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+	}
+
+	// eve is a team lead being added (no --out) to a shift that already has alice as team lead
+	volClient := &mockChangeRotaVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleTeamLead},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleVolunteer},
+			{ID: "eve", FirstName: "Eve", LastName: "E", Role: model.RoleTeamLead},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "eve",
+		Reason:    "Extra help",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, volClient, testCfg, params, logger)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var addAlt *db.Alteration
+	for i := range store.insertedAlterations {
+		if store.insertedAlterations[i].Direction == "add" {
+			addAlt = &store.insertedAlterations[i]
+		}
+	}
+
+	require.NotNil(t, addAlt)
+	assert.Equal(t, "eve", addAlt.VolunteerID)
+	assert.Equal(t, string(model.RoleVolunteer), addAlt.Role, "team lead added to shift with existing team lead should be downgraded to volunteer")
 }

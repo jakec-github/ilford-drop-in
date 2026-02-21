@@ -50,15 +50,11 @@ func (m *mockAllocateRotaStore) GetAllocations(ctx context.Context) ([]db.Alloca
 	return m.allocations, nil
 }
 
-func (m *mockAllocateRotaStore) InsertAllocations(allocations []db.Allocation) error {
+func (m *mockAllocateRotaStore) InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error {
 	if m.insertAllocationsErr != nil {
 		return m.insertAllocationsErr
 	}
 	m.insertedAllocations = append(m.insertedAllocations, allocations...)
-	return nil
-}
-
-func (m *mockAllocateRotaStore) SetRotationAllocatedDatetime(ctx context.Context, rotaID string, datetime time.Time) error {
 	return nil
 }
 

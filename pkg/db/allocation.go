@@ -42,13 +42,9 @@ func (d *DB) GetAllocations(ctx context.Context) ([]Allocation, error) {
 	return allocations, nil
 }
 
-// InsertAllocations inserts allocation records into the database
-func (d *DB) InsertAllocations(allocations []Allocation) error {
-	if len(allocations) == 0 {
-		return nil
-	}
-
-	ctx := context.Background()
+// InsertAllocationsAndSetAllocated inserts allocation records and marks the
+// rotation as allocated in a single transaction.
+func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations []Allocation, rotaID string, datetime time.Time) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -71,6 +67,13 @@ func (d *DB) InsertAllocations(allocations []Allocation) error {
 		if err != nil {
 			return fmt.Errorf("failed to insert allocation: %w", err)
 		}
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE rotation SET allocated_datetime = $2 WHERE id = $1
+	`, rotaID, datetime.UTC())
+	if err != nil {
+		return fmt.Errorf("failed to set rotation allocated_datetime: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

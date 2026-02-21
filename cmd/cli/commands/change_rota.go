@@ -53,7 +53,7 @@ Examples:
 				UserEmail: app.UserEmail,
 			}
 
-			result, err := services.ChangeRota(app.Ctx, app.Database, params, app.Logger)
+			result, err := services.ChangeRota(app.Ctx, app.Database, app.SheetsClient, app.Cfg, params, app.Logger)
 			if err != nil {
 				return err
 			}

@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -16,8 +18,7 @@ type ChangeRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
 	GetAlterations(ctx context.Context) ([]db.Alteration, error)
-	InsertCover(ctx context.Context, cover *db.Cover) error
-	InsertAlterations(ctx context.Context, alterations []db.Alteration) error
+	InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error
 }
 
 // ChangeRotaParams holds the input parameters for a rota change
@@ -43,6 +44,8 @@ type ChangeRotaResult struct {
 func ChangeRota(
 	ctx context.Context,
 	database ChangeRotaStore,
+	volunteerClient VolunteerClient,
+	cfg *config.Config,
 	params ChangeRotaParams,
 	logger *zap.Logger,
 ) (*ChangeRotaResult, error) {
@@ -62,6 +65,29 @@ func ChangeRota(
 
 	if params.Reason == "" {
 		return nil, fmt.Errorf("--reason is required")
+	}
+
+	// Step 1b: Fetch volunteers and validate IDs
+	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
+	}
+
+	volunteersByID := make(map[string]model.Volunteer, len(volunteers))
+	for _, v := range volunteers {
+		volunteersByID[v.ID] = v
+	}
+
+	if params.In != "" {
+		if _, ok := volunteersByID[params.In]; !ok {
+			return nil, fmt.Errorf("volunteer %s not found", params.In)
+		}
+	}
+
+	if params.Out != "" {
+		if _, ok := volunteersByID[params.Out]; !ok {
+			return nil, fmt.Errorf("volunteer %s not found", params.Out)
+		}
 	}
 
 	// Step 2: Fetch rotations and find the one containing the target date
@@ -104,8 +130,8 @@ func ChangeRota(
 	}
 
 	// Validate swap date (with in/out reversed), using swap rota's effective state
+	swapEffectiveState := effectiveState
 	if params.SwapDate != "" {
-		swapEffectiveState := effectiveState
 		if swapRota.ID != rota.ID {
 			swapEffectiveState = buildEffectiveState(allAllocations, allAlterations, swapRota.ID)
 		}
@@ -125,20 +151,16 @@ func ChangeRota(
 
 	// Step 6: Build alterations for the primary date
 	var alterations []db.Alteration
-	alterations = append(alterations, buildAlterationsForDate(rota.ID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom)...)
+	alterations = append(alterations, buildAlterationsForDate(rota.ID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState[params.Date])...)
 
 	// Step 7: Build reverse alterations for swap date (may use a different rota ID)
 	if params.SwapDate != "" {
-		alterations = append(alterations, buildAlterationsForDate(swapRota.ID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom)...)
+		alterations = append(alterations, buildAlterationsForDate(swapRota.ID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState[params.SwapDate])...)
 	}
 
-	// Step 8: Insert cover and alterations
-	if err := database.InsertCover(ctx, cover); err != nil {
-		return nil, fmt.Errorf("failed to insert cover: %w", err)
-	}
-
-	if err := database.InsertAlterations(ctx, alterations); err != nil {
-		return nil, fmt.Errorf("failed to insert alterations: %w", err)
+	// Step 8: Insert cover and alterations atomically
+	if err := database.InsertCoverAndAlterations(ctx, cover, alterations); err != nil {
+		return nil, fmt.Errorf("failed to insert cover and alterations: %w", err)
 	}
 
 	logger.Info("Rota change recorded",
@@ -241,8 +263,9 @@ func validateDateChanges(effectiveState map[string][]db.Allocation, dateStr, out
 	return nil
 }
 
-// buildAlterationsForDate creates alteration records for a single date
-func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom, inCustom string) []db.Alteration {
+// buildAlterationsForDate creates alteration records for a single date.
+// dateAllocations is the effective state for the date, used to infer the role for "add" alterations.
+func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom, inCustom string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) []db.Alteration {
 	var alterations []db.Alteration
 
 	if outVol != "" {
@@ -257,6 +280,7 @@ func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom,
 	}
 
 	if inVol != "" {
+		role := inferRole(inVol, outVol, volunteersByID, dateAllocations)
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
 			ShiftDate:   dateStr,
@@ -264,6 +288,7 @@ func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom,
 			Direction:   "add",
 			VolunteerID: inVol,
 			CoverID:     coverID,
+			Role:        role,
 		})
 	}
 
@@ -290,4 +315,32 @@ func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom,
 	}
 
 	return alterations
+}
+
+// inferRole determines the role for an incoming volunteer.
+// 1. Replacement: inherit the outgoing volunteer's role from the shift.
+// 2. Otherwise use the volunteer's own role, but downgrade team lead if one already exists.
+func inferRole(inVol, outVol string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) string {
+	if outVol != "" {
+		for _, a := range dateAllocations {
+			if a.VolunteerID == outVol {
+				return a.Role
+			}
+		}
+	}
+
+	role := string(model.RoleVolunteer)
+	if v, ok := volunteersByID[inVol]; ok {
+		role = string(v.Role)
+	}
+
+	if role == string(model.RoleTeamLead) {
+		for _, a := range dateAllocations {
+			if a.Role == string(model.RoleTeamLead) {
+				return string(model.RoleVolunteer)
+			}
+		}
+	}
+
+	return role
 }

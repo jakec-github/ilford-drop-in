@@ -47,4 +47,5 @@ type Alteration struct {
 	CustomValue string // nullable
 	CoverID     string // UUID
 	SetTime     string // TIMESTAMPTZ
+	Role        string // nullable - role for "add" alterations
 }
