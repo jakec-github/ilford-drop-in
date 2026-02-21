@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -50,7 +51,7 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 		logger.Info("No existing rotations found, starting from next Sunday", zap.Time("start_date", startDate))
 	} else {
 		// Find the latest rotation
-		latestRota := findLatestRotation(rotations)
+		latestRota := utils.FindLatestRotation(rotations)
 		logger.Debug("Latest rotation found",
 			zap.String("id", latestRota.ID),
 			zap.String("start", latestRota.Start),

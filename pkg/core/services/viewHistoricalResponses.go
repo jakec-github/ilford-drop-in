@@ -12,6 +12,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -170,7 +171,7 @@ func ViewHistoricalResponses(
 	// Pre-calculate shift dates for each rotation
 	rotaShiftDates := make(map[string][]time.Time)
 	for _, rota := range selectedRotations {
-		dates, err := calculateShiftDates(rota.Start, rota.ShiftCount)
+		dates, err := utils.CalculateShiftDates(rota.Start, rota.ShiftCount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to calculate shift dates for rota %s: %w", rota.ID, err)
 		}

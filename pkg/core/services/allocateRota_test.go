@@ -14,6 +14,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -535,14 +536,14 @@ func TestFilterActiveVols(t *testing.T) {
 		{ID: "diana", Status: ""},
 	}
 
-	active := filterActiveVolunteers(volunteers)
+	active := utils.FilterActiveVolunteers(volunteers)
 	assert.Len(t, active, 2)
 	assert.Equal(t, "alice", active[0].ID)
 	assert.Equal(t, "charlie", active[1].ID)
 }
 
 func TestCalcShiftDates(t *testing.T) {
-	dates, err := calculateShiftDates("2025-01-05", 4) // Start on Sunday, Jan 5
+	dates, err := utils.CalculateShiftDates("2025-01-05", 4) // Start on Sunday, Jan 5
 	require.NoError(t, err)
 	require.Len(t, dates, 4)
 
@@ -559,7 +560,7 @@ func TestCalcShiftDates(t *testing.T) {
 }
 
 func TestCalcShiftDates_Invalid(t *testing.T) {
-	_, err := calculateShiftDates("invalid-date", 4)
+	_, err := utils.CalculateShiftDates("invalid-date", 4)
 	assert.Error(t, err)
 }
 

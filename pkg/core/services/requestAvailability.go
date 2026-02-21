@@ -11,6 +11,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -82,14 +83,14 @@ func RequestAvailability(
 		return nil, nil, fmt.Errorf("no rotations found - please define a rota first")
 	}
 
-	latestRota := findLatestRotation(rotations)
+	latestRota := utils.FindLatestRotation(rotations)
 	logger.Debug("Found latest rota",
 		zap.String("id", latestRota.ID),
 		zap.String("start", latestRota.Start),
 		zap.Int("shift_count", latestRota.ShiftCount))
 
 	// Calculate shift dates for the rota
-	shiftDates, err := calculateShiftDates(latestRota.Start, latestRota.ShiftCount)
+	shiftDates, err := utils.CalculateShiftDates(latestRota.Start, latestRota.ShiftCount)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
@@ -103,7 +104,7 @@ func RequestAvailability(
 	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
 
 	// Step 4: Filter to requests for the current rota
-	requestsForRota := filterRequestsByRotaID(allRequests, latestRota.ID)
+	requestsForRota := utils.FilterRequestsByRotaID(allRequests, latestRota.ID)
 	logger.Debug("Filtered requests for latest rota", zap.Int("count", len(requestsForRota)))
 
 	// Build set of volunteer IDs who already have SENT requests for this rota
@@ -129,14 +130,14 @@ func RequestAvailability(
 	logger.Debug("Found volunteers", zap.Int("count", len(allVolunteers)))
 
 	// Step 6: Filter to active volunteers
-	activeVolunteers := filterActiveVolunteers(allVolunteers)
+	activeVolunteers := utils.FilterActiveVolunteers(allVolunteers)
 	logger.Debug("Filtered to active volunteers", zap.Int("count", len(activeVolunteers)))
 
 	// Step 7: Find volunteers without SENT availability requests
 	volunteersNeedingEmails := filterVolunteersWithoutSentRequests(activeVolunteers, volunteerIDsWithSentRequests)
 	logger.Debug("Found volunteers needing emails (no sent requests)",
 		zap.Int("count", len(volunteersNeedingEmails)),
-		zap.Strings("volunteer_ids", getVolunteerIDs(volunteersNeedingEmails)))
+		zap.Strings("volunteer_ids", utils.GetVolunteerIDs(volunteersNeedingEmails)))
 
 	// Step 8: Create forms for volunteers who need them (those without unsent requests)
 	logger.Debug("Processing volunteers needing emails", zap.Int("count", len(volunteersNeedingEmails)))

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -288,7 +289,7 @@ func TestFilterSentRequestsByRotaID(t *testing.T) {
 		{ID: "req-4", RotaID: "rota-1", FormSent: true},
 	}
 
-	filtered := filterSentRequestsByRotaID(requests, "rota-1")
+	filtered := utils.FilterSentRequestsByRotaID(requests, "rota-1")
 
 	require.Len(t, filtered, 2)
 	assert.Equal(t, "req-1", filtered[0].ID)

@@ -13,6 +13,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -108,7 +109,7 @@ func ViewResponses(
 	var targetRota *db.Rotation
 	if rotaID == "" {
 		// Use latest rota
-		targetRota = findLatestRotation(rotations)
+		targetRota = utils.FindLatestRotation(rotations)
 		logger.Debug("Using latest rota", zap.String("id", targetRota.ID))
 	} else {
 		// Find specific rota
@@ -130,7 +131,7 @@ func ViewResponses(
 		zap.Int("shift_count", targetRota.ShiftCount))
 
 	// Calculate shift dates
-	shiftDates, err := calculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
@@ -144,7 +145,7 @@ func ViewResponses(
 	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
 
 	// Filter to requests for target rota that were sent
-	requestsForRota := filterSentRequestsByRotaID(allRequests, targetRota.ID)
+	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, targetRota.ID)
 	logger.Debug("Filtered sent requests for target rota", zap.Int("count", len(requestsForRota)))
 
 	if len(requestsForRota) == 0 {

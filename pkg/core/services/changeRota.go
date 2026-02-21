@@ -10,6 +10,7 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -176,7 +177,7 @@ func ChangeRota(
 // buildEffectiveState computes the current effective allocations for a rota
 // by applying all existing alterations to the base allocations
 func buildEffectiveState(allAllocations []db.Allocation, allAlterations []db.Alteration, rotaID string) map[string][]db.Allocation {
-	rotaAllocations := filterAllocationsByRotaID(allAllocations, rotaID)
+	rotaAllocations := utils.FilterAllocationsByRotaID(allAllocations, rotaID)
 
 	var rotaAlterations []db.Alteration
 	for _, a := range allAlterations {
@@ -190,7 +191,7 @@ func buildEffectiveState(allAllocations []db.Allocation, allAlterations []db.Alt
 		allocationsByDate[a.ShiftDate] = append(allocationsByDate[a.ShiftDate], a)
 	}
 
-	return ApplyAlterations(allocationsByDate, rotaAlterations)
+	return utils.ApplyAlterations(allocationsByDate, rotaAlterations)
 }
 
 // findRotaForDate finds the rotation that contains the given date
@@ -202,7 +203,7 @@ func findRotaForDate(rotations []db.Rotation, dateStr string) (*db.Rotation, err
 
 	for i := range rotations {
 		rota := &rotations[i]
-		shiftDates, err := calculateShiftDates(rota.Start, rota.ShiftCount)
+		shiftDates, err := utils.CalculateShiftDates(rota.Start, rota.ShiftCount)
 		if err != nil {
 			continue
 		}

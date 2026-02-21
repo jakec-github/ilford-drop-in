@@ -8,6 +8,7 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -57,7 +58,7 @@ func SendAvailabilityReminders(
 		return nil, nil, fmt.Errorf("no rotations found - please define a rota first")
 	}
 
-	latestRota := findLatestRotation(rotations)
+	latestRota := utils.FindLatestRotation(rotations)
 	logger.Debug("Found latest rota",
 		zap.String("id", latestRota.ID),
 		zap.String("start", latestRota.Start),
@@ -72,7 +73,7 @@ func SendAvailabilityReminders(
 	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
 
 	// Step 4: Filter to requests for the current rota that were sent
-	requestsForRota := filterSentRequestsByRotaID(allRequests, latestRota.ID)
+	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, latestRota.ID)
 	logger.Debug("Filtered sent requests for latest rota", zap.Int("count", len(requestsForRota)))
 
 	if len(requestsForRota) == 0 {

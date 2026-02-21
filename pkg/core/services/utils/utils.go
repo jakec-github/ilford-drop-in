@@ -1,4 +1,4 @@
-package services
+package utils
 
 import (
 	"fmt"
@@ -9,8 +9,8 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// findLatestRotation finds the rotation with the most recent start date
-func findLatestRotation(rotations []db.Rotation) *db.Rotation {
+// FindLatestRotation finds the rotation with the most recent start date
+func FindLatestRotation(rotations []db.Rotation) *db.Rotation {
 	if len(rotations) == 0 {
 		return nil
 	}
@@ -36,8 +36,8 @@ func findLatestRotation(rotations []db.Rotation) *db.Rotation {
 	return latest
 }
 
-// filterRequestsByRotaID filters availability requests to only those for the specified rota
-func filterRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
+// FilterRequestsByRotaID filters availability requests to only those for the specified rota
+func FilterRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
 	filtered := make([]db.AvailabilityRequest, 0)
 	for _, req := range requests {
 		if req.RotaID == rotaID {
@@ -47,8 +47,8 @@ func filterRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []
 	return filtered
 }
 
-// filterSentRequestsByRotaID filters availability requests to only those for a specific rota that were sent
-func filterSentRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
+// FilterSentRequestsByRotaID filters availability requests to only those for a specific rota that were sent
+func FilterSentRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
 	filtered := []db.AvailabilityRequest{}
 	for _, req := range requests {
 		if req.RotaID == rotaID && req.FormSent {
@@ -58,8 +58,8 @@ func filterSentRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string
 	return filtered
 }
 
-// filterActiveVolunteers filters volunteers to only those with "Active" status (case-insensitive)
-func filterActiveVolunteers(volunteers []model.Volunteer) []model.Volunteer {
+// FilterActiveVolunteers filters volunteers to only those with "Active" status (case-insensitive)
+func FilterActiveVolunteers(volunteers []model.Volunteer) []model.Volunteer {
 	active := make([]model.Volunteer, 0)
 	for _, vol := range volunteers {
 		if strings.EqualFold(vol.Status, "Active") {
@@ -69,8 +69,8 @@ func filterActiveVolunteers(volunteers []model.Volunteer) []model.Volunteer {
 	return active
 }
 
-// getVolunteerIDs extracts volunteer IDs from a list of volunteers (useful for logging)
-func getVolunteerIDs(volunteers []model.Volunteer) []string {
+// GetVolunteerIDs extracts volunteer IDs from a list of volunteers (useful for logging)
+func GetVolunteerIDs(volunteers []model.Volunteer) []string {
 	ids := make([]string, len(volunteers))
 	for i, vol := range volunteers {
 		ids[i] = vol.ID
@@ -78,9 +78,9 @@ func getVolunteerIDs(volunteers []model.Volunteer) []string {
 	return ids
 }
 
-// calculateShiftDates calculates all shift dates for a rota, starting from the given date
+// CalculateShiftDates calculates all shift dates for a rota, starting from the given date
 // Shifts occur weekly (every 7 days) for the specified shift count
-func calculateShiftDates(startDateStr string, shiftCount int) ([]time.Time, error) {
+func CalculateShiftDates(startDateStr string, shiftCount int) ([]time.Time, error) {
 	startDate, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start date format: %w", err)
@@ -92,4 +92,15 @@ func calculateShiftDates(startDateStr string, shiftCount int) ([]time.Time, erro
 	}
 
 	return dates, nil
+}
+
+// FilterAllocationsByRotaID filters allocations to only those for the specified rota
+func FilterAllocationsByRotaID(allocations []db.Allocation, rotaID string) []db.Allocation {
+	filtered := make([]db.Allocation, 0)
+	for _, allocation := range allocations {
+		if allocation.RotaID == rotaID {
+			filtered = append(filtered, allocation)
+		}
+	}
+	return filtered
 }

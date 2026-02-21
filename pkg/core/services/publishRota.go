@@ -12,6 +12,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -57,7 +58,7 @@ func PublishRota(
 	var targetRota *db.Rotation
 	if rotaID == "" {
 		// Default to latest rota
-		targetRota = findLatestRotation(rotations)
+		targetRota = utils.FindLatestRotation(rotations)
 		logger.Debug("No rota ID provided, using latest rota", zap.String("id", targetRota.ID))
 	} else {
 		// Find specific rota by ID
@@ -79,7 +80,7 @@ func PublishRota(
 		zap.Int("shift_count", targetRota.ShiftCount))
 
 	// Step 2: Calculate shift dates
-	shiftDates, err := calculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
@@ -92,7 +93,7 @@ func PublishRota(
 	}
 
 	// Filter to allocations for this rota only
-	rotaAllocations := filterAllocationsByRotaID(allAllocations, targetRota.ID)
+	rotaAllocations := utils.FilterAllocationsByRotaID(allAllocations, targetRota.ID)
 	logger.Debug("Filtered allocations for rota", zap.Int("count", len(rotaAllocations)))
 
 	// Step 4: Fetch volunteers
@@ -128,7 +129,7 @@ func PublishRota(
 		}
 	}
 	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
-	allocationsByDate = ApplyAlterations(allocationsByDate, rotaAlterations)
+	allocationsByDate = utils.ApplyAlterations(allocationsByDate, rotaAlterations)
 
 	// Step 6: Build the published rota rows
 	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shiftDates))

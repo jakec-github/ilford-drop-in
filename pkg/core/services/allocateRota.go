@@ -13,6 +13,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator/criteria"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -106,7 +107,7 @@ func AllocateRota(
 	}
 
 	// Step 2: Find latest rota
-	targetRota := findLatestRotation(rotations)
+	targetRota := utils.FindLatestRotation(rotations)
 	logger.Debug("Using latest rota", zap.String("id", targetRota.ID))
 
 	logger.Debug("Target rota",
@@ -115,7 +116,7 @@ func AllocateRota(
 		zap.Int("shift_count", targetRota.ShiftCount))
 
 	// Calculate shift dates
-	shiftDates, err := calculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
@@ -129,7 +130,7 @@ func AllocateRota(
 	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
 
 	// Step 4: Find availability requests for resolved rota
-	requestsForRota := filterSentRequestsByRotaID(allRequests, targetRota.ID)
+	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, targetRota.ID)
 	logger.Debug("Filtered sent requests for target rota", zap.Int("count", len(requestsForRota)))
 
 	if len(requestsForRota) == 0 {
@@ -151,7 +152,7 @@ func AllocateRota(
 	}
 
 	// Filter to active volunteers
-	activeVolunteers := filterActiveVolunteers(allVolunteers)
+	activeVolunteers := utils.FilterActiveVolunteers(allVolunteers)
 	logger.Debug("Active volunteers", zap.Int("count", len(activeVolunteers)))
 
 	// Step 6: Forms query - Get responses matching form IDs
@@ -487,7 +488,7 @@ func buildHistoricalShifts(
 	}
 
 	// Filter to allocations from previous rota only
-	previousRotaAllocations := filterAllocationsByRotaID(allAllocations, previousRota.ID)
+	previousRotaAllocations := utils.FilterAllocationsByRotaID(allAllocations, previousRota.ID)
 	logger.Debug("Filtered allocations from previous rota", zap.Int("count", len(previousRotaAllocations)))
 
 	if len(previousRotaAllocations) == 0 {
@@ -580,13 +581,3 @@ func findPreviousRotation(rotations []db.Rotation, targetRota *db.Rotation) *db.
 	return previousRota
 }
 
-// filterAllocationsByRotaID filters allocations to only those for the specified rota
-func filterAllocationsByRotaID(allocations []db.Allocation, rotaID string) []db.Allocation {
-	filtered := make([]db.Allocation, 0)
-	for _, allocation := range allocations {
-		if allocation.RotaID == rotaID {
-			filtered = append(filtered, allocation)
-		}
-	}
-	return filtered
-}

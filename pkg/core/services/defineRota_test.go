@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -135,14 +136,14 @@ func TestFindLatestRotation(t *testing.T) {
 		{ID: "r3", Start: "2024-12-16", ShiftCount: 12},
 	}
 
-	latest := findLatestRotation(rotations)
+	latest := utils.FindLatestRotation(rotations)
 	require.NotNil(t, latest)
 	assert.Equal(t, "r2", latest.ID)
 	assert.Equal(t, "2025-03-17", latest.Start)
 }
 
 func TestFindLatestRotation_Empty(t *testing.T) {
-	latest := findLatestRotation([]db.Rotation{})
+	latest := utils.FindLatestRotation([]db.Rotation{})
 	assert.Nil(t, latest)
 }
 

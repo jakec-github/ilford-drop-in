@@ -1,4 +1,4 @@
-package services
+package utils
 
 import (
 	"testing"
@@ -17,7 +17,7 @@ func TestFilterRequestsByRotaID(t *testing.T) {
 		{ID: "req-3", RotaID: "rota-1", VolunteerID: "vol-3"},
 	}
 
-	filtered := filterRequestsByRotaID(requests, "rota-1")
+	filtered := FilterRequestsByRotaID(requests, "rota-1")
 
 	require.Len(t, filtered, 2)
 	assert.Equal(t, "req-1", filtered[0].ID)
@@ -33,7 +33,7 @@ func TestFilterActiveVolunteers(t *testing.T) {
 		{ID: "vol-5", Status: "On Leave"},
 	}
 
-	active := filterActiveVolunteers(volunteers)
+	active := FilterActiveVolunteers(volunteers)
 
 	require.Len(t, active, 3)
 	assert.Equal(t, "vol-1", active[0].ID)
@@ -48,7 +48,7 @@ func TestGetVolunteerIDs(t *testing.T) {
 		{ID: "vol-3", FirstName: "Bob"},
 	}
 
-	ids := getVolunteerIDs(volunteers)
+	ids := GetVolunteerIDs(volunteers)
 
 	require.Len(t, ids, 3)
 	assert.Equal(t, "vol-1", ids[0])
@@ -59,7 +59,7 @@ func TestGetVolunteerIDs(t *testing.T) {
 func TestGetVolunteerIDs_Empty(t *testing.T) {
 	volunteers := []model.Volunteer{}
 
-	ids := getVolunteerIDs(volunteers)
+	ids := GetVolunteerIDs(volunteers)
 
 	assert.Empty(t, ids)
 }
