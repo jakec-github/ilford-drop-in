@@ -2,6 +2,10 @@
 
 CHANGE ROTA NEEDS MANUAL TESTING
 
+## Features
+
+- Configurable roles. Roles in the volunteer sheet probably shouldn't match rota roles. ie. Collector may be an ordinary service volunteer for example
+
 ## Allocator improvements
 
 - Proper scoring of shifts. Negative outcomes. Activation functions etc.
