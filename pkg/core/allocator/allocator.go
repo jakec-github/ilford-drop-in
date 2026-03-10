@@ -57,7 +57,13 @@ type AllocationOutcome struct {
 	// State is the final rota state after allocation
 	State *RotaState
 
-	// Success indicates whether all shifts were successfully filled to their target size
+	// Status is the overall validity of the rota.
+	// RotaStatusValid means no errors; RotaStatusIncomplete means only incomplete errors
+	// (fixable by adding volunteers); RotaStatusInvalid means at least one invalid error
+	// (a volunteer must be removed).
+	Status RotaStatus
+
+	// Success is true when Status == RotaStatusValid (no validation errors).
 	Success bool
 
 	// UnderutilizedGroups contains groups that had remaining availability but weren't fully allocated
@@ -260,6 +266,7 @@ func (a *Allocator) buildOutcome() *AllocationOutcome {
 
 	// Safety check
 	if a.state == nil {
+		outcome.Status = RotaStatusInvalid
 		outcome.Success = false
 		return outcome
 	}
@@ -294,8 +301,22 @@ func (a *Allocator) buildOutcome() *AllocationOutcome {
 	// Run validation
 	outcome.ValidationErrors = ValidateRotaState(a.state, a.criteria)
 
-	// Success if all shifts filled and no validation errors
-	outcome.Success = len(outcome.ValidationErrors) == 0
+	outcome.Status = computeRotaStatus(outcome.ValidationErrors)
+	outcome.Success = outcome.Status == RotaStatusValid
 
 	return outcome
+}
+
+// computeRotaStatus derives the overall rota status from a slice of validation errors.
+// No errors → Valid. Any INVALID error → Invalid. Otherwise → Incomplete.
+func computeRotaStatus(errors []ShiftValidationError) RotaStatus {
+	if len(errors) == 0 {
+		return RotaStatusValid
+	}
+	for _, err := range errors {
+		if err.Type == ValidationErrorTypeInvalid {
+			return RotaStatusInvalid
+		}
+	}
+	return RotaStatusIncomplete
 }

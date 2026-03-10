@@ -50,6 +50,7 @@ func checkOverAllocation(state *RotaState) []ShiftValidationError {
 		allocatedCount := len(group.AllocatedShiftIndices)
 		if allocatedCount > maxAllocationCount {
 			errors = append(errors, ShiftValidationError{
+				Type:          ValidationErrorTypeInvalid,
 				ShiftIndex:    -1, // Not specific to one shift
 				ShiftDate:     "",
 				CriterionName: "CoreInvariant",
@@ -70,6 +71,7 @@ func checkDuplicateAllocations(state *RotaState) []ShiftValidationError {
 		for _, group := range shift.AllocatedGroups {
 			if seen[group.GroupKey] {
 				errors = append(errors, ShiftValidationError{
+					Type:          ValidationErrorTypeInvalid,
 					ShiftIndex:    shift.Index,
 					ShiftDate:     shift.Date,
 					CriterionName: "CoreInvariant",
@@ -91,6 +93,7 @@ func checkAvailabilityViolations(state *RotaState) []ShiftValidationError {
 		for _, group := range shift.AllocatedGroups {
 			if !group.IsAvailable(shift.Index) {
 				errors = append(errors, ShiftValidationError{
+					Type:          ValidationErrorTypeInvalid,
 					ShiftIndex:    shift.Index,
 					ShiftDate:     shift.Date,
 					CriterionName: "CoreInvariant",
@@ -129,6 +132,7 @@ func checkDataConsistency(state *RotaState) []ShiftValidationError {
 		for _, idx := range group.AllocatedShiftIndices {
 			if !actual[idx] {
 				errors = append(errors, ShiftValidationError{
+					Type:          ValidationErrorTypeInvalid,
 					ShiftIndex:    idx,
 					ShiftDate:     "",
 					CriterionName: "CoreInvariant",
@@ -145,6 +149,7 @@ func checkDataConsistency(state *RotaState) []ShiftValidationError {
 		for idx := range actual {
 			if !declaredSet[idx] {
 				errors = append(errors, ShiftValidationError{
+					Type:          ValidationErrorTypeInvalid,
 					ShiftIndex:    idx,
 					ShiftDate:     "",
 					CriterionName: "CoreInvariant",
@@ -178,6 +183,7 @@ func checkDataConsistency(state *RotaState) []ShiftValidationError {
 		}
 		if shift.MaleCount != actualMaleCount {
 			errors = append(errors, ShiftValidationError{
+				Type:          ValidationErrorTypeInvalid,
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: "CoreInvariant",

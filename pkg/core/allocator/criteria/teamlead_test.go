@@ -3,6 +3,7 @@ package criteria
 import (
 	"testing"
 
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -450,12 +451,14 @@ func TestTeamLeadCriterion_ValidateRotaState_MissingTeamLead(t *testing.T) {
 	assert.Len(t, errors, 2, "Should detect two shifts missing team leads")
 
 	// Check first error
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[0].Type)
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[0].CriterionName)
 	assert.Equal(t, "Shift has no team lead", errors[0].Description)
 
 	// Check second error
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[1].Type)
 	assert.Equal(t, 1, errors[1].ShiftIndex)
 	assert.Equal(t, "2024-01-08", errors[1].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[1].CriterionName)
@@ -486,6 +489,7 @@ func TestTeamLeadCriterion_ValidateRotaState_MultipleTeamLeads(t *testing.T) {
 	errors := criterion.ValidateRotaState(state)
 	assert.Len(t, errors, 1, "Should detect shift with multiple team leads")
 
+	assert.Equal(t, rotageneration.ValidationErrorTypeInvalid, errors[0].Type)
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[0].CriterionName)
@@ -524,11 +528,13 @@ func TestTeamLeadCriterion_ValidateRotaState_ThreeTeamLeads(t *testing.T) {
 	assert.Len(t, errors, 2, "Should detect shift with two extra team leads")
 
 	// Both Bob and Charlie are team leads allocated as ordinary volunteers
+	assert.Equal(t, rotageneration.ValidationErrorTypeInvalid, errors[0].Type)
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[0].CriterionName)
 	assert.Contains(t, errors[0].Description, "team lead")
 
+	assert.Equal(t, rotageneration.ValidationErrorTypeInvalid, errors[1].Type)
 	assert.Equal(t, 0, errors[1].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[1].ShiftDate)
 	assert.Equal(t, "TeamLead", errors[1].CriterionName)
@@ -577,6 +583,7 @@ func TestTeamLeadCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) 
 	errors := criterion.ValidateRotaState(state)
 	assert.Len(t, errors, 1, "Should detect only the shift missing a team lead")
 
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[0].Type)
 	assert.Equal(t, 1, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
 	assert.Contains(t, errors[0].Description, "no team lead")

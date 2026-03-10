@@ -147,7 +147,14 @@ func (c *MaleBalanceCriterion) ValidateRotaState(state *rotageneration.RotaState
 
 		// Check if shift has at least one male volunteer
 		if shift.MaleCount == 0 {
+			// If the shift is already full, a female must be removed to make room — INVALID.
+			// If there is still capacity, a male can simply be added — INCOMPLETE.
+			errorType := rotageneration.ValidationErrorTypeIncomplete
+			if shift.IsFull() {
+				errorType = rotageneration.ValidationErrorTypeInvalid
+			}
 			errors = append(errors, rotageneration.ShiftValidationError{
+				Type:          errorType,
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),

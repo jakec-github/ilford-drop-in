@@ -3,6 +3,7 @@ package criteria
 import (
 	"testing"
 
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -489,19 +490,22 @@ func TestMaleBalanceCriterion_ValidateRotaState_AllShiftsHaveMales(t *testing.T)
 	assert.Empty(t, errors, "Should have no errors when all shifts have at least one male")
 }
 
-func TestMaleBalanceCriterion_ValidateRotaState_MissingMales(t *testing.T) {
+func TestMaleBalanceCriterion_ValidateRotaState_MissingMales_NotFull(t *testing.T) {
 	criterion := NewMaleBalanceCriterion(1.0, 1.0)
 
+	// Shifts have capacity remaining, so a male can simply be added — INCOMPLETE
 	state := &RotaState{
 		Shifts: []*Shift{
 			{
 				Index:     0,
 				Date:      "2024-01-01",
+				Size:      5,
 				MaleCount: 0,
 			},
 			{
 				Index:     1,
 				Date:      "2024-01-08",
+				Size:      5,
 				MaleCount: 0,
 			},
 		},
@@ -511,36 +515,70 @@ func TestMaleBalanceCriterion_ValidateRotaState_MissingMales(t *testing.T) {
 	assert.Len(t, errors, 2, "Should detect two shifts without males")
 
 	// Check first error
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[0].Type)
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "MaleBalance", errors[0].CriterionName)
 	assert.Contains(t, errors[0].Description, "no male volunteers")
 
 	// Check second error
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[1].Type)
 	assert.Equal(t, 1, errors[1].ShiftIndex)
 	assert.Equal(t, "2024-01-08", errors[1].ShiftDate)
 	assert.Equal(t, "MaleBalance", errors[1].CriterionName)
 	assert.Contains(t, errors[1].Description, "no male volunteers")
 }
 
+func TestMaleBalanceCriterion_ValidateRotaState_MissingMales_FullShift(t *testing.T) {
+	criterion := NewMaleBalanceCriterion(1.0, 1.0)
+
+	// Shift is full with only female volunteers — a female must be removed to add a male — INVALID
+	state := &RotaState{
+		Shifts: []*Shift{
+			{
+				Index: 0,
+				Date:  "2024-01-01",
+				Size:  2,
+				AllocatedGroups: []*VolunteerGroup{
+					{Members: []Volunteer{{ID: "v1", IsTeamLead: false}, {ID: "v2", IsTeamLead: false}}},
+				},
+				MaleCount: 0,
+			},
+		},
+	}
+
+	errors := criterion.ValidateRotaState(state)
+	assert.Len(t, errors, 1, "Should detect one shift without males")
+
+	assert.Equal(t, rotageneration.ValidationErrorTypeInvalid, errors[0].Type)
+	assert.Equal(t, 0, errors[0].ShiftIndex)
+	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
+	assert.Equal(t, "MaleBalance", errors[0].CriterionName)
+	assert.Contains(t, errors[0].Description, "no male volunteers")
+}
+
 func TestMaleBalanceCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.T) {
 	criterion := NewMaleBalanceCriterion(1.0, 1.0)
 
+	// Shift 1 has no males and still has capacity — INCOMPLETE
 	state := &RotaState{
 		Shifts: []*Shift{
 			{
 				Index:     0,
 				Date:      "2024-01-01",
+				Size:      5,
 				MaleCount: 1,
 			},
 			{
 				Index:     1,
 				Date:      "2024-01-08",
+				Size:      5,
 				MaleCount: 0,
 			},
 			{
 				Index:     2,
 				Date:      "2024-01-15",
+				Size:      5,
 				MaleCount: 3,
 			},
 		},
@@ -549,6 +587,7 @@ func TestMaleBalanceCriterion_ValidateRotaState_MixedValidAndInvalid(t *testing.
 	errors := criterion.ValidateRotaState(state)
 	assert.Len(t, errors, 1, "Should detect only the shift without males")
 
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[0].Type)
 	assert.Equal(t, 1, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
 	assert.Contains(t, errors[0].Description, "no male volunteers")

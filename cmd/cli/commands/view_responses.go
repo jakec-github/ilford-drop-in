@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	allocator "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -189,16 +190,22 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				fmt.Printf("📊 Allocation Results (Dry Run):\n\n")
 
 				if result.AllocationResult.Success {
-					fmt.Printf("Status: %s✓ SUCCESS%s - All shifts allocated successfully\n\n", colorGreen, colorReset)
+					fmt.Printf("Status: %s✓ VALID%s - All shifts allocated successfully\n\n", colorGreen, colorReset)
+				} else if result.AllocationResult.Status == allocator.RotaStatusIncomplete {
+					fmt.Printf("Status: %s⚠ INCOMPLETE%s - Add volunteers to complete the rota\n\n", colorRed, colorReset)
 				} else {
-					fmt.Printf("Status: %s✗ FAILED%s - Unable to allocate all shifts\n\n", colorRed, colorReset)
+					fmt.Printf("Status: %s✗ INVALID%s - Volunteers must be removed to fix constraint violations\n\n", colorRed, colorReset)
 				}
 
 				// Display validation errors
 				if len(result.AllocationResult.ValidationErrors) > 0 {
 					fmt.Printf("%sValidation Errors:%s\n", colorBold, colorReset)
 					for _, err := range result.AllocationResult.ValidationErrors {
-						fmt.Printf("  %s✗%s %s: %s\n", colorRed, colorReset, err.ShiftDate, err.Description)
+						label := "INCOMPLETE"
+						if err.Type == allocator.ValidationErrorTypeInvalid {
+							label = "INVALID"
+						}
+						fmt.Printf("  %s✗%s [%s] %s: %s\n", colorRed, colorReset, label, err.ShiftDate, err.Description)
 					}
 					fmt.Println()
 				}

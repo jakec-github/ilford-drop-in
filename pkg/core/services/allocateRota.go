@@ -63,6 +63,7 @@ type AllocateRotaResult struct {
 	RotaStart           string
 	ShiftCount          int
 	ShiftDates          []time.Time
+	Status              allocator.RotaStatus
 	Success             bool
 	AllocatedShifts     []*allocator.Shift
 	ValidationErrors    []allocator.ShiftValidationError
@@ -235,6 +236,7 @@ func AllocateRota(
 	}
 
 	logger.Info("Allocation completed",
+		zap.String("status", string(outcome.Status)),
 		zap.Bool("success", outcome.Success),
 		zap.Int("validation_errors", len(outcome.ValidationErrors)),
 		zap.Int("underutilized_groups", len(outcome.UnderutilizedGroups)))
@@ -242,6 +244,7 @@ func AllocateRota(
 	// Log validation errors
 	for _, verr := range outcome.ValidationErrors {
 		logger.Warn("Validation error",
+			zap.String("type", string(verr.Type)),
 			zap.String("criterion", verr.CriterionName),
 			zap.Int("shift_index", verr.ShiftIndex),
 			zap.String("shift_date", verr.ShiftDate),
@@ -271,6 +274,7 @@ func AllocateRota(
 		RotaStart:           targetRota.Start,
 		ShiftCount:          targetRota.ShiftCount,
 		ShiftDates:          shiftDates,
+		Status:              outcome.Status,
 		Success:             outcome.Success,
 		AllocatedShifts:     outcome.State.Shifts,
 		ValidationErrors:    outcome.ValidationErrors,

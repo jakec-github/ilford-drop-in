@@ -34,6 +34,7 @@ func TestValidateCoreInvariants_OverAllocation(t *testing.T) {
 	found := false
 	for _, err := range errors {
 		if err.CriterionName == "CoreInvariant" && err.Description != "" {
+			assert.Equal(t, ValidationErrorTypeInvalid, err.Type)
 			assert.Contains(t, err.Description, "group_a")
 			assert.Contains(t, err.Description, "allocated to 3 shifts but max is 1")
 			found = true
@@ -73,6 +74,7 @@ func TestValidateCoreInvariants_DuplicateAllocation(t *testing.T) {
 	found := false
 	for _, err := range errors {
 		if err.CriterionName == "CoreInvariant" && err.ShiftIndex == 0 {
+			assert.Equal(t, ValidationErrorTypeInvalid, err.Type)
 			assert.Contains(t, err.Description, "group_a")
 			assert.Contains(t, err.Description, "allocated multiple times to the same shift")
 			found = true
@@ -112,6 +114,7 @@ func TestValidateCoreInvariants_AvailabilityViolation(t *testing.T) {
 	found := false
 	for _, err := range errors {
 		if err.CriterionName == "CoreInvariant" && err.ShiftIndex == 0 {
+			assert.Equal(t, ValidationErrorTypeInvalid, err.Type)
 			assert.Contains(t, err.Description, "group_a")
 			assert.Contains(t, err.Description, "not available for it")
 			found = true
@@ -157,6 +160,7 @@ func TestValidateCoreInvariants_AllocatedIndicesMismatch(t *testing.T) {
 	found := false
 	for _, err := range errors {
 		if err.CriterionName == "CoreInvariant" {
+			assert.Equal(t, ValidationErrorTypeInvalid, err.Type)
 			assert.Contains(t, err.Description, "group_a")
 			assert.Contains(t, err.Description, "AllocatedShiftIndices")
 			found = true
@@ -196,6 +200,7 @@ func TestValidateCoreInvariants_MaleCountFieldMismatch(t *testing.T) {
 	found := false
 	for _, err := range errors {
 		if err.CriterionName == "CoreInvariant" && err.ShiftIndex == 0 {
+			assert.Equal(t, ValidationErrorTypeInvalid, err.Type)
 			assert.Contains(t, err.Description, "MaleCount")
 			assert.Contains(t, err.Description, "is 1 but actual male count from groups is 2")
 			found = true

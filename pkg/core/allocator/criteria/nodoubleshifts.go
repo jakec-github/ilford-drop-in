@@ -223,6 +223,7 @@ func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *rotageneration.RotaSt
 				for _, prevGroup := range prevShift.AllocatedGroups {
 					if currentGroups[prevGroup.GroupKey] {
 						errors = append(errors, rotageneration.ShiftValidationError{
+							Type:          rotageneration.ValidationErrorTypeInvalid,
 							ShiftIndex:    shift.Index,
 							ShiftDate:     shift.Date,
 							CriterionName: c.Name(),
@@ -239,6 +240,7 @@ func (c *NoDoubleShiftsCriterion) ValidateRotaState(state *rotageneration.RotaSt
 			for _, historicalGroup := range lastHistoricalShift.AllocatedGroups {
 				if currentGroups[historicalGroup.GroupKey] {
 					errors = append(errors, rotageneration.ShiftValidationError{
+						Type:          rotageneration.ValidationErrorTypeInvalid,
 						ShiftIndex:    shift.Index,
 						ShiftDate:     shift.Date,
 						CriterionName: c.Name(),

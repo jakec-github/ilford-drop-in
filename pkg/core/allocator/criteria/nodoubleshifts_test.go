@@ -3,6 +3,7 @@ package criteria
 import (
 	"testing"
 
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -528,6 +529,7 @@ func TestNoDoubleShiftsCriterion_ValidateRotaState_DetectsDoubleShift(t *testing
 	errors := criterion.ValidateRotaState(state)
 	assert.Len(t, errors, 1, "Should detect one double shift violation")
 
+	assert.Equal(t, rotageneration.ValidationErrorTypeInvalid, errors[0].Type)
 	assert.Equal(t, 1, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-08", errors[0].ShiftDate)
 	assert.Equal(t, "NoDoubleShifts", errors[0].CriterionName)

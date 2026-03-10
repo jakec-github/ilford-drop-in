@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	rotageneration "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -645,6 +646,7 @@ func TestShiftSizeCriterion_ValidateRotaState_UnderfillDetected(t *testing.T) {
 	assert.Len(t, errors, 2, "Should detect two underfilled shifts")
 
 	// Check first error
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[0].Type)
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "ShiftSize", errors[0].CriterionName)
@@ -652,6 +654,7 @@ func TestShiftSizeCriterion_ValidateRotaState_UnderfillDetected(t *testing.T) {
 	assert.Contains(t, errors[0].Description, "has 2 volunteers but size is 5")
 
 	// Check second error
+	assert.Equal(t, rotageneration.ValidationErrorTypeIncomplete, errors[1].Type)
 	assert.Equal(t, 1, errors[1].ShiftIndex)
 	assert.Equal(t, "2024-01-08", errors[1].ShiftDate)
 	assert.Equal(t, "ShiftSize", errors[1].CriterionName)
@@ -686,6 +689,7 @@ func TestShiftSizeCriterion_ValidateRotaState_OverfillDetected(t *testing.T) {
 	errors := criterion.ValidateRotaState(state)
 	assert.Len(t, errors, 1, "Should detect one overfilled shift")
 
+	assert.Equal(t, rotageneration.ValidationErrorTypeInvalid, errors[0].Type)
 	assert.Equal(t, 0, errors[0].ShiftIndex)
 	assert.Equal(t, "2024-01-01", errors[0].ShiftDate)
 	assert.Equal(t, "ShiftSize", errors[0].CriterionName)

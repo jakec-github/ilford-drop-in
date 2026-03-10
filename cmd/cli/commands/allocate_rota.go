@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	allocator "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -50,8 +51,10 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				fmt.Printf("Status:      ✅ SUCCESS (saved to database)\n")
 			} else if forceCommit {
 				fmt.Printf("Status:      ⚠️  FORCED (saved despite validation errors)\n")
+			} else if result.Status == allocator.RotaStatusIncomplete {
+				fmt.Printf("Status:      ⚠️  INCOMPLETE (not saved — add volunteers to fix)\n")
 			} else {
-				fmt.Printf("Status:      ❌ FAILED (not saved)\n")
+				fmt.Printf("Status:      ❌ INVALID (not saved — volunteers must be removed)\n")
 			}
 			fmt.Println()
 
@@ -59,7 +62,12 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			if len(result.ValidationErrors) > 0 {
 				fmt.Printf("⚠️  Validation Errors (%d):\n", len(result.ValidationErrors))
 				for _, verr := range result.ValidationErrors {
-					fmt.Printf("  • Shift %d (%s) - %s: %s\n",
+					label := "INCOMPLETE"
+					if verr.Type == allocator.ValidationErrorTypeInvalid {
+						label = "INVALID"
+					}
+					fmt.Printf("  • [%s] Shift %d (%s) - %s: %s\n",
+						label,
 						verr.ShiftIndex+1,
 						verr.ShiftDate,
 						verr.CriterionName,

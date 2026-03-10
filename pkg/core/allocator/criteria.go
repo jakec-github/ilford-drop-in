@@ -1,7 +1,36 @@
 package allocator
 
+// ValidationErrorType classifies whether a validation error requires removing volunteers
+// (INVALID) or can be resolved by adding volunteers (INCOMPLETE).
+type ValidationErrorType string
+
+const (
+	// ValidationErrorTypeInvalid indicates the rota violates a constraint that can only be
+	// fixed by removing a volunteer — e.g. overfilled shift, double-shift violation.
+	ValidationErrorTypeInvalid ValidationErrorType = "INVALID"
+
+	// ValidationErrorTypeIncomplete indicates the rota is missing something that could be
+	// satisfied by adding more volunteers — e.g. no team lead, no male volunteer.
+	ValidationErrorTypeIncomplete ValidationErrorType = "INCOMPLETE"
+)
+
+// RotaStatus summarises the overall validity of a rota.
+type RotaStatus string
+
+const (
+	// RotaStatusValid means the rota has no validation errors.
+	RotaStatusValid RotaStatus = "VALID"
+
+	// RotaStatusIncomplete means the rota has only INCOMPLETE errors; adding volunteers would fix it.
+	RotaStatusIncomplete RotaStatus = "INCOMPLETE"
+
+	// RotaStatusInvalid means the rota has at least one INVALID error; a volunteer must be removed.
+	RotaStatusInvalid RotaStatus = "INVALID"
+)
+
 // ShiftValidationError represents a validation error for a specific shift
 type ShiftValidationError struct {
+	Type          ValidationErrorType
 	ShiftIndex    int
 	ShiftDate     string
 	CriterionName string

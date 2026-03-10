@@ -100,6 +100,7 @@ func (c *TeamLeadCriterion) ValidateRotaState(state *allocator.RotaState) []allo
 
 		if shift.TeamLead == nil {
 			errors = append(errors, allocator.ShiftValidationError{
+				Type:          allocator.ValidationErrorTypeIncomplete,
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),
@@ -113,6 +114,7 @@ func (c *TeamLeadCriterion) ValidateRotaState(state *allocator.RotaState) []allo
 			for _, member := range group.Members {
 				if member.IsTeamLead && member.ID != shift.TeamLead.ID {
 					errors = append(errors, allocator.ShiftValidationError{
+						Type:          allocator.ValidationErrorTypeInvalid,
 						ShiftIndex:    shift.Index,
 						ShiftDate:     shift.Date,
 						CriterionName: c.Name(),

@@ -139,6 +139,7 @@ func (c *ShiftSizeCriterion) ValidateRotaState(state *rotageneration.RotaState) 
 		currentSize := shift.CurrentSize()
 		if currentSize < shift.Size {
 			errors = append(errors, rotageneration.ShiftValidationError{
+				Type:          rotageneration.ValidationErrorTypeIncomplete,
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),
@@ -146,6 +147,7 @@ func (c *ShiftSizeCriterion) ValidateRotaState(state *rotageneration.RotaState) 
 			})
 		} else if currentSize > shift.Size {
 			errors = append(errors, rotageneration.ShiftValidationError{
+				Type:          rotageneration.ValidationErrorTypeInvalid,
 				ShiftIndex:    shift.Index,
 				ShiftDate:     shift.Date,
 				CriterionName: c.Name(),
