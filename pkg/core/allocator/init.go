@@ -505,8 +505,6 @@ func InitAllocation(config AllocationConfig) (Allocator, error) {
 		OpenShiftCount:                 openShiftCount,
 	}
 
-	RankVolunteerGroups(state, config.Criteria, config.MaxAllocationFrequency)
-
 	return Allocator{
 		criteria: config.Criteria,
 		state:    state,

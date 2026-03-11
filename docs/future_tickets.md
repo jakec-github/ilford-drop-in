@@ -9,7 +9,6 @@ CHANGE ROTA NEEDS MANUAL TESTING
 ## Allocator improvements
 
 - Proper scoring of shifts. Negative outcomes. Activation functions etc.
-- Improve volunteer ranking by switching to the winner-stays-on selection method. Reduces complexity and makes the implementation more flexible. Doesn't impose a significant performance penalty as first thought.
 - Improve shift spread criteria where it looks at the expected distribution of shifts based on the frequency and promotes shifts on that basis
 - A good example of where the individual affinities system might need some more thinking. Look at the shiftSize. in a resource constrained scenario we want all shifts to reach the average. So affinities for shifts that haven't reached that yet need to be much higher than those that have. Once all have reached that stage you still want a clear signal but if they all have tiny affinities then any differences get drowned out. I think the solution is that affinity calculations have to keep track of the general state of the rota to know whether or not to give a particular shift a particular affinity. This could be done by calculating this from the state each time the hook is run. That requires no changes to the pattern. Or they could be stateful...
 

@@ -1,29 +1,5 @@
 package allocator
 
-import "sort"
-
-// RankVolunteerGroups calculates and applies ranking scores to volunteer groups
-// based on the provided criteria. Groups are sorted in descending order by score
-// (higher scores should be allocated first).
-//
-// The function modifies the VolunteerGroups slice in the RotaState by sorting it in-place.
-func RankVolunteerGroups(state *RotaState, criteria []Criterion, targetFrequency float64) {
-	// Calculate scores for each group
-	groupScores := make(map[*VolunteerGroup]float64)
-
-	for _, group := range state.VolunteerState.VolunteerGroups {
-		score := calculateGroupRankingScore(state, group, criteria, targetFrequency)
-		groupScores[group] = score
-	}
-
-	// Sort groups by score (descending - highest score first)
-	sort.Slice(state.VolunteerState.VolunteerGroups, func(i, j int) bool {
-		scoreI := groupScores[state.VolunteerState.VolunteerGroups[i]]
-		scoreJ := groupScores[state.VolunteerState.VolunteerGroups[j]]
-		return scoreI > scoreJ
-	})
-}
-
 // calculateGroupRankingScore computes the ranking score for a volunteer group
 // by running all criterion PromoteVolunteerGroup hooks and summing their weighted results.
 //

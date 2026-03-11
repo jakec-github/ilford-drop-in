@@ -473,3 +473,80 @@ func TestAllocate_MultipleClosedShifts(t *testing.T) {
 
 	assert.True(t, outcome.Success, "Allocation should succeed with multiple closed shifts")
 }
+
+func TestSelectNextGroup_ReturnsHighestScoredGroup(t *testing.T) {
+	// Group A: high historical allocation count (behind on frequency) → higher fairness score
+	groupA := &VolunteerGroup{
+		GroupKey:                  "group_a",
+		Members:                   []Volunteer{{ID: "v1"}},
+		AvailableShiftIndices:     []int{0, 1, 2, 3, 4},
+		AllocatedShiftIndices:     []int{},
+		HistoricalAllocationCount: 0, // Behind — high fairness score
+	}
+
+	// Group B: already over-allocated historically → lower fairness score
+	groupB := &VolunteerGroup{
+		GroupKey:                  "group_b",
+		Members:                   []Volunteer{{ID: "v2"}},
+		AvailableShiftIndices:     []int{0, 1, 2, 3, 4},
+		AllocatedShiftIndices:     []int{},
+		HistoricalAllocationCount: 20, // Ahead — low fairness score
+	}
+
+	state := &RotaState{
+		Shifts:                         []*Shift{{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4}},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          []*VolunteerGroup{groupB, groupA}, // B first to verify scan isn't order-dependent
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+	}
+
+	a := &Allocator{state: state, criteria: []Criterion{}}
+	selected := a.selectNextGroup()
+
+	assert.Equal(t, groupA, selected, "Should select the group with the highest current score")
+}
+
+func TestSelectNextGroup_ScoresReflectCurrentState(t *testing.T) {
+	// Verify that selectNextGroup re-evaluates scores from current state,
+	// so a group that was allocated once scores differently on the next call.
+	group := &VolunteerGroup{
+		GroupKey:                  "group_a",
+		Members:                   []Volunteer{{ID: "v1"}},
+		AvailableShiftIndices:     []int{0, 1, 2, 3, 4},
+		AllocatedShiftIndices:     []int{},
+		HistoricalAllocationCount: 0,
+	}
+
+	state := &RotaState{
+		Shifts:                         []*Shift{{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4}},
+		HistoricalShifts:               []*Shift{},
+		WeightCurrentRotaUrgency:       1.0,
+		WeightOverallFrequencyFairness: 1.0,
+		WeightPromoteGroup:             1.0,
+		VolunteerState: &VolunteerState{
+			VolunteerGroups:          []*VolunteerGroup{group},
+			ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		},
+	}
+
+	a := &Allocator{state: state, criteria: []Criterion{}}
+
+	scoreBefore := calculateGroupRankingScore(state, group, []Criterion{}, 0.5)
+
+	// Simulate an allocation
+	group.AllocatedShiftIndices = append(group.AllocatedShiftIndices, 0)
+
+	scoreAfter := calculateGroupRankingScore(state, group, []Criterion{}, 0.5)
+
+	// Score should differ after allocation (remaining urgency changes)
+	assert.NotEqual(t, scoreBefore, scoreAfter, "Score should reflect current allocation state")
+
+	// selectNextGroup should still return the single active group
+	selected := a.selectNextGroup()
+	assert.Equal(t, group, selected)
+}

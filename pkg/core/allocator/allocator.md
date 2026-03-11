@@ -88,18 +88,17 @@ Represents a single shift to be filled:
    - Populate `AvailableGroups` - pointers to groups that are available for each shift
    - Initialize `MaleCount` to 0
 
-4. **Rank Volunteer Groups** - Sort by priority (see Ranking section)
-
 ### Main Loop
 
-1. Pop the first VolunteerGroup from the ranked list
-2. Calculate shift affinity for all available shifts (see Affinity section)
-3. Allocate group to the shift with highest affinity
-4. Update shift state:
+1. Score every active VolunteerGroup against the current rota state (winner-stays-on)
+2. Select the group with the highest score
+3. Calculate shift affinity for all available shifts (see Affinity section)
+4. Allocate group to the shift with highest affinity
+5. Update shift state:
    - Add group to `AllocatedGroups`
    - If group has team lead, set `TeamLead` field
    - Update `MaleCount`
-5. Re-rank and re-insert the group, or mark as exhausted if:
+6. Remove the group from the active pool if exhausted:
    - Allocated to all available shifts
    - Reached `MaxAllocationFrequency`
    - No shifts are valid for them
@@ -113,10 +112,10 @@ Repeat until:
 
 The allocator provides an outcome report including:
 
-- The completed rota
-- Boolean indicating success (all shifts filled)
-- List of unfilled shifts
+- The completed rota state
+- Overall rota status: VALID (no errors), INCOMPLETE (fixable by adding volunteers), or INVALID (volunteers must be removed)
 - List of volunteer groups with remaining availability that weren't fully allocated
+- List of validation errors
 
 ## Criteria System
 
@@ -127,7 +126,7 @@ The allocator is extensible via a criteria interface. Each criterion implements 
    - Multiplied by `GroupWeight`
    - Used in ranking to prioritize certain groups
 
-Note that this method is used to sort all groups ON INIT ONLY. Allocated volunteers will be reinserted in their correct new position but do not implement a method that sorts groups based on the allocation of others as this will not work as expected.
+Note that this method is called before every allocation to re-score all active groups from the current rota state. Criteria can safely return values that depend on what other groups have been allocated, as scores are always computed fresh.
 
 2. **IsShiftValid(state, group, shift)** → bool
    - Returns false to block allocation
@@ -256,7 +255,7 @@ Note that if a volunteer cannot be assigned due to invalid shifts they will be e
 
 ## Volunteer Group Ranking
 
-Groups are ranked by summing:
+Before each allocation, all active groups are scored and the highest-scoring group is selected (winner-stays-on). Groups are scored by summing:
 
 1. **Current Rota Urgency** - `remainingNeededThisRota / remainingAvailability`
    - Prioritizes groups that need more allocations relative to their available shifts

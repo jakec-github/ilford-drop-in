@@ -89,10 +89,6 @@ func Allocate(config AllocationConfig) (*AllocationOutcome, error) {
 		return nil, err
 	}
 
-	// Re-rank volunteer groups after preallocations
-	// This ensures groups that are now at max frequency are properly prioritized/excluded
-	RankVolunteerGroups(allocator.state, allocator.criteria, config.MaxAllocationFrequency)
-
 	volunteers := allocator.state.VolunteerState
 
 	// Exhaust groups that are already at max frequency after preallocations
@@ -110,32 +106,30 @@ func Allocate(config AllocationConfig) (*AllocationOutcome, error) {
 	}
 	volunteers.VolunteerGroups = groupsToKeep
 
-	// Main allocation loop
+	// Main allocation loop: each iteration selects the highest-ranked active group
+	// based on the current rota state (winner-stays-on). Scores are re-computed fresh
+	// before every selection, so each decision reflects the latest picture of the rota.
 	for {
-		// All groups have been exhausted and the rota cannot be completed
 		if len(volunteers.VolunteerGroups) == 0 {
 			break
 		}
 
-		// Pop first group
-		group := volunteers.VolunteerGroups[0]
-		volunteers.VolunteerGroups = volunteers.VolunteerGroups[1:]
+		// Select the group with the highest current ranking score
+		group := allocator.selectNextGroup()
 
 		// Find best shift for this group
 		bestShift := allocator.findBestShift(group)
 
-		// If no valid shift found, mark group as exhausted
+		// If no valid shift found, exhaust and remove from active pool
 		if bestShift == nil {
 			allocator.exhaustGroup(group)
+			allocator.removeFromActive(group)
 			continue
 		}
 
-		// Allocate group to shift
-		groupExhausted := allocator.allocateGroupToShift(group, bestShift)
-
-		if !groupExhausted {
-			//Re-insert group at new ranking
-			allocator.reinsertGroup(group)
+		// Allocate group to shift; remove from active pool if now exhausted
+		if allocator.allocateGroupToShift(group, bestShift) {
+			allocator.removeFromActive(group)
 		}
 
 		// Check if all shifts are full
@@ -234,25 +228,32 @@ func (a *Allocator) allShiftsFull() bool {
 	return true
 }
 
-// reinsertGroup finds where to insert a group in the ranked list based on score
-func (a *Allocator) reinsertGroup(group *VolunteerGroup) {
-	score := calculateGroupRankingScore(a.state, group, a.criteria, a.state.MaxAllocationFrequency)
-
-	volunteers := a.state.VolunteerState
-
-	// Find insertion point - first position where our score is greater than comparison score
-	insertIdx := len(volunteers.VolunteerGroups) // Default to end
-
-	for i, comparisonGroup := range volunteers.VolunteerGroups {
-		comparisonGroupScore := calculateGroupRankingScore(a.state, comparisonGroup, a.criteria, a.state.MaxAllocationFrequency)
-		if score > comparisonGroupScore {
-			insertIdx = i
-			break // Found the first position - insert here
+// selectNextGroup returns the group with the highest current ranking score from the active pool.
+// Scores are re-evaluated from the current rota state on every call, ensuring each allocation
+// decision reflects the latest state (winner-stays-on).
+func (a *Allocator) selectNextGroup() *VolunteerGroup {
+	groups := a.state.VolunteerState.VolunteerGroups
+	best := groups[0]
+	bestScore := calculateGroupRankingScore(a.state, best, a.criteria, a.state.MaxAllocationFrequency)
+	for _, group := range groups[1:] {
+		score := calculateGroupRankingScore(a.state, group, a.criteria, a.state.MaxAllocationFrequency)
+		if score > bestScore {
+			bestScore = score
+			best = group
 		}
 	}
+	return best
+}
 
-	// Insert group at the found position
-	volunteers.VolunteerGroups = slices.Insert(volunteers.VolunteerGroups, insertIdx, group)
+// removeFromActive removes a group from the active VolunteerGroups pool.
+func (a *Allocator) removeFromActive(group *VolunteerGroup) {
+	volunteers := a.state.VolunteerState
+	for i, g := range volunteers.VolunteerGroups {
+		if g == group {
+			volunteers.VolunteerGroups = slices.Delete(volunteers.VolunteerGroups, i, i+1)
+			return
+		}
+	}
 }
 
 // buildOutcome creates the final allocation outcome report
