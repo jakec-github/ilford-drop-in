@@ -11,6 +11,7 @@ CHANGE ROTA NEEDS MANUAL TESTING
 - Proper scoring of shifts. Negative outcomes. Activation functions etc.
 - Improve shift spread criteria where it looks at the expected distribution of shifts based on the frequency and promotes shifts on that basis
 - A good example of where the individual affinities system might need some more thinking. Look at the shiftSize. in a resource constrained scenario we want all shifts to reach the average. So affinities for shifts that haven't reached that yet need to be much higher than those that have. Once all have reached that stage you still want a clear signal but if they all have tiny affinities then any differences get drowned out. I think the solution is that affinity calculations have to keep track of the general state of the rota to know whether or not to give a particular shift a particular affinity. This could be done by calculating this from the state each time the hook is run. That requires no changes to the pattern. Or they could be stateful...
+- Could we further improve things by adding a hook to criteria that allows the weight to be updated each iteration. ie. The criteria calculates its own urgency.
 
 ## Allocator bugs
 
