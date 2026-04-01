@@ -4,6 +4,7 @@ CHANGE ROTA NEEDS MANUAL TESTING
 
 ## Features
 
+- Sample emails. Before sending emails send a sample one to the user so they can confirm it is working as expected. Can wait before continuing or just go straight on.
 - Configurable roles. Roles in the volunteer sheet probably shouldn't match rota roles. ie. Collector may be an ordinary service volunteer for example
 
 ## Allocator improvements
