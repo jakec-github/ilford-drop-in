@@ -2,6 +2,7 @@ package sheetsclient
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
@@ -100,7 +101,7 @@ func parseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 	for _, field := range volunteerFields {
 		index := -1
 		for i, cell := range headerRow {
-			if cellStr, ok := cell.(string); ok && cellStr == field {
+			if cellStr, ok := cell.(string); ok && strings.TrimSpace(cellStr) == field {
 				index = i
 				break
 			}
@@ -121,7 +122,7 @@ func parseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 			return ""
 		}
 		if str, ok := row[index].(string); ok {
-			return str
+			return strings.TrimSpace(str)
 		}
 		return ""
 	}
