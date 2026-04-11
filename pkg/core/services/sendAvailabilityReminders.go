@@ -31,6 +31,17 @@ type FormsClientWithResponse interface {
 	HasResponse(formID string) (bool, error)
 }
 
+// ReminderEmailSubject returns the subject line for a reminder email.
+func ReminderEmailSubject(deadline string) string {
+	return fmt.Sprintf("Reminder: Ilford drop-in availability (please complete by %s)", deadline)
+}
+
+// ReminderEmailBody returns the body for a reminder email.
+func ReminderEmailBody(firstName, formURL, deadline string) string {
+	return fmt.Sprintf("Hey %s\n\nThis is a reminder to please complete your availability form.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
+		firstName, formURL, deadline)
+}
+
 // SendAvailabilityReminders sends reminder emails to volunteers who haven't responded to availability forms
 // Returns volunteers who were sent reminders and those where sending failed
 func SendAvailabilityReminders(
@@ -169,9 +180,8 @@ func SendAvailabilityReminders(
 		volunteerName := volunteer.DisplayName
 
 		// Send reminder email with form link
-		subject := fmt.Sprintf("Reminder: Ilford drop-in availability (please complete by %s)", deadline)
-		body := fmt.Sprintf("Hey %s\n\nThis is a reminder to please complete your availability form.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
-			volunteer.FirstName, req.FormURL, deadline)
+		subject := ReminderEmailSubject(deadline)
+		body := ReminderEmailBody(volunteer.FirstName, req.FormURL, deadline)
 
 		logger.Info("Sending reminder email",
 			zap.String("volunteer_id", volunteer.ID),

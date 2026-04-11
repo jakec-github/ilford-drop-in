@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -12,14 +14,53 @@ import (
 // RequestAvailabilityCmd creates the requestAvailability command
 func RequestAvailabilityCmd(app *AppContext) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "requestAvailability <deadline>",
-		Short: "Request availability from volunteers with the given deadline",
-		Args:  cobra.ExactArgs(1),
+		Use:   "requestAvailability",
+		Short: "Request availability from volunteers",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			deadline := args[0]
 			noEmail, _ := cmd.Flags().GetBool("no-email")
 
 			app.Logger.Debug("requestAvailability command", zap.Bool("no_email", noEmail))
+
+			deadline := ""
+
+			if !noEmail {
+				reader := bufio.NewReader(os.Stdin)
+
+				var err error
+				deadline, err = promptLine(reader, "\nEnter the deadline for responses (e.g. \"Sunday 27th April\"): ")
+				if err != nil {
+					return fmt.Errorf("failed to read deadline: %w", err)
+				}
+				if deadline == "" {
+					return fmt.Errorf("deadline cannot be empty")
+				}
+
+				fmt.Println()
+				fmt.Println("The deadline will appear in emails as:")
+				fmt.Printf("  Subject: %q\n", services.AvailabilityEmailSubject(deadline))
+				fmt.Printf("  Body:    \"Deadline for responses is %s when we will create the rota.\"\n", deadline)
+				fmt.Println()
+
+				sampleSubject := "[SAMPLE] " + services.AvailabilityEmailSubject(deadline)
+				sampleBody := services.AvailabilityEmailBody("[Volunteer Name]", "[form URL will appear here]", deadline)
+
+				fmt.Printf("Sending sample email to %s...\n", app.Cfg.GmailUserID)
+				if err := app.GmailClient.SendEmail(app.Cfg.GmailUserID, sampleSubject, sampleBody); err != nil {
+					return fmt.Errorf("failed to send sample email: %w", err)
+				}
+				fmt.Println("Sample sent. Check your inbox before continuing.")
+				fmt.Println()
+
+				ok, err := promptConfirm(reader, "Send availability requests to all volunteers?")
+				if err != nil {
+					return fmt.Errorf("failed to read confirmation: %w", err)
+				}
+				if !ok {
+					fmt.Println("Aborted.")
+					return nil
+				}
+			}
 
 			// Call the service
 			sentForms, failedEmails, err := services.RequestAvailability(

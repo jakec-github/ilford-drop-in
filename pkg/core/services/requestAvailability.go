@@ -229,9 +229,8 @@ func RequestAvailability(
 		displayName := volunteer.DisplayName
 		formInfo := formsByVolunteer[volunteer.ID]
 
-		subject := fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
-		body := fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
-			volunteer.FirstName, formInfo.formURL, deadline)
+		subject := AvailabilityEmailSubject(deadline)
+		body := AvailabilityEmailBody(volunteer.FirstName, formInfo.formURL, deadline)
 
 		logger.Debug("Sending email",
 			zap.String("volunteer_id", volunteer.ID),
@@ -295,6 +294,17 @@ func RequestAvailability(
 		zap.Int("emails_failed", len(failedEmails)))
 
 	return sentForms, failedEmails, nil
+}
+
+// AvailabilityEmailSubject returns the subject line for an availability request email.
+func AvailabilityEmailSubject(deadline string) string {
+	return fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline)
+}
+
+// AvailabilityEmailBody returns the body for an availability request email.
+func AvailabilityEmailBody(firstName, formURL, deadline string) string {
+	return fmt.Sprintf("Hey %s\n\nPlease use this form to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
+		firstName, formURL, deadline)
 }
 
 // filterVolunteersWithoutSentRequests filters volunteers to only those who don't have sent requests yet
