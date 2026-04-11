@@ -78,8 +78,8 @@ func GenerateTabTitle(startDate string, shiftCount int) (string, error) {
 	}
 	end := start.AddDate(0, 0, (shiftCount-1)*7)
 	return fmt.Sprintf("%s - %s",
-		start.Format("Mon Jan 02 2006"),
-		end.Format("Mon Jan 02 2006"),
+		start.Format("Jan 02"),
+		end.Format("Jan 02"),
 	), nil
 }
 
