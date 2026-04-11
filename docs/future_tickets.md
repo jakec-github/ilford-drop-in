@@ -30,7 +30,6 @@ CHANGE ROTA NEEDS MANUAL TESTING
 
 - Check closed shifts when requesting availability
 - If I try to allocate a rota and allocations already exist for that rota it should fail
-- Always use the same sheet for the latest rota so the link to latest is stable
 
 ## DB Usage Audit Results
 

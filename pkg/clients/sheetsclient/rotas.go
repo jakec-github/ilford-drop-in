@@ -8,6 +8,8 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
+const latestTabTitle = "Latest"
+
 // PublishedRotaRow represents a single row in the published rota
 type PublishedRotaRow struct {
 	Date       string   // Format: "Mon Jan 02 2006"
@@ -24,74 +26,90 @@ type PublishedRota struct {
 	Rows       []PublishedRotaRow
 }
 
-// PublishRota publishes a rota to Google Sheets
-// If the tab doesn't exist, it creates a new tab with the format "Sun Aug 24 2025 - Sun Nov 09 2025"
-// If the tab exists, it overwrites the Date, Team lead, and Volunteer columns while preserving
-// Hot food, Collection, and any other custom columns
+// PublishRota publishes a rota to the "Latest" tab in Google Sheets.
+// If the "Latest" tab already exists and previousRotaTabTitle is non-empty,
+// the existing content is first copied to a new tab named previousRotaTabTitle
+// (to preserve user-entered columns), then "Latest" is overwritten in-place.
+// If "Latest" does not exist, it is created fresh.
 func (c *Client) PublishRota(
 	spreadsheetID string,
 	publishedRota *PublishedRota,
+	previousRotaTabTitle string,
 ) error {
-	// Calculate date range for tab title
-	tabTitle, err := generateTabTitle(publishedRota.StartDate, publishedRota.ShiftCount)
-	if err != nil {
-		return fmt.Errorf("failed to generate tab title: %w", err)
-	}
-
-	// Check if tab exists
 	spreadsheet, err := c.service.Spreadsheets.Get(spreadsheetID).Do()
 	if err != nil {
 		return fmt.Errorf("failed to get spreadsheet metadata: %w", err)
 	}
 
-	var existingSheet *sheets.Sheet
+	var latestSheetID int64 = -1
 	for _, sheet := range spreadsheet.Sheets {
-		if sheet.Properties.Title == tabTitle {
-			existingSheet = sheet
+		if sheet.Properties.Title == latestTabTitle {
+			latestSheetID = sheet.Properties.SheetId
 			break
 		}
 	}
+	latestExists := latestSheetID != -1
 
-	if existingSheet == nil {
-		// Create new tab
-		return c.createNewRotaTab(spreadsheetID, tabTitle, publishedRota)
+	if latestExists && previousRotaTabTitle != "" {
+		resolvedTitle := resolveUniqueTitle(spreadsheet, previousRotaTabTitle)
+		newSheetID, err := c.DuplicateSheet(spreadsheetID, latestSheetID)
+		if err != nil {
+			return fmt.Errorf("failed to duplicate Latest tab: %w", err)
+		}
+		if err := c.RenameSheet(spreadsheetID, newSheetID, resolvedTitle); err != nil {
+			return fmt.Errorf("failed to rename duplicated tab to %q: %w", resolvedTitle, err)
+		}
 	}
 
-	// Update existing tab
-	return c.updateExistingRotaTab(spreadsheetID, tabTitle, publishedRota)
+	if !latestExists {
+		if _, err := c.CreateSheet(spreadsheetID, latestTabTitle); err != nil {
+			return fmt.Errorf("failed to create Latest tab: %w", err)
+		}
+	}
+
+	return c.writeRotaData(spreadsheetID, latestTabTitle, publishedRota)
 }
 
-// generateTabTitle creates a tab title in the format "Sun Aug 24 2025 - Sun Nov 09 2025"
-func generateTabTitle(startDate string, shiftCount int) (string, error) {
-	// Parse start date
+// GenerateTabTitle creates a tab title in the format "Sun Aug 24 2025 - Sun Nov 09 2025"
+func GenerateTabTitle(startDate string, shiftCount int) (string, error) {
 	start, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
 		return "", fmt.Errorf("invalid start date: %w", err)
 	}
-
-	// Calculate end date (start + (shiftCount-1) * 7 days)
 	end := start.AddDate(0, 0, (shiftCount-1)*7)
-
-	// Format: "Mon Jan 02 2006"
 	return fmt.Sprintf("%s - %s",
 		start.Format("Mon Jan 02 2006"),
 		end.Format("Mon Jan 02 2006"),
 	), nil
 }
 
-// createNewRotaTab creates a new tab and writes the rota data with a 2-row gap at the top
-func (c *Client) createNewRotaTab(
-	spreadsheetID string,
-	tabTitle string,
-	publishedRota *PublishedRota,
-) error {
-	// Create the tab
-	_, err := c.CreateSheet(spreadsheetID, tabTitle)
-	if err != nil {
-		return fmt.Errorf("failed to create tab: %w", err)
+// sheetTitleExists reports whether a tab with the given title exists in the spreadsheet.
+func sheetTitleExists(spreadsheet *sheets.Spreadsheet, title string) bool {
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == title {
+			return true
+		}
 	}
+	return false
+}
 
-	// Find the maximum number of volunteers in any shift
+// resolveUniqueTitle returns title if it is not already taken, otherwise appends
+// " (2)", " (3)", etc. until a free name is found.
+func resolveUniqueTitle(spreadsheet *sheets.Spreadsheet, title string) string {
+	if !sheetTitleExists(spreadsheet, title) {
+		return title
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s (%d)", title, i)
+		if !sheetTitleExists(spreadsheet, candidate) {
+			return candidate
+		}
+	}
+}
+
+// writeRotaData writes rota rows to an existing tab, then clears any stale rows below.
+// Layout: rows 1-2 empty, row 3 header, row 4+ data.
+func (c *Client) writeRotaData(spreadsheetID, tabTitle string, publishedRota *PublishedRota) error {
 	maxVolunteers := 0
 	for _, row := range publishedRota.Rows {
 		if len(row.Volunteers) > maxVolunteers {
@@ -99,19 +117,15 @@ func (c *Client) createNewRotaTab(
 		}
 	}
 
-	// Build header row
 	header := []interface{}{"Date", "Team lead"}
 	for i := 0; i < maxVolunteers; i++ {
 		header = append(header, fmt.Sprintf("Volunteer %d", i+1))
 	}
 	header = append(header, "Hot food", "Collection")
 
-	// Build data rows
 	dataRows := make([][]interface{}, 0, len(publishedRota.Rows))
 	for _, row := range publishedRota.Rows {
 		sheetRow := []interface{}{row.Date, row.TeamLead}
-
-		// Add volunteers
 		for i := 0; i < maxVolunteers; i++ {
 			if i < len(row.Volunteers) {
 				sheetRow = append(sheetRow, row.Volunteers[i])
@@ -119,218 +133,28 @@ func (c *Client) createNewRotaTab(
 				sheetRow = append(sheetRow, "")
 			}
 		}
-
-		// Add Hot food and Collection (empty for now)
 		sheetRow = append(sheetRow, row.HotFood, row.Collection)
 		dataRows = append(dataRows, sheetRow)
 	}
 
-	// Write to sheet with 2-row gap (write starting at A3)
-	allRows := [][]interface{}{
-		{}, // Row 1 (empty)
-		{}, // Row 2 (empty)
-		header,
-	}
+	allRows := [][]interface{}{{}, {}, header}
 	allRows = append(allRows, dataRows...)
 
-	valueRange := &sheets.ValueRange{
-		Values: allRows,
-	}
-
-	_, err = c.service.Spreadsheets.Values.Update(
+	valueRange := &sheets.ValueRange{Values: allRows}
+	_, err := c.service.Spreadsheets.Values.Update(
 		spreadsheetID,
 		fmt.Sprintf("%s!A1", tabTitle),
 		valueRange,
 	).ValueInputOption("RAW").Do()
 	if err != nil {
-		return fmt.Errorf("failed to write data to new tab: %w", err)
+		return fmt.Errorf("failed to write data to tab %q: %w", tabTitle, err)
 	}
 
-	return nil
-}
-
-// updateExistingRotaTab updates an existing tab, preserving Hot food, Collection, and other columns
-func (c *Client) updateExistingRotaTab(
-	spreadsheetID string,
-	tabTitle string,
-	publishedRota *PublishedRota,
-) error {
-	// Read existing data to determine current structure
-	existingRange := fmt.Sprintf("%s!A1:ZZ", tabTitle)
-	existingData, err := c.GetValues(spreadsheetID, existingRange)
+	// Clear any stale rows left over from a previously longer rota
+	clearRange := fmt.Sprintf("%s!A%d:ZZ", tabTitle, len(allRows)+1)
+	_, err = c.service.Spreadsheets.Values.Clear(spreadsheetID, clearRange, &sheets.ClearValuesRequest{}).Do()
 	if err != nil {
-		return fmt.Errorf("failed to read existing tab data: %w", err)
-	}
-
-	if len(existingData) < 3 {
-		return fmt.Errorf("existing tab has insufficient rows (expected at least 3 rows with 2-row gap)")
-	}
-
-	// Header is at row 3 (index 2)
-	existingHeader := existingData[2]
-
-	// Find column indices
-	dateCol := findColumnIndex(existingHeader, "Date")
-	teamLeadCol := findColumnIndex(existingHeader, "Team lead")
-	hotFoodCol := findColumnIndex(existingHeader, "Hot food")
-	collectionCol := findColumnIndex(existingHeader, "Collection")
-
-	if dateCol == -1 || teamLeadCol == -1 {
-		return fmt.Errorf("existing tab missing required columns (Date or Team lead)")
-	}
-
-	// Find existing volunteer columns
-	volunteerCols := findVolunteerColumns(existingHeader)
-
-	// Determine how many volunteer columns we need
-	maxVolunteers := 0
-	for _, row := range publishedRota.Rows {
-		if len(row.Volunteers) > maxVolunteers {
-			maxVolunteers = len(row.Volunteers)
-		}
-	}
-
-	// Build new header if we need more volunteer columns
-	needsHeaderUpdate := maxVolunteers > len(volunteerCols)
-	var newHeader []interface{}
-
-	if needsHeaderUpdate {
-		// Rebuild header with enough volunteer columns
-		newHeader = []interface{}{"Date", "Team lead"}
-		for i := 0; i < maxVolunteers; i++ {
-			newHeader = append(newHeader, fmt.Sprintf("Volunteer %d", i+1))
-		}
-
-		// Preserve Hot food and Collection columns
-		if hotFoodCol != -1 {
-			newHeader = append(newHeader, "Hot food")
-		}
-		if collectionCol != -1 {
-			newHeader = append(newHeader, "Collection")
-		}
-
-		// Preserve any additional columns beyond Collection
-		if collectionCol != -1 {
-			for i := collectionCol + 1; i < len(existingHeader); i++ {
-				if val, ok := existingHeader[i].(string); ok && val != "" {
-					newHeader = append(newHeader, val)
-				}
-			}
-		} else if hotFoodCol != -1 {
-			for i := hotFoodCol + 1; i < len(existingHeader); i++ {
-				if val, ok := existingHeader[i].(string); ok && val != "" {
-					newHeader = append(newHeader, val)
-				}
-			}
-		}
-	}
-
-	// Build data rows
-	dataRows := make([][]interface{}, 0, len(publishedRota.Rows))
-	for rowIdx, row := range publishedRota.Rows {
-		// Start with existing row data if it exists
-		var existingRow []interface{}
-		if rowIdx+3 < len(existingData) {
-			existingRow = existingData[rowIdx+3]
-		}
-
-		// Build new row
-		var sheetRow []interface{}
-		if needsHeaderUpdate {
-			// Rebuild entire row based on new header
-			sheetRow = []interface{}{row.Date, row.TeamLead}
-
-			// Add volunteers
-			for i := 0; i < maxVolunteers; i++ {
-				if i < len(row.Volunteers) {
-					sheetRow = append(sheetRow, row.Volunteers[i])
-				} else {
-					sheetRow = append(sheetRow, "")
-				}
-			}
-
-			// Preserve Hot food value
-			if hotFoodCol != -1 && hotFoodCol < len(existingRow) {
-				sheetRow = append(sheetRow, existingRow[hotFoodCol])
-			} else {
-				sheetRow = append(sheetRow, "")
-			}
-
-			// Preserve Collection value
-			if collectionCol != -1 && collectionCol < len(existingRow) {
-				sheetRow = append(sheetRow, existingRow[collectionCol])
-			} else {
-				sheetRow = append(sheetRow, "")
-			}
-
-			// Preserve additional column values
-			startCol := collectionCol
-			if startCol == -1 {
-				startCol = hotFoodCol
-			}
-			if startCol != -1 {
-				for i := startCol + 1; i < len(existingRow); i++ {
-					sheetRow = append(sheetRow, existingRow[i])
-				}
-			}
-		} else {
-			// Update only the relevant columns
-			sheetRow = make([]interface{}, len(existingHeader))
-
-			// Copy existing row
-			for i := range existingHeader {
-				if i < len(existingRow) {
-					sheetRow[i] = existingRow[i]
-				} else {
-					sheetRow[i] = ""
-				}
-			}
-
-			// Update Date and Team lead
-			sheetRow[dateCol] = row.Date
-			sheetRow[teamLeadCol] = row.TeamLead
-
-			// Update volunteers
-			for i, vol := range row.Volunteers {
-				if i < len(volunteerCols) {
-					sheetRow[volunteerCols[i]] = vol
-				}
-			}
-
-			// Clear any volunteer columns beyond what we have
-			for i := len(row.Volunteers); i < len(volunteerCols); i++ {
-				sheetRow[volunteerCols[i]] = ""
-			}
-		}
-
-		dataRows = append(dataRows, sheetRow)
-	}
-
-	// Write updated data
-	allRows := [][]interface{}{
-		{}, // Row 1 (empty)
-		{}, // Row 2 (empty)
-	}
-
-	if needsHeaderUpdate {
-		allRows = append(allRows, newHeader)
-	} else {
-		allRows = append(allRows, existingHeader)
-	}
-
-	allRows = append(allRows, dataRows...)
-
-	valueRange := &sheets.ValueRange{
-		Values: allRows,
-	}
-
-	_, err = c.service.Spreadsheets.Values.Update(
-		spreadsheetID,
-		fmt.Sprintf("%s!A1", tabTitle),
-		valueRange,
-	).ValueInputOption("RAW").Do()
-	if err != nil {
-		return fmt.Errorf("failed to update existing tab: %w", err)
+		return fmt.Errorf("failed to clear stale rows in tab %q: %w", tabTitle, err)
 	}
 
 	return nil

@@ -47,7 +47,7 @@ func TestGenerateTabTitle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := generateTabTitle(tt.startDate, tt.shiftCount)
+			got, err := GenerateTabTitle(tt.startDate, tt.shiftCount)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

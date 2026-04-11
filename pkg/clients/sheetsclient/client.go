@@ -113,3 +113,42 @@ func (c *Client) CreateSheet(spreadsheetID, sheetTitle string) (int64, error) {
 	sheetID := resp.Replies[0].AddSheet.Properties.SheetId
 	return sheetID, nil
 }
+
+// DuplicateSheet copies a sheet within the same spreadsheet using the native CopyTo API,
+// which preserves all formatting and data. Returns the new sheet's ID.
+func (c *Client) DuplicateSheet(spreadsheetID string, sourceSheetID int64) (int64, error) {
+	req := &sheets.CopySheetToAnotherSpreadsheetRequest{
+		DestinationSpreadsheetId: spreadsheetID,
+	}
+
+	resp, err := c.service.Spreadsheets.Sheets.CopyTo(spreadsheetID, sourceSheetID, req).Do()
+	if err != nil {
+		return 0, fmt.Errorf("failed to duplicate sheet: %w", err)
+	}
+
+	return resp.SheetId, nil
+}
+
+// RenameSheet renames a sheet by its ID.
+func (c *Client) RenameSheet(spreadsheetID string, sheetID int64, newTitle string) error {
+	req := &sheets.Request{
+		UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+			Properties: &sheets.SheetProperties{
+				SheetId: sheetID,
+				Title:   newTitle,
+			},
+			Fields: "title",
+		},
+	}
+
+	batchUpdateRequest := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	_, err := c.service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateRequest).Do()
+	if err != nil {
+		return fmt.Errorf("failed to rename sheet: %w", err)
+	}
+
+	return nil
+}

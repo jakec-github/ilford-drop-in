@@ -25,7 +25,7 @@ type PublishRotaStore interface {
 
 // SheetsClient defines the sheets operations needed for publishing a rota
 type SheetsClient interface {
-	PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota) error
+	PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota, previousRotaTabTitle string) error
 }
 
 // PublishRota publishes a rota to Google Sheets
@@ -197,9 +197,12 @@ func PublishRota(
 		zap.String("rota_id", targetRota.ID),
 		zap.Int("shift_count", len(rows)))
 
-	// Step 7: Publish to Google Sheets
+	// Step 7: Find the previous rotation to name the previous rota tab
+	previousRotaTabTitle := findPreviousRotaTabTitle(rotations, targetRota, logger)
+
+	// Step 8: Publish to Google Sheets
 	logger.Debug("Publishing to Google Sheets", zap.String("spreadsheet_id", cfg.RotaSheetID))
-	err = sheetsClient.PublishRota(cfg.RotaSheetID, publishedRota)
+	err = sheetsClient.PublishRota(cfg.RotaSheetID, publishedRota, previousRotaTabTitle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to publish to Google Sheets: %w", err)
 	}
@@ -208,6 +211,30 @@ func PublishRota(
 		zap.String("rota_id", targetRota.ID))
 
 	return publishedRota, nil
+}
+
+// findPreviousRotaTabTitle finds the rotation immediately before targetRota by start date
+// and returns the tab title for it, to be used when archiving the current "Latest" tab.
+// Returns an empty string if there is no previous rotation.
+func findPreviousRotaTabTitle(rotations []db.Rotation, targetRota *db.Rotation, logger *zap.Logger) string {
+	sorted := make([]db.Rotation, len(rotations))
+	copy(sorted, rotations)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Start < sorted[j].Start
+	})
+
+	for i, r := range sorted {
+		if r.ID == targetRota.ID && i > 0 {
+			prev := sorted[i-1]
+			title, err := sheetsclient.GenerateTabTitle(prev.Start, prev.ShiftCount)
+			if err != nil {
+				logger.Warn("Failed to generate previous rota tab title", zap.Error(err))
+				return ""
+			}
+			return title
+		}
+	}
+	return ""
 }
 
 // isShiftClosed checks if a shift is marked as closed by any matching RotaOverride

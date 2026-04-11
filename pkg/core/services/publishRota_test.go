@@ -323,7 +323,7 @@ type mockSheetsClient struct {
 	publishRotaError error
 }
 
-func (m *mockSheetsClient) PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota) error {
+func (m *mockSheetsClient) PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota, previousRotaTabTitle string) error {
 	return m.publishRotaError
 }
 
