@@ -1,0 +1,204 @@
+.rota-viewer {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.rota-viewer h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.rota-subtitle {
+  color: var(--text);
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+/* Filter */
+.rota-filter {
+  margin-bottom: 16px;
+}
+
+.name-select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6375' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.name-select:focus {
+  outline: 2px solid var(--accent, #aa3bff);
+  outline-offset: 1px;
+}
+
+/* Mobile: card layout (default) */
+.rota-table {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rota-table-header {
+  display: none;
+}
+
+.shift-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.shift-card.highlighted {
+  border-color: var(--accent, #aa3bff);
+  background: var(--accent-bg);
+}
+
+.shift-card.closed {
+  opacity: 0.6;
+}
+
+.shift-date {
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.shift-team-lead {
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.shift-team-lead strong {
+  color: var(--text-h);
+}
+
+.shift-closed-label {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--text);
+}
+
+.shift-volunteers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.volunteer-name {
+  display: inline-block;
+  background: var(--accent-bg);
+  color: var(--text-h);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+/* Desktop: table layout */
+@media (min-width: 700px) {
+  .rota-viewer {
+    padding: 24px;
+  }
+
+  .rota-viewer h1 {
+    font-size: 28px;
+  }
+
+  .rota-subtitle {
+    font-size: 16px;
+    margin-bottom: 24px;
+  }
+
+  .rota-filter {
+    margin-bottom: 24px;
+  }
+
+  .name-select {
+    width: 260px;
+  }
+
+  .rota-table {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .rota-table-header {
+    display: table-header-group;
+  }
+
+  .rota-table-header .header-row {
+    display: table-row;
+  }
+
+  .rota-table-header th {
+    display: table-cell;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text);
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+    text-align: left;
+  }
+
+  .rota-table-body {
+    display: table-row-group;
+  }
+
+  .shift-card {
+    display: table-row;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .shift-card.highlighted {
+    background: var(--accent-bg);
+  }
+
+  .shift-card > * {
+    display: table-cell;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .shift-date {
+    white-space: nowrap;
+    margin-bottom: 0;
+  }
+
+  .shift-team-lead {
+    white-space: nowrap;
+    margin-bottom: 0;
+    color: var(--text-h);
+    font-size: inherit;
+  }
+
+  .shift-team-lead strong {
+    font-weight: normal;
+  }
+
+  .shift-closed-label {
+    font-weight: 500;
+  }
+
+  .shift-volunteers {
+    gap: 6px;
+  }
+
+  .volunteer-name {
+    font-size: 14px;
+  }
+}

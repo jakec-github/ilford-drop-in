@@ -1,0 +1,92 @@
+import type { Rota } from "./types";
+
+export const mockRota: Rota = {
+  startDate: "2026-06-07",
+  shiftCount: 12,
+  shifts: [
+    {
+      date: "Sun Jun 07 2026",
+      teamLead: "Sarah Johnson",
+      volunteers: ["Amit Patel", "David Chen", "Fatima Hassan"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jun 14 2026",
+      teamLead: "Michael Osei",
+      volunteers: ["Claire Williams", "Raj Sharma"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jun 21 2026",
+      teamLead: "Sarah Johnson",
+      volunteers: ["David Chen", "Priya Kaur", "Tom Baker"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jun 28 2026",
+      teamLead: "CLOSED",
+      volunteers: [],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jul 05 2026",
+      teamLead: "Michael Osei",
+      volunteers: ["Amit Patel", "Fatima Hassan", "Claire Williams"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jul 12 2026",
+      teamLead: "Sarah Johnson",
+      volunteers: ["Raj Sharma", "Tom Baker"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jul 19 2026",
+      teamLead: "Michael Osei",
+      volunteers: ["David Chen", "Priya Kaur", "Amit Patel"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Jul 26 2026",
+      teamLead: "Sarah Johnson",
+      volunteers: ["Fatima Hassan", "Claire Williams", "Tom Baker"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Aug 02 2026",
+      teamLead: "Michael Osei",
+      volunteers: ["Raj Sharma", "David Chen"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Aug 09 2026",
+      teamLead: "Sarah Johnson",
+      volunteers: ["Amit Patel", "Priya Kaur", "Fatima Hassan"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Aug 16 2026",
+      teamLead: "Michael Osei",
+      volunteers: ["Tom Baker", "Claire Williams"],
+      hotFood: "",
+      collection: "",
+    },
+    {
+      date: "Sun Aug 23 2026",
+      teamLead: "Sarah Johnson",
+      volunteers: ["David Chen", "Raj Sharma", "[Ilford Community Group]"],
+      hotFood: "",
+      collection: "",
+    },
+  ],
+};
