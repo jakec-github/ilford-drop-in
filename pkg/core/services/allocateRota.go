@@ -75,6 +75,7 @@ type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
+	GetAlterations(ctx context.Context) ([]db.Alteration, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
@@ -463,8 +464,10 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 	return result, nil
 }
 
-// buildHistoricalShifts fetches allocations from the previous rota and builds historical shift objects.
-// Only includes Date and AllocatedGroups fields. Filters out inactive volunteers.
+// buildHistoricalShifts fetches allocations from the previous rota, applies that
+// rota's alterations (covers/swaps) so history reflects who actually worked, and
+// builds historical shift objects. Only includes Date and AllocatedGroups fields.
+// Filters out inactive volunteers.
 // If any volunteers from a group have been allocated, includes the entire group.
 func buildHistoricalShifts(
 	ctx context.Context,
@@ -500,36 +503,52 @@ func buildHistoricalShifts(
 		return []*allocator.Shift{}, nil
 	}
 
+	// Group allocations by shift date, custom entries included so
+	// alterations that remove them can match.
+	allocationsByDate := make(map[string][]db.Allocation)
+	for _, allocation := range previousRotaAllocations {
+		allocationsByDate[allocation.ShiftDate] = append(allocationsByDate[allocation.ShiftDate], allocation)
+	}
+
+	// Apply the previous rota's alterations so history reflects who
+	// actually worked (covers and swaps), not the rota as first published.
+	allAlterations, err := database.GetAlterations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
+	}
+	var previousRotaAlterations []db.Alteration
+	for _, a := range allAlterations {
+		if a.RotaID == previousRota.ID {
+			previousRotaAlterations = append(previousRotaAlterations, a)
+		}
+	}
+	logger.Debug("Applying alterations to historical shifts", zap.Int("count", len(previousRotaAlterations)))
+	allocationsByDate = utils.ApplyAlterations(allocationsByDate, previousRotaAlterations)
+
 	// Build a map of active volunteers by ID for quick lookup
 	volunteersByID := make(map[string]allocator.Volunteer)
 	for _, vol := range activeVolunteers {
 		volunteersByID[vol.ID] = vol
 	}
 
-	// Group allocations by shift date
-	allocationsByDate := make(map[string][]db.Allocation)
-	for _, allocation := range previousRotaAllocations {
-		// Skip allocations for inactive volunteers (not in volunteersByID) or custom entries
-		if allocation.VolunteerID == "" {
-			continue
-		}
-		if _, isActive := volunteersByID[allocation.VolunteerID]; !isActive {
-			continue
-		}
-		allocationsByDate[allocation.ShiftDate] = append(allocationsByDate[allocation.ShiftDate], allocation)
-	}
-
 	// Build historical shifts
 	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByDate))
 	for shiftDate, allocations := range allocationsByDate {
-		// Group volunteers by their GroupKey to reconstruct volunteer groups
+		// Group volunteers by their GroupKey to reconstruct volunteer groups,
+		// skipping custom entries and inactive volunteers
 		volunteersByGroup := make(map[string][]allocator.Volunteer)
 		for _, allocation := range allocations {
+			if allocation.VolunteerID == "" {
+				continue
+			}
 			volunteer, exists := volunteersByID[allocation.VolunteerID]
 			if !exists {
 				continue
 			}
 			volunteersByGroup[volunteer.GroupKey] = append(volunteersByGroup[volunteer.GroupKey], volunteer)
+		}
+		if len(volunteersByGroup) == 0 {
+			continue
 		}
 
 		// Build AllocatedGroups for this shift using the allocator's BuildVolunteerGroup helper

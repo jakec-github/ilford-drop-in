@@ -68,6 +68,7 @@ type ViewResponsesStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
 	GetAllocations(ctx context.Context) ([]db.Allocation, error)
+	GetAlterations(ctx context.Context) ([]db.Alteration, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 

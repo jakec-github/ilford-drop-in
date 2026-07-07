@@ -23,10 +23,12 @@ type mockAllocateRotaStore struct {
 	rotations            []db.Rotation
 	availabilityRequests []db.AvailabilityRequest
 	allocations          []db.Allocation
+	alterations          []db.Alteration
 	insertedAllocations  []db.Allocation
 	getRotationsErr      error
 	getAvailabilityErr   error
 	getAllocationsErr    error
+	getAlterationsErr    error
 	insertAllocationsErr error
 }
 
@@ -49,6 +51,13 @@ func (m *mockAllocateRotaStore) GetAllocations(ctx context.Context) ([]db.Alloca
 		return nil, m.getAllocationsErr
 	}
 	return m.allocations, nil
+}
+
+func (m *mockAllocateRotaStore) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
+	if m.getAlterationsErr != nil {
+		return nil, m.getAlterationsErr
+	}
+	return m.alterations, nil
 }
 
 func (m *mockAllocateRotaStore) InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error {
@@ -646,6 +655,55 @@ func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
 	assert.Equal(t, "dave", group2.Members[0].ID)
 	assert.False(t, group2.HasTeamLead, "Dave is not a team lead")
 	assert.Equal(t, 1, group2.MaleCount, "Dave is male")
+}
+
+func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
+	// History must reflect who actually worked: a volunteer who dropped
+	// out via an alteration disappears, and their cover appears.
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 2},
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
+		},
+		allocations: []db.Allocation{
+			// Dec 1: Alice worked as published.
+			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			// Dec 8: Alice dropped out and Dave covered (see alterations).
+			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+		},
+		alterations: []db.Alteration{
+			{ID: "alt-1", RotaID: "rota-0", ShiftDate: "2024-12-08", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:00Z"},
+			{ID: "alt-2", RotaID: "rota-0", ShiftDate: "2024-12-08", Direction: "add", VolunteerID: "dave", Role: string(model.RoleVolunteer), SetTime: "2024-12-05T10:00:01Z"},
+			// Alteration on a different rota: must be ignored.
+			{ID: "alt-3", RotaID: "rota-1", ShiftDate: "2024-12-01", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:02Z"},
+		},
+	}
+
+	activeVolunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: "Alice A"},
+		{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male", GroupKey: "Dave D"},
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
+
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
+	require.NoError(t, err)
+	require.Len(t, historicalShifts, 2)
+
+	if historicalShifts[0].Date > historicalShifts[1].Date {
+		historicalShifts[0], historicalShifts[1] = historicalShifts[1], historicalShifts[0]
+	}
+
+	// Dec 1 untouched: Alice worked it (the rota-1 alteration is ignored).
+	require.Len(t, historicalShifts[0].AllocatedGroups, 1)
+	assert.Equal(t, "alice", historicalShifts[0].AllocatedGroups[0].Members[0].ID)
+
+	// Dec 8 altered: Dave worked it, not Alice.
+	require.Len(t, historicalShifts[1].AllocatedGroups, 1)
+	assert.Equal(t, "dave", historicalShifts[1].AllocatedGroups[0].Members[0].ID)
 }
 
 func TestBuildHistoricalShifts_NoPreviousRota(t *testing.T) {
