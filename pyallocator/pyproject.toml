@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyallocator"
+version = "0.1.0"
+description = "CP-SAT rota allocator for the Ilford drop-in volunteer rota"
+requires-python = ">=3.11"
+dependencies = [
+    "ortools>=9.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
