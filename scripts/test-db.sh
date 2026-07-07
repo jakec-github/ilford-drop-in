@@ -7,6 +7,13 @@
 
 set -e
 
+# Pin this stack to OrbStack, leaving the global default context (e.g. Docker
+# Desktop) untouched for everything else. DOCKER_CONTEXT overrides the configured
+# default; the CLI is otherwise identical.
+export DOCKER_CONTEXT=orbstack
+
+
+
 CONTAINER_NAME="ilford-pg-test"
 VOLUME_NAME="ilford-pg-test-data"
 DB_NAME="ilford_dropin_test"
