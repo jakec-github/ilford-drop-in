@@ -16,8 +16,9 @@ func AllocateRotaCpsatCmd(app *AppContext) *cobra.Command {
 		Use:   "allocateRotaCpsat",
 		Short: "Allocate a rota using the CP-SAT solver (experimental)",
 		Long: "Run the Python CP-SAT allocator (pyallocator) to assign volunteers to shifts. " +
-			"v1 enforces hard constraints only; team-lead and fill-level requirements are not " +
-			"yet optimised, so the spread of allocations may look arbitrary until preferences land.",
+			"Hard constraints (availability, capacity, no back-to-back, max one team lead, " +
+			"male required, ...) are never violated; soft preferences shape the result to " +
+			"fill shifts evenly, spread males and distribute allocations fairly.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			forceCommit, _ := cmd.Flags().GetBool("force-commit")
@@ -70,6 +71,8 @@ func AllocateRotaCpsatCmd(app *AppContext) *cobra.Command {
 				fmt.Println("   • preallocations vs shift capacity (too many preallocated volunteers for a shift's size)")
 				fmt.Println("   • preallocations vs no-back-to-back (same group preallocated to consecutive shifts)")
 				fmt.Println("   • preallocations vs max frequency (a group preallocated to more shifts than the cap)")
+				fmt.Println("   • preallocations vs team leads (two team leads preallocated onto one shift)")
+				fmt.Println("   • preallocations vs male required (every slot preallocated female, leaving no open slot for a male)")
 				fmt.Println("   • closed shifts (an override closing a shift that another override populates)")
 				return nil
 			}

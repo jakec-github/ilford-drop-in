@@ -1,6 +1,6 @@
 # pyallocator
 
-CP-SAT rota allocator (v1: hard constraints only). Called by the Go CLI's
+CP-SAT rota allocator. Called by the Go CLI's
 `allocateRotaCpsat` command as a subprocess: JSON problem on stdin, JSON
 rota on stdout. Motivation and design: `../docs/cpsat_allocator_plan.md`
 and `../docs/allocator_issues.md`.
@@ -74,16 +74,24 @@ the point of this package:
 - `constraints/` — one file per **hard rule** (something that can never
   be violated). Each module's docstring and `description` state exactly
   what rota feature it ensures. Production set: `DEFAULT_CONSTRAINTS` in
-  `constraints/__init__.py`.
+  `constraints/__init__.py`: availability, max_frequency,
+  shift_capacity, at_most_one_team_lead (0 or 1 per shift),
+  male_required (a shift without a male keeps a slot open — the TL slot
+  or an ordinary seat — so one can be added manually), no_back_to_back,
+  closed_shifts, preallocations, no_duplicate_allocation.
 - `preferences/` — one file per **soft goal**, contributing weighted
   terms to a single maximised objective. Production set:
-  `DEFAULT_PREFERENCES` in `preferences/__init__.py`. Currently:
-  - `maximize_allocations` — placeholder so solutions are non-empty.
-    Because it values all allocations equally, the spread between
-    volunteers can look arbitrary until real preferences (fill-to-size,
-    fairness, coverage) replace it.
-  - `at_most_one_team_lead` — penalises stacking two team leads on one
-    shift without forbidding it (preallocations may force it).
+  `DEFAULT_PREFERENCES` in `preferences/__init__.py`. The shaping
+  preferences use harmonic diminishing returns (the nth unit is worth
+  `WEIGHT // n`), which makes marginal value fall as a shift/group
+  accumulates — scarce resources spread evenly instead of stacking:
+  - `even_fill` (60 // seat) — get every shift to N volunteers before
+    pushing any shift to N+1; custom preallocations occupy early seats.
+  - `spread_males` (30 // male) — distribute males one-per-shift first.
+  - `fairness` (20 // lifetime allocation, historical + this rota) —
+    reach for under-used groups before frequently-allocated ones.
+  - `maximize_allocations` (1) — base reward so shifts fill where they
+    can; the unit other weights are measured against.
 - `problem.py` — normalised solver view; preallocation resolution and
   its error cases live here because several constraints need them.
 - `model_builder.py` / `solver.py` / `solution.py` — model assembly,

@@ -21,3 +21,4 @@
 - I said that team lead should be a preference but I made a mistake. It should be a constraint that there are less than 2 and a preference for 1. (maybe covered by making as many assignments as possible)
 - Without the custom warnings in the new system it is harder to check a rota. Either add them to the python or help the output make it more obvious. Also
   can't check the rota for issues after alterations. Maybe Python based checks are the way to go
+- I can't actually read the constraints and preferences. Certainly couldn't write one

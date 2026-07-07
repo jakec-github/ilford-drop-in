@@ -22,7 +22,9 @@ VALID_INPUT = {
                     "first_name": "Solo",
                     "last_name": "Volunteer",
                     "display_name": "Solo",
-                    "gender": "Female",
+                    # Male so the default male_required constraint lets a
+                    # one-volunteer shift fill in this contract test.
+                    "gender": "Male",
                     "is_team_lead": False,
                 }
             ],

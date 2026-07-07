@@ -1,10 +1,10 @@
-"""PLACEHOLDER preference: maximise the total number of allocations, so
-that constraint-only solves return non-empty rotas instead of the
-trivially-feasible empty one.
+"""Base reward: every (group, shift) allocation is worth a little, so
+shifts fill where they can and ties between otherwise-equal solutions
+break toward more volunteers on the rota.
 
-Replace/extend when real preferences land: fill-to-size, team-lead
-coverage, male coverage per shift, fair distribution between volunteers
-— each as its own weighted module here.
+The shaping preferences (even_fill, spread_males, fairness) decide
+WHERE and WHO; this keeps the overall pressure to allocate at all.
+Other preference weights are calibrated against this baseline.
 """
 
 from __future__ import annotations
@@ -15,14 +15,14 @@ from ..constraints.base import AssignmentVars
 from ..problem import Problem
 from .base import ObjectiveTerm
 
-# Reward per (group, shift) allocation. Other preference weights are
-# calibrated against this baseline.
+# Reward per (group, shift) allocation — the unit other preference
+# weights are measured against.
 ALLOCATION_REWARD = 1
 
 
 class MaximizeAllocationsPreference:
     name = "maximize_allocations"
-    description = "as many group-shift allocations as possible (placeholder objective)"
+    description = "as many group-shift allocations as possible"
 
     def objective_terms(
         self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem

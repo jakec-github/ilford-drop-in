@@ -54,17 +54,32 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             problems.append(f"shift {shift.index}: closed but allocated")
 
         ordinary = 0
+        team_lead_groups = 0
+        males = 0
         expected_ids: set[str] = set()
         for key in keys:
             group = groups[key]
             allocated[key].append(shift.index)
             expected_ids.update(m.id for m in group.members)
             ordinary += sum(1 for m in group.members if not m.is_team_lead)
+            team_lead_groups += any(m.is_team_lead for m in group.members)
+            males += sum(1 for m in group.members if m.gender == "Male")
             if (
                 shift.index not in group.available_shift_indices
                 and (key, shift.index) not in preallocated_pairs
             ):
                 problems.append(f"shift {shift.index}: {key} not available")
+
+        if team_lead_groups > 1:
+            problems.append(f"shift {shift.index}: {team_lead_groups} team leads")
+        # No male => a slot must stay open (TL slot or an ordinary seat)
+        # so the rota creator can add one manually.
+        if not spec.closed and males == 0 and team_lead_groups > 0:
+            budget = max(0, spec.size - len(spec.custom_preallocations))
+            if ordinary >= budget:
+                problems.append(
+                    f"shift {shift.index}: no male and no open slot to add one"
+                )
 
         if not spec.closed and ordinary > max(0, spec.size - len(spec.custom_preallocations)):
             problems.append(f"shift {shift.index}: over capacity ({ordinary})")
@@ -200,6 +215,8 @@ def test_end_to_end_scenario():
         "availability",
         "max_frequency",
         "shift_capacity",
+        "at_most_one_team_lead",
+        "male_required",
         "no_back_to_back",
         "closed_shifts",
         "preallocations",
