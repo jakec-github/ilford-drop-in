@@ -8,6 +8,10 @@ with 5 past allocations earns only FAIRNESS_WEIGHT // 6 for its next
 one — so the solver reaches for under-used volunteers first. This
 replaces the fairness that "emerged from the mechanism" in the greedy
 allocator with an explicit, tunable weight (see allocator_issues.md).
+
+History is recorded per group, so counting stays group-level: the
+group's first member stands in for the whole group (members always
+work together under the grouping constraint).
 """
 
 from __future__ import annotations
@@ -32,17 +36,18 @@ class FairnessPreference:
         self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
     ) -> list[ObjectiveTerm]:
         terms: list[ObjectiveTerm] = []
-        for gv in problem.groups:
+        for group in problem.groups:
+            rep = group.members[0]
             allocations = sum(
-                x[(gv.key, shift.index)] for shift in problem.shifts
+                x[(rep.id, shift.index)] for shift in problem.shifts
             )
-            history = gv.group.historical_allocation_count
+            history = group.historical_allocation_count
             levels = []
             for k in range(1, len(problem.shifts) + 1):
                 weight = FAIRNESS_WEIGHT // (history + k)
                 if weight == 0:
                     break
-                level = model.NewBoolVar(f"fair_level_{gv.key}_{k}")
+                level = model.NewBoolVar(f"fair_level_{group.group_key}_{k}")
                 levels.append(level)
                 terms.append((level, weight))
             if levels:

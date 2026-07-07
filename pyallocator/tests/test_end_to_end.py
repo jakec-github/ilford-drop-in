@@ -209,9 +209,11 @@ def test_end_to_end_scenario():
 
     assert out.diagnostics is not None
     assert out.diagnostics.num_groups == len(inp.groups)
-    assert out.diagnostics.num_variables == len(inp.groups) * len(inp.shifts)
+    num_volunteers = sum(len(g.members) for g in inp.groups)
+    assert out.diagnostics.num_variables == num_volunteers * len(inp.shifts)
     assert set(out.diagnostics.constraints_applied) == {
         "no_duplicate_allocation",
+        "grouping",
         "availability",
         "max_frequency",
         "shift_capacity",

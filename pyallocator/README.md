@@ -28,8 +28,8 @@ Exit codes: `0` for any well-formed run **including INFEASIBLE**
 
 ## JSON contract
 
-Input (all snake_case; grouping and availability are resolved in Go —
-Python only counts):
+Input (all snake_case; group composition and availability are resolved
+in Go — Python enforces and counts):
 
 ```json
 {
@@ -67,14 +67,17 @@ common; missing team leads are filled in manually later.
 
 ## How the code is organised
 
-The allocation unit is the **VolunteerGroup** (couples/families move as
-one); the model has one BoolVar per (group, shift) pair. Modularity is
-the point of this package:
+The assignment unit is the **individual volunteer**: the model has one
+BoolVar per (volunteer, shift) pair, and group atomicity
+(couples/families move as one) is the `grouping` constraint rather
+than the variable structure — so per-person roles can become solver
+decisions later. Modularity is the point of this package:
 
 - `constraints/` — one file per **hard rule** (something that can never
   be violated). Each module's docstring and `description` state exactly
   what rota feature it ensures. Production set: `DEFAULT_CONSTRAINTS` in
-  `constraints/__init__.py`: availability, max_frequency,
+  `constraints/__init__.py`: grouping (members of a group work each
+  shift together or not at all), availability, max_frequency,
   shift_capacity, at_most_one_team_lead (0 or 1 per shift),
   male_required (a shift without a male keeps a slot open — the TL slot
   or an ordinary seat — so one can be added manually), no_back_to_back,

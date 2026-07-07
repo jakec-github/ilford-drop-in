@@ -1,5 +1,5 @@
 """The no-duplicate-allocation invariant is structural: one BoolVar per
-(group, shift) pair. These tests validate the invariant check itself."""
+(volunteer, shift) pair. These tests validate the invariant check itself."""
 
 from __future__ import annotations
 
@@ -28,6 +28,6 @@ def test_invariant_violation_detected():
     )
     problem = Problem(inp)
     model = cp_model.CpModel()
-    x = {}  # missing the (g1, 0) variable
+    x = {}  # missing the (volunteer g1, shift 0) variable
     with pytest.raises(AssertionError, match="one variable per"):
         no_duplicate_allocation.CONSTRAINT.apply(model, x, problem)

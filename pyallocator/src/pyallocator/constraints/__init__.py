@@ -8,6 +8,7 @@ from . import (
     at_most_one_team_lead,
     availability,
     closed_shifts,
+    grouping,
     male_required,
     max_frequency,
     no_back_to_back,
@@ -19,6 +20,7 @@ from .base import AssignmentVars, Constraint
 
 DEFAULT_CONSTRAINTS: list[Constraint] = [
     no_duplicate_allocation.CONSTRAINT,
+    grouping.CONSTRAINT,
     availability.CONSTRAINT,
     max_frequency.CONSTRAINT,
     shift_capacity.CONSTRAINT,

@@ -1,6 +1,7 @@
-"""Builds the CP-SAT model: one BoolVar per (group, shift) pair, then
-applies the constraint list and sums the preference terms into a single
-Maximize objective.
+"""Builds the CP-SAT model: one BoolVar per (volunteer, shift) pair,
+then applies the constraint list and sums the preference terms into a
+single Maximize objective. Group atomicity is not structural — the
+grouping constraint ties members of a group together.
 
 Constraint and preference lists are parameters so tests can solve with
 exactly one module active.
@@ -32,10 +33,10 @@ def build(
 ) -> BuiltModel:
     model = cp_model.CpModel()
     x: AssignmentVars = {}
-    for gv in problem.groups:
+    for v in problem.volunteers:
         for shift in problem.shifts:
-            x[(gv.key, shift.index)] = model.NewBoolVar(
-                f"x[{gv.key},{shift.index}]"
+            x[(v.id, shift.index)] = model.NewBoolVar(
+                f"x[{v.id},{shift.index}]"
             )
 
     for constraint in constraints:

@@ -23,8 +23,8 @@ class ClosedShiftsConstraint:
         for shift in problem.shifts:
             if not shift.closed:
                 continue
-            for gv in problem.groups:
-                model.Add(x[(gv.key, shift.index)] == 0)
+            for v in problem.volunteers:
+                model.Add(x[(v.id, shift.index)] == 0)
 
 
 CONSTRAINT = ClosedShiftsConstraint()

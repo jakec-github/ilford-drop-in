@@ -2,8 +2,9 @@
 
 make_group/make_shift/make_input build minimal valid inputs; solve_with
 solves with an explicit constraint/preference subset so each test file
-exercises exactly one module (plus the placeholder objective so
-solutions are non-empty).
+exercises exactly one module (plus the grouping constraint, which
+replaces the old structural group-atomicity, and the placeholder
+objective so solutions are non-empty).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pyallocator.domain import (
     Member,
     ShiftSpec,
 )
+from pyallocator.constraints import grouping
 from pyallocator.preferences import maximize_allocations
 
 
@@ -96,12 +98,18 @@ def solve_with(
     constraints: Sequence = (),
     preferences: Sequence | None = None,
 ) -> AllocationOutput:
-    """Solve with ONLY the given constraints. Defaults to the placeholder
-    maximise-allocations objective so the solver doesn't return the
-    trivially-feasible empty rota."""
+    """Solve with ONLY the given constraints, plus grouping (group
+    atomicity used to be structural; now it's a constraint every test
+    relies on). Defaults to the placeholder maximise-allocations
+    objective so the solver doesn't return the trivially-feasible
+    empty rota."""
     if preferences is None:
         preferences = [maximize_allocations.PREFERENCE]
-    return solve(input_, constraints=list(constraints), preferences=list(preferences))
+    return solve(
+        input_,
+        constraints=[grouping.CONSTRAINT, *constraints],
+        preferences=list(preferences),
+    )
 
 
 def allocations_by_shift(output: AllocationOutput) -> dict[int, tuple[str, ...]]:

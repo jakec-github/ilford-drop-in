@@ -42,7 +42,7 @@ class EvenFillPreference:
             if budget == 0:
                 continue
             fill = sum(
-                gv.ordinary_size * x[(gv.key, shift.index)] for gv in problem.groups
+                v.seat_cost * x[(v.id, shift.index)] for v in problem.volunteers
             )
             levels = []
             for k in range(1, budget + 1):

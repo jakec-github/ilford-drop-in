@@ -14,7 +14,8 @@ from ortools.sat.python import cp_model
 
 from ..problem import Problem
 
-# x[(group_key, shift_index)] -> BoolVar: "this group works this shift".
+# x[(volunteer_id, shift_index)] -> BoolVar: "this volunteer works this
+# shift". Group atomicity is the grouping constraint, not the variables.
 AssignmentVars = dict[tuple[str, int], cp_model.IntVar]
 
 

@@ -1,10 +1,11 @@
 """Extracts the solved rota from variable values.
 
 Team-lead designation per shift: the preallocated team lead if one was
-set, otherwise the team-lead member of the first allocated TL group (by
-group key order). Members of any additional TL group are reported in
-volunteer_ids as ordinary volunteers — mirroring the Go side, where
-non-designated team-lead members get Role: Volunteer rows.
+set, otherwise the first allocated team-lead volunteer (in canonical
+order: group input order, then member order). Any further team-lead
+volunteers are reported in volunteer_ids as ordinary volunteers —
+mirroring the Go side, where non-designated team-lead members get
+Role: Volunteer rows.
 """
 
 from __future__ import annotations
@@ -45,21 +46,23 @@ def _extract_shift(
 ) -> OutputShift:
     spec = problem.shifts[shift_index]
     allocated = [
-        gv
-        for gv in problem.groups
-        if result.solver.Value(x[(gv.key, shift_index)]) == 1
+        v
+        for v in problem.volunteers
+        if result.solver.Value(x[(v.id, shift_index)]) == 1
     ]
 
     team_lead_id = problem.preallocated_team_lead.get(shift_index, "")
     volunteer_ids: list[str] = []
-    for gv in allocated:
-        for member in gv.group.members:
-            if member.id == team_lead_id:
-                continue
-            if member.is_team_lead and not team_lead_id:
-                team_lead_id = member.id
-                continue
-            volunteer_ids.append(member.id)
+    group_keys: list[str] = []
+    for v in allocated:
+        if v.group_key not in group_keys:
+            group_keys.append(v.group_key)
+        if v.id == team_lead_id:
+            continue
+        if v.is_team_lead and not team_lead_id:
+            team_lead_id = v.id
+            continue
+        volunteer_ids.append(v.id)
 
     return OutputShift(
         index=spec.index,
@@ -69,5 +72,5 @@ def _extract_shift(
         team_lead_id=team_lead_id,
         volunteer_ids=tuple(volunteer_ids),
         custom_preallocations=spec.custom_preallocations,
-        allocated_group_keys=tuple(gv.key for gv in allocated),
+        allocated_group_keys=tuple(group_keys),
     )

@@ -4,8 +4,7 @@ ordinary seat — so the rota creator can manually add a male after
 finding a suitable volunteer.
 
 Per open shift, at least one of:
-  1. a male is allocated (counted across all members of allocated
-     groups, team leads included, matching the Go group MaleCount);
+  1. a male is allocated (team leads included);
   2. no team lead is allocated (a male team lead can still be added);
   3. at least one ordinary seat is unfilled (a male volunteer can
      still be added).
@@ -36,15 +35,15 @@ class MaleRequiredConstraint:
             if shift.closed:
                 continue
             male_sum = sum(
-                gv.male_count * x[(gv.key, shift.index)] for gv in problem.groups
+                x[(v.id, shift.index)] for v in problem.volunteers if v.is_male
             )
             team_lead_sum = sum(
-                x[(gv.key, shift.index)]
-                for gv in problem.groups
-                if gv.has_team_lead
+                x[(v.id, shift.index)]
+                for v in problem.volunteers
+                if v.is_team_lead
             )
             fill = sum(
-                gv.ordinary_size * x[(gv.key, shift.index)] for gv in problem.groups
+                v.seat_cost * x[(v.id, shift.index)] for v in problem.volunteers
             )
             budget = max(0, shift.size - len(shift.custom_preallocations))
 
