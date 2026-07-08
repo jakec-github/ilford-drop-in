@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -182,14 +183,16 @@ func AllocateRota(
 		shiftDateStrings[i] = date.Format("2006-01-02")
 	}
 
-	// Step 7: Fetch and build historical shifts from previous rota
+	// Step 7: Fetch and build historical shifts from previous rota.
+	// History gets ALL volunteers (inactive included) so past shifts
+	// keep their groups; allocation itself only sees active volunteers.
 	logger.Debug("Fetching allocations for historical shifts")
 	historicalShifts, err := buildHistoricalShifts(
 		ctx,
 		database,
 		rotations,
 		targetRota,
-		allocatorVolunteers,
+		convertToAllocatorVolunteers(allVolunteers),
 		logger,
 	)
 	if err != nil {
@@ -466,15 +469,18 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 
 // buildHistoricalShifts fetches allocations from the previous rota, applies that
 // rota's alterations (covers/swaps) so history reflects who actually worked, and
-// builds historical shift objects. Only includes Date and AllocatedGroups fields.
-// Filters out inactive volunteers.
-// If any volunteers from a group have been allocated, includes the entire group.
+// builds historical shift objects sorted ascending by date. Only includes Date
+// and AllocatedGroups fields. Callers pass ALL volunteers (inactive included) so
+// shifts worked by now-inactive volunteers keep their groups — dropping them
+// would shift the back-to-back boundary onto an earlier date. Allocations whose
+// volunteer id is unknown (deleted from the sheet) and custom entries are
+// skipped; a date is still emitted even if no groups remain.
 func buildHistoricalShifts(
 	ctx context.Context,
 	database AllocateRotaStore,
 	allRotations []db.Rotation,
 	targetRota *db.Rotation,
-	activeVolunteers []allocator.Volunteer,
+	volunteers []allocator.Volunteer,
 	logger *zap.Logger,
 ) ([]*allocator.Shift, error) {
 	// Find the previous rota (the one before the target rota)
@@ -525,9 +531,9 @@ func buildHistoricalShifts(
 	logger.Debug("Applying alterations to historical shifts", zap.Int("count", len(previousRotaAlterations)))
 	allocationsByDate = utils.ApplyAlterations(allocationsByDate, previousRotaAlterations)
 
-	// Build a map of active volunteers by ID for quick lookup
+	// Build a map of volunteers by ID for quick lookup
 	volunteersByID := make(map[string]allocator.Volunteer)
-	for _, vol := range activeVolunteers {
+	for _, vol := range volunteers {
 		volunteersByID[vol.ID] = vol
 	}
 
@@ -535,7 +541,7 @@ func buildHistoricalShifts(
 	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByDate))
 	for shiftDate, allocations := range allocationsByDate {
 		// Group volunteers by their GroupKey to reconstruct volunteer groups,
-		// skipping custom entries and inactive volunteers
+		// skipping custom entries and unknown volunteer ids
 		volunteersByGroup := make(map[string][]allocator.Volunteer)
 		for _, allocation := range allocations {
 			if allocation.VolunteerID == "" {
@@ -546,9 +552,6 @@ func buildHistoricalShifts(
 				continue
 			}
 			volunteersByGroup[volunteer.GroupKey] = append(volunteersByGroup[volunteer.GroupKey], volunteer)
-		}
-		if len(volunteersByGroup) == 0 {
-			continue
 		}
 
 		// Build AllocatedGroups for this shift using the allocator's BuildVolunteerGroup helper
@@ -564,6 +567,12 @@ func buildHistoricalShifts(
 			AllocatedGroups: allocatedGroups,
 		})
 	}
+
+	// Consumers treat the last element as the boundary shift (and measure
+	// index distances), so the order must be by date, not map iteration.
+	sort.Slice(historicalShifts, func(i, j int) bool {
+		return historicalShifts[i].Date < historicalShifts[j].Date
+	})
 
 	logger.Debug("Built historical shifts", zap.Int("shift_count", len(historicalShifts)))
 

@@ -106,12 +106,14 @@ func AllocateRotaCpsat(
 		shiftDateStrings[i] = date.Format("2006-01-02")
 	}
 
+	// History gets ALL volunteers (inactive included) so past shifts
+	// keep their groups; allocation itself only sees active volunteers.
 	historicalShifts, err := buildHistoricalShifts(
 		ctx,
 		database,
 		rotations,
 		targetRota,
-		allocatorVolunteers,
+		convertToAllocatorVolunteers(allVolunteers),
 		logger,
 	)
 	if err != nil {

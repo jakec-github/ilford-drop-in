@@ -573,9 +573,10 @@ func TestCalcShiftDates_Invalid(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
-	// Test that buildHistoricalShifts correctly filters out inactive volunteers
-	// and only includes active volunteers in historical shifts
+func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
+	// Allocations whose volunteer id no longer exists in the sheet are
+	// skipped, but the shift itself is still emitted. (Inactive volunteers
+	// are NOT filtered here — callers pass the full volunteer list.)
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -587,44 +588,39 @@ func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
 		},
 		// Allocations from the old rota (rota-0)
 		// Alice and Bob are a couple (group_alice_bob)
-		// Charlie is inactive (should be filtered out)
+		// Charlie has been deleted from the volunteer sheet (unknown id)
 		// Dave is individual
 		allocations: []db.Allocation{
 			// Shift 1 - Dec 1: Alice (group), Bob (group), Charlie (individual)
 			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "bob", Role: string(model.RoleTeamLead)},
-			{ID: "alloc-3", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Inactive
+			{ID: "alloc-3", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
 			// Shift 2 - Dec 8: Dave (individual), Charlie (individual)
 			{ID: "alloc-4", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "dave", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-5", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Inactive
+			{ID: "alloc-5", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
 			// Allocations from current rota (should be ignored)
 			{ID: "alloc-6", RotaID: "rota-1", ShiftDate: "2025-01-05", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 		},
 	}
 
-	// Active volunteers (Charlie is inactive)
-	activeVolunteers := []allocator.Volunteer{
+	// Known volunteers (Charlie has been deleted from the sheet)
+	volunteers := []allocator.Volunteer{
 		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: "group_alice_bob", IsTeamLead: false},
 		{ID: "bob", FirstName: "Bob", LastName: "B", Gender: "Male", GroupKey: "group_alice_bob", IsTeamLead: true},
 		{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male", GroupKey: "", IsTeamLead: false}, // Individual
-		// Charlie is NOT in the active list (inactive)
+		// Charlie is NOT in the list (deleted)
 	}
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
 
 	// Call buildHistoricalShifts
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, logger)
 	require.NoError(t, err)
 
 	// Assertions
 	require.Len(t, historicalShifts, 2, "Should have 2 historical shifts")
 
-	// Sort shifts by date for consistent assertions
-	if len(historicalShifts) == 2 && historicalShifts[0].Date > historicalShifts[1].Date {
-		historicalShifts[0], historicalShifts[1] = historicalShifts[1], historicalShifts[0]
-	}
-
-	// Check first shift (Dec 1) - should only have Alice and Bob (Charlie filtered out)
+	// Check first shift (Dec 1) - should only have Alice and Bob (Charlie skipped)
 	shift1 := historicalShifts[0]
 	assert.Equal(t, "2024-12-01", shift1.Date)
 	assert.Len(t, shift1.AllocatedGroups, 1, "Should have 1 group (Alice+Bob)")
@@ -644,7 +640,7 @@ func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
 	assert.Contains(t, memberIDs, "alice")
 	assert.Contains(t, memberIDs, "bob")
 
-	// Check second shift (Dec 8) - should only have Dave (Charlie filtered out)
+	// Check second shift (Dec 8) - should only have Dave (Charlie skipped)
 	shift2 := historicalShifts[1]
 	assert.Equal(t, "2024-12-08", shift2.Date)
 	assert.Len(t, shift2.AllocatedGroups, 1, "Should have 1 group (Dave)")
@@ -655,6 +651,47 @@ func TestBuildHistoricalShifts_FiltersInactiveVolunteers(t *testing.T) {
 	assert.Equal(t, "dave", group2.Members[0].ID)
 	assert.False(t, group2.HasTeamLead, "Dave is not a team lead")
 	assert.Equal(t, 1, group2.MaleCount, "Dave is male")
+}
+
+func TestBuildHistoricalShifts_KeepsShiftsWithNoKnownVolunteers(t *testing.T) {
+	// A date whose workers are all unknown (deleted from the sheet) must
+	// still appear — with empty groups — so the last historical shift is
+	// the true last shift, and the result is sorted ascending by date.
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 3},
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3},
+		},
+		allocations: []db.Allocation{
+			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			// Dec 15 (the true last shift) was worked only by a deleted volunteer.
+			{ID: "alloc-3", RotaID: "rota-0", ShiftDate: "2024-12-15", VolunteerID: "ghost", Role: string(model.RoleVolunteer)},
+		},
+	}
+
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: "Alice A"},
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3}
+
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, logger)
+	require.NoError(t, err)
+	require.Len(t, historicalShifts, 3)
+
+	// Sorted ascending by date, no manual reordering needed.
+	assert.Equal(t, "2024-12-01", historicalShifts[0].Date)
+	assert.Equal(t, "2024-12-08", historicalShifts[1].Date)
+	assert.Equal(t, "2024-12-15", historicalShifts[2].Date)
+
+	// The last shift survives with no groups: Alice (on Dec 8) is NOT on
+	// the boundary, and the boundary doesn't fall back to Dec 8.
+	assert.Empty(t, historicalShifts[2].AllocatedGroups)
+	assert.Len(t, historicalShifts[1].AllocatedGroups, 1)
 }
 
 func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
@@ -692,10 +729,6 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 2)
-
-	if historicalShifts[0].Date > historicalShifts[1].Date {
-		historicalShifts[0], historicalShifts[1] = historicalShifts[1], historicalShifts[0]
-	}
 
 	// Dec 1 untouched: Alice worked it (the rota-1 alteration is ignored).
 	require.Len(t, historicalShifts[0].AllocatedGroups, 1)
