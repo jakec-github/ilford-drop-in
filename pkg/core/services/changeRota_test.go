@@ -238,6 +238,7 @@ func TestChangeRota_NoInputsError(t *testing.T) {
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one of")
+	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
 func TestChangeRota_DateNotInAnyRota(t *testing.T) {
@@ -260,6 +261,7 @@ func TestChangeRota_DateNotInAnyRota(t *testing.T) {
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not in any rota")
+	assert.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestChangeRota_RemoveVolunteerNotOnShift(t *testing.T) {
@@ -310,6 +312,7 @@ func TestChangeRota_AddVolunteerAlreadyOnShift(t *testing.T) {
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already on the shift")
+	assert.ErrorIs(t, err, ErrConflict)
 }
 
 func TestChangeRota_RemoveCustomNotOnShift(t *testing.T) {

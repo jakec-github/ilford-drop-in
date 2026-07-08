@@ -61,11 +61,11 @@ func ChangeRota(
 
 	// Step 1: Input validation
 	if params.In == "" && params.Out == "" && params.InCustom == "" && params.OutCustom == "" {
-		return nil, fmt.Errorf("at least one of --in, --out, --in-custom, or --out-custom must be provided")
+		return nil, wrapf(ErrInvalidInput, "at least one of --in, --out, --in-custom, or --out-custom must be provided")
 	}
 
 	if params.Reason == "" {
-		return nil, fmt.Errorf("--reason is required")
+		return nil, wrapf(ErrInvalidInput, "--reason is required")
 	}
 
 	// Step 1b: Fetch volunteers and validate IDs
@@ -81,13 +81,13 @@ func ChangeRota(
 
 	if params.In != "" {
 		if _, ok := volunteersByID[params.In]; !ok {
-			return nil, fmt.Errorf("volunteer %s not found", params.In)
+			return nil, wrapf(ErrNotFound, "volunteer %s not found", params.In)
 		}
 	}
 
 	if params.Out != "" {
 		if _, ok := volunteersByID[params.Out]; !ok {
-			return nil, fmt.Errorf("volunteer %s not found", params.Out)
+			return nil, wrapf(ErrNotFound, "volunteer %s not found", params.Out)
 		}
 	}
 
@@ -198,7 +198,7 @@ func buildEffectiveState(allAllocations []db.Allocation, allAlterations []db.Alt
 func findRotaForDate(rotations []db.Rotation, dateStr string) (*db.Rotation, error) {
 	targetDate, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid date format %q: expected YYYY-MM-DD", dateStr)
+		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
 	}
 
 	for i := range rotations {
@@ -214,7 +214,7 @@ func findRotaForDate(rotations []db.Rotation, dateStr string) (*db.Rotation, err
 		}
 	}
 
-	return nil, fmt.Errorf("date %s is not in any rota", dateStr)
+	return nil, wrapf(ErrNotFound, "date %s is not in any rota", dateStr)
 }
 
 // validateDateChanges validates that the proposed changes are consistent with the current state
@@ -231,7 +231,7 @@ func validateDateChanges(effectiveState map[string][]db.Allocation, dateStr, out
 			}
 		}
 		if !found {
-			return fmt.Errorf("volunteer %s is not on the shift for %s", outVol, dateStr)
+			return wrapf(ErrConflict, "volunteer %s is not on the shift for %s", outVol, dateStr)
 		}
 	}
 
@@ -239,7 +239,7 @@ func validateDateChanges(effectiveState map[string][]db.Allocation, dateStr, out
 	if inVol != "" {
 		for _, a := range allocations {
 			if a.VolunteerID == inVol {
-				return fmt.Errorf("volunteer %s is already on the shift for %s", inVol, dateStr)
+				return wrapf(ErrConflict, "volunteer %s is already on the shift for %s", inVol, dateStr)
 			}
 		}
 	}
@@ -254,7 +254,7 @@ func validateDateChanges(effectiveState map[string][]db.Allocation, dateStr, out
 			}
 		}
 		if !found {
-			return fmt.Errorf("custom entry %q is not on the shift for %s", outCustom, dateStr)
+			return wrapf(ErrConflict, "custom entry %q is not on the shift for %s", outCustom, dateStr)
 		}
 	}
 
