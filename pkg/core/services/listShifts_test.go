@@ -1,0 +1,214 @@
+package services
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
+	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
+)
+
+// mockListShiftsStore implements ListShiftsStore for testing
+type mockListShiftsStore struct {
+	allocations []db.Allocation
+	alterations []db.Alteration
+}
+
+func (m *mockListShiftsStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
+	return m.allocations, nil
+}
+
+func (m *mockListShiftsStore) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
+	return m.alterations, nil
+}
+
+// listShiftsVolunteers returns a volunteer client with display names computed
+func listShiftsVolunteers() *mockChangeRotaVolClient {
+	return &mockChangeRotaVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead},
+			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer},
+			{ID: "charlie", DisplayName: "Charlie", Role: model.RoleVolunteer},
+		},
+	}
+}
+
+func TestListShifts_BaseAllocations(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockListShiftsStore{
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a3", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a4", RotaID: "rota-1", ShiftDate: "2025-01-05", CustomEntry: "External Org"},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+
+	// Sorted by date ascending
+	assert.Equal(t, "2025-01-05", shifts[0].Date)
+	assert.Equal(t, "2025-01-12", shifts[1].Date)
+
+	first := shifts[0]
+	assert.False(t, first.Closed)
+	assert.Zero(t, first.AlterationCount)
+	assert.True(t, first.LastChanged.IsZero())
+	require.Len(t, first.Assignees, 3)
+
+	// Team lead sorted first, then alphabetical
+	assert.Equal(t, "alice", first.Assignees[0].VolunteerID)
+	assert.Equal(t, "Alice", first.Assignees[0].Name)
+	assert.Equal(t, string(model.RoleTeamLead), first.Assignees[0].Role)
+	assert.Equal(t, "Bob", first.Assignees[1].Name)
+	assert.Equal(t, "External Org", first.Assignees[2].Name)
+	assert.Equal(t, "External Org", first.Assignees[2].CustomEntry)
+	assert.Empty(t, first.Assignees[2].VolunteerID)
+}
+
+func TestListShifts_AlterationsApplied(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockListShiftsStore{
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+		alterations: []db.Alteration{
+			{ID: "alt1", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T10:00:00Z"},
+			{ID: "alt2", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "add", VolunteerID: "charlie", SetTime: "2025-01-02T10:00:00Z"},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 1)
+
+	shift := shifts[0]
+	require.Len(t, shift.Assignees, 1)
+	assert.Equal(t, "charlie", shift.Assignees[0].VolunteerID)
+	assert.Equal(t, 2, shift.AlterationCount)
+	assert.Equal(t, time.Date(2025, 1, 2, 10, 0, 0, 0, time.UTC), shift.LastChanged)
+}
+
+func TestListShifts_DateFilters(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockListShiftsStore{
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a3", ShiftDate: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		params    ListShiftsParams
+		wantDates []string
+	}{
+		{"no filters", ListShiftsParams{}, []string{"2025-01-05", "2025-01-12", "2025-01-19"}},
+		{"from only", ListShiftsParams{From: "2025-01-12"}, []string{"2025-01-12", "2025-01-19"}},
+		{"to only", ListShiftsParams{To: "2025-01-12"}, []string{"2025-01-05", "2025-01-12"}},
+		{"from and to inclusive", ListShiftsParams{From: "2025-01-12", To: "2025-01-12"}, []string{"2025-01-12"}},
+		{"empty range", ListShiftsParams{From: "2025-02-01"}, []string{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, tt.params, logger)
+			require.NoError(t, err)
+			dates := make([]string, 0, len(shifts))
+			for _, s := range shifts {
+				dates = append(dates, s.Date)
+			}
+			assert.Equal(t, tt.wantDates, dates)
+		})
+	}
+}
+
+func TestListShifts_InvalidDateFilters(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+	store := &mockListShiftsStore{}
+
+	_, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{From: "12/01/2025"}, logger)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+
+	_, err = ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{To: "not-a-date"}, logger)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestListShifts_ClosedShift(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	cfg := &config.Config{
+		RotaOverrides: []config.RotaOverride{
+			// 2025-01-05 is the first Sunday of January 2025
+			{RRule: "FREQ=MONTHLY;BYDAY=1SU", Closed: true},
+		},
+	}
+
+	store := &mockListShiftsStore{
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), cfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+
+	assert.True(t, shifts[0].Closed)
+	assert.Empty(t, shifts[0].Assignees)
+	assert.False(t, shifts[1].Closed)
+	assert.Len(t, shifts[1].Assignees, 1)
+}
+
+func TestListShifts_UnknownVolunteerDegradesToRawID(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockListShiftsStore{
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "ghost-id"},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 1)
+	require.Len(t, shifts[0].Assignees, 1)
+	assert.Equal(t, "ghost-id", shifts[0].Assignees[0].Name)
+}
+
+func TestFilterShiftsByVolunteer(t *testing.T) {
+	shifts := []Shift{
+		{Date: "2025-01-05", Assignees: []ShiftAssignee{{VolunteerID: "alice"}, {VolunteerID: "bob"}}},
+		{Date: "2025-01-12", Assignees: []ShiftAssignee{{VolunteerID: "bob"}}},
+		{Date: "2025-01-19", Closed: true, Assignees: nil},
+		{Date: "2025-01-26", Assignees: []ShiftAssignee{{CustomEntry: "External Org", Name: "External Org"}}},
+	}
+
+	filtered := FilterShiftsByVolunteer(shifts, "alice")
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "2025-01-05", filtered[0].Date)
+
+	filtered = FilterShiftsByVolunteer(shifts, "bob")
+	require.Len(t, filtered, 2)
+
+	assert.Empty(t, FilterShiftsByVolunteer(shifts, "nobody"))
+}
