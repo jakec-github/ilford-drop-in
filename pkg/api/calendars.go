@@ -24,11 +24,18 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var volunteer *model.Volunteer
-	for i := range volunteers {
-		if volunteers[i].ID == volunteerID {
-			volunteer = &volunteers[i]
-			break
+	volunteer := findVolunteerByID(volunteers, volunteerID)
+	if volunteer == nil {
+		// A miss may be a volunteer added since the cache was filled, and
+		// their first request is typically a calendar app validating a new
+		// subscription, so retry against a fresh roster before 404ing.
+		if refresher, ok := h.volunteers.(VolunteerRefresher); ok {
+			volunteers, err = refresher.RefreshVolunteers(h.cfg)
+			if err != nil {
+				h.writeServiceError(w, err)
+				return
+			}
+			volunteer = findVolunteerByID(volunteers, volunteerID)
 		}
 	}
 	if volunteer == nil {
@@ -57,4 +64,13 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write([]byte(calendar)); err != nil {
 		h.logger.Error("Failed to write calendar response", zap.Error(err))
 	}
+}
+
+func findVolunteerByID(volunteers []model.Volunteer, id string) *model.Volunteer {
+	for i := range volunteers {
+		if volunteers[i].ID == id {
+			return &volunteers[i]
+		}
+	}
+	return nil
 }
