@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,24 +28,36 @@ func (m *mockChangeRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, 
 	return m.rotations, nil
 }
 
-func (m *mockChangeRotaStore) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error) {
+func (m *mockChangeRotaStore) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error) {
 	var filtered []db.Allocation
 	for _, a := range m.allocations {
-		if a.RotaID == rotaID {
+		if shiftDateInRange(a.ShiftDate, from, to) {
 			filtered = append(filtered, a)
 		}
 	}
 	return filtered, nil
 }
 
-func (m *mockChangeRotaStore) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error) {
+func (m *mockChangeRotaStore) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error) {
 	var filtered []db.Alteration
 	for _, a := range m.alterations {
-		if a.RotaID == rotaID {
+		if shiftDateInRange(a.ShiftDate, from, to) {
 			filtered = append(filtered, a)
 		}
 	}
 	return filtered, nil
+}
+
+// shiftDateInRange mimics the DB's inclusive shift_date bounds, with zero
+// times leaving the corresponding bound open
+func shiftDateInRange(dateStr string, from, to time.Time) bool {
+	if !from.IsZero() && dateStr < from.Format("2006-01-02") {
+		return false
+	}
+	if !to.IsZero() && dateStr > to.Format("2006-01-02") {
+		return false
+	}
+	return true
 }
 
 func (m *mockChangeRotaStore) InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error {

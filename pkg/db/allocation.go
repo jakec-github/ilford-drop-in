@@ -3,21 +3,43 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// GetAllocations retrieves all allocation records
-func (d *DB) GetAllocations(ctx context.Context) ([]Allocation, error) {
+// GetAllocationsInRange retrieves allocation records with shift_date between
+// from and to (inclusive). A zero time leaves that bound open.
+func (d *DB) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]Allocation, error) {
+	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
 		SELECT id, rota_id, shift_date, role, volunteer_id, custom_entry
 		FROM allocation
-	`)
+	`+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query allocations: %w", err)
 	}
 	return scanAllocations(rows)
+}
+
+// shiftDateWhere builds a WHERE clause bounding shift_date, with zero times
+// leaving the corresponding bound open
+func shiftDateWhere(from, to time.Time) (string, []any) {
+	var conds []string
+	var args []any
+	if !from.IsZero() {
+		args = append(args, from)
+		conds = append(conds, fmt.Sprintf("shift_date >= $%d", len(args)))
+	}
+	if !to.IsZero() {
+		args = append(args, to)
+		conds = append(conds, fmt.Sprintf("shift_date <= $%d", len(args)))
+	}
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
 // GetAllocationsByRotaID retrieves the allocation records for a single rota

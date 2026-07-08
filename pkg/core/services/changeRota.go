@@ -17,8 +17,8 @@ import (
 // ChangeRotaStore defines the database operations needed for changing a rota
 type ChangeRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
-	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
+	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error)
+	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error)
 	InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error
 }
 
@@ -111,8 +111,8 @@ func ChangeRota(
 		}
 	}
 
-	// Step 3: Build effective state for the primary date's rota
-	effectiveState, err := buildEffectiveState(ctx, database, rota.ID)
+	// Step 3: Build effective state for the primary date
+	effectiveState, err := buildEffectiveState(ctx, database, params.Date)
 	if err != nil {
 		return nil, err
 	}
@@ -122,11 +122,11 @@ func ChangeRota(
 		return nil, err
 	}
 
-	// Validate swap date (with in/out reversed), using swap rota's effective state
+	// Validate swap date (with in/out reversed), using its own effective state
 	swapEffectiveState := effectiveState
 	if params.SwapDate != "" {
-		if swapRota.ID != rota.ID {
-			swapEffectiveState, err = buildEffectiveState(ctx, database, swapRota.ID)
+		if params.SwapDate != params.Date {
+			swapEffectiveState, err = buildEffectiveState(ctx, database, params.SwapDate)
 			if err != nil {
 				return nil, err
 			}
@@ -169,25 +169,30 @@ func ChangeRota(
 	}, nil
 }
 
-// buildEffectiveState computes the current effective allocations for a rota
-// by applying all existing alterations to the base allocations
-func buildEffectiveState(ctx context.Context, database ChangeRotaStore, rotaID string) (map[string][]db.Allocation, error) {
-	rotaAllocations, err := database.GetAllocationsByRotaID(ctx, rotaID)
+// buildEffectiveState computes the current effective allocations for a single
+// date by applying that date's existing alterations to its base allocations
+func buildEffectiveState(ctx context.Context, database ChangeRotaStore, dateStr string) (map[string][]db.Allocation, error) {
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
+	}
+
+	dateAllocations, err := database.GetAllocationsInRange(ctx, date, date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
 
-	rotaAlterations, err := database.GetAlterationsByRotaID(ctx, rotaID)
+	dateAlterations, err := database.GetAlterationsInRange(ctx, date, date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 
 	allocationsByDate := make(map[string][]db.Allocation)
-	for _, a := range rotaAllocations {
+	for _, a := range dateAllocations {
 		allocationsByDate[a.ShiftDate] = append(allocationsByDate[a.ShiftDate], a)
 	}
 
-	return utils.ApplyAlterations(allocationsByDate, rotaAlterations), nil
+	return utils.ApplyAlterations(allocationsByDate, dateAlterations), nil
 }
 
 // findRotaForDate finds the rotation that contains the given date

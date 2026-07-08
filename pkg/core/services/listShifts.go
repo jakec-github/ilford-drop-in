@@ -18,8 +18,8 @@ import (
 // Shifts are derived purely from allocations and alterations; rotations are
 // not consulted.
 type ListShiftsStore interface {
-	GetAllocations(ctx context.Context) ([]db.Allocation, error)
-	GetAlterations(ctx context.Context) ([]db.Alteration, error)
+	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error)
+	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error)
 }
 
 // ListShiftsParams holds optional filters for listing shifts
@@ -60,12 +60,12 @@ func ListShifts(
 		return nil, err
 	}
 
-	allocations, err := database.GetAllocations(ctx)
+	allocations, err := database.GetAllocationsInRange(ctx, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
 
-	alterations, err := database.GetAlterations(ctx)
+	alterations, err := database.GetAlterationsInRange(ctx, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
@@ -117,9 +117,6 @@ func ListShifts(
 
 	shifts := make([]Shift, 0, len(shiftDates))
 	for _, date := range shiftDates {
-		if (!from.IsZero() && date.Before(from)) || (!to.IsZero() && date.After(to)) {
-			continue
-		}
 		dateStr := date.Format("2006-01-02")
 
 		shift := Shift{

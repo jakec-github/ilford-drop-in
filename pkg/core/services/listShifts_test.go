@@ -20,12 +20,24 @@ type mockListShiftsStore struct {
 	alterations []db.Alteration
 }
 
-func (m *mockListShiftsStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
-	return m.allocations, nil
+func (m *mockListShiftsStore) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error) {
+	var filtered []db.Allocation
+	for _, a := range m.allocations {
+		if shiftDateInRange(a.ShiftDate, from, to) {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
-func (m *mockListShiftsStore) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
-	return m.alterations, nil
+func (m *mockListShiftsStore) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error) {
+	var filtered []db.Alteration
+	for _, a := range m.alterations {
+		if shiftDateInRange(a.ShiftDate, from, to) {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 // listShiftsVolunteers returns a volunteer client with display names computed

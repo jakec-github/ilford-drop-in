@@ -8,13 +8,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetAlterations retrieves all alteration records
-func (d *DB) GetAlterations(ctx context.Context) ([]Alteration, error) {
+// GetAlterationsInRange retrieves alteration records with shift_date between
+// from and to (inclusive). A zero time leaves that bound open.
+func (d *DB) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error) {
+	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
 		SELECT id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, set_time, role
 		FROM alteration
+		`+where+`
 		ORDER BY set_time ASC
-	`)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query alterations: %w", err)
 	}
