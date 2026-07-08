@@ -63,13 +63,10 @@ type ViewResponsesResult struct {
 	AllocationResult  *AllocateRotaResult // Optional allocation result (when showAllocation=true)
 }
 
-// ViewResponsesStore defines the database operations needed for viewing responses
+// ViewResponsesStore defines the database operations needed for viewing responses.
+// It matches AllocateRotaStore because ViewResponses can run a dry-run allocation.
 type ViewResponsesStore interface {
-	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
-	GetAllocations(ctx context.Context) ([]db.Allocation, error)
-	GetAlterations(ctx context.Context) ([]db.Alteration, error)
-	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
+	AllocateRotaStore
 }
 
 // FormsClientWithResponses defines the operations needed to fetch form responses
@@ -137,16 +134,16 @@ func ViewResponses(
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
 
-	// Step 3: Fetch all availability requests for this rota
+	// Step 3: Fetch the availability requests for this rota
 	logger.Debug("Fetching availability requests")
-	allRequests, err := database.GetAvailabilityRequests(ctx)
+	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
-	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
+	logger.Debug("Found availability requests", zap.Int("count", len(rotaRequests)))
 
-	// Filter to requests for target rota that were sent
-	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, targetRota.ID)
+	// Filter to requests that were sent
+	requestsForRota := utils.FilterSentRequests(rotaRequests)
 	logger.Debug("Filtered sent requests for target rota", zap.Int("count", len(requestsForRota)))
 
 	if len(requestsForRota) == 0 {

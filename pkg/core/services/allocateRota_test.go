@@ -39,25 +39,43 @@ func (m *mockAllocateRotaStore) GetRotations(ctx context.Context) ([]db.Rotation
 	return m.rotations, nil
 }
 
-func (m *mockAllocateRotaStore) GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error) {
+func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
 	if m.getAvailabilityErr != nil {
 		return nil, m.getAvailabilityErr
 	}
-	return m.availabilityRequests, nil
+	var filtered []db.AvailabilityRequest
+	for _, r := range m.availabilityRequests {
+		if r.RotaID == rotaID {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
+func (m *mockAllocateRotaStore) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error) {
 	if m.getAllocationsErr != nil {
 		return nil, m.getAllocationsErr
 	}
-	return m.allocations, nil
+	var filtered []db.Allocation
+	for _, a := range m.allocations {
+		if a.RotaID == rotaID {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
+func (m *mockAllocateRotaStore) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error) {
 	if m.getAlterationsErr != nil {
 		return nil, m.getAlterationsErr
 	}
-	return m.alterations, nil
+	var filtered []db.Alteration
+	for _, a := range m.alterations {
+		if a.RotaID == rotaID {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockAllocateRotaStore) InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error {

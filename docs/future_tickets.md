@@ -20,7 +20,6 @@ CHANGE ROTA NEEDS MANUAL TESTING
 
 ## Tech debt
 
-- Fix issues in DB audit
 - Assess potential issues with concurrent users
 - Deduplicate the rrule resolution logic into a util
 - Further dedupe grouping logic (bit tricky as it is done in and outside the allocator)
@@ -30,27 +29,3 @@ CHANGE ROTA NEEDS MANUAL TESTING
 
 - Check closed shifts when requesting availability
 - If I try to allocate a rota and allocations already exist for that rota it should fail
-
-## DB Usage Audit Results
-
-HIGH Priority - Missing Transactions
-
-1. AllocateRota (pkg/core/services/allocateRota.go) - InsertAllocations and SetRotationAllocatedDatetime are two separate DB calls that should be atomic. If
-   the second fails, you'd have allocations without the rota being marked as allocated.
-2. ChangeRota (pkg/core/services/changeRota.go) - InsertCover and InsertAlterations are separate calls. If alterations insert fails, you'd have an orphaned
-   cover record.
-
-MEDIUM Priority - Missing DB-Level Filtering
-
-Every GetAllocations, GetAlterations, and GetAvailabilityRequests call fetches all records from the table and filters in Go code. This works now but won't
-scale. Affected services:
-
-- publishRota.go - fetches all allocations/alterations, filters by rota ID in Go
-- changeRota.go - fetches all allocations/alterations, filters by rota ID in Go
-- viewResponses.go - fetches all availability requests, filters in Go
-- sendAvailabilityReminders.go - fetches all availability requests, filters in Go
-- allocateRota.go - fetches all allocations, filters in Go
-
-LOW Priority - N+1 Pattern
-
-- sendAvailabilityReminders.go calls HasResponse() (which hits the Forms API) individually for each volunteer, and calls it twice for the same form IDs.

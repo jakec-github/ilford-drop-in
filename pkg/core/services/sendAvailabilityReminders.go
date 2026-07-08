@@ -23,7 +23,7 @@ type ReminderSent struct {
 // AvailabilityRemindersStore defines the database operations needed for sending reminders
 type AvailabilityRemindersStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 }
 
 // FormsClientWithResponse defines the operations needed to check form responses
@@ -75,16 +75,16 @@ func SendAvailabilityReminders(
 		zap.String("start", latestRota.Start),
 		zap.Int("shift_count", latestRota.ShiftCount))
 
-	// Step 3: Fetch all availability requests
+	// Step 3: Fetch the availability requests for the current rota
 	logger.Debug("Fetching availability requests")
-	allRequests, err := database.GetAvailabilityRequests(ctx)
+	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, latestRota.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
-	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
+	logger.Debug("Found availability requests", zap.Int("count", len(rotaRequests)))
 
-	// Step 4: Filter to requests for the current rota that were sent
-	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, latestRota.ID)
+	// Step 4: Filter to requests that were sent
+	requestsForRota := utils.FilterSentRequests(rotaRequests)
 	logger.Debug("Filtered sent requests for latest rota", zap.Int("count", len(requestsForRota)))
 
 	if len(requestsForRota) == 0 {
@@ -106,21 +106,24 @@ func SendAvailabilityReminders(
 		volunteersByID[vol.ID] = vol
 	}
 
-	// Step 6: Build a map of groups that have at least one response
+	// Step 6: Check each form once and build a map of groups with at least one response
+	hasResponseByForm := make(map[string]bool, len(requestsForRota))
 	groupsWithResponses := make(map[string]bool)
 	for _, req := range requestsForRota {
+		if _, checked := hasResponseByForm[req.FormID]; !checked {
+			hasResponse, err := formsClient.HasResponse(req.FormID)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to check response for form %s: %w", req.FormID, err)
+			}
+			hasResponseByForm[req.FormID] = hasResponse
+		}
+
 		volunteer, exists := volunteersByID[req.VolunteerID]
 		if !exists {
 			continue
 		}
 
-		// Check if this volunteer's form has a response
-		hasResponse, err := formsClient.HasResponse(req.FormID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to check response for form %s: %w", req.FormID, err)
-		}
-
-		if hasResponse && volunteer.GroupKey != "" {
+		if hasResponseByForm[req.FormID] && volunteer.GroupKey != "" {
 			groupsWithResponses[volunteer.GroupKey] = true
 		}
 	}
@@ -153,13 +156,8 @@ func SendAvailabilityReminders(
 			continue
 		}
 
-		// Check if form has responses
-		hasResponse, err := formsClient.HasResponse(req.FormID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to check response for form %s: %w", req.FormID, err)
-		}
-
-		if !hasResponse {
+		// Check if form has responses (already fetched in step 6)
+		if !hasResponseByForm[req.FormID] {
 			volunteersNeedingReminders = append(volunteersNeedingReminders, req)
 		}
 	}

@@ -33,8 +33,9 @@ type FailedEmail struct {
 // AvailabilityRequestStore defines the database operations needed for request availability
 type AvailabilityRequestStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
-	InsertAvailabilityRequests(requests []db.AvailabilityRequest) error
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
+	InsertAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) error
+	MarkAvailabilityRequestsSent(ctx context.Context, ids []string) error
 }
 
 // VolunteerClient defines the operations needed to fetch volunteers
@@ -95,17 +96,13 @@ func RequestAvailability(
 		return nil, nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
 
-	// Step 3: Fetch all availability requests
+	// Step 3: Fetch the availability requests for the current rota
 	logger.Debug("Fetching availability requests")
-	allRequests, err := database.GetAvailabilityRequests(ctx)
+	requestsForRota, err := database.GetAvailabilityRequestsByRotaID(ctx, latestRota.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
-	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
-
-	// Step 4: Filter to requests for the current rota
-	requestsForRota := utils.FilterRequestsByRotaID(allRequests, latestRota.ID)
-	logger.Debug("Filtered requests for latest rota", zap.Int("count", len(requestsForRota)))
+	logger.Debug("Found availability requests for latest rota", zap.Int("count", len(requestsForRota)))
 
 	// Build set of volunteer IDs who already have SENT requests for this rota
 	volunteerIDsWithSentRequests := make(map[string]bool)
@@ -206,7 +203,7 @@ func RequestAvailability(
 	// Insert all unsent availability requests
 	if len(unsentRequests) > 0 {
 		logger.Debug("Inserting unsent availability requests", zap.Int("count", len(unsentRequests)))
-		if err := database.InsertAvailabilityRequests(unsentRequests); err != nil {
+		if err := database.InsertAvailabilityRequests(ctx, unsentRequests); err != nil {
 			return nil, nil, fmt.Errorf("failed to insert availability requests: %w", err)
 		}
 		logger.Debug("Unsent availability requests inserted successfully")
@@ -220,8 +217,8 @@ func RequestAvailability(
 		return []SentForm{}, []FailedEmail{}, nil
 	}
 
-	// Step 9: Send emails and create form_sent=true records for successful sends
-	sentRequests := make([]db.AvailabilityRequest, 0, len(volunteersNeedingEmails))
+	// Step 9: Send emails and mark requests as sent for successful sends
+	sentRequestIDs := make([]string, 0, len(volunteersNeedingEmails))
 	sentForms := []SentForm{}
 	failedEmails := []FailedEmail{}
 
@@ -262,16 +259,8 @@ func RequestAvailability(
 			Email:         volunteer.Email,
 		})
 
-		// Create form_sent=true record for successful email
-		sentRequests = append(sentRequests, db.AvailabilityRequest{
-			ID:          formInfo.requestID, // Same ID as unsent record
-			RotaID:      latestRota.ID,
-			ShiftDate:   latestRota.Start,
-			VolunteerID: volunteer.ID,
-			FormID:      formInfo.formID,
-			FormURL:     formInfo.formURL,
-			FormSent:    true,
-		})
+		// Mark the request as sent for successful email
+		sentRequestIDs = append(sentRequestIDs, formInfo.requestID)
 	}
 
 	// If all emails failed, return error
@@ -279,13 +268,13 @@ func RequestAvailability(
 		return nil, nil, fmt.Errorf("all %d email send attempts failed", len(failedEmails))
 	}
 
-	// Insert form_sent=true records for successful emails
-	if len(sentRequests) > 0 {
-		logger.Debug("Inserting sent availability requests", zap.Int("count", len(sentRequests)))
-		if err := database.InsertAvailabilityRequests(sentRequests); err != nil {
-			return nil, nil, fmt.Errorf("failed to insert sent availability requests: %w", err)
+	// Mark requests whose email succeeded as sent
+	if len(sentRequestIDs) > 0 {
+		logger.Debug("Marking availability requests as sent", zap.Int("count", len(sentRequestIDs)))
+		if err := database.MarkAvailabilityRequestsSent(ctx, sentRequestIDs); err != nil {
+			return nil, nil, fmt.Errorf("failed to mark availability requests as sent: %w", err)
 		}
-		logger.Debug("Sent availability requests inserted successfully")
+		logger.Debug("Availability requests marked as sent")
 	}
 
 	logger.Debug("Request availability completed",

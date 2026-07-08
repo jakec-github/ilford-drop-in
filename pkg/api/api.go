@@ -14,6 +14,7 @@ import (
 // Store defines the database operations the API needs (satisfied by *db.DB)
 type Store interface {
 	services.ChangeRotaStore
+	services.ListShiftsStore
 }
 
 // Handler serves the HTTP API

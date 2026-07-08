@@ -44,6 +44,29 @@ func (m *mockStore) GetAlterations(ctx context.Context) ([]db.Alteration, error)
 	return m.alterations, nil
 }
 
+func (m *mockStore) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error) {
+	if m.getAllocationsErr != nil {
+		return nil, m.getAllocationsErr
+	}
+	var filtered []db.Allocation
+	for _, a := range m.allocations {
+		if a.RotaID == rotaID {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockStore) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error) {
+	var filtered []db.Alteration
+	for _, a := range m.alterations {
+		if a.RotaID == rotaID {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
+}
+
 func (m *mockStore) InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error {
 	if m.insertErr != nil {
 		return m.insertErr

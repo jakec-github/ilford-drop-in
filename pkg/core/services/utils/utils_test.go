@@ -10,14 +10,14 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-func TestFilterRequestsByRotaID(t *testing.T) {
+func TestFilterSentRequests(t *testing.T) {
 	requests := []db.AvailabilityRequest{
-		{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1"},
-		{ID: "req-2", RotaID: "rota-2", VolunteerID: "vol-2"},
-		{ID: "req-3", RotaID: "rota-1", VolunteerID: "vol-3"},
+		{ID: "req-1", RotaID: "rota-1", FormSent: true},
+		{ID: "req-2", RotaID: "rota-1", FormSent: false},
+		{ID: "req-3", RotaID: "rota-1", FormSent: true},
 	}
 
-	filtered := FilterRequestsByRotaID(requests, "rota-1")
+	filtered := FilterSentRequests(requests)
 
 	require.Len(t, filtered, 2)
 	assert.Equal(t, "req-1", filtered[0].ID)

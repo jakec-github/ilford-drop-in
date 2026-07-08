@@ -36,22 +36,11 @@ func FindLatestRotation(rotations []db.Rotation) *db.Rotation {
 	return latest
 }
 
-// FilterRequestsByRotaID filters availability requests to only those for the specified rota
-func FilterRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
-	filtered := make([]db.AvailabilityRequest, 0)
-	for _, req := range requests {
-		if req.RotaID == rotaID {
-			filtered = append(filtered, req)
-		}
-	}
-	return filtered
-}
-
-// FilterSentRequestsByRotaID filters availability requests to only those for a specific rota that were sent
-func FilterSentRequestsByRotaID(requests []db.AvailabilityRequest, rotaID string) []db.AvailabilityRequest {
+// FilterSentRequests filters availability requests to only those that were sent
+func FilterSentRequests(requests []db.AvailabilityRequest) []db.AvailabilityRequest {
 	filtered := []db.AvailabilityRequest{}
 	for _, req := range requests {
-		if req.RotaID == rotaID && req.FormSent {
+		if req.FormSent {
 			filtered = append(filtered, req)
 		}
 	}
@@ -92,15 +81,4 @@ func CalculateShiftDates(startDateStr string, shiftCount int) ([]time.Time, erro
 	}
 
 	return dates, nil
-}
-
-// FilterAllocationsByRotaID filters allocations to only those for the specified rota
-func FilterAllocationsByRotaID(allocations []db.Allocation, rotaID string) []db.Allocation {
-	filtered := make([]db.Allocation, 0)
-	for _, allocation := range allocations {
-		if allocation.RotaID == rotaID {
-			filtered = append(filtered, allocation)
-		}
-	}
-	return filtered
 }

@@ -21,7 +21,7 @@ type RotaResult struct {
 // DefineRotaStore defines the database operations needed for defining a rota
 type DefineRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	InsertRotation(rotation *db.Rotation) error
+	InsertRotation(ctx context.Context, rotation *db.Rotation) error
 }
 
 // DefineRota creates a new rota with the specified number of shifts
@@ -83,7 +83,7 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	logger.Debug("Creating new rotation", zap.String("id", rotation.ID), zap.String("start", rotation.Start))
 
 	// Insert rotation into database
-	if err := database.InsertRotation(rotation); err != nil {
+	if err := database.InsertRotation(ctx, rotation); err != nil {
 		return nil, fmt.Errorf("failed to insert rotation: %w", err)
 	}
 

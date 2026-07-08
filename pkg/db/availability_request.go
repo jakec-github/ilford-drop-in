@@ -4,29 +4,41 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
-// GetAvailabilityRequests retrieves all availability request records, filtering out duplicates.
-// For duplicate records (same ID), only the record with form_sent=true is returned.
-// If no form_sent=true record exists, the form_sent=false record is returned.
-// Returns an error if multiple records exist with the same ID and same form_sent value.
+const availabilityRequestColumns = `id, rota_id, shift_date, volunteer_id, form_id, form_url, form_sent`
+
+// GetAvailabilityRequests retrieves all availability request records
 func (d *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityRequest, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, rota_id, shift_date, volunteer_id, form_id, form_url, form_sent
+		SELECT `+availabilityRequestColumns+`
 		FROM availability_request
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query availability requests: %w", err)
 	}
+	return scanAvailabilityRequests(rows)
+}
+
+// GetAvailabilityRequestsByRotaID retrieves the availability request records for a single rota
+func (d *DB) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]AvailabilityRequest, error) {
+	rows, err := d.pool.Query(ctx, `
+		SELECT `+availabilityRequestColumns+`
+		FROM availability_request
+		WHERE rota_id = $1
+	`, rotaID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query availability requests for rota %s: %w", rotaID, err)
+	}
+	return scanAvailabilityRequests(rows)
+}
+
+func scanAvailabilityRequests(rows pgx.Rows) ([]AvailabilityRequest, error) {
 	defer rows.Close()
 
-	// Track records by ID and form_sent state to detect integrity violations
-	type recordState struct {
-		formSentFalse *AvailabilityRequest
-		formSentTrue  *AvailabilityRequest
-	}
-	stateMap := make(map[string]*recordState)
-
+	var requests []AvailabilityRequest
 	for rows.Next() {
 		var req AvailabilityRequest
 		var shiftDate time.Time
@@ -34,58 +46,22 @@ func (d *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityRequest
 			return nil, fmt.Errorf("failed to scan availability request: %w", err)
 		}
 		req.ShiftDate = shiftDate.Format("2006-01-02")
-
-		state, exists := stateMap[req.ID]
-		if !exists {
-			state = &recordState{}
-			stateMap[req.ID] = state
-		}
-
-		if req.FormSent {
-			if state.formSentTrue != nil {
-				return nil, fmt.Errorf(
-					"data integrity violation: multiple records found with ID=%s and form_sent=true (rota_id=%s, shift_date=%s, volunteer_id=%s)",
-					req.ID, req.RotaID, req.ShiftDate, req.VolunteerID,
-				)
-			}
-			r := req // copy to avoid loop variable issues
-			state.formSentTrue = &r
-		} else {
-			if state.formSentFalse != nil {
-				return nil, fmt.Errorf(
-					"data integrity violation: multiple records found with ID=%s and form_sent=false (rota_id=%s, shift_date=%s, volunteer_id=%s)",
-					req.ID, req.RotaID, req.ShiftDate, req.VolunteerID,
-				)
-			}
-			r := req
-			state.formSentFalse = &r
-		}
+		requests = append(requests, req)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating availability requests: %w", err)
 	}
 
-	// Prefer form_sent=true over form_sent=false
-	result := make([]AvailabilityRequest, 0, len(stateMap))
-	for _, state := range stateMap {
-		if state.formSentTrue != nil {
-			result = append(result, *state.formSentTrue)
-		} else if state.formSentFalse != nil {
-			result = append(result, *state.formSentFalse)
-		}
-	}
-
-	return result, nil
+	return requests, nil
 }
 
 // InsertAvailabilityRequests inserts multiple availability request records in a batch
-func (d *DB) InsertAvailabilityRequests(requests []AvailabilityRequest) error {
+func (d *DB) InsertAvailabilityRequests(ctx context.Context, requests []AvailabilityRequest) error {
 	if len(requests) == 0 {
 		return nil
 	}
 
-	ctx := context.Background()
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -104,6 +80,25 @@ func (d *DB) InsertAvailabilityRequests(requests []AvailabilityRequest) error {
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// MarkAvailabilityRequestsSent sets form_sent=true on the given request IDs
+func (d *DB) MarkAvailabilityRequestsSent(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	tag, err := d.pool.Exec(ctx, `
+		UPDATE availability_request SET form_sent = TRUE WHERE id = ANY($1)
+	`, ids)
+	if err != nil {
+		return fmt.Errorf("failed to mark availability requests sent: %w", err)
+	}
+	if int(tag.RowsAffected()) != len(ids) {
+		return fmt.Errorf("expected to mark %d availability requests sent, updated %d", len(ids), tag.RowsAffected())
 	}
 
 	return nil

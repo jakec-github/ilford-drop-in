@@ -27,12 +27,24 @@ func (m *mockChangeRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, 
 	return m.rotations, nil
 }
 
-func (m *mockChangeRotaStore) GetAllocations(ctx context.Context) ([]db.Allocation, error) {
-	return m.allocations, nil
+func (m *mockChangeRotaStore) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error) {
+	var filtered []db.Allocation
+	for _, a := range m.allocations {
+		if a.RotaID == rotaID {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
-func (m *mockChangeRotaStore) GetAlterations(ctx context.Context) ([]db.Alteration, error) {
-	return m.alterations, nil
+func (m *mockChangeRotaStore) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error) {
+	var filtered []db.Alteration
+	for _, a := range m.alterations {
+		if a.RotaID == rotaID {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockChangeRotaStore) InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error {

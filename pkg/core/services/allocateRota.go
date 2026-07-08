@@ -74,9 +74,9 @@ type AllocateRotaResult struct {
 // AllocateRotaStore defines the database operations needed for allocating a rota
 type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
-	GetAllocations(ctx context.Context) ([]db.Allocation, error)
-	GetAlterations(ctx context.Context) ([]db.Alteration, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
+	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
+	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
@@ -124,16 +124,16 @@ func AllocateRota(
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
 
-	// Step 3: DB query - Fetch availability requests
+	// Step 3: DB query - Fetch availability requests for the target rota
 	logger.Debug("Fetching availability requests")
-	allRequests, err := database.GetAvailabilityRequests(ctx)
+	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
-	logger.Debug("Found availability requests", zap.Int("count", len(allRequests)))
+	logger.Debug("Found availability requests", zap.Int("count", len(rotaRequests)))
 
-	// Step 4: Find availability requests for resolved rota
-	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, targetRota.ID)
+	// Step 4: Keep only requests whose form was sent
+	requestsForRota := utils.FilterSentRequests(rotaRequests)
 	logger.Debug("Filtered sent requests for target rota", zap.Int("count", len(requestsForRota)))
 
 	if len(requestsForRota) == 0 {
@@ -494,15 +494,12 @@ func buildHistoricalShifts(
 		zap.String("id", previousRota.ID),
 		zap.String("start", previousRota.Start))
 
-	// Fetch all allocations
-	allAllocations, err := database.GetAllocations(ctx)
+	// Fetch the previous rota's allocations
+	previousRotaAllocations, err := database.GetAllocationsByRotaID(ctx, previousRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
-
-	// Filter to allocations from previous rota only
-	previousRotaAllocations := utils.FilterAllocationsByRotaID(allAllocations, previousRota.ID)
-	logger.Debug("Filtered allocations from previous rota", zap.Int("count", len(previousRotaAllocations)))
+	logger.Debug("Fetched allocations from previous rota", zap.Int("count", len(previousRotaAllocations)))
 
 	if len(previousRotaAllocations) == 0 {
 		logger.Info("No allocations found in previous rota")
@@ -518,15 +515,9 @@ func buildHistoricalShifts(
 
 	// Apply the previous rota's alterations so history reflects who
 	// actually worked (covers and swaps), not the rota as first published.
-	allAlterations, err := database.GetAlterations(ctx)
+	previousRotaAlterations, err := database.GetAlterationsByRotaID(ctx, previousRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
-	}
-	var previousRotaAlterations []db.Alteration
-	for _, a := range allAlterations {
-		if a.RotaID == previousRota.ID {
-			previousRotaAlterations = append(previousRotaAlterations, a)
-		}
 	}
 	logger.Debug("Applying alterations to historical shifts", zap.Int("count", len(previousRotaAlterations)))
 	allocationsByDate = utils.ApplyAlterations(allocationsByDate, previousRotaAlterations)

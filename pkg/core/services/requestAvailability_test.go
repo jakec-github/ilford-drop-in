@@ -21,9 +21,11 @@ type mockAvailabilityRequestStore struct {
 	rotations            []db.Rotation
 	availabilityRequests []db.AvailabilityRequest
 	insertedRequests     []db.AvailabilityRequest
+	markedSentIDs        []string
 	getRotationsErr      error
 	getRequestsErr       error
 	insertErr            error
+	markSentErr          error
 }
 
 func (m *mockAvailabilityRequestStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -33,18 +35,32 @@ func (m *mockAvailabilityRequestStore) GetRotations(ctx context.Context) ([]db.R
 	return m.rotations, nil
 }
 
-func (m *mockAvailabilityRequestStore) GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error) {
+func (m *mockAvailabilityRequestStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
 	if m.getRequestsErr != nil {
 		return nil, m.getRequestsErr
 	}
-	return m.availabilityRequests, nil
+	var filtered []db.AvailabilityRequest
+	for _, r := range m.availabilityRequests {
+		if r.RotaID == rotaID {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, nil
 }
 
-func (m *mockAvailabilityRequestStore) InsertAvailabilityRequests(requests []db.AvailabilityRequest) error {
+func (m *mockAvailabilityRequestStore) InsertAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
 	m.insertedRequests = append(m.insertedRequests, requests...)
+	return nil
+}
+
+func (m *mockAvailabilityRequestStore) MarkAvailabilityRequestsSent(ctx context.Context, ids []string) error {
+	if m.markSentErr != nil {
+		return m.markSentErr
+	}
+	m.markedSentIDs = append(m.markedSentIDs, ids...)
 	return nil
 }
 
@@ -130,37 +146,32 @@ func TestRequestAvailability_CreatesRequestsForVolunteersWithoutRequests(t *test
 	require.NotNil(t, sentForms)
 	require.NotNil(t, failedEmails)
 
-	// Should have created 5 new requests:
-	// - 2 unsent (vol-2, vol-3) - vol-1 already has unsent
-	// - 3 sent (vol-1, vol-2, vol-3) - all get emails
-	require.Len(t, mockStore.insertedRequests, 5)
+	// Should have inserted 2 new unsent requests (vol-2, vol-3) -
+	// vol-1's unsent request already exists
+	require.Len(t, mockStore.insertedRequests, 2)
 
-	// Count requests by volunteer and form_sent status
-	unsentByVolunteer := make(map[string]bool)
-	sentByVolunteer := make(map[string]bool)
+	insertedByVolunteer := make(map[string]db.AvailabilityRequest)
+	insertedIDsByVolunteer := make(map[string]string)
 	for _, req := range mockStore.insertedRequests {
 		assert.Equal(t, "rota-1", req.RotaID)
 		assert.Equal(t, "2024-01-01", req.ShiftDate)
 		assert.NotEmpty(t, req.ID)
 		assert.NotEmpty(t, req.FormID)
 		assert.NotEmpty(t, req.FormURL)
-
-		if req.FormSent {
-			sentByVolunteer[req.VolunteerID] = true
-		} else {
-			unsentByVolunteer[req.VolunteerID] = true
-		}
+		assert.False(t, req.FormSent, "New requests should be inserted unsent")
+		insertedByVolunteer[req.VolunteerID] = req
+		insertedIDsByVolunteer[req.VolunteerID] = req.ID
 	}
 
-	// vol-2 and vol-3 should have both unsent and sent records
-	assert.True(t, unsentByVolunteer["vol-2"], "Should have unsent request for vol-2")
-	assert.True(t, sentByVolunteer["vol-2"], "Should have sent request for vol-2")
-	assert.True(t, unsentByVolunteer["vol-3"], "Should have unsent request for vol-3")
-	assert.True(t, sentByVolunteer["vol-3"], "Should have sent request for vol-3")
+	assert.Contains(t, insertedByVolunteer, "vol-2")
+	assert.Contains(t, insertedByVolunteer, "vol-3")
+	assert.NotContains(t, insertedByVolunteer, "vol-1", "Should not have created unsent request for vol-1 (already exists)")
 
-	// vol-1 should only have sent record (unsent already existed)
-	assert.False(t, unsentByVolunteer["vol-1"], "Should not have created unsent request for vol-1 (already exists)")
-	assert.True(t, sentByVolunteer["vol-1"], "Should have sent request for vol-1 (email was sent)")
+	// All three requests should be marked sent (vol-1's existing plus the two new)
+	require.Len(t, mockStore.markedSentIDs, 3)
+	assert.Contains(t, mockStore.markedSentIDs, "req-1")
+	assert.Contains(t, mockStore.markedSentIDs, insertedIDsByVolunteer["vol-2"])
+	assert.Contains(t, mockStore.markedSentIDs, insertedIDsByVolunteer["vol-3"])
 
 	// Verify forms were created only for vol-2 and vol-3 (not vol-1, reused existing)
 	assert.Len(t, mockFormsClient.createdForms, 2)
@@ -208,11 +219,10 @@ func TestRequestAvailability_ResendsForUnsentRequests(t *testing.T) {
 	require.NotNil(t, sentForms)
 	require.NotNil(t, failedEmails)
 
-	// Should have created 1 sent request for vol-2
-	require.Len(t, mockStore.insertedRequests, 1)
-	assert.Equal(t, "vol-2", mockStore.insertedRequests[0].VolunteerID)
-	assert.True(t, mockStore.insertedRequests[0].FormSent)
-	assert.Equal(t, "req-2", mockStore.insertedRequests[0].ID) // Should reuse existing request ID
+	// No new requests inserted; vol-2's existing unsent request is marked sent
+	assert.Len(t, mockStore.insertedRequests, 0)
+	require.Len(t, mockStore.markedSentIDs, 1)
+	assert.Equal(t, "req-2", mockStore.markedSentIDs[0]) // Should reuse existing request ID
 
 	// No new forms created (reused existing)
 	assert.Len(t, mockFormsClient.createdForms, 0)
@@ -298,12 +308,13 @@ func TestRequestAvailability_OnlyCreatesForLatestRota(t *testing.T) {
 	require.NotNil(t, sentForms)
 	require.NotNil(t, failedEmails)
 
-	// Should create 2 requests for vol-1 for the latest rota: 1 unsent + 1 sent
-	require.Len(t, mockStore.insertedRequests, 2)
-	for _, req := range mockStore.insertedRequests {
-		assert.Equal(t, "vol-1", req.VolunteerID)
-		assert.Equal(t, "rota-2", req.RotaID)
-	}
+	// Should create 1 unsent request for vol-1 for the latest rota, then mark it sent
+	require.Len(t, mockStore.insertedRequests, 1)
+	assert.Equal(t, "vol-1", mockStore.insertedRequests[0].VolunteerID)
+	assert.Equal(t, "rota-2", mockStore.insertedRequests[0].RotaID)
+	assert.False(t, mockStore.insertedRequests[0].FormSent)
+	require.Len(t, mockStore.markedSentIDs, 1)
+	assert.Equal(t, mockStore.insertedRequests[0].ID, mockStore.markedSentIDs[0])
 
 	// Should have sent form to vol-1
 	assert.Len(t, sentForms, 1)
@@ -341,28 +352,23 @@ func TestRequestAvailability_PartialEmailFailures(t *testing.T) {
 	require.NotNil(t, sentForms)
 	require.NotNil(t, failedEmails)
 
-	// Should have created: 3 unsent (all) + 2 sent (vol-1, vol-3 only - vol-2 failed)
-	require.Len(t, mockStore.insertedRequests, 5)
+	// Should have inserted 3 unsent requests (forms created for all)
+	require.Len(t, mockStore.insertedRequests, 3)
 
-	unsentByVolunteer := make(map[string]bool)
-	sentByVolunteer := make(map[string]bool)
+	insertedIDsByVolunteer := make(map[string]string)
 	for _, req := range mockStore.insertedRequests {
-		if req.FormSent {
-			sentByVolunteer[req.VolunteerID] = true
-		} else {
-			unsentByVolunteer[req.VolunteerID] = true
-		}
+		assert.False(t, req.FormSent)
+		insertedIDsByVolunteer[req.VolunteerID] = req.ID
 	}
+	assert.Contains(t, insertedIDsByVolunteer, "vol-1")
+	assert.Contains(t, insertedIDsByVolunteer, "vol-2")
+	assert.Contains(t, insertedIDsByVolunteer, "vol-3")
 
-	// All should have unsent records (forms were created)
-	assert.True(t, unsentByVolunteer["vol-1"])
-	assert.True(t, unsentByVolunteer["vol-2"])
-	assert.True(t, unsentByVolunteer["vol-3"])
-
-	// Only vol-1 and vol-3 should have sent records (email succeeded)
-	assert.True(t, sentByVolunteer["vol-1"])
-	assert.False(t, sentByVolunteer["vol-2"], "Should not have sent record for failed email")
-	assert.True(t, sentByVolunteer["vol-3"])
+	// Only vol-1 and vol-3 should be marked sent (email succeeded)
+	require.Len(t, mockStore.markedSentIDs, 2)
+	assert.Contains(t, mockStore.markedSentIDs, insertedIDsByVolunteer["vol-1"])
+	assert.NotContains(t, mockStore.markedSentIDs, insertedIDsByVolunteer["vol-2"], "Should not mark failed email's request as sent")
+	assert.Contains(t, mockStore.markedSentIDs, insertedIDsByVolunteer["vol-3"])
 
 	// Should have 2 sent forms (vol-1 and vol-3)
 	require.Len(t, sentForms, 2)
@@ -623,11 +629,9 @@ func TestRequestAvailability_NoEmail_ThenSendEmails(t *testing.T) {
 	assert.Contains(t, gmailClient.sentEmails, "john@example.com")
 	assert.Contains(t, gmailClient.sentEmails, "jane@example.com")
 
-	// Should create sent records only (no new unsent records)
-	require.Len(t, store.insertedRequests, 2)
-	for _, req := range store.insertedRequests {
-		assert.True(t, req.FormSent, "Phase 2 should only insert sent records")
-	}
+	// Should not insert new records; the existing requests are marked sent
+	assert.Len(t, store.insertedRequests, 0, "Phase 2 should not insert new records")
+	assert.Len(t, store.markedSentIDs, 2)
 
 	assert.Len(t, sentForms, 2)
 	assert.Len(t, failedEmails, 0)

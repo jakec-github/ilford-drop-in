@@ -19,8 +19,8 @@ import (
 // PublishRotaStore defines the database operations needed for publishing a rota
 type PublishRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAllocations(ctx context.Context) ([]db.Allocation, error)
-	GetAlterations(ctx context.Context) ([]db.Alteration, error)
+	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
+	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
 }
 
 // SheetsClient defines the sheets operations needed for publishing a rota
@@ -85,16 +85,13 @@ func PublishRota(
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
 
-	// Step 3: Fetch all allocations
+	// Step 3: Fetch this rota's allocations
 	logger.Debug("Fetching allocations")
-	allAllocations, err := database.GetAllocations(ctx)
+	rotaAllocations, err := database.GetAllocationsByRotaID(ctx, targetRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
-
-	// Filter to allocations for this rota only
-	rotaAllocations := utils.FilterAllocationsByRotaID(allAllocations, targetRota.ID)
-	logger.Debug("Filtered allocations for rota", zap.Int("count", len(rotaAllocations)))
+	logger.Debug("Fetched allocations for rota", zap.Int("count", len(rotaAllocations)))
 
 	// Step 4: Fetch volunteers
 	logger.Debug("Fetching volunteers")
@@ -117,16 +114,9 @@ func PublishRota(
 
 	// Step 5b: Apply alterations
 	logger.Debug("Fetching alterations")
-	allAlterations, err := database.GetAlterations(ctx)
+	rotaAlterations, err := database.GetAlterationsByRotaID(ctx, targetRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
-	}
-
-	var rotaAlterations []db.Alteration
-	for _, a := range allAlterations {
-		if a.RotaID == targetRota.ID {
-			rotaAlterations = append(rotaAlterations, a)
-		}
 	}
 	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
 	allocationsByDate = utils.ApplyAlterations(allocationsByDate, rotaAlterations)

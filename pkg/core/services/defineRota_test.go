@@ -28,7 +28,7 @@ func (m *mockDB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	return m.rotations, nil
 }
 
-func (m *mockDB) InsertRotation(rotation *db.Rotation) error {
+func (m *mockDB) InsertRotation(ctx context.Context, rotation *db.Rotation) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -278,20 +277,4 @@ func TestSendAvailabilityReminders_SkipsVolunteersInGroupsWithResponses(t *testi
 	assert.Contains(t, mockGmailClient.sentEmails, "charlie@example.com")
 	assert.Contains(t, mockGmailClient.sentEmails, "diana@example.com")
 	assert.NotContains(t, mockGmailClient.sentEmails, "bob@example.com")
-}
-
-// Helper function tests
-func TestFilterSentRequestsByRotaID(t *testing.T) {
-	requests := []db.AvailabilityRequest{
-		{ID: "req-1", RotaID: "rota-1", FormSent: true},
-		{ID: "req-2", RotaID: "rota-1", FormSent: false}, // Not sent
-		{ID: "req-3", RotaID: "rota-2", FormSent: true},  // Different rota
-		{ID: "req-4", RotaID: "rota-1", FormSent: true},
-	}
-
-	filtered := utils.FilterSentRequestsByRotaID(requests, "rota-1")
-
-	require.Len(t, filtered, 2)
-	assert.Equal(t, "req-1", filtered[0].ID)
-	assert.Equal(t, "req-4", filtered[1].ID)
 }

@@ -67,11 +67,11 @@ func AllocateRotaCpsat(
 		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
 	}
 
-	allRequests, err := database.GetAvailabilityRequests(ctx)
+	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
-	requestsForRota := utils.FilterSentRequestsByRotaID(allRequests, targetRota.ID)
+	requestsForRota := utils.FilterSentRequests(rotaRequests)
 	if len(requestsForRota) == 0 {
 		return nil, fmt.Errorf("no availability requests found for rota %s - please run requestAvailability first", targetRota.ID)
 	}

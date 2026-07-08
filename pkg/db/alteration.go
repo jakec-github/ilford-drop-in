@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // GetAlterations retrieves all alteration records
@@ -16,6 +18,24 @@ func (d *DB) GetAlterations(ctx context.Context) ([]Alteration, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query alterations: %w", err)
 	}
+	return scanAlterations(rows)
+}
+
+// GetAlterationsByRotaID retrieves the alteration records for a single rota
+func (d *DB) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]Alteration, error) {
+	rows, err := d.pool.Query(ctx, `
+		SELECT id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, set_time, role
+		FROM alteration
+		WHERE rota_id = $1
+		ORDER BY set_time ASC
+	`, rotaID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query alterations for rota %s: %w", rotaID, err)
+	}
+	return scanAlterations(rows)
+}
+
+func scanAlterations(rows pgx.Rows) ([]Alteration, error) {
 	defer rows.Close()
 
 	var alterations []Alteration

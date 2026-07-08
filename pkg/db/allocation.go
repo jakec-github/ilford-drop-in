@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // GetAllocations retrieves all allocation records
@@ -15,6 +17,23 @@ func (d *DB) GetAllocations(ctx context.Context) ([]Allocation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query allocations: %w", err)
 	}
+	return scanAllocations(rows)
+}
+
+// GetAllocationsByRotaID retrieves the allocation records for a single rota
+func (d *DB) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]Allocation, error) {
+	rows, err := d.pool.Query(ctx, `
+		SELECT id, rota_id, shift_date, role, volunteer_id, custom_entry
+		FROM allocation
+		WHERE rota_id = $1
+	`, rotaID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query allocations for rota %s: %w", rotaID, err)
+	}
+	return scanAllocations(rows)
+}
+
+func scanAllocations(rows pgx.Rows) ([]Allocation, error) {
 	defer rows.Close()
 
 	var allocations []Allocation
