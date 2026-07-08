@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,8 @@ func TestValidate_ValidConfig(t *testing.T) {
 		GmailSender:            "sender@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "FREQ=WEEKLY;BYDAY=SU",
@@ -42,6 +45,8 @@ func TestValidate_MinimalConfig(t *testing.T) {
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
 	}
 
 	err := Validate(cfg)
@@ -71,6 +76,8 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "INVALID_RRULE_SYNTAX",
@@ -93,6 +100,8 @@ func TestValidate_MultipleInvalidRRules(t *testing.T) {
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=WEEKLY;BYDAY=SU",
@@ -117,6 +126,8 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule:                "",
@@ -139,6 +150,8 @@ func TestValidate_ComplexValidRRule(t *testing.T) {
 		GmailUserID:            "user@example.com",
 		MaxAllocationFrequency: 0.25,
 		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=MONTHLY;BYDAY=1SU;BYMONTH=1,4,7,10",
@@ -163,6 +176,8 @@ gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
     customPreallocations:
@@ -208,6 +223,8 @@ databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
 rotaOverrides:
   - rrule: "INVALID_RRULE_SYNTAX"
     customPreallocations:
@@ -234,6 +251,8 @@ databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
 `
 
 	err := os.WriteFile(configPath, []byte(minimalConfig), 0644)
@@ -302,6 +321,8 @@ databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
 rotaOverrides:
   - customPreallocations:
       - "John Doe"
@@ -316,6 +337,96 @@ rotaOverrides:
 	assert.Contains(t, err.Error(), "validation failed")
 }
 
+func TestValidate_InvalidShiftTime(t *testing.T) {
+	cfg := &Config{
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseURL:            "postgres://localhost:5432/test",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
+		ShiftStartTime:         "7:30pm",
+		ShiftEndTime:           "21:30",
+	}
+
+	err := Validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "validation failed")
+}
+
+func TestValidate_InvalidShiftTimezone(t *testing.T) {
+	cfg := &Config{
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseURL:            "postgres://localhost:5432/test",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
+		ShiftTimezone:          "Not/AZone",
+	}
+
+	err := Validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "validation failed")
+}
+
+func TestValidate_ServerConfig(t *testing.T) {
+	base := Config{
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseURL:            "postgres://localhost:5432/test",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
+	}
+
+	valid := base
+	valid.Server = &ServerConfig{Port: 8080}
+	assert.NoError(t, Validate(&valid))
+
+	invalid := base
+	invalid.Server = &ServerConfig{Port: 0}
+	err := Validate(&invalid)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "validation failed")
+}
+
+func TestShiftTimes(t *testing.T) {
+	cfg := &Config{
+		ShiftStartTime: "19:30",
+		ShiftEndTime:   "21:30",
+	}
+
+	// GMT date: London is UTC+0
+	start, end, err := cfg.ShiftTimes("2026-01-12")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-01-12T19:30:00Z", start.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-01-12T21:30:00Z", end.UTC().Format(time.RFC3339))
+
+	// BST date: London is UTC+1
+	start, end, err = cfg.ShiftTimes("2026-07-13")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-13T18:30:00Z", start.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-07-13T20:30:00Z", end.UTC().Format(time.RFC3339))
+
+	// Explicit timezone override
+	cfg.ShiftTimezone = "UTC"
+	start, _, err = cfg.ShiftTimes("2026-07-13")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-13T19:30:00Z", start.UTC().Format(time.RFC3339))
+
+	// Invalid date
+	_, _, err = cfg.ShiftTimes("13/07/2026")
+	assert.Error(t, err)
+}
+
 func TestRotaOverride_NilShiftSize(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "nil_shiftsize.yaml")
@@ -328,6 +439,8 @@ databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.25
 defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
     customPreallocations:
