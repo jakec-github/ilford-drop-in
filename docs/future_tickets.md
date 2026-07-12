@@ -29,3 +29,12 @@ CHANGE ROTA NEEDS MANUAL TESTING
 
 - Check closed shifts when requesting availability
 - If I try to allocate a rota and allocations already exist for that rota it should fail
+
+# Web server
+
+- Change rota API call
+- Notes endpoint and data (probably a shift table)
+- Sync button for volunteer syncing
+  - On reflection this will need volunteer data to be synced with DB
+- Admin allowlist
+- Look into improving secret and config management for web server
