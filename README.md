@@ -76,9 +76,9 @@ For testing, you can use the sample volunteer data:
 ## Installation
 
 1. Clone the repository:
-
    ```bash
-   cd /path/to/ilford-drop-in/v2
+   git clone https://github.com//ilford-drop-in.git
+   cd ilford-drop-in/v2
    ```
 
 2. Install dependencies:
