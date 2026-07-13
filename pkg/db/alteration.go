@@ -8,15 +8,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetAlterationsInRange retrieves alteration records with shift_date between
-// from and to (inclusive). A zero time leaves that bound open.
+// GetAlterationsInRange retrieves alteration records whose shift falls between
+// from and to (inclusive). A zero time leaves that bound open. The date is
+// hydrated from the joined shift, not the legacy shift_date column (ADR 0001).
 func (d *DB) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, set_time, role
-		FROM alteration
+		SELECT a.id, s.date, a.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
+		FROM alteration a
+		JOIN shift s ON s.id = a.shift_id
 		`+where+`
-		ORDER BY set_time ASC
+		ORDER BY a.set_time ASC
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query alterations: %w", err)
