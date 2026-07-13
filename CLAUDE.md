@@ -19,8 +19,8 @@
 - Request review from `jakechorley`. Never merge a PR; merging is the
   reviewer's decision.
 - To address review feedback: read the PR conversation (`gh pr view <n>
-  --comments`), the inline review threads (`gh api
-  repos/{owner}/{repo}/pulls/<n>/comments`), and any failing checks
+--comments`), the inline review threads (`gh api
+repos/{owner}/{repo}/pulls/<n>/comments`), and any failing checks
   (`gh pr checks <n>`). Push fixes to the same branch, reply to each comment
   as the fix lands (or push back with reasoning), and re-request review when
   done. Never resolve a thread without responding.
