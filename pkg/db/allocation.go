@@ -9,13 +9,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetAllocationsInRange retrieves allocation records with shift_date between
-// from and to (inclusive). A zero time leaves that bound open.
+// GetAllocationsInRange retrieves allocation records whose shift falls between
+// from and to (inclusive). A zero time leaves that bound open. The date is
+// hydrated from the joined shift, not the legacy shift_date column (ADR 0001).
 func (d *DB) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]Allocation, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, rota_id, shift_date, role, volunteer_id, custom_entry
-		FROM allocation
+		SELECT a.id, a.rota_id, s.date, a.role, a.volunteer_id, a.custom_entry
+		FROM allocation a
+		JOIN shift s ON s.id = a.shift_id
 	`+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query allocations: %w", err)
@@ -23,18 +25,18 @@ func (d *DB) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]A
 	return scanAllocations(rows)
 }
 
-// shiftDateWhere builds a WHERE clause bounding shift_date, with zero times
-// leaving the corresponding bound open
+// shiftDateWhere builds a WHERE clause bounding the joined shift's date (aliased
+// s), with zero times leaving the corresponding bound open
 func shiftDateWhere(from, to time.Time) (string, []any) {
 	var conds []string
 	var args []any
 	if !from.IsZero() {
 		args = append(args, from)
-		conds = append(conds, fmt.Sprintf("shift_date >= $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("s.date >= $%d", len(args)))
 	}
 	if !to.IsZero() {
 		args = append(args, to)
-		conds = append(conds, fmt.Sprintf("shift_date <= $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("s.date <= $%d", len(args)))
 	}
 	if len(conds) == 0 {
 		return "", nil
