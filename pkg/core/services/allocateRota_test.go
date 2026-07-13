@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,9 +19,29 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+// sundayShifts builds the shift rows a rota's backfill would have produced:
+// one shift per consecutive Sunday from start, mirroring the old date
+// arithmetic so tests can feed shift rows through the mock stores.
+func sundayShifts(rotaID, start string, count int) []db.Shift {
+	dates, err := utils.CalculateShiftDates(start, count)
+	if err != nil {
+		panic(err)
+	}
+	shifts := make([]db.Shift, len(dates))
+	for i, d := range dates {
+		shifts[i] = db.Shift{
+			ID:     fmt.Sprintf("%s-shift-%d", rotaID, i),
+			RotaID: rotaID,
+			Date:   d.Format("2006-01-02"),
+		}
+	}
+	return shifts
+}
+
 // mockAllocateRotaStore implements AllocateRotaStore for testing
 type mockAllocateRotaStore struct {
 	rotations            []db.Rotation
+	shifts               []db.Shift
 	availabilityRequests []db.AvailabilityRequest
 	allocations          []db.Allocation
 	alterations          []db.Alteration
@@ -37,6 +58,16 @@ func (m *mockAllocateRotaStore) GetRotations(ctx context.Context) ([]db.Rotation
 		return nil, m.getRotationsErr
 	}
 	return m.rotations, nil
+}
+
+func (m *mockAllocateRotaStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
+	var filtered []db.Shift
+	for _, s := range m.shifts {
+		if s.RotaID == rotaID {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
@@ -135,6 +166,7 @@ func TestAllocateRota_SuccessfulAllocation(t *testing.T) {
 				ShiftCount: 3,
 			},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		availabilityRequests: []db.AvailabilityRequest{
 			{FormID: "form-1", VolunteerID: "alice", RotaID: "rota-1", FormSent: true},
 			{FormID: "form-1", VolunteerID: "bob", RotaID: "rota-1", FormSent: true},
@@ -237,6 +269,7 @@ func TestAllocateRota_DryRun(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		availabilityRequests: []db.AvailabilityRequest{
 			{FormID: "form-1", VolunteerID: "alice", RotaID: "rota-1", FormSent: true},
 			{FormID: "form-1", VolunteerID: "bob", RotaID: "rota-1", FormSent: true},
@@ -323,6 +356,7 @@ func TestAllocateRota_NoAvailabilityRequests(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
 		},
+		shifts:               sundayShifts("rota-1", "2025-01-05", 2),
 		availabilityRequests: []db.AvailabilityRequest{}, // No requests
 	}
 
@@ -345,6 +379,7 @@ func TestAllocateRota_InsufficientVolunteers(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		availabilityRequests: []db.AvailabilityRequest{
 			{FormID: "form-1", VolunteerID: "alice", RotaID: "rota-1", FormSent: true},
 		},
@@ -390,6 +425,7 @@ func TestAllocateRota_UnsuccessfulAllocation_NotSaved(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		availabilityRequests: []db.AvailabilityRequest{
 			{FormID: "form-1", VolunteerID: "alice", RotaID: "rota-1", FormSent: true},
 			{FormID: "form-1", VolunteerID: "bob", RotaID: "rota-1", FormSent: true},
@@ -455,6 +491,7 @@ func TestAllocateRota_ForceCommit_SavesUnsuccessfulAllocation(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		availabilityRequests: []db.AvailabilityRequest{
 			{FormID: "form-1", VolunteerID: "alice", RotaID: "rota-1", FormSent: true},
 			{FormID: "form-1", VolunteerID: "bob", RotaID: "rota-1", FormSent: true},

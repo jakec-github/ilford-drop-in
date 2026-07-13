@@ -62,9 +62,9 @@ func AllocateRotaCpsat(
 	targetRota := utils.FindLatestRotation(rotations)
 	logger.Debug("Using latest rota", zap.String("id", targetRota.ID))
 
-	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+		return nil, err
 	}
 
 	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)

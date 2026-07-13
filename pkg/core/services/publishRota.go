@@ -19,6 +19,7 @@ import (
 // PublishRotaStore defines the database operations needed for publishing a rota
 type PublishRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
 	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
 }
@@ -79,10 +80,10 @@ func PublishRota(
 		zap.String("start", targetRota.Start),
 		zap.Int("shift_count", targetRota.ShiftCount))
 
-	// Step 2: Calculate shift dates
-	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	// Step 2: Read the rota's shift dates from the shift table (ADR 0001)
+	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+		return nil, err
 	}
 
 	// Step 3: Fetch this rota's allocations

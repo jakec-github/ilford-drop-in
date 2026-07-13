@@ -16,7 +16,7 @@ import (
 
 // ChangeRotaStore defines the database operations needed for changing a rota
 type ChangeRotaStore interface {
-	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
 	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error)
 	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error)
 	InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error
@@ -91,21 +91,16 @@ func ChangeRota(
 		}
 	}
 
-	// Step 2: Fetch rotations and find the one containing the target date
-	rotations, err := database.GetRotations(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch rotations: %w", err)
-	}
-
-	rota, err := findRotaForDate(rotations, params.Date)
+	// Step 2: Resolve the target date to its shift's rota by lookup
+	rotaID, err := resolveShiftRota(ctx, database, params.Date)
 	if err != nil {
 		return nil, err
 	}
 
-	// If swap_date is provided, find its rota (may be different)
-	var swapRota *db.Rotation
+	// If swap_date is provided, resolve its rota (may be different)
+	var swapRotaID string
 	if params.SwapDate != "" {
-		swapRota, err = findRotaForDate(rotations, params.SwapDate)
+		swapRotaID, err = resolveShiftRota(ctx, database, params.SwapDate)
 		if err != nil {
 			return nil, fmt.Errorf("swap date: %w", err)
 		}
@@ -147,11 +142,11 @@ func ChangeRota(
 
 	// Step 6: Build alterations for the primary date
 	var alterations []db.Alteration
-	alterations = append(alterations, buildAlterationsForDate(rota.ID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState[params.Date])...)
+	alterations = append(alterations, buildAlterationsForDate(rotaID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState[params.Date])...)
 
 	// Step 7: Build reverse alterations for swap date (may use a different rota ID)
 	if params.SwapDate != "" {
-		alterations = append(alterations, buildAlterationsForDate(swapRota.ID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState[params.SwapDate])...)
+		alterations = append(alterations, buildAlterationsForDate(swapRotaID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState[params.SwapDate])...)
 	}
 
 	// Step 8: Insert cover and alterations atomically
@@ -195,27 +190,24 @@ func buildEffectiveState(ctx context.Context, database ChangeRotaStore, dateStr 
 	return utils.ApplyAlterations(allocationsByDate, dateAlterations), nil
 }
 
-// findRotaForDate finds the rotation that contains the given date
-func findRotaForDate(rotations []db.Rotation, dateStr string) (*db.Rotation, error) {
-	targetDate, err := time.Parse("2006-01-02", dateStr)
+// resolveShiftRota looks up the shift on the given date and returns its rota id,
+// rejecting dates with no shift. This replaces recomputing rota arithmetic:
+// a date now resolves to what actually exists in the shift table (ADR 0001).
+func resolveShiftRota(ctx context.Context, database ChangeRotaStore, dateStr string) (string, error) {
+	date, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
+		return "", wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
 	}
 
-	for i := range rotations {
-		rota := &rotations[i]
-		shiftDates, err := utils.CalculateShiftDates(rota.Start, rota.ShiftCount)
-		if err != nil {
-			continue
-		}
-		for _, sd := range shiftDates {
-			if sd.Equal(targetDate) {
-				return rota, nil
-			}
-		}
+	shift, err := database.GetShiftByDate(ctx, date)
+	if err != nil {
+		return "", fmt.Errorf("failed to look up shift for date %s: %w", dateStr, err)
+	}
+	if shift == nil {
+		return "", wrapf(ErrNotFound, "date %s is not in any rota", dateStr)
 	}
 
-	return nil, wrapf(ErrNotFound, "date %s is not in any rota", dateStr)
+	return shift.RotaID, nil
 }
 
 // validateDateChanges validates that the proposed changes are consistent with the current state
