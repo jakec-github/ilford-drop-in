@@ -1,10 +1,11 @@
-# Future tickets
+# Legacy tickets
+
+> **This file is no longer the issue tracker.** Work is tracked as GitHub issues
+> (see `docs/agents/issue-tracker.md`). The migrated items became issues #4–#13
+> on 2026-07-13 (the shift table idea became #3 earlier); the items below were
+> deliberately left unmigrated. Don't add new entries here.
 
 CHANGE ROTA NEEDS MANUAL TESTING
-
-## Features
-
-- Configurable roles. Roles in the volunteer sheet probably shouldn't match rota roles. ie. Collector may be an ordinary service volunteer for example
 
 ## Allocator improvements
 
@@ -20,21 +21,5 @@ CHANGE ROTA NEEDS MANUAL TESTING
 
 ## Tech debt
 
-- Assess potential issues with concurrent users
-- Deduplicate the rrule resolution logic into a util
 - Further dedupe grouping logic (bit tricky as it is done in and outside the allocator)
 - Give all the clients the same signature and make them fetch the token independently.
-
-## General improvements
-
-- Check closed shifts when requesting availability
-- If I try to allocate a rota and allocations already exist for that rota it should fail
-
-# Web server
-
-- Change rota API call
-- Notes endpoint and data (probably a shift table)
-- Sync button for volunteer syncing
-  - On reflection this will need volunteer data to be synced with DB
-- Admin allowlist
-- Look into improving secret and config management for web server
