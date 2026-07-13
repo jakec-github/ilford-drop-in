@@ -19,6 +19,7 @@ import (
 // mockAvailabilityRequestStore implements AvailabilityRequestStore for testing
 type mockAvailabilityRequestStore struct {
 	rotations            []db.Rotation
+	shifts               []db.Shift
 	availabilityRequests []db.AvailabilityRequest
 	insertedRequests     []db.AvailabilityRequest
 	markedSentIDs        []string
@@ -33,6 +34,16 @@ func (m *mockAvailabilityRequestStore) GetRotations(ctx context.Context) ([]db.R
 		return nil, m.getRotationsErr
 	}
 	return m.rotations, nil
+}
+
+func (m *mockAvailabilityRequestStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
+	var filtered []db.Shift
+	for _, s := range m.shifts {
+		if s.RotaID == rotaID {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockAvailabilityRequestStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
@@ -122,6 +133,7 @@ func TestRequestAvailability_CreatesRequestsForVolunteersWithoutRequests(t *test
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts: sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{
 			// vol-1 already has an unsent request (FormSent=false)
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormID: "existing-form-1", FormURL: "https://forms.google.com/existing-form-1", FormSent: false},
@@ -194,6 +206,7 @@ func TestRequestAvailability_ResendsForUnsentRequests(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts: sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{
 			// vol-1 already has sent request - should be skipped
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormID: "form-1", FormURL: "https://forms.google.com/form-1", FormSent: true},
@@ -244,6 +257,7 @@ func TestRequestAvailability_NoVolunteersNeedEmails(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts: sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{
 			// All volunteers have sent requests
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormSent: true},
@@ -286,6 +300,10 @@ func TestRequestAvailability_OnlyCreatesForLatestRota(t *testing.T) {
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 			{ID: "rota-2", Start: "2024-04-01", ShiftCount: 12}, // Latest
 		},
+		shifts: append(
+			sundayShifts("rota-1", "2024-01-01", 10),
+			sundayShifts("rota-2", "2024-04-01", 12)...,
+		),
 		availabilityRequests: []db.AvailabilityRequest{
 			// vol-1 has request for old rota only
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormSent: true},
@@ -329,6 +347,7 @@ func TestRequestAvailability_PartialEmailFailures(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{},
 	}
 	mockVolunteerClient := &mockVolunteerClient{
@@ -391,6 +410,7 @@ func TestRequestAvailability_AllEmailsFail(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{},
 	}
 	mockVolunteerClient := &mockVolunteerClient{
@@ -420,6 +440,7 @@ func TestRequestAvailability_NoEmail_CreatesFormsButDoesNotSend(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{},
 	}
 	mockVolunteerClient := &mockVolunteerClient{
@@ -464,6 +485,7 @@ func TestRequestAvailability_NoEmail_ReusesExistingUnsentForms(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts: sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{
 			// vol-1 already has an unsent request
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormID: "existing-form-1", FormURL: "https://forms.google.com/existing", FormSent: false},
@@ -507,6 +529,7 @@ func TestRequestAvailability_NoEmail_SkipsVolunteersWithSentRequests(t *testing.
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts: sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{
 			// vol-1 already has a sent request - should be completely skipped
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormID: "form-1", FormURL: "https://forms.google.com/form-1", FormSent: true},
@@ -550,6 +573,7 @@ func TestRequestAvailability_NoEmail_AllAlreadySent(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts: sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormSent: true},
 			{ID: "req-2", RotaID: "rota-1", VolunteerID: "vol-2", FormSent: true},
@@ -585,6 +609,7 @@ func TestRequestAvailability_NoEmail_ThenSendEmails(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{},
 	}
 	volunteers := &mockVolunteerClient{
@@ -642,6 +667,7 @@ func TestRequestAvailability_NoEmail_FiltersInactiveVolunteers(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
 		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
 		availabilityRequests: []db.AvailabilityRequest{},
 	}
 	mockVolunteerClient := &mockVolunteerClient{

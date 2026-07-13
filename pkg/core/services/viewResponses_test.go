@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -9,7 +10,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
 func TestAggregateByGroup_SingleMemberGroup(t *testing.T) {
@@ -349,7 +352,6 @@ func TestAggregateByGroup_AvailableForAll(t *testing.T) {
 	assert.NotContains(t, group.AvailableDates, "Sun Jan 12 2025")
 }
 
-
 func TestCalculateShiftAvailability_DefaultShiftSize(t *testing.T) {
 	shiftDates := []time.Time{
 		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
@@ -421,7 +423,7 @@ func TestCalculateShiftAvailability_WithRRuleOverrides(t *testing.T) {
 		RotaOverrides: []config.RotaOverride{
 			{
 				RRule:     "FREQ=WEEKLY;BYDAY=SA", // Saturdays have different shift size
-				ShiftSize: &shiftSize3,             // Override to 3 for Saturdays
+				ShiftSize: &shiftSize3,            // Override to 3 for Saturdays
 			},
 		},
 	}
@@ -756,4 +758,70 @@ func TestCalculateShiftAvailability_WithPreallocations(t *testing.T) {
 // Helper function to create int pointer
 func intPtr(i int) *int {
 	return &i
+}
+
+// TestViewResponses_ReadsShiftDatesFromTable checks that ViewResponses derives
+// its shift dates from the rota's shift rows (ADR 0001) rather than recomputing
+// them, and that the response view is unchanged given those rows.
+func TestViewResponses_ReadsShiftDatesFromTable(t *testing.T) {
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}, // Sunday
+		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
+		availabilityRequests: []db.AvailabilityRequest{
+			{ID: "req-1", RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a", FormURL: "https://forms/a", FormSent: true},
+		},
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "Smith", Status: "Active", Role: model.RoleVolunteer},
+		},
+	}
+
+	formsClient := &mockFormsClientWithResponses{
+		responses: map[string]*formsclient.FormResponse{
+			"Alice Smith": {
+				HasResponded:     true,
+				UnavailableDates: []string{"Sun Jan 12 2025"},
+				AvailableDates:   []string{"Sun Jan 5 2025"},
+			},
+		},
+	}
+
+	cfg := &config.Config{DefaultShiftSize: 2}
+	result, err := ViewResponses(context.Background(), store, volunteerClient, formsClient, cfg, zap.NewNop(), "", false)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Shift dates come from the shift rows, sorted ascending.
+	assert.Equal(t, []time.Time{
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC),
+	}, result.ShiftDates)
+	assert.Equal(t, "rota-1", result.RotaID)
+	assert.Equal(t, 1, result.RespondedCount)
+	assert.Equal(t, 0, result.NotRespondedCount)
+}
+
+// TestViewResponses_ErrorsWhenRotaHasNoShifts checks that ViewResponses now
+// depends on the shift table: a rota with no shift rows breaks the "a rotation
+// always has >=1 shift" invariant and fails loudly (ADR 0001).
+func TestViewResponses_ErrorsWhenRotaHasNoShifts(t *testing.T) {
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
+		},
+		// no shift rows
+		availabilityRequests: []db.AvailabilityRequest{
+			{ID: "req-1", RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a", FormSent: true},
+		},
+	}
+	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
+	formsClient := &mockFormsClientWithResponses{}
+
+	_, err := ViewResponses(context.Background(), store, volunteerClient, formsClient, &config.Config{}, zap.NewNop(), "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no shifts")
 }

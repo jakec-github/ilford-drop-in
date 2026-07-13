@@ -33,6 +33,7 @@ type FailedEmail struct {
 // AvailabilityRequestStore defines the database operations needed for request availability
 type AvailabilityRequestStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 	InsertAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) error
 	MarkAvailabilityRequestsSent(ctx context.Context, ids []string) error
@@ -90,10 +91,10 @@ func RequestAvailability(
 		zap.String("start", latestRota.Start),
 		zap.Int("shift_count", latestRota.ShiftCount))
 
-	// Calculate shift dates for the rota
-	shiftDates, err := utils.CalculateShiftDates(latestRota.Start, latestRota.ShiftCount)
+	// Read the rota's shift dates from the shift table (ADR 0001)
+	shiftDates, err := rotaShiftDates(ctx, database, latestRota.ID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+		return nil, nil, err
 	}
 
 	// Step 3: Fetch the availability requests for the current rota
