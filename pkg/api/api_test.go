@@ -22,7 +22,7 @@ import (
 
 // mockStore implements Store for testing
 type mockStore struct {
-	rotations   []db.Rotation
+	shifts      []db.Shift
 	allocations []db.Allocation
 	alterations []db.Alteration
 
@@ -32,8 +32,14 @@ type mockStore struct {
 	getAllocationsErr   error
 }
 
-func (m *mockStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
-	return m.rotations, nil
+func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {
+	dateStr := date.Format("2006-01-02")
+	for i := range m.shifts {
+		if m.shifts[i].Date == dateStr {
+			return &m.shifts[i], nil
+		}
+	}
+	return nil, nil
 }
 
 func (m *mockStore) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error) {
@@ -208,8 +214,9 @@ func TestListShiftsEndpoint_StoreError(t *testing.T) {
 
 func alterationTestStore() *mockStore {
 	return &mockStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2026-01-11", ShiftCount: 2},
+		shifts: []db.Shift{
+			{ID: "s1", RotaID: "rota-1", Date: "2026-01-11"},
+			{ID: "s2", RotaID: "rota-1", Date: "2026-01-18"},
 		},
 		allocations: []db.Allocation{
 			{ID: "a1", RotaID: "rota-1", ShiftDate: "2026-01-11", Role: string(model.RoleVolunteer), VolunteerID: "bob"},

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -65,6 +66,22 @@ func GetVolunteerIDs(volunteers []model.Volunteer) []string {
 		ids[i] = vol.ID
 	}
 	return ids
+}
+
+// ShiftDatesFromShifts extracts the dates of a rota's shifts, sorted ascending.
+// This replaces CalculateShiftDates for consumers that now read a rota's shifts
+// from the database rather than recomputing them by arithmetic (ADR 0001).
+func ShiftDatesFromShifts(shifts []db.Shift) ([]time.Time, error) {
+	dates := make([]time.Time, len(shifts))
+	for i, s := range shifts {
+		date, err := time.Parse("2006-01-02", s.Date)
+		if err != nil {
+			return nil, fmt.Errorf("invalid shift date %q: %w", s.Date, err)
+		}
+		dates[i] = date
+	}
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+	return dates, nil
 }
 
 // CalculateShiftDates calculates all shift dates for a rota, starting from the given date

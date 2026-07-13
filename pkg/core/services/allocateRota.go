@@ -74,6 +74,7 @@ type AllocateRotaResult struct {
 // AllocateRotaStore defines the database operations needed for allocating a rota
 type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
 	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
@@ -118,10 +119,10 @@ func AllocateRota(
 		zap.String("start", targetRota.Start),
 		zap.Int("shift_count", targetRota.ShiftCount))
 
-	// Calculate shift dates
-	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	// Read the rota's shift dates from the shift table (ADR 0001)
+	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+		return nil, err
 	}
 
 	// Step 3: DB query - Fetch availability requests for the target rota
@@ -603,4 +604,3 @@ func findPreviousRotation(rotations []db.Rotation, targetRota *db.Rotation) *db.
 
 	return previousRota
 }
-

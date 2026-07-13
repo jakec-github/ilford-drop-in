@@ -27,6 +27,7 @@ func TestPublishRota_Success(t *testing.T) {
 				ShiftCount: 2,
 			},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
 			// Shift 1 - Jan 5
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
@@ -87,6 +88,7 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 			{ID: "alloc-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
@@ -125,6 +127,7 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 			// Volunteers in reverse alphabetical order
@@ -166,6 +169,7 @@ func TestPublishRota_RotaNotFound(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
@@ -187,6 +191,7 @@ func TestPublishRota_NoAllocations(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
 		},
+		shifts:      sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{}, // No allocations
 	}
 
@@ -214,6 +219,7 @@ func TestPublishRota_MissingVolunteer(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 			// Bob doesn't exist in volunteer list
@@ -250,6 +256,7 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 			{ID: "rota-2", Start: "2025-01-19", ShiftCount: 1}, // Latest rota
 			{ID: "rota-3", Start: "2025-01-12", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-2", "2025-01-19", 1),
 		allocations: []db.Allocation{
 			{ID: "alloc-1", RotaID: "rota-2", ShiftDate: "2025-01-19", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 			{ID: "alloc-2", RotaID: "rota-2", ShiftDate: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
@@ -302,12 +309,23 @@ func TestPublishRota_NoRotations(t *testing.T) {
 // mockPublishRotaStore implements PublishRotaStore for testing
 type mockPublishRotaStore struct {
 	rotations   []db.Rotation
+	shifts      []db.Shift
 	allocations []db.Allocation
 	alterations []db.Alteration
 }
 
 func (m *mockPublishRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	return m.rotations, nil
+}
+
+func (m *mockPublishRotaStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
+	var filtered []db.Shift
+	for _, s := range m.shifts {
+		if s.RotaID == rotaID {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockPublishRotaStore) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error) {
@@ -351,6 +369,7 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 				ShiftCount: 3,
 			},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		allocations: []db.Allocation{
 			// Shift 1 - Jan 5 (open shift)
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
@@ -419,6 +438,7 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 			{ID: "alloc-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
@@ -464,6 +484,7 @@ func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
 			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 			{ID: "alloc-2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
