@@ -12,7 +12,6 @@ import (
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -25,14 +24,15 @@ type VolunteerRotaStatus struct {
 
 // ViewHistoricalResponsesResult contains the historical response data for display
 type ViewHistoricalResponsesResult struct {
-	Rotations  []db.Rotation                              // sorted chronologically, last N
-	Volunteers []model.Volunteer                          // all volunteers who appear in any of the selected rotations
-	Matrix     map[string]map[string]VolunteerRotaStatus  // [volunteerID][rotaID] -> status
+	Rotations  []db.Rotation                             // sorted chronologically, last N
+	Volunteers []model.Volunteer                         // all volunteers who appear in any of the selected rotations
+	Matrix     map[string]map[string]VolunteerRotaStatus // [volunteerID][rotaID] -> status
 }
 
 // ViewHistoricalResponsesStore defines the database operations needed
 type ViewHistoricalResponsesStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
 }
 
@@ -168,14 +168,14 @@ func ViewHistoricalResponses(
 
 	var tasks []formFetchTask
 
-	// Pre-calculate shift dates for each rotation
-	rotaShiftDates := make(map[string][]time.Time)
+	// Read each rotation's shift dates from the shift table (ADR 0001)
+	shiftDatesByRota := make(map[string][]time.Time)
 	for _, rota := range selectedRotations {
-		dates, err := utils.CalculateShiftDates(rota.Start, rota.ShiftCount)
+		dates, err := rotaShiftDates(ctx, database, rota.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to calculate shift dates for rota %s: %w", rota.ID, err)
+			return nil, fmt.Errorf("rota %s: %w", rota.ID, err)
 		}
-		rotaShiftDates[rota.ID] = dates
+		shiftDatesByRota[rota.ID] = dates
 	}
 
 	for _, vol := range volunteers {
@@ -213,7 +213,7 @@ func ViewHistoricalResponses(
 				volunteerID:   vol.ID,
 				volunteerName: volunteerName,
 				formID:        req.FormID,
-				shiftDates:    rotaShiftDates[rota.ID],
+				shiftDates:    shiftDatesByRota[rota.ID],
 				cutoff:        cutoff,
 				shiftCount:    rota.ShiftCount,
 			})

@@ -128,10 +128,10 @@ func ViewResponses(
 		zap.String("start", targetRota.Start),
 		zap.Int("shift_count", targetRota.ShiftCount))
 
-	// Calculate shift dates
-	shiftDates, err := utils.CalculateShiftDates(targetRota.Start, targetRota.ShiftCount)
+	// Read the rota's shift dates from the shift table (ADR 0001)
+	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate shift dates: %w", err)
+		return nil, err
 	}
 
 	// Step 3: Fetch the availability requests for this rota

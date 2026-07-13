@@ -20,6 +20,7 @@ import (
 // mockHistoricalStore implements ViewHistoricalResponsesStore
 type mockHistoricalStore struct {
 	rotations            []db.Rotation
+	shifts               []db.Shift
 	availabilityRequests []db.AvailabilityRequest
 	getRotationsErr      error
 	getAvailabilityErr   error
@@ -30,6 +31,16 @@ func (m *mockHistoricalStore) GetRotations(ctx context.Context) ([]db.Rotation, 
 		return nil, m.getRotationsErr
 	}
 	return m.rotations, nil
+}
+
+func (m *mockHistoricalStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
+	var filtered []db.Shift
+	for _, s := range m.shifts {
+		if s.RotaID == rotaID {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockHistoricalStore) GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error) {
@@ -81,6 +92,10 @@ func TestViewHistoricalResponses_BasicMatrix(t *testing.T) {
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 6, AllocatedDatetime: cutoff},
 			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 8, AllocatedDatetime: cutoff},
 		},
+		shifts: append(
+			sundayShifts("rota-1", "2025-01-05", 6),
+			sundayShifts("rota-2", "2025-03-02", 8)...,
+		),
 		availabilityRequests: []db.AvailabilityRequest{
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a1", FormSent: true},
 			{RotaID: "rota-1", VolunteerID: "bob", FormID: "form-b1", FormSent: true},
@@ -149,6 +164,10 @@ func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
 			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 4, AllocatedDatetime: cutoff},
 			{ID: "rota-3", Start: "2025-05-04", ShiftCount: 4, AllocatedDatetime: cutoff},
 		},
+		shifts: append(append(
+			sundayShifts("rota-1", "2025-01-05", 4),
+			sundayShifts("rota-2", "2025-03-02", 4)...),
+			sundayShifts("rota-3", "2025-05-04", 4)...),
 		availabilityRequests: []db.AvailabilityRequest{
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "f1", FormSent: true},
 			{RotaID: "rota-2", VolunteerID: "alice", FormID: "f2", FormSent: true},
@@ -192,6 +211,11 @@ func TestViewHistoricalResponses_FiltersUnallocatedRotations(t *testing.T) {
 			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 4, AllocatedDatetime: ""}, // not allocated
 			{ID: "rota-3", Start: "2025-05-04", ShiftCount: 4, AllocatedDatetime: cutoff},
 		},
+		// rota-2 is unallocated and never selected, so it needs no shift rows
+		shifts: append(
+			sundayShifts("rota-1", "2025-01-05", 4),
+			sundayShifts("rota-3", "2025-05-04", 4)...,
+		),
 		availabilityRequests: []db.AvailabilityRequest{
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "f1", FormSent: true},
 			{RotaID: "rota-3", VolunteerID: "alice", FormID: "f3", FormSent: true},
@@ -231,6 +255,7 @@ func TestViewHistoricalResponses_VolunteerIDFilter(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 4),
 		availabilityRequests: []db.AvailabilityRequest{
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a", FormSent: true},
 			{RotaID: "rota-1", VolunteerID: "bob", FormID: "form-b", FormSent: true},
@@ -288,6 +313,7 @@ func TestViewHistoricalResponses_FormErrorHandledGracefully(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 4),
 		availabilityRequests: []db.AvailabilityRequest{
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-deleted", FormSent: true},
 		},
@@ -350,6 +376,10 @@ func TestViewHistoricalResponses_VolunteerAcrossRotations(t *testing.T) {
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
 			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 6, AllocatedDatetime: cutoff},
 		},
+		shifts: append(
+			sundayShifts("rota-1", "2025-01-05", 4),
+			sundayShifts("rota-2", "2025-03-02", 6)...,
+		),
 		availabilityRequests: []db.AvailabilityRequest{
 			// Alice has forms for both
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "f-a1", FormSent: true},
@@ -412,6 +442,7 @@ func TestViewHistoricalResponses_EmptyVolunteerIDFilterShowsAll(t *testing.T) {
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
 		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 4),
 		availabilityRequests: []db.AvailabilityRequest{
 			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a", FormSent: true},
 			{RotaID: "rota-1", VolunteerID: "bob", FormID: "form-b", FormSent: true},
