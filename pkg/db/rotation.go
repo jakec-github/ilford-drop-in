@@ -6,11 +6,16 @@ import (
 	"time"
 )
 
-// GetRotations retrieves all rotation records
+// GetRotations retrieves all rotation records. Start and shift count are
+// derived from each rotation's shifts (ADR 0001): the stored rotation columns
+// are write-only until the contract-phase migration drops them. Relies on the
+// invariant that a rotation always has at least one shift.
 func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, start, shift_count, allocated_datetime
-		FROM rotation
+		SELECT r.id, MIN(s.date), COUNT(*), r.allocated_datetime
+		FROM rotation r
+		JOIN shift s ON s.rota_id = r.id
+		GROUP BY r.id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query rotations: %w", err)
