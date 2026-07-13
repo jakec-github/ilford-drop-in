@@ -3,12 +3,11 @@ package db
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-const availabilityRequestColumns = `id, rota_id, shift_date, volunteer_id, form_id, form_url, form_sent`
+const availabilityRequestColumns = `id, rota_id, volunteer_id, form_id, form_url, form_sent`
 
 // GetAvailabilityRequests retrieves all availability request records
 func (d *DB) GetAvailabilityRequests(ctx context.Context) ([]AvailabilityRequest, error) {
@@ -41,11 +40,9 @@ func scanAvailabilityRequests(rows pgx.Rows) ([]AvailabilityRequest, error) {
 	var requests []AvailabilityRequest
 	for rows.Next() {
 		var req AvailabilityRequest
-		var shiftDate time.Time
-		if err := rows.Scan(&req.ID, &req.RotaID, &shiftDate, &req.VolunteerID, &req.FormID, &req.FormURL, &req.FormSent); err != nil {
+		if err := rows.Scan(&req.ID, &req.RotaID, &req.VolunteerID, &req.FormID, &req.FormURL, &req.FormSent); err != nil {
 			return nil, fmt.Errorf("failed to scan availability request: %w", err)
 		}
-		req.ShiftDate = shiftDate.Format("2006-01-02")
 		requests = append(requests, req)
 	}
 
@@ -70,9 +67,9 @@ func (d *DB) InsertAvailabilityRequests(ctx context.Context, requests []Availabi
 
 	for _, req := range requests {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO availability_request (id, rota_id, shift_date, volunteer_id, form_id, form_url, form_sent)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-		`, req.ID, req.RotaID, req.ShiftDate, req.VolunteerID, req.FormID, req.FormURL, req.FormSent)
+			INSERT INTO availability_request (id, rota_id, volunteer_id, form_id, form_url, form_sent)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, req.ID, req.RotaID, req.VolunteerID, req.FormID, req.FormURL, req.FormSent)
 		if err != nil {
 			return fmt.Errorf("failed to insert availability request: %w", err)
 		}

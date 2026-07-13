@@ -23,16 +23,16 @@ import (
 // one shift per consecutive Sunday from start, mirroring the old date
 // arithmetic so tests can feed shift rows through the mock stores.
 func sundayShifts(rotaID, start string, count int) []db.Shift {
-	dates, err := utils.CalculateShiftDates(start, count)
+	startDate, err := time.Parse("2006-01-02", start)
 	if err != nil {
 		panic(err)
 	}
-	shifts := make([]db.Shift, len(dates))
-	for i, d := range dates {
+	shifts := make([]db.Shift, count)
+	for i := 0; i < count; i++ {
 		shifts[i] = db.Shift{
 			ID:     fmt.Sprintf("%s-shift-%d", rotaID, i),
 			RotaID: rotaID,
-			Date:   d.Format("2006-01-02"),
+			Date:   startDate.AddDate(0, 0, i*7).Format("2006-01-02"),
 		}
 	}
 	return shifts
@@ -604,28 +604,6 @@ func TestFilterActiveVols(t *testing.T) {
 	assert.Len(t, active, 2)
 	assert.Equal(t, "alice", active[0].ID)
 	assert.Equal(t, "charlie", active[1].ID)
-}
-
-func TestCalcShiftDates(t *testing.T) {
-	dates, err := utils.CalculateShiftDates("2025-01-05", 4) // Start on Sunday, Jan 5
-	require.NoError(t, err)
-	require.Len(t, dates, 4)
-
-	// All dates should be Sundays
-	for i, date := range dates {
-		assert.Equal(t, time.Sunday, date.Weekday(), "Shift %d should be on Sunday", i)
-	}
-
-	// Check specific dates
-	assert.Equal(t, "2025-01-05", dates[0].Format("2006-01-02"))
-	assert.Equal(t, "2025-01-12", dates[1].Format("2006-01-02"))
-	assert.Equal(t, "2025-01-19", dates[2].Format("2006-01-02"))
-	assert.Equal(t, "2025-01-26", dates[3].Format("2006-01-02"))
-}
-
-func TestCalcShiftDates_Invalid(t *testing.T) {
-	_, err := utils.CalculateShiftDates("invalid-date", 4)
-	assert.Error(t, err)
 }
 
 func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {

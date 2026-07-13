@@ -186,7 +186,6 @@ func RequestAvailability(
 			unsentRequests = append(unsentRequests, db.AvailabilityRequest{
 				ID:          requestID,
 				RotaID:      latestRota.ID,
-				ShiftDate:   latestRota.Start,
 				VolunteerID: volunteer.ID,
 				FormID:      formResult.FormID,
 				FormURL:     formResult.ResponderURI,
