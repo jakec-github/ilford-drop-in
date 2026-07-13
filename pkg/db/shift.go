@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // InsertRotationAndShifts inserts a rotation and all of its minted shifts in a
@@ -22,14 +24,22 @@ func (d *DB) InsertRotationAndShifts(ctx context.Context, rotation *Rotation, sh
 		return fmt.Errorf("failed to insert rotation: %w", err)
 	}
 
+	batch := &pgx.Batch{}
 	for _, s := range shifts {
-		_, err := tx.Exec(ctx, `
+		batch.Queue(`
 			INSERT INTO shift (id, date, rota_id)
 			VALUES ($1, $2, $3)
 		`, s.ID, s.Date, s.RotaID)
-		if err != nil {
+	}
+	results := tx.SendBatch(ctx, batch)
+	for range shifts {
+		if _, err := results.Exec(); err != nil {
+			results.Close()
 			return fmt.Errorf("failed to insert shift: %w", err)
 		}
+	}
+	if err := results.Close(); err != nil {
+		return fmt.Errorf("failed to close shift batch: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
