@@ -38,15 +38,3 @@ func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 
 	return rotations, nil
 }
-
-// InsertRotation inserts a new rotation record
-func (d *DB) InsertRotation(ctx context.Context, rotation *Rotation) error {
-	_, err := d.pool.Exec(ctx, `
-		INSERT INTO rotation (id, start, shift_count)
-		VALUES ($1, $2, $3)
-	`, rotation.ID, rotation.Start, rotation.ShiftCount)
-	if err != nil {
-		return fmt.Errorf("failed to insert rotation: %w", err)
-	}
-	return nil
-}

@@ -21,7 +21,7 @@ type RotaResult struct {
 // DefineRotaStore defines the database operations needed for defining a rota
 type DefineRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	InsertRotation(ctx context.Context, rotation *db.Rotation) error
+	InsertRotationAndShifts(ctx context.Context, rotation *db.Rotation, shifts []db.Shift) error
 }
 
 // DefineRota creates a new rota with the specified number of shifts
@@ -82,15 +82,24 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 
 	logger.Debug("Creating new rotation", zap.String("id", rotation.ID), zap.String("start", rotation.Start))
 
-	// Insert rotation into database
-	if err := database.InsertRotation(ctx, rotation); err != nil {
-		return nil, fmt.Errorf("failed to insert rotation: %w", err)
+	// Mint this rotation's shifts (weekly shifts starting from start date).
+	// Rota definition is the sole place shift-date arithmetic lives.
+	shiftDates := make([]time.Time, shiftCount)
+	shifts := make([]db.Shift, shiftCount)
+	for i := 0; i < shiftCount; i++ {
+		shiftDate := startDate.AddDate(0, 0, 7*i)
+		shiftDates[i] = shiftDate
+		shifts[i] = db.Shift{
+			ID:     uuid.New().String(),
+			RotaID: rotation.ID,
+			Date:   shiftDate.Format("2006-01-02"),
+		}
 	}
 
-	// Calculate shift dates (weekly shifts starting from start date)
-	shiftDates := make([]time.Time, shiftCount)
-	for i := 0; i < shiftCount; i++ {
-		shiftDates[i] = startDate.AddDate(0, 0, 7*i)
+	// Insert the rotation and all of its shifts atomically, so a rota can
+	// never exist half-formed.
+	if err := database.InsertRotationAndShifts(ctx, rotation, shifts); err != nil {
+		return nil, fmt.Errorf("failed to insert rotation and shifts: %w", err)
 	}
 
 	logger.Debug("Rotation created successfully",

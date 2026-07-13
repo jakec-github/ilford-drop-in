@@ -34,9 +34,14 @@ func (d *DB) InsertCoverAndAlterations(ctx context.Context, cover *Cover, altera
 			role = &a.Role
 		}
 
+		// Dual-write the shift reference alongside the legacy rota/date columns
+		// (expand phase of the first-class Shift entity). The subquery resolves
+		// the minted shift for this rota and date; a missing shift trips the
+		// NOT NULL constraint and fails loudly.
 		_, err := tx.Exec(ctx, `
-			INSERT INTO alteration (id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, role)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO alteration (id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, role, shift_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+				(SELECT id FROM shift WHERE rota_id = $3 AND date = $2))
 		`, a.ID, a.ShiftDate, a.RotaID, a.Direction, volunteerID, customValue, a.CoverID, role)
 		if err != nil {
 			return fmt.Errorf("failed to insert alteration: %w", err)

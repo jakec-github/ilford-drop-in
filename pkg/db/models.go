@@ -8,6 +8,15 @@ type Rotation struct {
 	AllocatedDatetime string // TIMESTAMPTZ, empty string if NULL
 }
 
+// Shift represents a database shift record: a planned session of the drop-in on
+// a specific date, minted by a rotation and existing independently of who is
+// allocated to it.
+type Shift struct {
+	ID     string // UUID
+	RotaID string // UUID
+	Date   string // DATE
+}
+
 // AvailabilityRequest represents a database availability request record
 type AvailabilityRequest struct {
 	ID          string

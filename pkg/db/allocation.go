@@ -101,9 +101,14 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 			customEntry = &a.CustomEntry
 		}
 
+		// Dual-write the shift reference alongside the legacy rota/date columns
+		// (expand phase of the first-class Shift entity). The subquery resolves
+		// the minted shift for this rota and date; a missing shift trips the
+		// NOT NULL constraint and fails loudly.
 		_, err := tx.Exec(ctx, `
-			INSERT INTO allocation (id, rota_id, shift_date, role, volunteer_id, custom_entry)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO allocation (id, rota_id, shift_date, role, volunteer_id, custom_entry, shift_id)
+			VALUES ($1, $2, $3, $4, $5, $6,
+				(SELECT id FROM shift WHERE rota_id = $2 AND date = $3))
 		`, a.ID, a.RotaID, a.ShiftDate, a.Role, volunteerID, customEntry)
 		if err != nil {
 			return fmt.Errorf("failed to insert allocation: %w", err)
