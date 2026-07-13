@@ -17,6 +17,7 @@ import (
 type mockDB struct {
 	rotations       []db.Rotation
 	insertedRotas   []*db.Rotation
+	insertedShifts  [][]db.Shift
 	getRotationsErr error
 	insertErr       error
 }
@@ -28,11 +29,12 @@ func (m *mockDB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	return m.rotations, nil
 }
 
-func (m *mockDB) InsertRotation(ctx context.Context, rotation *db.Rotation) error {
+func (m *mockDB) InsertRotationAndShifts(ctx context.Context, rotation *db.Rotation, shifts []db.Shift) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
 	m.insertedRotas = append(m.insertedRotas, rotation)
+	m.insertedShifts = append(m.insertedShifts, shifts)
 	return nil
 }
 
@@ -68,6 +70,22 @@ func TestDefineRota_NoExistingRotations(t *testing.T) {
 	// Check rotation was inserted
 	assert.Len(t, mock.insertedRotas, 1)
 	assert.Equal(t, result.Rotation, mock.insertedRotas[0])
+
+	// Rotation and its shifts are created together in a single store call
+	require.Len(t, mock.insertedShifts, 1)
+	shifts := mock.insertedShifts[0]
+	require.Len(t, shifts, 12, "one shift minted per shift date")
+
+	seenIDs := make(map[string]bool)
+	for i, s := range shifts {
+		assert.NotEmpty(t, s.ID, "shift %d has an identity", i)
+		assert.False(t, seenIDs[s.ID], "shift ids are unique")
+		seenIDs[s.ID] = true
+
+		assert.Equal(t, result.Rotation.ID, s.RotaID, "shift %d belongs to the minting rotation", i)
+		expectedDate := startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
+		assert.Equal(t, expectedDate, s.Date, "shift %d is on the correct consecutive Sunday", i)
+	}
 }
 
 func TestDefineRota_WithExistingRotations(t *testing.T) {
