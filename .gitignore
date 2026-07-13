@@ -39,3 +39,6 @@ __pycache__/
 .agents
 .claude
 skills-lock.json
+
+# Claude local settings (holds agent secrets; keep ignored even if .claude is committed later)
+.claude/settings.local.json
