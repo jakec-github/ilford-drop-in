@@ -166,7 +166,6 @@ func TestRequestAvailability_CreatesRequestsForVolunteersWithoutRequests(t *test
 	insertedIDsByVolunteer := make(map[string]string)
 	for _, req := range mockStore.insertedRequests {
 		assert.Equal(t, "rota-1", req.RotaID)
-		assert.Equal(t, "2024-01-01", req.ShiftDate)
 		assert.NotEmpty(t, req.ID)
 		assert.NotEmpty(t, req.FormID)
 		assert.NotEmpty(t, req.FormURL)

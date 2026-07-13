@@ -15,7 +15,7 @@ import (
 func (d *DB) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]Allocation, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT a.id, a.rota_id, s.date, a.role, a.volunteer_id, a.custom_entry
+		SELECT a.id, s.rota_id, s.date, a.role, a.volunteer_id, a.custom_entry
 		FROM allocation a
 		JOIN shift s ON s.id = a.shift_id
 	`+where, args...)
@@ -44,12 +44,14 @@ func shiftDateWhere(from, to time.Time) (string, []any) {
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
-// GetAllocationsByRotaID retrieves the allocation records for a single rota
+// GetAllocationsByRotaID retrieves the allocation records for a single rota.
+// The rota and date are read from the joined shift, not legacy columns (ADR 0001).
 func (d *DB) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]Allocation, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, rota_id, shift_date, role, volunteer_id, custom_entry
-		FROM allocation
-		WHERE rota_id = $1
+		SELECT a.id, s.rota_id, s.date, a.role, a.volunteer_id, a.custom_entry
+		FROM allocation a
+		JOIN shift s ON s.id = a.shift_id
+		WHERE s.rota_id = $1
 	`, rotaID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query allocations for rota %s: %w", rotaID, err)
@@ -103,15 +105,14 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 			customEntry = &a.CustomEntry
 		}
 
-		// Dual-write the shift reference alongside the legacy rota/date columns
-		// (expand phase of the first-class Shift entity). The subquery resolves
-		// the minted shift for this rota and date; a missing shift trips the
-		// NOT NULL constraint and fails loudly.
+		// Resolve the minted shift for this rota and date and store only its
+		// reference; the shift is the sole authority on rota and date (ADR 0001).
+		// A missing shift trips the NOT NULL constraint and fails loudly.
 		_, err := tx.Exec(ctx, `
-			INSERT INTO allocation (id, rota_id, shift_date, role, volunteer_id, custom_entry, shift_id)
-			VALUES ($1, $2, $3, $4, $5, $6,
-				(SELECT id FROM shift WHERE rota_id = $2 AND date = $3))
-		`, a.ID, a.RotaID, a.ShiftDate, a.Role, volunteerID, customEntry)
+			INSERT INTO allocation (id, role, volunteer_id, custom_entry, shift_id)
+			VALUES ($1, $2, $3, $4,
+				(SELECT id FROM shift WHERE rota_id = $5 AND date = $6))
+		`, a.ID, a.Role, volunteerID, customEntry, a.RotaID, a.ShiftDate)
 		if err != nil {
 			return fmt.Errorf("failed to insert allocation: %w", err)
 		}

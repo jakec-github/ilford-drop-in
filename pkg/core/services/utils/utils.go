@@ -69,8 +69,8 @@ func GetVolunteerIDs(volunteers []model.Volunteer) []string {
 }
 
 // ShiftDatesFromShifts extracts the dates of a rota's shifts, sorted ascending.
-// This replaces CalculateShiftDates for consumers that now read a rota's shifts
-// from the database rather than recomputing them by arithmetic (ADR 0001).
+// Consumers read a rota's shifts from the database rather than recomputing them
+// by arithmetic; shift-date arithmetic now lives only in DefineRota (ADR 0001).
 func ShiftDatesFromShifts(shifts []db.Shift) ([]time.Time, error) {
 	dates := make([]time.Time, len(shifts))
 	for i, s := range shifts {
@@ -81,21 +81,5 @@ func ShiftDatesFromShifts(shifts []db.Shift) ([]time.Time, error) {
 		dates[i] = date
 	}
 	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
-	return dates, nil
-}
-
-// CalculateShiftDates calculates all shift dates for a rota, starting from the given date
-// Shifts occur weekly (every 7 days) for the specified shift count
-func CalculateShiftDates(startDateStr string, shiftCount int) ([]time.Time, error) {
-	startDate, err := time.Parse("2006-01-02", startDateStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid start date format: %w", err)
-	}
-
-	dates := make([]time.Time, shiftCount)
-	for i := 0; i < shiftCount; i++ {
-		dates[i] = startDate.AddDate(0, 0, i*7) // Add i weeks
-	}
-
 	return dates, nil
 }

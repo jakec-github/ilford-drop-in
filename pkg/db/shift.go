@@ -72,10 +72,12 @@ func (d *DB) InsertRotationAndShifts(ctx context.Context, rotation *Rotation, sh
 	}
 	defer tx.Rollback(ctx)
 
+	// The rotation row is now identity plus allocated_datetime; start and shift
+	// count are derived from its shifts by GetRotations (ADR 0001).
 	_, err = tx.Exec(ctx, `
-		INSERT INTO rotation (id, start, shift_count)
-		VALUES ($1, $2, $3)
-	`, rotation.ID, rotation.Start, rotation.ShiftCount)
+		INSERT INTO rotation (id)
+		VALUES ($1)
+	`, rotation.ID)
 	if err != nil {
 		return fmt.Errorf("failed to insert rotation: %w", err)
 	}

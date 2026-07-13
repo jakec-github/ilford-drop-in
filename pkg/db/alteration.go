@@ -14,7 +14,7 @@ import (
 func (d *DB) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT a.id, s.date, a.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
+		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
 		FROM alteration a
 		JOIN shift s ON s.id = a.shift_id
 		`+where+`
@@ -26,13 +26,15 @@ func (d *DB) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]A
 	return scanAlterations(rows)
 }
 
-// GetAlterationsByRotaID retrieves the alteration records for a single rota
+// GetAlterationsByRotaID retrieves the alteration records for a single rota.
+// The rota and date are read from the joined shift, not legacy columns (ADR 0001).
 func (d *DB) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]Alteration, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, shift_date, rota_id, direction, volunteer_id, custom_value, cover_id, set_time, role
-		FROM alteration
-		WHERE rota_id = $1
-		ORDER BY set_time ASC
+		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
+		FROM alteration a
+		JOIN shift s ON s.id = a.shift_id
+		WHERE s.rota_id = $1
+		ORDER BY a.set_time ASC
 	`, rotaID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query alterations for rota %s: %w", rotaID, err)

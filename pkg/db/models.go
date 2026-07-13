@@ -17,11 +17,11 @@ type Shift struct {
 	Date   string // DATE
 }
 
-// AvailabilityRequest represents a database availability request record
+// AvailabilityRequest represents a database availability request record.
+// A request is rota-scoped (one per volunteer per rota); it has no shift date.
 type AvailabilityRequest struct {
 	ID          string
 	RotaID      string
-	ShiftDate   string // DATE
 	VolunteerID string
 	FormID      string
 	FormURL     string
