@@ -24,3 +24,9 @@ repos/{owner}/{repo}/pulls/<n>/comments`), and any failing checks
   (`gh pr checks <n>`). Push fixes to the same branch, reply to each comment
   as the fix lands (or push back with reasoning), and re-request review when
   done. Never resolve a thread without responding.
+
+  ## Simple PR workflow
+  - Only use this flow if requested by the user
+  - Do not create a new branch
+  - Do not commit changes
+  - Do not push a PR
