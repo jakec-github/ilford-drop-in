@@ -65,6 +65,9 @@ class Problem:
         preallocated_team_lead: {shift_index: volunteer_id} designated TL.
         last_historical_group_keys: group keys present on the most recent
             historical shift (back-to-back boundary with the previous rota).
+        historical_group_months: {group_key: frozenset of YYYY-MM months} the
+            group already worked in history (the one-shift-per-month rule bars a
+            group from any current shift in a month it already worked).
     """
 
     def __init__(self, input_: AllocationInput) -> None:
@@ -103,6 +106,16 @@ class Problem:
         self.last_historical_group_keys: frozenset[str] = frozenset(
             input_.historical_shifts[-1].group_keys if input_.historical_shifts else ()
         )
+
+        # group_key -> months (YYYY-MM) that group already worked in history.
+        months: dict[str, set[str]] = {}
+        for hs in input_.historical_shifts:
+            month = hs.date[:7]
+            for group_key in hs.group_keys:
+                months.setdefault(group_key, set()).add(month)
+        self.historical_group_months: dict[str, frozenset[str]] = {
+            k: frozenset(v) for k, v in months.items()
+        }
 
     def _resolve_preallocations(self) -> None:
         for shift in self.shifts:
