@@ -18,6 +18,7 @@ watch("./src", { recursive: true }, build);
 
 const server = Bun.serve({
   port: 5173,
+  hostname: "0.0.0.0",
   async fetch(req) {
     const pathname = new URL(req.url).pathname;
     const resolved = pathname === "/" ? "/index.html" : pathname;
