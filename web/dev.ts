@@ -16,11 +16,24 @@ await build();
 
 watch("./src", { recursive: true }, build);
 
+const apiPort = process.env.API_PORT ?? "8080";
+const apiPrefixes = ["/shifts", "/alterations", "/calendars"];
+
 const server = Bun.serve({
   port: 5173,
   hostname: "0.0.0.0",
   async fetch(req) {
-    const pathname = new URL(req.url).pathname;
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+
+    if (apiPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      return fetch(`http://localhost:${apiPort}${pathname}${url.search}`, {
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+      });
+    }
+
     const resolved = pathname === "/" ? "/index.html" : pathname;
 
     const distFile = Bun.file(`./dist${resolved}`);

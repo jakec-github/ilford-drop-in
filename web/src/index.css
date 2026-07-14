@@ -35,3 +35,8 @@ h2 {
   font-weight: 500;
   color: var(--text-h);
 }
+
+.app-status {
+  text-align: center;
+  padding: 3rem 1rem;
+}
