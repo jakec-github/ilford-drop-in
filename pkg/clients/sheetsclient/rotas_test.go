@@ -9,45 +9,52 @@ import (
 
 func TestGenerateTabTitle(t *testing.T) {
 	tests := []struct {
-		name       string
-		startDate  string
-		shiftCount int
-		want       string
-		wantErr    bool
+		name      string
+		startDate string
+		endDate   string
+		want      string
+		wantErr   bool
 	}{
 		{
-			name:       "single shift",
-			startDate:  "2025-01-05",
-			shiftCount: 1,
-			want:       "Jan 05 - Jan 05",
-			wantErr:    false,
+			name:      "single shift",
+			startDate: "2025-01-05",
+			endDate:   "2025-01-05",
+			want:      "Jan 05 - Jan 05",
+			wantErr:   false,
 		},
 		{
-			name:       "multiple shifts",
-			startDate:  "2025-08-24",
-			shiftCount: 12,
-			want:       "Aug 24 - Nov 09",
-			wantErr:    false,
+			name:      "multiple shifts",
+			startDate: "2025-08-24",
+			endDate:   "2025-11-09",
+			want:      "Aug 24 - Nov 09",
+			wantErr:   false,
 		},
 		{
-			name:       "two shifts",
-			startDate:  "2025-01-05",
-			shiftCount: 2,
-			want:       "Jan 05 - Jan 12",
-			wantErr:    false,
+			name:      "two shifts",
+			startDate: "2025-01-05",
+			endDate:   "2025-01-12",
+			want:      "Jan 05 - Jan 12",
+			wantErr:   false,
 		},
 		{
-			name:       "invalid date",
-			startDate:  "invalid",
-			shiftCount: 1,
-			want:       "",
-			wantErr:    true,
+			name:      "invalid start date",
+			startDate: "invalid",
+			endDate:   "2025-01-05",
+			want:      "",
+			wantErr:   true,
+		},
+		{
+			name:      "invalid end date",
+			startDate: "2025-01-05",
+			endDate:   "invalid",
+			want:      "",
+			wantErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateTabTitle(tt.startDate, tt.shiftCount)
+			got, err := GenerateTabTitle(tt.startDate, tt.endDate)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

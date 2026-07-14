@@ -70,13 +70,17 @@ func (c *Client) PublishRota(
 	return c.writeRotaData(spreadsheetID, latestTabTitle, publishedRota)
 }
 
-// GenerateTabTitle creates a tab title in the format "Sun Aug 24 2025 - Sun Nov 09 2025"
-func GenerateTabTitle(startDate string, shiftCount int) (string, error) {
+// GenerateTabTitle creates a tab title in the format "Aug 24 - Nov 09" from the
+// rota's first and last shift dates.
+func GenerateTabTitle(startDate, endDate string) (string, error) {
 	start, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
 		return "", fmt.Errorf("invalid start date: %w", err)
 	}
-	end := start.AddDate(0, 0, (shiftCount-1)*7)
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return "", fmt.Errorf("invalid end date: %w", err)
+	}
 	return fmt.Sprintf("%s - %s",
 		start.Format("Jan 02"),
 		end.Format("Jan 02"),

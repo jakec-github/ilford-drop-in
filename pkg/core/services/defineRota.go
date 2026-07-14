@@ -57,17 +57,14 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 			zap.String("start", latestRota.Start),
 			zap.Int("shift_count", latestRota.ShiftCount))
 
-		// Parse the latest rota's start date
-		latestStart, err := time.Parse("2006-01-02", latestRota.Start)
+		// Parse the latest rota's end date (its last shift)
+		latestEnd, err := time.Parse("2006-01-02", latestRota.End)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse latest rota start date: %w", err)
+			return nil, fmt.Errorf("failed to parse latest rota end date: %w", err)
 		}
 
-		// Calculate end date of latest rota (shifts are weekly)
-		latestEnd := latestStart.AddDate(0, 0, 7*latestRota.ShiftCount)
-
-		// New rota starts the Sunday after the latest rota ends
-		startDate = nextSundayAfter(latestEnd)
+		// New rota starts the Sunday after the latest rota's last shift
+		startDate = nextSunday(latestEnd)
 		logger.Debug("Calculated start date from latest rotation",
 			zap.Time("latest_end", latestEnd),
 			zap.Time("new_start", startDate))
@@ -127,21 +124,5 @@ func nextSunday(from time.Time) time.Time {
 		daysUntilSunday = 7
 	}
 
-	return normalized.AddDate(0, 0, daysUntilSunday)
-}
-
-// nextSundayAfter returns the first Sunday on or after the given date
-func nextSundayAfter(from time.Time) time.Time {
-	// Normalize to start of day to avoid time-of-day issues
-	normalized := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
-
-	// If the date is already a Sunday, return it
-	if normalized.Weekday() == time.Sunday {
-		return normalized
-	}
-
-	// Otherwise find next Sunday
-	// Sunday is 0, so we need (7 - weekday) days
-	daysUntilSunday := (7 - int(normalized.Weekday())) % 7
 	return normalized.AddDate(0, 0, daysUntilSunday)
 }

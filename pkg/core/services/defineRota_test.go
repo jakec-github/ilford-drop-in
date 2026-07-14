@@ -95,11 +95,13 @@ func TestDefineRota_WithExistingRotations(t *testing.T) {
 			{
 				ID:         "existing-1",
 				Start:      "2024-12-15", // Older rotation
+				End:        "2025-02-02",
 				ShiftCount: 8,
 			},
 			{
 				ID:         "existing-2",
 				Start:      existingStart.Format("2006-01-02"), // Most recent
+				End:        existingStart.AddDate(0, 0, 7*9).Format("2006-01-02"),
 				ShiftCount: 10,
 			},
 		},
@@ -111,10 +113,10 @@ func TestDefineRota_WithExistingRotations(t *testing.T) {
 	result, err := DefineRota(ctx, mock, logger, 6)
 	require.NoError(t, err)
 
-	// Expected start: Latest rotation ends after 10 weeks (Jan 5 + 70 days = Mar 16)
-	// Next Sunday after Mar 16 is Mar 16 itself (it's already Sunday)
-	expectedEnd := existingStart.AddDate(0, 0, 7*10)
-	expectedStart := nextSundayAfter(expectedEnd)
+	// Expected start: the latest rotation's last shift is Mar 9 (Jan 5 + 63 days);
+	// the new rota starts the Sunday after, Mar 16
+	latestEnd := existingStart.AddDate(0, 0, 7*9)
+	expectedStart := nextSunday(latestEnd)
 
 	startDate, err := time.Parse("2006-01-02", result.Rotation.Start)
 	require.NoError(t, err)
@@ -196,43 +198,6 @@ func TestNextSunday(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := nextSunday(tt.from)
-			assert.Equal(t, tt.expected.Format("2006-01-02"), result.Format("2006-01-02"))
-			assert.Equal(t, time.Sunday, result.Weekday())
-		})
-	}
-}
-
-func TestNextSundayAfter(t *testing.T) {
-	tests := []struct {
-		name     string
-		from     time.Time
-		expected time.Time
-	}{
-		{
-			name:     "from Tuesday",
-			from:     time.Date(2025, 10, 7, 0, 0, 0, 0, time.UTC),  // Tuesday
-			expected: time.Date(2025, 10, 12, 0, 0, 0, 0, time.UTC), // Next Sunday
-		},
-		{
-			name:     "from Sunday",
-			from:     time.Date(2025, 10, 5, 0, 0, 0, 0, time.UTC), // Sunday
-			expected: time.Date(2025, 10, 5, 0, 0, 0, 0, time.UTC), // Same Sunday
-		},
-		{
-			name:     "from Saturday",
-			from:     time.Date(2025, 10, 11, 0, 0, 0, 0, time.UTC), // Saturday
-			expected: time.Date(2025, 10, 12, 0, 0, 0, 0, time.UTC), // Next Sunday
-		},
-		{
-			name:     "from late Sunday night",
-			from:     time.Date(2025, 10, 5, 23, 59, 59, 0, time.UTC), // Sunday 23:59:59
-			expected: time.Date(2025, 10, 5, 0, 0, 0, 0, time.UTC),    // Same Sunday (truncated)
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := nextSundayAfter(tt.from)
 			assert.Equal(t, tt.expected.Format("2006-01-02"), result.Format("2006-01-02"))
 			assert.Equal(t, time.Sunday, result.Weekday())
 		})

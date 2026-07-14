@@ -4,6 +4,7 @@ package db
 type Rotation struct {
 	ID                string
 	Start             string // DATE
+	End               string // DATE
 	ShiftCount        int
 	AllocatedDatetime string // TIMESTAMPTZ, empty string if NULL
 }

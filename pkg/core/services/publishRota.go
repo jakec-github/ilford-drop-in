@@ -217,7 +217,7 @@ func findPreviousRotaTabTitle(rotations []db.Rotation, targetRota *db.Rotation, 
 	for i, r := range sorted {
 		if r.ID == targetRota.ID && i > 0 {
 			prev := sorted[i-1]
-			title, err := sheetsclient.GenerateTabTitle(prev.Start, prev.ShiftCount)
+			title, err := sheetsclient.GenerateTabTitle(prev.Start, prev.End)
 			if err != nil {
 				logger.Warn("Failed to generate previous rota tab title", zap.Error(err))
 				return ""

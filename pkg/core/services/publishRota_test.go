@@ -252,9 +252,9 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 
 	store := &mockPublishRotaStore{
 		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-			{ID: "rota-2", Start: "2025-01-19", ShiftCount: 1}, // Latest rota
-			{ID: "rota-3", Start: "2025-01-12", ShiftCount: 1},
+			{ID: "rota-1", Start: "2025-01-05", End: "2025-01-05", ShiftCount: 1},
+			{ID: "rota-2", Start: "2025-01-19", End: "2025-01-19", ShiftCount: 1}, // Latest rota
+			{ID: "rota-3", Start: "2025-01-12", End: "2025-01-12", ShiftCount: 1},
 		},
 		shifts: sundayShifts("rota-2", "2025-01-19", 1),
 		allocations: []db.Allocation{
