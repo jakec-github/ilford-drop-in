@@ -17,8 +17,8 @@ _Avoid_: shift (for the projection), effective shift
 
 **Rotation**:
 A batch of consecutive Shifts over which availability is requested and allocation
-runs. Its span and size are derived from the Shifts it minted.
-_Avoid_: rota (in code; fine colloquially)
+runs. Its span and size are derived from the Shifts it minted. Rota is an
+acceptable alias.
 
 **Allocation**:
 The assignment of one volunteer (or custom entry) to one role on one Shift,
