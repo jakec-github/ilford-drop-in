@@ -61,15 +61,17 @@ def make_group(
 def make_shift(
     index: int,
     *,
+    date: str | None = None,
     size: int = 4,
     closed: bool = False,
     custom_preallocations: Sequence[str] = (),
     preallocated_volunteer_ids: Sequence[str] = (),
     preallocated_team_lead_id: str = "",
 ) -> ShiftSpec:
+    # Default dates are weekly in July; pass date= to cross a month boundary.
     return ShiftSpec(
         index=index,
-        date=f"2026-07-{13 + 7 * index:02d}",
+        date=date if date is not None else f"2026-07-{13 + 7 * index:02d}",
         size=size,
         closed=closed,
         custom_preallocations=tuple(custom_preallocations),

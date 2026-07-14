@@ -13,6 +13,7 @@ from . import (
     max_frequency,
     no_back_to_back,
     no_duplicate_allocation,
+    one_shift_per_month,
     preallocations,
     shift_capacity,
 )
@@ -27,6 +28,7 @@ DEFAULT_CONSTRAINTS: list[Constraint] = [
     at_most_one_team_lead.CONSTRAINT,
     male_required.CONSTRAINT,
     no_back_to_back.CONSTRAINT,
+    one_shift_per_month.CONSTRAINT,
     closed_shifts.CONSTRAINT,
     preallocations.CONSTRAINT,
 ]
