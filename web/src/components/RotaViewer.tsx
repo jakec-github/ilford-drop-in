@@ -117,6 +117,10 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
     setActiveIndex(-1);
   }
 
+  function handleBlur(e: React.FocusEvent) {
+    if (!containerRef.current?.contains(e.relatedTarget as Node)) close();
+  }
+
   function handleSelect(name: string) {
     setSelectedName(name);
     close();
@@ -162,6 +166,7 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
             value={open ? inputValue : selectedName}
             onChange={(e) => { setInputValue(e.target.value); setActiveIndex(-1); }}
             onFocus={handleFocus}
+            onBlur={handleBlur}
             onKeyDown={handleKeyDown}
           />
           {selectedName && !open && (
