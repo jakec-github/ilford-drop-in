@@ -155,10 +155,22 @@
   color: #fff;
 }
 
+.team-lead-chip.clickable:hover:not(.match) {
+  background: var(--accent-bg);
+}
+
 /* Volunteer match highlight */
 .volunteer-name.match {
   background: var(--accent);
   color: #fff;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.volunteer-name.clickable:hover:not(.match) {
+  background: color-mix(in srgb, var(--accent-bg) 100%, var(--accent) 20%);
 }
 
 /* Mobile: card layout (default) */

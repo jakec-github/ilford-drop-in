@@ -38,11 +38,17 @@ function getUpcomingShifts(shifts: RotaShift[], name: string): RotaShift[] {
 function ShiftCard({
   shift,
   selectedName,
+  onSelectName,
 }: {
   shift: RotaShift;
   selectedName: string;
+  onSelectName: (name: string) => void;
 }) {
   const isClosed = shift.teamLead === "CLOSED";
+
+  function handleNameClick(name: string) {
+    onSelectName(name === selectedName ? "" : name);
+  }
 
   return (
     <div className={`shift-card${isClosed ? " closed" : ""}`}>
@@ -52,7 +58,8 @@ function ShiftCard({
           <span className="shift-closed-label">Closed</span>
         ) : shift.teamLead ? (
           <span
-            className={`team-lead-chip${shift.teamLead === selectedName ? " match" : ""}`}
+            className={`team-lead-chip clickable${shift.teamLead === selectedName ? " match" : ""}`}
+            onClick={() => handleNameClick(shift.teamLead)}
           >
             {shift.teamLead}
           </span>
@@ -63,7 +70,8 @@ function ShiftCard({
           {shift.volunteers.map((vol, i) => (
             <span
               key={i}
-              className={`volunteer-name${vol === selectedName ? " match" : ""}`}
+              className={`volunteer-name clickable${vol === selectedName ? " match" : ""}`}
+              onClick={() => handleNameClick(vol)}
             >
               {vol}
             </span>
@@ -232,6 +240,7 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
               key={i}
               shift={shift}
               selectedName={selectedName}
+              onSelectName={setSelectedName}
             />
           ))}
         </div>
