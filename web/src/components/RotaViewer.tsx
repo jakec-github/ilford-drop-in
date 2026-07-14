@@ -27,12 +27,9 @@ function getAllNames(shifts: RotaShift[]): string[] {
 
 function getUpcomingShifts(shifts: RotaShift[], name: string): RotaShift[] {
   if (!name) return [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return shifts.filter((shift) => {
-    if (new Date(shift.date) < today) return false;
-    return shift.teamLead === name || shift.volunteers.includes(name);
-  });
+  return shifts.filter(
+    (shift) => shift.teamLead === name || shift.volunteers.includes(name),
+  );
 }
 
 function ShiftCard({
