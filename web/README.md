@@ -2,14 +2,30 @@
 
 A React + TypeScript frontend for viewing volunteer rotas at the Ilford Sunday Drop-in.
 
+## Prerequisites
+
+Install [Bun](https://bun.sh):
+
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
 ## Getting Started
 
 ```bash
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 The app will be available at http://localhost:5173.
+
+## Build
+
+```bash
+bun run build
+```
+
+Output goes to `dist/`. Type checking runs before the bundle step.
 
 ## Current Features
 
@@ -21,4 +37,4 @@ The app will be available at http://localhost:5173.
 ## Stack
 
 - React + TypeScript
-- Vite
+- Bun (runtime, package manager, bundler)
