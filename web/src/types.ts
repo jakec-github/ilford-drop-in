@@ -5,9 +5,3 @@ export interface RotaShift {
   hotFood: string;
   collection: string;
 }
-
-export interface Rota {
-  startDate: string;
-  shiftCount: number;
-  shifts: RotaShift[];
-}

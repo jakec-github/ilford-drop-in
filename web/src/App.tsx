@@ -2,7 +2,7 @@ import RotaViewer from "./components/RotaViewer";
 import { mockRota } from "./mockData";
 
 function App() {
-  return <RotaViewer rota={mockRota} />;
+  return <RotaViewer rotaShifts={mockRota} />;
 }
 
 export default App;

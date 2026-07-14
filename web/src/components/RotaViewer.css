@@ -6,37 +6,159 @@
 
 .rota-viewer h1 {
   font-size: 22px;
-  margin: 0 0 4px;
+  margin: 0 0 16px;
 }
 
-.rota-subtitle {
+/* Search */
+.rota-search-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.rota-search-input-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  transition: border-color 0.15s;
+  cursor: text;
+}
+
+.rota-search-input-wrap:hover {
+  border-color: var(--text-h);
+}
+
+.rota-search-input-wrap.open,
+.rota-search-input-wrap:focus-within {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.rota-search {
+  flex: 1;
+  padding: 9px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  outline: none;
+  min-width: 0;
+}
+
+.rota-search::placeholder {
   color: var(--text);
+}
+
+.rota-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.rota-search-clear:hover {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+/* Dropdown */
+.rota-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  background: var(--bg);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.12);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.rota-search-option {
+  padding: 8px 16px;
+  font-size: 14px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.rota-search-option.active {
+  background: var(--accent-bg);
+}
+
+.rota-search-option.selected {
+  font-weight: 600;
+}
+
+.rota-search-no-options {
+  padding: 8px 16px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* Upcoming strip */
+.upcoming-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  padding: 10px 14px;
   margin-bottom: 16px;
+  background: var(--accent-bg);
+  border-radius: 6px;
   font-size: 14px;
 }
 
-/* Filter */
-.rota-filter {
-  margin-bottom: 16px;
+.upcoming-strip-label {
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
-.name-select {
-  width: 100%;
-  padding: 10px 12px;
-  font-size: 15px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
+.upcoming-dates {
   color: var(--text-h);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6375' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
 }
 
-.name-select:focus {
-  outline: 2px solid var(--accent, #aa3bff);
-  outline-offset: 1px;
+.upcoming-none {
+  color: var(--text);
+  font-style: italic;
+}
+
+/* Team lead chip */
+.team-lead-chip {
+  display: inline-block;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.team-lead-chip.match {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Volunteer match highlight */
+.volunteer-name.match {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* Mobile: card layout (default) */
@@ -56,11 +178,6 @@
   padding: 14px;
 }
 
-.shift-card.highlighted {
-  border-color: var(--accent, #aa3bff);
-  background: var(--accent-bg);
-}
-
 .shift-card.closed {
   opacity: 0.6;
 }
@@ -74,12 +191,12 @@
 
 .shift-team-lead {
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-h);
   margin-bottom: 8px;
 }
 
-.shift-team-lead strong {
-  color: var(--text-h);
+.shift-team-lead:empty {
+  margin-bottom: 0;
 }
 
 .shift-closed-label {
@@ -111,19 +228,16 @@
 
   .rota-viewer h1 {
     font-size: 28px;
+    margin-bottom: 20px;
   }
 
-  .rota-subtitle {
-    font-size: 16px;
-    margin-bottom: 24px;
-  }
-
-  .rota-filter {
-    margin-bottom: 24px;
-  }
-
-  .name-select {
+  .rota-search-wrap {
+    margin-bottom: 16px;
     width: 260px;
+  }
+
+  .upcoming-strip {
+    margin-bottom: 24px;
   }
 
   .rota-table {
@@ -163,10 +277,6 @@
     padding: 0;
   }
 
-  .shift-card.highlighted {
-    background: var(--accent-bg);
-  }
-
   .shift-card > * {
     display: table-cell;
     padding: 12px;
@@ -182,23 +292,22 @@
   .shift-team-lead {
     white-space: nowrap;
     margin-bottom: 0;
-    color: var(--text-h);
     font-size: inherit;
   }
 
-  .shift-team-lead strong {
-    font-weight: normal;
-  }
-
-  .shift-closed-label {
-    font-weight: 500;
-  }
-
   .shift-volunteers {
-    gap: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .volunteer-name {
     font-size: 14px;
+    padding: 4px 12px;
+  }
+
+  .team-lead-chip {
+    font-size: 14px;
+    padding: 3px 12px;
   }
 }
