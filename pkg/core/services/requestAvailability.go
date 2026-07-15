@@ -96,6 +96,16 @@ func RequestAvailability(
 	if err != nil {
 		return nil, nil, err
 	}
+	openShiftDates := make([]time.Time, 0, len(shiftDates))
+	for _, shiftDate := range shiftDates {
+		if !isShiftClosed(shiftDate.Format("2006-01-02"), cfg.RotaOverrides, shiftDates, logger) {
+			openShiftDates = append(openShiftDates, shiftDate)
+		}
+	}
+	if len(openShiftDates) == 0 {
+		return nil, nil, fmt.Errorf("rota %s has no open shifts", latestRota.ID)
+	}
+	shiftDates = openShiftDates
 
 	// Step 3: Fetch the availability requests for the current rota
 	logger.Debug("Fetching availability requests")
