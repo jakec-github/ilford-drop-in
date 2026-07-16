@@ -46,7 +46,7 @@ type VolunteerClient interface {
 
 // FormsClient defines the operations needed to create forms
 type FormsClient interface {
-	CreateAvailabilityForm(volunteerName string, shiftDates []time.Time) (*formsclient.AvailabilityFormResult, error)
+	CreateAvailabilityForm(volunteerName string, shiftDates []time.Time, closedDates []time.Time) (*formsclient.AvailabilityFormResult, error)
 }
 
 // GmailClient defines the operations needed to send emails
@@ -95,6 +95,16 @@ func RequestAvailability(
 	shiftDates, err := rotaShiftDates(ctx, database, latestRota.ID)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Exclude closed shifts from the form's questions, but keep them to list on
+	// the form so volunteers can see the drop-in is not running on those dates.
+	openDates, closedDates := partitionShiftDates(shiftDates, cfg.RotaOverrides, logger)
+	logger.Debug("Partitioned shift dates into open and closed",
+		zap.Int("open", len(openDates)),
+		zap.Int("closed", len(closedDates)))
+	if len(openDates) == 0 {
+		return nil, nil, fmt.Errorf("rota %s has no open shifts - every shift date is closed by a rota override, refusing to send an empty availability form", latestRota.ID)
 	}
 
 	// Step 3: Fetch the availability requests for the current rota
@@ -171,7 +181,7 @@ func RequestAvailability(
 				zap.String("volunteer_id", volunteer.ID),
 				zap.String("volunteer_name", volunteerName))
 
-			formResult, err := formsClient.CreateAvailabilityForm(volunteerName, shiftDates)
+			formResult, err := formsClient.CreateAvailabilityForm(volunteerName, openDates, closedDates)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create form for volunteer %s: %w", volunteer.ID, err)
 			}
