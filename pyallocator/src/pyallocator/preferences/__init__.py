@@ -11,11 +11,16 @@ Weight hierarchy (per unit, all harmonic-diminishing):
 from . import even_fill, fairness, maximize_allocations, spread_males
 from .base import ObjectiveTerm, Preference
 
-DEFAULT_PREFERENCES: list[Preference] = [
-    even_fill.PREFERENCE,
-    spread_males.PREFERENCE,
-    fairness.PREFERENCE,
+FUNDAMENTAL_PREFERENCES: list[Preference] = [
     maximize_allocations.PREFERENCE,
+    fairness.PREFERENCE,
+    even_fill.PREFERENCE,
 ]
+
+ADDITIONAL_PREFERENCES: list[Preference] = [
+    spread_males.PREFERENCE,
+]
+
+DEFAULT_PREFERENCES = FUNDAMENTAL_PREFERENCES + ADDITIONAL_PREFERENCES
 
 __all__ = ["ObjectiveTerm", "Preference", "DEFAULT_PREFERENCES"]
