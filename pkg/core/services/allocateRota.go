@@ -58,6 +58,16 @@ func AllocateRota(
 	targetRota := utils.FindLatestRotation(rotations)
 	logger.Debug("Using latest rota", zap.String("id", targetRota.ID))
 
+	// Refuse to re-allocate a rota that has already been allocated (issue #8).
+	// A set allocated_datetime is the mark of a completed allocation (it is
+	// written in the same transaction as the allocation rows). This is a
+	// fast-fail that stops before the expensive solve; the authoritative,
+	// race-safe guard lives in the shared persistence path
+	// (InsertAllocationsAndSetAllocated), where it cannot be bypassed.
+	if targetRota.AllocatedDatetime != "" {
+		return nil, fmt.Errorf("rota %s is already allocated (at %s) - refusing to allocate again", targetRota.ID, targetRota.AllocatedDatetime)
+	}
+
 	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
 	if err != nil {
 		return nil, err

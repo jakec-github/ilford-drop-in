@@ -96,6 +96,21 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 	}
 	defer tx.Rollback(ctx)
 
+	// Double-allocation guard (issue #8). Lock the rotation row and read its
+	// allocated_datetime in one shot; a non-NULL value marks an allocation that
+	// already completed, so refuse. The FOR UPDATE lock makes this
+	// check-then-write atomic under READ COMMITTED: a racing run blocks on the
+	// lock until this transaction commits, then its own read observes the
+	// allocated_datetime this run set and fails. On failure the deferred
+	// Rollback writes nothing.
+	var allocatedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT allocated_datetime FROM rotation WHERE id = $1 FOR UPDATE`, rotaID).Scan(&allocatedAt); err != nil {
+		return fmt.Errorf("failed to lock rotation %s: %w", rotaID, err)
+	}
+	if allocatedAt != nil {
+		return fmt.Errorf("rota %s is already allocated (at %s) - refusing to allocate again", rotaID, allocatedAt.UTC().Format(time.RFC3339))
+	}
+
 	for _, a := range allocations {
 		var volunteerID, customEntry *string
 		if a.VolunteerID != "" {
