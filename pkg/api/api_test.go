@@ -22,14 +22,108 @@ import (
 
 // mockStore implements Store for testing
 type mockStore struct {
-	shifts      []db.Shift
-	allocations []db.Allocation
-	alterations []db.Alteration
+	shifts        []db.Shift
+	shiftsInRange []db.ShiftInRange
+	allocations   []db.Allocation
+	alterations   []db.Alteration
 
 	insertedCover       *db.Cover
 	insertedAlterations []db.Alteration
 	insertErr           error
+	getShiftsErr        error
 	getAllocationsErr   error
+}
+
+// allShiftsInRange is the canonical shift set the store would hold, each with an
+// id. Explicit shiftsInRange without an id default to date-as-id; otherwise one
+// allocated shift is synthesised per distinct allocation (or shift) date, so
+// tests that only populate allocations keep enumerating the same dates.
+func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
+	if m.shiftsInRange != nil {
+		out := make([]db.ShiftInRange, len(m.shiftsInRange))
+		for i, s := range m.shiftsInRange {
+			if s.ID == "" {
+				s.ID = s.Date
+			}
+			out[i] = s
+		}
+		return out
+	}
+
+	seen := make(map[string]bool)
+	var out []db.ShiftInRange
+	add := func(id, date, rotaID string) {
+		if seen[date] {
+			return
+		}
+		seen[date] = true
+		if id == "" {
+			id = date
+		}
+		out = append(out, db.ShiftInRange{
+			Shift:     db.Shift{ID: id, Date: date, RotaID: rotaID},
+			Allocated: true,
+		})
+	}
+	for _, s := range m.shifts {
+		add(s.ID, s.Date, s.RotaID)
+	}
+	for _, a := range m.allocations {
+		add("", a.ShiftDate, a.RotaID)
+	}
+	return out
+}
+
+// datesForShiftIDs maps requested shift ids back to dates via the shift set, so
+// the by-id fetches can filter by date as production filters by shift_id.
+func (m *mockStore) datesForShiftIDs(shiftIDs []string) map[string]bool {
+	want := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		want[id] = true
+	}
+	dates := make(map[string]bool)
+	for _, s := range m.allShiftsInRange() {
+		if want[s.ID] {
+			dates[s.Date] = true
+		}
+	}
+	return dates
+}
+
+// GetShiftsInRange returns the minted shifts in range.
+func (m *mockStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
+	if m.getShiftsErr != nil {
+		return nil, m.getShiftsErr
+	}
+	var filtered []db.ShiftInRange
+	for _, s := range m.allShiftsInRange() {
+		if shiftDateInRange(s.Date, from, to) {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
+	var filtered []db.Allocation
+	for _, a := range m.allocations {
+		if dates[a.ShiftDate] {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
+	var filtered []db.Alteration
+	for _, a := range m.alterations {
+		if dates[a.ShiftDate] {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {
@@ -160,6 +254,7 @@ func TestListShiftsEndpoint(t *testing.T) {
 			Start     string `json:"start"`
 			End       string `json:"end"`
 			Closed    bool   `json:"closed"`
+			Allocated bool   `json:"allocated"`
 			Assignees []struct {
 				VolunteerID string `json:"volunteerId"`
 				Name        string `json:"name"`
@@ -172,6 +267,7 @@ func TestListShiftsEndpoint(t *testing.T) {
 
 	first := resp.Shifts[0]
 	assert.Equal(t, "2026-01-11", first.Date)
+	assert.True(t, first.Allocated)
 	// 19:30 Europe/London in January is 19:30 UTC
 	start, err := time.Parse(time.RFC3339, first.Start)
 	require.NoError(t, err)
@@ -183,6 +279,43 @@ func TestListShiftsEndpoint(t *testing.T) {
 	second := resp.Shifts[1]
 	require.Len(t, second.Assignees, 1)
 	assert.Equal(t, "charlie", second.Assignees[0].VolunteerID)
+}
+
+func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {
+	// rota-2's shift is minted but its rota is unallocated; the endpoint must
+	// surface it with allocated=false and no assignees.
+	store := &mockStore{
+		shiftsInRange: []db.ShiftInRange{
+			{Shift: db.Shift{Date: "2026-01-11", RotaID: "rota-1"}, Allocated: true},
+			{Shift: db.Shift{Date: "2026-01-18", RotaID: "rota-2"}, Allocated: false},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2026-01-11", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/shifts", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Shifts []struct {
+			Date      string `json:"date"`
+			Allocated bool   `json:"allocated"`
+			Assignees []struct {
+				VolunteerID string `json:"volunteerId"`
+			} `json:"assignees"`
+		} `json:"shifts"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Shifts, 2)
+
+	assert.Equal(t, "2026-01-11", resp.Shifts[0].Date)
+	assert.True(t, resp.Shifts[0].Allocated)
+	require.Len(t, resp.Shifts[0].Assignees, 1)
+
+	assert.Equal(t, "2026-01-18", resp.Shifts[1].Date)
+	assert.False(t, resp.Shifts[1].Allocated)
+	assert.Empty(t, resp.Shifts[1].Assignees)
 }
 
 func TestListShiftsEndpoint_DateFilters(t *testing.T) {
@@ -210,7 +343,7 @@ func TestListShiftsEndpoint_DateFilters(t *testing.T) {
 }
 
 func TestListShiftsEndpoint_StoreError(t *testing.T) {
-	store := &mockStore{getAllocationsErr: errors.New("connection refused")}
+	store := &mockStore{getShiftsErr: errors.New("connection refused")}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/shifts", "")
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)

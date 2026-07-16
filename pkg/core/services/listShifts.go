@@ -15,11 +15,14 @@ import (
 )
 
 // ListShiftsStore defines the database operations needed for listing shifts.
-// Shifts are derived purely from allocations and alterations; rotations are
-// not consulted.
+// The shift table is the authority on which shifts exist in range (ADR 0001);
+// allocations and alterations are then fetched for exactly those shifts (by id,
+// not a second date scan), and supply the effective assignees for shifts whose
+// rota has been allocated.
 type ListShiftsStore interface {
-	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error)
-	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error)
+	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
+	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
+	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
 }
 
 // ListShiftsParams holds optional filters for listing shifts
@@ -36,17 +39,22 @@ type ShiftAssignee struct {
 	Role        string
 }
 
-// Shift is one effective shift after applying alterations
+// Shift is one minted shift after applying alterations. Unallocated shifts are
+// included (their rota has not been allocated yet), carrying Allocated=false and
+// no assignees.
 type Shift struct {
 	Date            string // YYYY-MM-DD
 	Closed          bool
+	Allocated       bool // rota's allocated_datetime is set; assignees are meaningful only when true
 	Assignees       []ShiftAssignee
 	AlterationCount int       // number of alterations recorded for the date
 	LastChanged     time.Time // latest alteration set_time for the date; zero if unaltered
 }
 
-// ListShifts returns the effective shifts (base allocations with alterations
-// applied), sorted by date ascending, optionally bounded by params.
+// ListShifts returns every minted shift in range (ADR 0001: the shift table is
+// the authority on which shifts exist), sorted by date ascending and optionally
+// bounded by params. Allocated shifts carry their effective assignees (base
+// allocations with alterations applied); unallocated shifts carry none.
 func ListShifts(
 	ctx context.Context,
 	database ListShiftsStore,
@@ -60,12 +68,25 @@ func ListShifts(
 		return nil, err
 	}
 
-	allocations, err := database.GetAllocationsInRange(ctx, from, to)
+	shiftsInRange, err := database.GetShiftsInRange(ctx, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
+	}
+
+	// Scope allocations and alterations by the shifts already resolved rather
+	// than a second date-range scan: they are children of these shifts (ADR
+	// 0001), so the two sets cannot disagree.
+	shiftIDs := make([]string, 0, len(shiftsInRange))
+	for _, s := range shiftsInRange {
+		shiftIDs = append(shiftIDs, s.ID)
+	}
+
+	allocations, err := database.GetAllocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
 
-	alterations, err := database.GetAlterationsInRange(ctx, from, to)
+	alterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
@@ -102,15 +123,18 @@ func ListShifts(
 		}
 	}
 
-	// Collect the effective dates, both for output ordering and to bound the
-	// rrule search window in isShiftClosed
-	shiftDates := make([]time.Time, 0, len(allocationsByDate))
-	for dateStr := range allocationsByDate {
-		date, err := time.Parse("2006-01-02", dateStr)
+	// The shift table drives which dates appear (ADR 0001), whether or not the
+	// rota has been allocated. Collect them both for output ordering and to
+	// bound the rrule search window in isShiftClosed.
+	allocatedByDate := make(map[string]bool, len(shiftsInRange))
+	shiftDates := make([]time.Time, 0, len(shiftsInRange))
+	for _, s := range shiftsInRange {
+		date, err := time.Parse("2006-01-02", s.Date)
 		if err != nil {
-			logger.Warn("Skipping shift with unparseable date", zap.String("date", dateStr))
+			logger.Warn("Skipping shift with unparseable date", zap.String("date", s.Date))
 			continue
 		}
+		allocatedByDate[s.Date] = s.Allocated
 		shiftDates = append(shiftDates, date)
 	}
 	sort.Slice(shiftDates, func(i, j int) bool { return shiftDates[i].Before(shiftDates[j]) })
@@ -122,12 +146,15 @@ func ListShifts(
 		shift := Shift{
 			Date:            dateStr,
 			Closed:          isShiftClosed(dateStr, cfg.RotaOverrides, shiftDates, logger),
+			Allocated:       allocatedByDate[dateStr],
 			AlterationCount: alterationCounts[dateStr],
 			LastChanged:     lastChanged[dateStr],
 		}
 
-		// Closed shifts carry no assignees, mirroring publishRota
-		if !shift.Closed {
+		// Assignees are meaningful only once the rota is allocated; an
+		// unallocated shift has none. Closed shifts also carry none, mirroring
+		// publishRota.
+		if shift.Allocated && !shift.Closed {
 			shift.Assignees = buildAssignees(allocationsByDate[dateStr], volunteersByID, logger)
 		}
 

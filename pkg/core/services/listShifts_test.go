@@ -14,26 +14,91 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// mockListShiftsStore implements ListShiftsStore for testing
+// mockListShiftsStore implements ListShiftsStore for testing. When shifts is
+// nil, the store synthesises one allocated shift per distinct allocation date,
+// so tests that only care about allocated shifts need not spell out the shift
+// table; tests exercising unallocated shifts set shifts explicitly. The
+// allocation/alteration fetches are scoped by shift id, mirroring production:
+// the store maps the requested ids back to dates through its shift set.
 type mockListShiftsStore struct {
+	shifts      []db.ShiftInRange
 	allocations []db.Allocation
 	alterations []db.Alteration
 }
 
-func (m *mockListShiftsStore) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error) {
+// allShifts is the canonical shift set the store would hold, each with an id.
+// Explicit shifts without an id default to date-as-id for convenience; derived
+// shifts use the allocation's date as the id.
+func (m *mockListShiftsStore) allShifts() []db.ShiftInRange {
+	if m.shifts != nil {
+		out := make([]db.ShiftInRange, len(m.shifts))
+		for i, s := range m.shifts {
+			if s.ID == "" {
+				s.ID = s.Date
+			}
+			out[i] = s
+		}
+		return out
+	}
+
+	seen := make(map[string]bool)
+	var derived []db.ShiftInRange
+	for _, a := range m.allocations {
+		if seen[a.ShiftDate] {
+			continue
+		}
+		seen[a.ShiftDate] = true
+		derived = append(derived, db.ShiftInRange{
+			Shift:     db.Shift{ID: a.ShiftDate, Date: a.ShiftDate, RotaID: a.RotaID},
+			Allocated: true,
+		})
+	}
+	return derived
+}
+
+// datesForShiftIDs maps a set of shift ids back to their dates via the shift
+// set, so allocation/alteration lookups can filter by date as production filters
+// by shift_id.
+func (m *mockListShiftsStore) datesForShiftIDs(shiftIDs []string) map[string]bool {
+	want := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		want[id] = true
+	}
+	dates := make(map[string]bool)
+	for _, s := range m.allShifts() {
+		if want[s.ID] {
+			dates[s.Date] = true
+		}
+	}
+	return dates
+}
+
+func (m *mockListShiftsStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
+	var filtered []db.ShiftInRange
+	for _, s := range m.allShifts() {
+		if shiftDateInRange(s.Date, from, to) {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockListShiftsStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
 	var filtered []db.Allocation
 	for _, a := range m.allocations {
-		if shiftDateInRange(a.ShiftDate, from, to) {
+		if dates[a.ShiftDate] {
 			filtered = append(filtered, a)
 		}
 	}
 	return filtered, nil
 }
 
-func (m *mockListShiftsStore) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error) {
+func (m *mockListShiftsStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
 	var filtered []db.Alteration
 	for _, a := range m.alterations {
-		if shiftDateInRange(a.ShiftDate, from, to) {
+		if dates[a.ShiftDate] {
 			filtered = append(filtered, a)
 		}
 	}
@@ -86,6 +151,57 @@ func TestListShifts_BaseAllocations(t *testing.T) {
 	assert.Equal(t, "External Org", first.Assignees[2].Name)
 	assert.Equal(t, "External Org", first.Assignees[2].CustomEntry)
 	assert.Empty(t, first.Assignees[2].VolunteerID)
+}
+
+func TestListShifts_UnallocatedRotaShiftsAppear(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	// rota-1 is allocated (has assignees); rota-2 has been minted but not yet
+	// allocated, so its shifts must still appear, with allocated=false and no
+	// assignees.
+	store := &mockListShiftsStore{
+		shifts: []db.ShiftInRange{
+			{Shift: db.Shift{Date: "2025-01-05", RotaID: "rota-1"}, Allocated: true},
+			{Shift: db.Shift{Date: "2025-01-12", RotaID: "rota-2"}, Allocated: false},
+			{Shift: db.Shift{Date: "2025-01-19", RotaID: "rota-2"}, Allocated: false},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 3)
+
+	// Allocated rota unchanged: assignees resolved as before.
+	assert.Equal(t, "2025-01-05", shifts[0].Date)
+	assert.True(t, shifts[0].Allocated)
+	require.Len(t, shifts[0].Assignees, 1)
+	assert.Equal(t, "alice", shifts[0].Assignees[0].VolunteerID)
+
+	// Unallocated rota's shifts appear with no assignees.
+	for _, s := range shifts[1:] {
+		assert.False(t, s.Allocated, "shift %s should be unallocated", s.Date)
+		assert.Empty(t, s.Assignees, "unallocated shift %s should have no assignees", s.Date)
+	}
+}
+
+func TestListShifts_BaseAllocationsReportAllocated(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockListShiftsStore{
+		allocations: []db.Allocation{
+			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 1)
+	assert.True(t, shifts[0].Allocated)
 }
 
 func TestListShifts_AlterationsApplied(t *testing.T) {

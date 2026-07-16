@@ -42,6 +42,51 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 	return shifts, nil
 }
 
+// ShiftInRange is a minted shift within a queried date range, carrying whether
+// its rota has been allocated. Allocation is whole-rota today (derived from the
+// rota's allocated_datetime), but the flag is exposed per shift to leave room
+// for per-shift allocation later (ADR 0001).
+type ShiftInRange struct {
+	Shift
+	Allocated bool
+}
+
+// GetShiftsInRange retrieves the minted shifts whose date falls between from and
+// to (inclusive), allocated or not, ordered by date ascending. A zero time
+// leaves that bound open, mirroring GetAllocationsInRange. Each shift carries
+// its rota's allocated state, joined from rotation.allocated_datetime.
+func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
+	where, args := shiftDateWhere(from, to)
+	rows, err := d.pool.Query(ctx, `
+		SELECT s.id, s.date, s.rota_id, r.allocated_datetime IS NOT NULL
+		FROM shift s
+		JOIN rotation r ON r.id = s.rota_id
+	`+where+`
+		ORDER BY s.date
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query shifts in range: %w", err)
+	}
+	defer rows.Close()
+
+	var shifts []ShiftInRange
+	for rows.Next() {
+		var s ShiftInRange
+		var date time.Time
+		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Allocated); err != nil {
+			return nil, fmt.Errorf("failed to scan shift: %w", err)
+		}
+		s.Date = date.Format("2006-01-02")
+		shifts = append(shifts, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating shifts: %w", err)
+	}
+
+	return shifts, nil
+}
+
 // GetShiftByDate retrieves the single shift on the given date, or nil if no
 // shift exists for that date. Dates are unique, so at most one row matches;
 // this is the lookup that resolves a date to its shift and rota.

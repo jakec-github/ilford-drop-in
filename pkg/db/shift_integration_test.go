@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,104 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
+
+// TestGetShiftsInRange checks that every minted shift in range is returned,
+// allocated or not, with the Allocated flag sourced from the rota's
+// allocated_datetime, and that the from/to bounds are inclusive (issue #38).
+func TestGetShiftsInRange(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	// rota1 is allocated; rota2 is minted but left unallocated.
+	rota1 := &db.Rotation{ID: uuid.New().String()}
+	require.NoError(t, database.InsertRotationAndShifts(ctx, rota1, []db.Shift{
+		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota1.ID},
+		{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota1.ID},
+	}))
+	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
+		[]db.Allocation{{ID: uuid.New().String(), RotaID: rota1.ID, ShiftDate: "2026-08-02", Role: "team-lead", VolunteerID: "alice"}},
+		rota1.ID, time.Now()))
+
+	rota2 := &db.Rotation{ID: uuid.New().String()}
+	require.NoError(t, database.InsertRotationAndShifts(ctx, rota2, []db.Shift{
+		{ID: uuid.New().String(), Date: "2026-08-16", RotaID: rota2.ID},
+	}))
+
+	// All three shifts, unbounded, ordered by date.
+	shifts, err := database.GetShiftsInRange(ctx, time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, shifts, 3)
+	assert.Equal(t, "2026-08-02", shifts[0].Date)
+	assert.True(t, shifts[0].Allocated, "allocated rota's shift")
+	assert.True(t, shifts[1].Allocated)
+	assert.Equal(t, "2026-08-16", shifts[2].Date)
+	assert.False(t, shifts[2].Allocated, "unallocated rota's shift must still appear")
+
+	// Inclusive bounds drop the out-of-range shift.
+	bounded, err := database.GetShiftsInRange(ctx,
+		time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Len(t, bounded, 2)
+	assert.Equal(t, "2026-08-09", bounded[0].Date)
+	assert.Equal(t, "2026-08-16", bounded[1].Date)
+}
+
+// TestGetAllocationsAndAlterationsByShiftIDs checks that allocations and
+// alterations are fetched for exactly the given shifts (issue #38): the scope
+// comes from the shift ids the caller holds, not a re-derived date window, and
+// an empty id set is a no-op.
+func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	shiftA := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID}
+	shiftB := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
+	require.NoError(t, database.InsertRotationAndShifts(ctx, rota, []db.Shift{shiftA, shiftB}))
+	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
+		{ID: uuid.New().String(), RotaID: rota.ID, ShiftDate: shiftA.Date, Role: "team-lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), RotaID: rota.ID, ShiftDate: shiftB.Date, Role: "volunteer", VolunteerID: "bob"},
+	}, rota.ID, time.Now()))
+
+	// An alteration on shiftB only; its cover_id must reference the cover row.
+	coverID := uuid.New().String()
+	require.NoError(t, database.WithRotaLock(ctx, []string{rota.ID}, func(store db.RotaChangeStore) error {
+		return store.InsertCoverAndAlterations(ctx,
+			&db.Cover{ID: coverID, Reason: "cover", UserEmail: "jane@example.com"},
+			[]db.Alteration{{ID: uuid.New().String(), RotaID: rota.ID, ShiftDate: shiftB.Date, Direction: "remove", VolunteerID: "bob", CoverID: coverID}})
+	}))
+
+	// Scoping to shiftA returns only its allocation and no alterations.
+	allocs, err := database.GetAllocationsByShiftIDs(ctx, []string{shiftA.ID})
+	require.NoError(t, err)
+	require.Len(t, allocs, 1)
+	assert.Equal(t, "alice", allocs[0].VolunteerID)
+	assert.Equal(t, shiftA.Date, allocs[0].ShiftDate)
+
+	alts, err := database.GetAlterationsByShiftIDs(ctx, []string{shiftA.ID})
+	require.NoError(t, err)
+	assert.Empty(t, alts)
+
+	// Scoping to shiftB picks up its allocation and its alteration.
+	alts, err = database.GetAlterationsByShiftIDs(ctx, []string{shiftB.ID})
+	require.NoError(t, err)
+	require.Len(t, alts, 1)
+	assert.Equal(t, shiftB.Date, alts[0].ShiftDate)
+
+	// Both shifts returns both allocations.
+	allocs, err = database.GetAllocationsByShiftIDs(ctx, []string{shiftA.ID, shiftB.ID})
+	require.NoError(t, err)
+	assert.Len(t, allocs, 2)
+
+	// Empty id set is a no-op.
+	allocs, err = database.GetAllocationsByShiftIDs(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, allocs)
+	alts, err = database.GetAlterationsByShiftIDs(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, alts)
+}
 
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
 // shift.date UNIQUE constraint (issue #41, hazard B1): two rotas minting the

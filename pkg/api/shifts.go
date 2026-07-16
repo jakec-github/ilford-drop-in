@@ -12,6 +12,7 @@ type shiftResponse struct {
 	Start     string             `json:"start"`
 	End       string             `json:"end"`
 	Closed    bool               `json:"closed"`
+	Allocated bool               `json:"allocated"`
 	Assignees []assigneeResponse `json:"assignees"`
 }
 
@@ -61,6 +62,7 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 			Start:     start.Format(time.RFC3339),
 			End:       end.Format(time.RFC3339),
 			Closed:    shift.Closed,
+			Allocated: shift.Allocated,
 			Assignees: assignees,
 		})
 	}
