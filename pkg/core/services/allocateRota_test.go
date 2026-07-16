@@ -13,20 +13,18 @@ import (
 )
 
 // TestAllocateRotaRefusesAlreadyAllocatedRota covers the double-allocation
-// guard (issue #8): allocating a rota that already has allocations fails fast,
-// naming the rota, before the solver runs and without writing anything.
+// guard (issue #8): allocating a rota that has already been allocated (a set
+// allocated_datetime) fails fast, naming the rota, before the solver runs and
+// without writing anything.
 func TestAllocateRotaRefusesAlreadyAllocatedRota(t *testing.T) {
 	// Give the rota real shifts too, so that without the guard the flow would
 	// proceed past rotaShiftDates and fail with a different error — pinning the
 	// test to the guard rather than an incidental downstream failure.
 	store := &mockAllocateRotaStore{
 		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2},
+			{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2, AllocatedDatetime: "2026-08-01T10:00:00Z"},
 		},
 		shifts: sundayShifts("rota-1", "2026-08-02", 2),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", RotaID: "rota-1", ShiftDate: "2026-08-02", Role: "TL", VolunteerID: "vol-1"},
-		},
 	}
 
 	result, err := AllocateRota(
@@ -44,6 +42,6 @@ func TestAllocateRotaRefusesAlreadyAllocatedRota(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "rota-1", "error should name the rota")
-	assert.Contains(t, err.Error(), "already has allocations", "error should explain the guard fired")
+	assert.Contains(t, err.Error(), "already allocated", "error should explain the guard fired")
 	assert.Empty(t, store.insertedAllocations, "no allocations should be written")
 }

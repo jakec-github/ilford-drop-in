@@ -96,28 +96,19 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 	}
 	defer tx.Rollback(ctx)
 
-	// Double-allocation guard (issue #8). Lock the rotation row so concurrent
-	// allocation runs for the same rota serialise here, then refuse if the rota
-	// already has allocations. The FOR UPDATE lock makes this check-then-write
-	// atomic under READ COMMITTED: a racing run blocks on the lock until this
-	// transaction commits, then its own check observes these freshly-committed
-	// rows and fails. On failure the deferred Rollback writes nothing.
-	var lockedRotaID string
-	if err := tx.QueryRow(ctx, `SELECT id FROM rotation WHERE id = $1 FOR UPDATE`, rotaID).Scan(&lockedRotaID); err != nil {
+	// Double-allocation guard (issue #8). Lock the rotation row and read its
+	// allocated_datetime in one shot; a non-NULL value marks an allocation that
+	// already completed, so refuse. The FOR UPDATE lock makes this
+	// check-then-write atomic under READ COMMITTED: a racing run blocks on the
+	// lock until this transaction commits, then its own read observes the
+	// allocated_datetime this run set and fails. On failure the deferred
+	// Rollback writes nothing.
+	var allocatedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT allocated_datetime FROM rotation WHERE id = $1 FOR UPDATE`, rotaID).Scan(&allocatedAt); err != nil {
 		return fmt.Errorf("failed to lock rotation %s: %w", rotaID, err)
 	}
-	var alreadyAllocated bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM allocation a
-			JOIN shift s ON s.id = a.shift_id
-			WHERE s.rota_id = $1
-		)
-	`, rotaID).Scan(&alreadyAllocated); err != nil {
-		return fmt.Errorf("failed to check existing allocations for rota %s: %w", rotaID, err)
-	}
-	if alreadyAllocated {
-		return fmt.Errorf("rota %s already has allocations - refusing to allocate again", rotaID)
+	if allocatedAt != nil {
+		return fmt.Errorf("rota %s is already allocated (at %s) - refusing to allocate again", rotaID, allocatedAt.UTC().Format(time.RFC3339))
 	}
 
 	for _, a := range allocations {
