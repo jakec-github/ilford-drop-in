@@ -841,6 +841,35 @@ func TestRequestAvailability_AllDatesClosed_FailsLoudly(t *testing.T) {
 	assert.Empty(t, mockFormsClient.createdForms)
 }
 
+// TestRequestAvailability_DuplicateInsertSurfacesAsConflict covers the losing
+// side of hazard H3 (issue #41): when the insert fails because a concurrent
+// run already created the requests, the service surfaces ErrConflict and never
+// reaches its email loop.
+func TestRequestAvailability_DuplicateInsertSurfacesAsConflict(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		shifts:    sundayShifts("rota-1", "2024-01-01", 10),
+		insertErr: fmt.Errorf("volunteer vol-1, rota rota-1: %w", db.ErrDuplicateAvailabilityRequest),
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+
+	sentForms, failedEmails, err := RequestAvailability(context.Background(), mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, &config.Config{}, zap.NewNop(), "2024-01-15", false)
+
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Nil(t, sentForms)
+	assert.Nil(t, failedEmails)
+	assert.Empty(t, mockGmailClient.sentEmails, "losing run must not email anyone")
+	assert.Empty(t, mockStore.markedSentIDs)
+}
+
 // Helper function tests
 func TestFilterVolunteersWithoutSentRequests(t *testing.T) {
 	volunteers := []model.Volunteer{

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -214,6 +215,9 @@ func RequestAvailability(
 	if len(unsentRequests) > 0 {
 		logger.Debug("Inserting unsent availability requests", zap.Int("count", len(unsentRequests)))
 		if err := database.InsertAvailabilityRequests(ctx, unsentRequests); err != nil {
+			if errors.Is(err, db.ErrDuplicateAvailabilityRequest) {
+				return nil, nil, wrapf(ErrConflict, "availability requests already exist for rota %s — a concurrent run may have just created them", latestRota.ID)
+			}
 			return nil, nil, fmt.Errorf("failed to insert availability requests: %w", err)
 		}
 		logger.Debug("Unsent availability requests inserted successfully")

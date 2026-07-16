@@ -2,10 +2,18 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrDuplicateAvailabilityRequest indicates an insert would give a volunteer a
+// second availability request for the same rota — the unique constraint added
+// for issue #41 (hazard H3) rejected it, so a concurrent run has already
+// created the request.
+var ErrDuplicateAvailabilityRequest = errors.New("volunteer already has an availability request for this rota")
 
 const availabilityRequestColumns = `id, rota_id, volunteer_id, form_id, form_url, form_sent`
 
@@ -71,6 +79,12 @@ func (d *DB) InsertAvailabilityRequests(ctx context.Context, requests []Availabi
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, req.ID, req.RotaID, req.VolunteerID, req.FormID, req.FormURL, req.FormSent)
 		if err != nil {
+			var pgErr *pgconn.PgError
+			// 23505 = unique_violation
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+				pgErr.ConstraintName == "availability_request_rota_volunteer_key" {
+				return fmt.Errorf("volunteer %s, rota %s: %w", req.VolunteerID, req.RotaID, ErrDuplicateAvailabilityRequest)
+			}
 			return fmt.Errorf("failed to insert availability request: %w", err)
 		}
 	}
