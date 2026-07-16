@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/teambition/rrule-go"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -151,39 +150,12 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []time.Time, logger *zap.Logger) ([]allocator.ShiftOverride, error) {
 	result := make([]allocator.ShiftOverride, 0, len(configOverrides))
 
-	// Determine the date range for RRule generation from actual shift dates
-	var rotaStart, rotaEnd time.Time
-	if len(shiftDates) > 0 {
-		rotaStart = shiftDates[0]
-		rotaEnd = shiftDates[len(shiftDates)-1]
-	}
-
 	for i, override := range configOverrides {
-		// Parse the RRule
-		rule, err := rrule.StrToRRule(override.RRule)
+		// Parse the RRule into a date matcher; allocation fails hard on an
+		// unparseable rrule.
+		appliesTo, err := utils.NewRRuleMatcher(override.RRule, shiftDates)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse rrule for override %d: %w", i, err)
-		}
-
-		// Create the AppliesTo function that checks if a date matches the RRule
-		// We need to capture the rule by value to avoid closure issues
-		ruleForClosure := rule
-		appliesTo := func(dateStr string) bool {
-			// Check if this date is in the RRule set
-			// Use the rota date range, with a small buffer for edge cases
-			searchStart := rotaStart.AddDate(0, 0, -7) // 1 week before start
-			searchEnd := rotaEnd.AddDate(0, 0, 7)      // 1 week after end
-
-			// Set the RRule's DTSTART to start of search range
-			ruleForClosure.DTStart(searchStart)
-
-			occurrences := ruleForClosure.Between(searchStart, searchEnd, true)
-			for _, occurrence := range occurrences {
-				if occurrence.Format("2006-01-02") == dateStr {
-					return true
-				}
-			}
-			return false
 		}
 
 		result = append(result, allocator.ShiftOverride{
