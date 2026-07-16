@@ -15,55 +15,90 @@ import (
 )
 
 // mockListShiftsStore implements ListShiftsStore for testing. When shifts is
-// nil, GetShiftsInRange synthesises one allocated shift per distinct allocation
-// date, so tests that only care about allocated shifts need not spell out the
-// shift table; tests exercising unallocated shifts set shifts explicitly.
+// nil, the store synthesises one allocated shift per distinct allocation date,
+// so tests that only care about allocated shifts need not spell out the shift
+// table; tests exercising unallocated shifts set shifts explicitly. The
+// allocation/alteration fetches are scoped by shift id, mirroring production:
+// the store maps the requested ids back to dates through its shift set.
 type mockListShiftsStore struct {
 	shifts      []db.ShiftInRange
 	allocations []db.Allocation
 	alterations []db.Alteration
 }
 
-func (m *mockListShiftsStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
+// allShifts is the canonical shift set the store would hold, each with an id.
+// Explicit shifts without an id default to date-as-id for convenience; derived
+// shifts use the allocation's date as the id.
+func (m *mockListShiftsStore) allShifts() []db.ShiftInRange {
 	if m.shifts != nil {
-		var filtered []db.ShiftInRange
-		for _, s := range m.shifts {
-			if shiftDateInRange(s.Date, from, to) {
-				filtered = append(filtered, s)
+		out := make([]db.ShiftInRange, len(m.shifts))
+		for i, s := range m.shifts {
+			if s.ID == "" {
+				s.ID = s.Date
 			}
+			out[i] = s
 		}
-		return filtered, nil
+		return out
 	}
 
 	seen := make(map[string]bool)
 	var derived []db.ShiftInRange
 	for _, a := range m.allocations {
-		if seen[a.ShiftDate] || !shiftDateInRange(a.ShiftDate, from, to) {
+		if seen[a.ShiftDate] {
 			continue
 		}
 		seen[a.ShiftDate] = true
 		derived = append(derived, db.ShiftInRange{
-			Shift:     db.Shift{Date: a.ShiftDate, RotaID: a.RotaID},
+			Shift:     db.Shift{ID: a.ShiftDate, Date: a.ShiftDate, RotaID: a.RotaID},
 			Allocated: true,
 		})
 	}
-	return derived, nil
+	return derived
 }
 
-func (m *mockListShiftsStore) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error) {
+// datesForShiftIDs maps a set of shift ids back to their dates via the shift
+// set, so allocation/alteration lookups can filter by date as production filters
+// by shift_id.
+func (m *mockListShiftsStore) datesForShiftIDs(shiftIDs []string) map[string]bool {
+	want := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		want[id] = true
+	}
+	dates := make(map[string]bool)
+	for _, s := range m.allShifts() {
+		if want[s.ID] {
+			dates[s.Date] = true
+		}
+	}
+	return dates
+}
+
+func (m *mockListShiftsStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
+	var filtered []db.ShiftInRange
+	for _, s := range m.allShifts() {
+		if shiftDateInRange(s.Date, from, to) {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockListShiftsStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
 	var filtered []db.Allocation
 	for _, a := range m.allocations {
-		if shiftDateInRange(a.ShiftDate, from, to) {
+		if dates[a.ShiftDate] {
 			filtered = append(filtered, a)
 		}
 	}
 	return filtered, nil
 }
 
-func (m *mockListShiftsStore) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error) {
+func (m *mockListShiftsStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
 	var filtered []db.Alteration
 	for _, a := range m.alterations {
-		if shiftDateInRange(a.ShiftDate, from, to) {
+		if dates[a.ShiftDate] {
 			filtered = append(filtered, a)
 		}
 	}

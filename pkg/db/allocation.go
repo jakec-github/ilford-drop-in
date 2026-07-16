@@ -48,6 +48,27 @@ func shiftDateWhere(from, to time.Time) (string, []any) {
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
+// GetAllocationsByShiftIDs retrieves the allocation records belonging to the
+// given shifts. Callers that have already resolved a set of shifts (e.g.
+// ListShifts) scope allocations by that set rather than re-deriving a date
+// window, so the two can never disagree. The rota and date are hydrated from the
+// joined shift (ADR 0001); an empty id set returns no rows without a query.
+func (d *DB) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Allocation, error) {
+	if len(shiftIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := d.pool.Query(ctx, `
+		SELECT a.id, s.rota_id, s.date, a.role, a.volunteer_id, a.custom_entry
+		FROM allocation a
+		JOIN shift s ON s.id = a.shift_id
+		WHERE a.shift_id = ANY($1)
+	`, shiftIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query allocations by shift: %w", err)
+	}
+	return scanAllocations(rows)
+}
+
 // GetAllocationsByRotaID retrieves the allocation records for a single rota.
 // The rota and date are read from the joined shift, not legacy columns (ADR 0001).
 func (d *DB) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]Allocation, error) {

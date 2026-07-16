@@ -16,12 +16,13 @@ import (
 
 // ListShiftsStore defines the database operations needed for listing shifts.
 // The shift table is the authority on which shifts exist in range (ADR 0001);
-// allocations and alterations supply the effective assignees for those that
-// have been allocated.
+// allocations and alterations are then fetched for exactly those shifts (by id,
+// not a second date scan), and supply the effective assignees for shifts whose
+// rota has been allocated.
 type ListShiftsStore interface {
 	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
-	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error)
-	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error)
+	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
+	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
 }
 
 // ListShiftsParams holds optional filters for listing shifts
@@ -72,12 +73,20 @@ func ListShifts(
 		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
 	}
 
-	allocations, err := database.GetAllocationsInRange(ctx, from, to)
+	// Scope allocations and alterations by the shifts already resolved rather
+	// than a second date-range scan: they are children of these shifts (ADR
+	// 0001), so the two sets cannot disagree.
+	shiftIDs := make([]string, 0, len(shiftsInRange))
+	for _, s := range shiftsInRange {
+		shiftIDs = append(shiftIDs, s.ID)
+	}
+
+	allocations, err := database.GetAllocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
 
-	alterations, err := database.GetAlterationsInRange(ctx, from, to)
+	alterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}

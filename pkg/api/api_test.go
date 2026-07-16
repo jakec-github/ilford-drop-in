@@ -34,42 +34,96 @@ type mockStore struct {
 	getAllocationsErr   error
 }
 
-// GetShiftsInRange returns the minted shifts in range. When shifts is unset it
-// synthesises one allocated shift per distinct allocation date, so existing
+// allShiftsInRange is the canonical shift set the store would hold, each with an
+// id. Explicit shiftsInRange without an id default to date-as-id; otherwise one
+// allocated shift is synthesised per distinct allocation (or shift) date, so
 // tests that only populate allocations keep enumerating the same dates.
-func (m *mockStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
-	if m.getShiftsErr != nil {
-		return nil, m.getShiftsErr
-	}
+func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 	if m.shiftsInRange != nil {
-		var filtered []db.ShiftInRange
-		for _, s := range m.shiftsInRange {
-			if shiftDateInRange(s.Date, from, to) {
-				filtered = append(filtered, s)
+		out := make([]db.ShiftInRange, len(m.shiftsInRange))
+		for i, s := range m.shiftsInRange {
+			if s.ID == "" {
+				s.ID = s.Date
 			}
+			out[i] = s
 		}
-		return filtered, nil
+		return out
 	}
 
 	seen := make(map[string]bool)
 	var out []db.ShiftInRange
-	add := func(date, rotaID string, allocated bool) {
-		if seen[date] || !shiftDateInRange(date, from, to) {
+	add := func(id, date, rotaID string) {
+		if seen[date] {
 			return
 		}
 		seen[date] = true
+		if id == "" {
+			id = date
+		}
 		out = append(out, db.ShiftInRange{
-			Shift:     db.Shift{Date: date, RotaID: rotaID},
-			Allocated: allocated,
+			Shift:     db.Shift{ID: id, Date: date, RotaID: rotaID},
+			Allocated: true,
 		})
 	}
 	for _, s := range m.shifts {
-		add(s.Date, s.RotaID, true)
+		add(s.ID, s.Date, s.RotaID)
 	}
 	for _, a := range m.allocations {
-		add(a.ShiftDate, a.RotaID, true)
+		add("", a.ShiftDate, a.RotaID)
 	}
-	return out, nil
+	return out
+}
+
+// datesForShiftIDs maps requested shift ids back to dates via the shift set, so
+// the by-id fetches can filter by date as production filters by shift_id.
+func (m *mockStore) datesForShiftIDs(shiftIDs []string) map[string]bool {
+	want := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		want[id] = true
+	}
+	dates := make(map[string]bool)
+	for _, s := range m.allShiftsInRange() {
+		if want[s.ID] {
+			dates[s.Date] = true
+		}
+	}
+	return dates
+}
+
+// GetShiftsInRange returns the minted shifts in range.
+func (m *mockStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
+	if m.getShiftsErr != nil {
+		return nil, m.getShiftsErr
+	}
+	var filtered []db.ShiftInRange
+	for _, s := range m.allShiftsInRange() {
+		if shiftDateInRange(s.Date, from, to) {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
+	var filtered []db.Allocation
+	for _, a := range m.allocations {
+		if dates[a.ShiftDate] {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
+	dates := m.datesForShiftIDs(shiftIDs)
+	var filtered []db.Alteration
+	for _, a := range m.alterations {
+		if dates[a.ShiftDate] {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {

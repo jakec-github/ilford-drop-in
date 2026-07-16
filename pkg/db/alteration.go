@@ -30,6 +30,28 @@ func getAlterationsInRange(ctx context.Context, q querier, from, to time.Time) (
 	return scanAlterations(rows)
 }
 
+// GetAlterationsByShiftIDs retrieves the alteration records belonging to the
+// given shifts. Like GetAllocationsByShiftIDs, it scopes by the shift set the
+// caller already holds rather than a second date-range scan (ADR 0001). The
+// rota and date are hydrated from the joined shift; an empty id set returns no
+// rows without a query.
+func (d *DB) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Alteration, error) {
+	if len(shiftIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := d.pool.Query(ctx, `
+		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
+		FROM alteration a
+		JOIN shift s ON s.id = a.shift_id
+		WHERE a.shift_id = ANY($1)
+		ORDER BY a.set_time ASC
+	`, shiftIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query alterations by shift: %w", err)
+	}
+	return scanAlterations(rows)
+}
+
 // GetAlterationsByRotaID retrieves the alteration records for a single rota.
 // The rota and date are read from the joined shift, not legacy columns (ADR 0001).
 func (d *DB) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]Alteration, error) {
