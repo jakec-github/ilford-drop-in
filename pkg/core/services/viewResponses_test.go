@@ -791,7 +791,7 @@ func TestViewResponses_ReadsShiftDatesFromTable(t *testing.T) {
 	}
 
 	cfg := &config.Config{DefaultShiftSize: 2}
-	result, err := ViewResponses(context.Background(), store, volunteerClient, formsClient, cfg, zap.NewNop(), "", false)
+	result, err := ViewResponses(context.Background(), store, volunteerClient, formsClient, cfg, zap.NewNop(), "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -821,7 +821,7 @@ func TestViewResponses_ErrorsWhenRotaHasNoShifts(t *testing.T) {
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
 	formsClient := &mockFormsClientWithResponses{}
 
-	_, err := ViewResponses(context.Background(), store, volunteerClient, formsClient, &config.Config{}, zap.NewNop(), "", false)
+	_, err := ViewResponses(context.Background(), store, volunteerClient, formsClient, &config.Config{}, zap.NewNop(), "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no shifts")
 }

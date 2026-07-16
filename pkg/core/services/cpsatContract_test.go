@@ -14,9 +14,9 @@ import (
 // contract. If this test breaks, pyallocator's serialization must change in
 // lockstep (see pyallocator/README.md).
 func TestCpsatInputContractGolden(t *testing.T) {
-	input := &CpsatInput{
+	input := &allocator.CpsatInput{
 		MaxAllocationCount: 2,
-		Shifts: []CpsatShift{{
+		Shifts: []allocator.CpsatShift{{
 			Index:                    0,
 			Date:                     "2026-07-13",
 			Size:                     3,
@@ -25,16 +25,16 @@ func TestCpsatInputContractGolden(t *testing.T) {
 			PreallocatedVolunteerIDs: []string{"vol-1"},
 			PreallocatedTeamLeadID:   "vol-9",
 		}},
-		Groups: []CpsatGroup{{
+		Groups: []allocator.CpsatGroup{{
 			GroupKey: "couple_alice_bob",
-			Members: []CpsatMember{{
+			Members: []allocator.CpsatMember{{
 				ID: "vol-1", FirstName: "Alice", LastName: "Smith",
 				DisplayName: "Alice S", Gender: "Female", IsTeamLead: false,
 			}},
 			AvailableShiftIndices:     []int{0, 2},
 			HistoricalAllocationCount: 3,
 		}},
-		HistoricalShifts: []CpsatHistoricalShift{{
+		HistoricalShifts: []allocator.CpsatHistoricalShift{{
 			Date: "2026-06-29", GroupKeys: []string{"couple_x"},
 		}},
 	}
@@ -77,7 +77,7 @@ func TestCpsatOutputContractGolden(t *testing.T) {
 			"num_variables": 126, "constraints_applied": ["availability"]}
 	}`
 
-	var output CpsatOutput
+	var output allocator.CpsatOutput
 	require.NoError(t, json.Unmarshal([]byte(payload), &output))
 	assert.Equal(t, "OPTIMAL", output.SolverStatus)
 	assert.True(t, output.Success)
@@ -124,7 +124,7 @@ func TestBuildCpsatInput(t *testing.T) {
 		}},
 	}
 
-	input, err := buildCpsatInput(volunteers, availability, shiftDates, 2, overrides, historical, 0.5)
+	input, err := allocator.BuildCpsatInput(volunteers, availability, shiftDates, 2, overrides, historical, 0.5)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
@@ -163,10 +163,10 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", IsTeamLead: false, GroupKey: "couple_ab"},
 		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female", IsTeamLead: false, GroupKey: ""},
 	}
-	output := &CpsatOutput{
+	output := &allocator.CpsatOutput{
 		SolverStatus: "OPTIMAL",
 		Success:      true,
-		Shifts: []CpsatOutputShift{{
+		Shifts: []allocator.CpsatOutputShift{{
 			Index:                0,
 			Date:                 "2026-07-13",
 			Size:                 3,
@@ -177,7 +177,7 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 		}},
 	}
 
-	shifts, err := cpsatOutputToAllocatorShifts(output, volunteers)
+	shifts, err := allocator.CpsatOutputToShifts(output, volunteers)
 	require.NoError(t, err)
 	require.Len(t, shifts, 1)
 	shift := shifts[0]
@@ -197,6 +197,6 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 
 	// Unknown IDs from the solver are rejected.
 	output.Shifts[0].VolunteerIDs = []string{"nobody"}
-	_, err = cpsatOutputToAllocatorShifts(output, volunteers)
+	_, err = allocator.CpsatOutputToShifts(output, volunteers)
 	assert.ErrorContains(t, err, "nobody")
 }

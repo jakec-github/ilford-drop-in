@@ -57,7 +57,6 @@ func main() {
 	rootCmd.AddCommand(newLazyCommand(commands.SendAvailabilityRemindersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewResponsesCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.AllocateRotaCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.AllocateRotaCpsatCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))

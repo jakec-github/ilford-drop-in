@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	allocator "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -15,17 +14,21 @@ import (
 func AllocateRotaCmd(app *AppContext) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "allocateRota",
-		Short: "Allocate a rota from availability responses",
-		Long:  "Run the allocation algorithm to assign volunteers to shifts based on availability responses",
+		Short: "Allocate a rota using the CP-SAT solver",
+		Long: "Run the Python CP-SAT allocator (pyallocator) to assign volunteers to shifts. " +
+			"Hard constraints (availability, capacity, no back-to-back, max one team lead, " +
+			"male required, ...) are never violated; soft preferences shape the result to " +
+			"fill shifts evenly, spread males and distribute allocations fairly.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			forceCommit, _ := cmd.Flags().GetBool("force-commit")
+			pythonFlag, _ := cmd.Flags().GetString("python")
 
 			app.Logger.Debug("allocateRota command",
 				zap.Bool("dry_run", dryRun),
-				zap.Bool("force_commit", forceCommit))
+				zap.Bool("force_commit", forceCommit),
+				zap.String("python", pythonFlag))
 
-			// Call the service
 			result, err := services.AllocateRota(
 				app.Ctx,
 				app.Database,
@@ -35,51 +38,48 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				app.Logger,
 				dryRun,
 				forceCommit,
+				pythonFlag,
 			)
 			if err != nil {
 				return fmt.Errorf("allocation failed: %w", err)
 			}
 
 			// Display header
-			fmt.Printf("\n🎯 Rota Allocation Results\n\n")
-			fmt.Printf("Rota ID:     %s\n", result.RotaID)
-			fmt.Printf("Start Date:  %s\n", result.RotaStart)
-			fmt.Printf("Shift Count: %d\n", result.ShiftCount)
+			fmt.Printf("\n🧮 CP-SAT Rota Allocation Results\n\n")
+			fmt.Printf("Rota ID:       %s\n", result.RotaID)
+			fmt.Printf("Start Date:    %s\n", result.RotaStart)
+			fmt.Printf("Shift Count:   %d\n", result.ShiftCount)
+			fmt.Printf("Solver Status: %s\n", result.SolverStatus)
+			fmt.Printf("Objective:     %d\n", result.ObjectiveValue)
+			fmt.Printf("Solve Time:    %.2fs (%d groups, %d variables)\n",
+				result.Diagnostics.SolveTimeSeconds,
+				result.Diagnostics.NumGroups,
+				result.Diagnostics.NumVariables)
 			if dryRun {
-				fmt.Printf("Mode:        🧪 DRY RUN (not saved)\n")
-			} else if result.Success {
-				fmt.Printf("Status:      ✅ SUCCESS (saved to database)\n")
-			} else if forceCommit {
-				fmt.Printf("Status:      ⚠️  FORCED (saved despite validation errors)\n")
-			} else if result.Status == allocator.RotaStatusIncomplete {
-				fmt.Printf("Status:      ⚠️  INCOMPLETE (not saved — add volunteers to fix)\n")
+				fmt.Printf("Mode:          🧪 DRY RUN (not saved)\n")
+			} else if result.Saved {
+				fmt.Printf("Status:        ✅ SAVED to database\n")
 			} else {
-				fmt.Printf("Status:      ❌ INVALID (not saved — volunteers must be removed)\n")
+				fmt.Printf("Status:        ❌ NOT SAVED\n")
 			}
 			fmt.Println()
 
-			// Display validation errors if any
-			if len(result.ValidationErrors) > 0 {
-				fmt.Printf("⚠️  Validation Errors (%d):\n", len(result.ValidationErrors))
-				for _, verr := range result.ValidationErrors {
-					label := "INCOMPLETE"
-					if verr.Type == allocator.ValidationErrorTypeInvalid {
-						label = "INVALID"
-					}
-					fmt.Printf("  • [%s] Shift %d (%s) - %s: %s\n",
-						label,
-						verr.ShiftIndex+1,
-						verr.ShiftDate,
-						verr.CriterionName,
-						verr.Description)
-				}
-				fmt.Println()
+			if !result.Success {
+				fmt.Println("❌ The solver found no rota satisfying every hard constraint (INFEASIBLE).")
+				fmt.Println("   CP-SAT never produces a rule-breaking rota, so nothing was written.")
+				fmt.Println("   Constraint families to check (usually a preallocation conflicts with one):")
+				fmt.Println("   • preallocations vs shift capacity (too many preallocated volunteers for a shift's size)")
+				fmt.Println("   • preallocations vs no-back-to-back (same group preallocated to consecutive shifts)")
+				fmt.Println("   • preallocations vs max frequency (a group preallocated to more shifts than the cap)")
+				fmt.Println("   • preallocations vs team leads (two team leads preallocated onto one shift)")
+				fmt.Println("   • preallocations vs male required (every slot preallocated female, leaving no open slot for a male)")
+				fmt.Println("   • closed shifts (an override closing a shift that another override populates)")
+				return nil
 			}
 
-			// Display allocated shifts in a table
+			// Display allocated shifts in the same table style as allocateRota
 			fmt.Printf("📅 Allocated Shifts:\n\n")
 
-			// ANSI color codes
 			const (
 				colorReset  = "\033[0m"
 				colorGreen  = "\033[32m"
@@ -98,7 +98,6 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 					}
 				}
 
-				// Calculate total volunteer names length
 				totalLen := 0
 				for _, group := range shift.AllocatedGroups {
 					for _, member := range group.Members {
@@ -116,7 +115,6 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			teamLeadColWidth := maxTeamLeadLen + 2
 			volunteersColWidth := maxVolunteersLen + 2
 
-			// Print header
 			fmt.Printf("%s%-*s  %-*s  %-*s  %s%s\n",
 				colorBold,
 				dateColWidth, "Date",
@@ -125,7 +123,6 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				"Size",
 				colorReset)
 
-			// Print separator
 			fmt.Print(strings.Repeat("-", dateColWidth))
 			fmt.Print("  ")
 			fmt.Print(strings.Repeat("-", teamLeadColWidth))
@@ -134,52 +131,38 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			fmt.Print("  ")
 			fmt.Println("----")
 
-			// Print each shift
 			for _, shift := range result.AllocatedShifts {
-				// Format date
 				fmt.Printf("%-*s  ", dateColWidth, shift.Date)
 
-				// Format team lead
 				teamLeadStr := "—"
+				teamLeadDisplayWidth := 1
 				if shift.TeamLead != nil {
-					teamLeadStr = fmt.Sprintf("%s%s%s",
-						colorGreen,
-						shift.TeamLead.DisplayName,
-						colorReset)
-				}
-				// Calculate display width without color codes
-				teamLeadDisplayWidth := 0
-				if shift.TeamLead != nil {
+					teamLeadStr = fmt.Sprintf("%s%s%s", colorGreen, shift.TeamLead.DisplayName, colorReset)
 					teamLeadDisplayWidth = len(shift.TeamLead.DisplayName)
-				} else {
-					teamLeadDisplayWidth = 1
 				}
 				fmt.Printf("%s%s  ", teamLeadStr, strings.Repeat(" ", teamLeadColWidth-teamLeadDisplayWidth))
 
-				// Format volunteers (excluding team lead)
 				volunteers := []string{}
 				for _, group := range shift.AllocatedGroups {
 					for _, member := range group.Members {
-						// Skip if this member is the team lead
 						if shift.TeamLead != nil && member.ID == shift.TeamLead.ID {
 							continue
 						}
 						volunteers = append(volunteers, member.DisplayName)
 					}
 				}
-
-				// Add pre-allocated volunteers
 				for _, preAlloc := range shift.CustomPreallocations {
 					volunteers = append(volunteers, fmt.Sprintf("%s[%s]%s", colorYellow, preAlloc, colorReset))
 				}
 
 				volunteersStr := "—"
-				if len(volunteers) > 0 {
+				if shift.Closed {
+					volunteersStr = "(closed)"
+				} else if len(volunteers) > 0 {
 					volunteersStr = strings.Join(volunteers, ", ")
 				}
 				fmt.Printf("%-*s  ", volunteersColWidth, volunteersStr)
 
-				// Format size
 				sizeStr := fmt.Sprintf("%d/%d", shift.CurrentSize(), shift.Size)
 				if shift.CurrentSize() == shift.Size {
 					sizeStr = fmt.Sprintf("%s%s%s", colorGreen, sizeStr, colorReset)
@@ -188,33 +171,10 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			}
 			fmt.Println()
 
-			// Display underutilized groups if any
-			if len(result.UnderutilizedGroups) > 0 {
-				fmt.Printf("ℹ️  Underutilized Groups (%d):\n", len(result.UnderutilizedGroups))
-				fmt.Println("  (Groups with remaining availability that weren't fully allocated)")
-				for _, group := range result.UnderutilizedGroups {
-					allocated := len(group.AllocatedShiftIndices)
-					available := min(maxAllocationCount(result.ShiftCount, app.Cfg.MaxAllocationFrequency), len(group.AvailableShiftIndices))
-					// Use DisplayName for individual volunteers, GroupKey for actual groups
-					displayName := group.GroupKey
-					if len(group.Members) == 1 {
-						displayName = group.Members[0].DisplayName
-					}
-					fmt.Printf("  • %s: allocated %d/%d shifts\n", displayName, allocated, available)
-				}
-				fmt.Println()
-			}
-
-			// Summary message
 			if dryRun {
 				fmt.Println("💡 This was a dry run. Use without --dry-run to save allocations.")
-			} else if result.Success {
+			} else if result.Saved {
 				fmt.Println("✅ Allocations have been saved to the database.")
-			} else if forceCommit {
-				fmt.Println("⚠️  Allocations were saved despite validation errors (--force-commit).")
-			} else {
-				fmt.Println("❌ Allocations were not saved due to validation errors.")
-				fmt.Println("💡 Use --force-commit to save anyway, or fix the issues and try again.")
 			}
 
 			return nil
@@ -222,11 +182,8 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 	}
 
 	cmd.Flags().Bool("dry-run", false, "Run without saving to database")
-	cmd.Flags().Bool("force-commit", false, "Save allocations even if validation fails")
+	cmd.Flags().Bool("force-commit", false, "Save allocations even if the solver found no feasible rota")
+	cmd.Flags().String("python", "", "Python interpreter to run pyallocator with (default: $ILFORD_CPSAT_PYTHON, then pyallocator/.venv/bin/python, then python3)")
 
 	return cmd
-}
-
-func maxAllocationCount(shiftCount int, maxAllocationFrequency float64) int {
-	return int(float64(shiftCount) * maxAllocationFrequency)
 }

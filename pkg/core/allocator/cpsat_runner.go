@@ -1,4 +1,4 @@
-package services
+package allocator
 
 import (
 	"bytes"
@@ -15,10 +15,10 @@ import (
 // pyallocator interpreter (see pyallocator/README.md).
 const defaultCpsatVenvPython = "pyallocator/.venv/bin/python"
 
-// resolvePythonInterpreter picks the Python interpreter for the CP-SAT
+// ResolvePythonInterpreter picks the Python interpreter for the CP-SAT
 // subprocess: --python flag > ILFORD_CPSAT_PYTHON env > the pyallocator
 // venv if present > python3 on PATH.
-func resolvePythonInterpreter(flagValue string) string {
+func ResolvePythonInterpreter(flagValue string) string {
 	if flagValue != "" {
 		return flagValue
 	}
@@ -31,10 +31,10 @@ func resolvePythonInterpreter(flagValue string) string {
 	return "python3"
 }
 
-// runCpsatAllocator invokes `<python> -m pyallocator` with the problem on
+// RunCpsatAllocator invokes `<python> -m pyallocator` with the problem on
 // stdin and parses the rota from stdout. A non-zero exit means invalid
 // input or a crash; INFEASIBLE comes back as exit 0 with Success=false.
-func runCpsatAllocator(ctx context.Context, pythonPath string, input *CpsatInput, logger *zap.Logger) (*CpsatOutput, error) {
+func RunCpsatAllocator(ctx context.Context, pythonPath string, input *CpsatInput, logger *zap.Logger) (*CpsatOutput, error) {
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal cpsat input: %w", err)
