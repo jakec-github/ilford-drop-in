@@ -13,8 +13,12 @@ import (
 // from and to (inclusive). A zero time leaves that bound open. The date is
 // hydrated from the joined shift, not the legacy shift_date column (ADR 0001).
 func (d *DB) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]Allocation, error) {
+	return getAllocationsInRange(ctx, d.pool, from, to)
+}
+
+func getAllocationsInRange(ctx context.Context, q querier, from, to time.Time) ([]Allocation, error) {
 	where, args := shiftDateWhere(from, to)
-	rows, err := d.pool.Query(ctx, `
+	rows, err := q.Query(ctx, `
 		SELECT a.id, s.rota_id, s.date, a.role, a.volunteer_id, a.custom_entry
 		FROM allocation a
 		JOIN shift s ON s.id = a.shift_id

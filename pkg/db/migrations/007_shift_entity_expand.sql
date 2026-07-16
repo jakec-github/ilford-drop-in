@@ -8,6 +8,11 @@
 
 -- A Shift: surrogate UUID identity, a unique date (the external language), and
 -- a NOT NULL reference to the rotation that minted it.
+--
+-- The UNIQUE on date is also load-bearing for concurrency (issue #41, hazard
+-- B1): it is the only thing stopping two concurrent DefineRota runs from both
+-- committing rotas over the same dates. If it is ever relaxed (e.g. multiple
+-- shifts per day), the define-rota race needs a replacement guard.
 CREATE TABLE shift (
     id UUID PRIMARY KEY,
     date DATE NOT NULL UNIQUE,

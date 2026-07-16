@@ -77,6 +77,12 @@ func shiftDateInRange(dateStr string, from, to time.Time) bool {
 	return true
 }
 
+// WithRotaLock hands the mock itself to the callback as the transaction-bound
+// store; lock semantics are covered by the db and services integration tests.
+func (m *mockStore) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store db.RotaChangeStore) error) error {
+	return fn(m)
+}
+
 func (m *mockStore) InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error {
 	if m.insertErr != nil {
 		return m.insertErr

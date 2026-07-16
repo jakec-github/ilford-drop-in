@@ -65,6 +65,11 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 
 // InsertRotationAndShifts inserts a rotation and all of its minted shifts in a
 // single transaction, so a rotation can never exist without its shifts.
+//
+// Concurrency (issue #41, hazard B1): the shift.date UNIQUE constraint is what
+// makes concurrent runs safe — two rotas minting the same date cannot both
+// commit, and the losing transaction writes nothing. Any change that relaxes
+// that constraint must introduce a replacement guard here.
 func (d *DB) InsertRotationAndShifts(ctx context.Context, rotation *Rotation, shifts []Shift) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
