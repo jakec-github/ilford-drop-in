@@ -18,6 +18,7 @@
   with `gh pr create` — titled after the ticket, with `Closes #<n>` in the body.
 - Request review from `jakec-github`. Never merge a PR; merging is the
   reviewer's decision.
+- After review is requested switch back to main
 - To address review feedback: read the PR conversation (`gh pr view <n>
 --comments`), the inline review threads (`gh api
 repos/{owner}/{repo}/pulls/<n>/comments`), and any failing checks
