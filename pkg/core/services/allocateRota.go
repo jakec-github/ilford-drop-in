@@ -58,6 +58,18 @@ func AllocateRota(
 	targetRota := utils.FindLatestRotation(rotations)
 	logger.Debug("Using latest rota", zap.String("id", targetRota.ID))
 
+	// Refuse to allocate a rota that already has allocations (issue #8). This
+	// is a fast-fail that stops before the expensive solve; the authoritative,
+	// race-safe guard lives in the shared persistence path
+	// (InsertAllocationsAndSetAllocated), where it cannot be bypassed.
+	existingAllocations, err := database.GetAllocationsByRotaID(ctx, targetRota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing allocations: %w", err)
+	}
+	if len(existingAllocations) > 0 {
+		return nil, fmt.Errorf("rota %s already has allocations - refusing to allocate again", targetRota.ID)
+	}
+
 	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
 	if err != nil {
 		return nil, err
