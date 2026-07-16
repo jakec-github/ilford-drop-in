@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
+
+	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -28,4 +31,20 @@ func rotaShiftDates(ctx context.Context, store shiftReader, rotaID string) ([]ti
 		return nil, fmt.Errorf("rota %s has no shifts", rotaID)
 	}
 	return utils.ShiftDatesFromShifts(shifts)
+}
+
+// partitionShiftDates splits a rota's shift dates into the dates the drop-in is
+// open and the dates a closed-shift override marks as Closed. Both slices keep
+// the ascending order of the input. It reuses isShiftClosed so the availability
+// flow resolves closed shifts the same way as the publish/list paths, rather
+// than inventing a second closed-shift check.
+func partitionShiftDates(shiftDates []time.Time, overrides []config.RotaOverride, logger *zap.Logger) (open, closed []time.Time) {
+	for _, date := range shiftDates {
+		if isShiftClosed(date.Format("2006-01-02"), overrides, shiftDates, logger) {
+			closed = append(closed, date)
+		} else {
+			open = append(open, date)
+		}
+	}
+	return open, closed
 }

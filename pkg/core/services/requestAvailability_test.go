@@ -90,17 +90,23 @@ func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config) ([]model.Volunt
 
 // mockFormsClient implements FormsClient for testing
 type mockFormsClient struct {
-	createdForms []string // Track volunteer IDs for which forms were created
-	err          error
+	createdForms []string // Track volunteer names for which forms were created
+	// lastOpenDates and lastClosedDates capture the dates passed to the most
+	// recent CreateAvailabilityForm call so tests can assert closed-shift filtering.
+	lastOpenDates   []time.Time
+	lastClosedDates []time.Time
+	err             error
 }
 
-func (m *mockFormsClient) CreateAvailabilityForm(volunteerName string, shiftDates []time.Time) (*formsclient.AvailabilityFormResult, error) {
+func (m *mockFormsClient) CreateAvailabilityForm(volunteerName string, shiftDates []time.Time, closedDates []time.Time) (*formsclient.AvailabilityFormResult, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	// Extract volunteer ID from name for tracking
 	formID := "form-" + volunteerName
 	m.createdForms = append(m.createdForms, volunteerName)
+	m.lastOpenDates = shiftDates
+	m.lastClosedDates = closedDates
 	return &formsclient.AvailabilityFormResult{
 		FormID:       formID,
 		ResponderURI: "https://forms.google.com/" + formID,
@@ -695,6 +701,144 @@ func TestRequestAvailability_NoEmail_FiltersInactiveVolunteers(t *testing.T) {
 	assert.Len(t, mockGmailClient.sentEmails, 0)
 	assert.Len(t, sentForms, 0)
 	assert.Len(t, failedEmails, 0)
+}
+
+func TestRequestAvailability_NoOverrides_FormGetsAllShiftDates(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
+		availabilityRequests: []db.AvailabilityRequest{},
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	cfg := &config.Config{} // no RotaOverrides
+
+	_, _, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", true)
+	require.NoError(t, err)
+
+	// With no overrides, the form is asked about every shift date and lists no
+	// closed dates - identical input to before the closed-shift filtering.
+	require.Len(t, mockFormsClient.createdForms, 1)
+	assert.Len(t, mockFormsClient.lastOpenDates, 10)
+	assert.Empty(t, mockFormsClient.lastClosedDates)
+}
+
+func TestRequestAvailability_OneClosedDate_OmittedFromFormAndListed(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
+		availabilityRequests: []db.AvailabilityRequest{},
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	// Closes 8 Jan 2024 only (one of the ten Monday shift dates).
+	cfg := &config.Config{
+		RotaOverrides: []config.RotaOverride{
+			{RRule: "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=8", Closed: true},
+		},
+	}
+
+	_, _, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", true)
+	require.NoError(t, err)
+
+	require.Len(t, mockFormsClient.createdForms, 1)
+	// Nine open dates asked about; the closed date is listed separately.
+	assert.Len(t, mockFormsClient.lastOpenDates, 9)
+	require.Len(t, mockFormsClient.lastClosedDates, 1)
+	assert.Equal(t, "2024-01-08", mockFormsClient.lastClosedDates[0].Format("2006-01-02"))
+	for _, d := range mockFormsClient.lastOpenDates {
+		assert.NotEqual(t, "2024-01-08", d.Format("2006-01-02"), "closed date must not appear among open dates")
+	}
+}
+
+func TestRequestAvailability_OneRuleClosesMultipleDates_AllOmitted(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
+		availabilityRequests: []db.AvailabilityRequest{},
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	// A single rule closing both 8 and 15 Jan 2024.
+	cfg := &config.Config{
+		RotaOverrides: []config.RotaOverride{
+			{RRule: "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=8,15", Closed: true},
+		},
+	}
+
+	_, _, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", true)
+	require.NoError(t, err)
+
+	require.Len(t, mockFormsClient.createdForms, 1)
+	assert.Len(t, mockFormsClient.lastOpenDates, 8)
+	require.Len(t, mockFormsClient.lastClosedDates, 2)
+	closed := map[string]bool{}
+	for _, d := range mockFormsClient.lastClosedDates {
+		closed[d.Format("2006-01-02")] = true
+	}
+	assert.True(t, closed["2024-01-08"])
+	assert.True(t, closed["2024-01-15"])
+}
+
+func TestRequestAvailability_AllDatesClosed_FailsLoudly(t *testing.T) {
+	mockStore := &mockAvailabilityRequestStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2024-01-01", ShiftCount: 10},
+		},
+		shifts:               sundayShifts("rota-1", "2024-01-01", 10),
+		availabilityRequests: []db.AvailabilityRequest{},
+	}
+	mockVolunteerClient := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "vol-1", FirstName: "John", LastName: "Doe", Email: "john@example.com", Status: "Active"},
+		},
+	}
+	mockFormsClient := &mockFormsClient{}
+	mockGmailClient := &mockGmailClient{}
+	logger := zap.NewNop()
+	ctx := context.Background()
+	// Every shift date is a Monday, so a weekly Monday closure closes them all.
+	cfg := &config.Config{
+		RotaOverrides: []config.RotaOverride{
+			{RRule: "FREQ=WEEKLY;BYDAY=MO", Closed: true},
+		},
+	}
+
+	sentForms, failedEmails, err := RequestAvailability(ctx, mockStore, mockVolunteerClient, mockFormsClient, mockGmailClient, cfg, logger, "2024-01-15", true)
+
+	require.Error(t, err)
+	assert.Nil(t, sentForms)
+	assert.Nil(t, failedEmails)
+	assert.Contains(t, err.Error(), "no open shifts")
+	// No form should be created when every date is closed.
+	assert.Empty(t, mockFormsClient.createdForms)
 }
 
 // Helper function tests
