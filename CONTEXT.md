@@ -45,3 +45,18 @@ declared by configured recurrence rules, not stored on the Shift.
 **Rota Override**:
 A configured recurrence rule that adjusts matching Shifts: marking them Closed,
 resizing them, or preallocating people.
+
+**Preallocation**:
+A person pinned to a specific Shift before Allocation runs, forcing the
+allocator to place them (their group included). Has two sources — Config and
+Manual — that union into one set.
+_Avoid_: pin (except as the informal verb, "pin to a Shift")
+
+**Config Preallocation**:
+A Preallocation declared by a Rota Override's recurrence rule. Authoritative:
+a Manual Preallocation can never remove or replace it.
+
+**Manual Preallocation**:
+A Preallocation set ad hoc on a single Shift, editable only while the Shift's
+Rotation is unallocated. Add-only — it can force a person on but never suppress
+a Config Preallocation.
