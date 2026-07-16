@@ -35,10 +35,5 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Agents (Will commit in future)
-.agents
-.claude
-skills-lock.json
-
 # Claude local settings (holds agent secrets; keep ignored even if .claude is committed later)
 .claude/settings.local.json
