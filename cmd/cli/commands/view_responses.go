@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	allocator "github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -18,16 +17,13 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 		Short: "View availability responses (defaults to latest rota)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			showAllocation, _ := cmd.Flags().GetBool("show-allocation")
-
 			var rotaID string
 			if len(args) > 0 {
 				rotaID = args[0]
 			}
 
 			app.Logger.Debug("viewResponses command",
-				zap.String("rota_id", rotaID),
-				zap.Bool("show_allocation", showAllocation))
+				zap.String("rota_id", rotaID))
 
 			// Call the service
 			result, err := services.ViewResponses(
@@ -38,7 +34,6 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				app.Cfg,
 				app.Logger,
 				rotaID,
-				showAllocation,
 			)
 			if err != nil {
 				return err
@@ -178,54 +173,9 @@ func ViewResponsesCmd(app *AppContext) *cobra.Command {
 				fmt.Println()
 			}
 
-			// Display allocation results if requested
-			if result.AllocationResult != nil {
-				const (
-					colorReset = "\033[0m"
-					colorGreen = "\033[32m"
-					colorRed   = "\033[31m"
-					colorBold  = "\033[1m"
-				)
-
-				fmt.Printf("📊 Allocation Results (Dry Run):\n\n")
-
-				if result.AllocationResult.Success {
-					fmt.Printf("Status: %s✓ VALID%s - All shifts allocated successfully\n\n", colorGreen, colorReset)
-				} else if result.AllocationResult.Status == allocator.RotaStatusIncomplete {
-					fmt.Printf("Status: %s⚠ INCOMPLETE%s - Add volunteers to complete the rota\n\n", colorRed, colorReset)
-				} else {
-					fmt.Printf("Status: %s✗ INVALID%s - Volunteers must be removed to fix constraint violations\n\n", colorRed, colorReset)
-				}
-
-				// Display validation errors
-				if len(result.AllocationResult.ValidationErrors) > 0 {
-					fmt.Printf("%sValidation Errors:%s\n", colorBold, colorReset)
-					for _, err := range result.AllocationResult.ValidationErrors {
-						label := "INCOMPLETE"
-						if err.Type == allocator.ValidationErrorTypeInvalid {
-							label = "INVALID"
-						}
-						fmt.Printf("  %s✗%s [%s] %s: %s\n", colorRed, colorReset, label, err.ShiftDate, err.Description)
-					}
-					fmt.Println()
-				}
-
-				// Display underutilized groups if any
-				if len(result.AllocationResult.UnderutilizedGroups) > 0 {
-					fmt.Printf("%sUnderutilized Groups:%s\n", colorBold, colorReset)
-					fmt.Printf("  These groups were not allocated maximally:\n")
-					for _, group := range result.AllocationResult.UnderutilizedGroups {
-						fmt.Printf("  • %s\n", group.GroupKey)
-					}
-					fmt.Println()
-				}
-			}
-
 			return nil
 		},
 	}
-
-	cmd.Flags().Bool("show-allocation", false, "Run allocation algorithm (dry-run) and show results")
 
 	return cmd
 }

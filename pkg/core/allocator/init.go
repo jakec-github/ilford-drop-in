@@ -150,10 +150,8 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 		return groups[i].GroupKey < groups[j].GroupKey
 	})
 
-	// Create VolunteerState with empty exhaustion map
 	volunteerState := &VolunteerState{
-		VolunteerGroups:          groups,
-		ExhaustedVolunteerGroups: make(map[*VolunteerGroup]bool),
+		VolunteerGroups: groups,
 	}
 
 	return volunteerState, nil
@@ -214,34 +212,6 @@ func calculateHistoricalAllocationCount(groupKey string, historicalShifts []*Shi
 	}
 
 	return count
-}
-
-// calculateCapacityMetrics computes the total volunteer capacity, total slots needed,
-// and non-closed shift count for the rota. This allows criteria to detect resource-constrained
-// scenarios and calculate expected fill per shift.
-//
-// TotalVolunteerCapacity: For each group, calculates min(maxAllocationCount, availableShifts)
-// multiplied by the number of ordinary volunteers in the group, then sums across all groups.
-//
-// TotalSlotsNeeded: Sum of shift.Size for all non-closed shifts.
-//
-// OpenShiftCount: Number of shifts that are not closed.
-func calculateCapacityMetrics(volunteerState *VolunteerState, shifts []*Shift, maxAllocationCount int) (totalCapacity int, totalSlotsNeeded int, openShiftCount int) {
-	// Calculate total volunteer capacity
-	for _, group := range volunteerState.VolunteerGroups {
-		effectiveAllocations := min(maxAllocationCount, len(group.AvailableShiftIndices))
-		totalCapacity += effectiveAllocations * group.OrdinaryVolunteerCount()
-	}
-
-	// Calculate total slots needed and count non-closed shifts
-	for _, shift := range shifts {
-		if !shift.Closed {
-			totalSlotsNeeded += shift.Size
-			openShiftCount++
-		}
-	}
-
-	return totalCapacity, totalSlotsNeeded, openShiftCount
 }
 
 // ShiftOverride allows customizing specific shifts based on date patterns
@@ -356,157 +326,4 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	}
 
 	return shifts, nil
-}
-
-// ApplyPreallocations processes preallocated volunteer IDs and allocates them to shifts
-// This runs after volunteer groups are initialized but before the main allocation loop
-// Preallocated volunteers are allocated regardless of their availability responses
-func (a Allocator) ApplyPreallocations(state *RotaState) error {
-	// Build a map of volunteer ID -> group for quick lookup
-	volunteerToGroup := make(map[string]*VolunteerGroup)
-	for _, group := range state.VolunteerState.VolunteerGroups {
-		for _, member := range group.Members {
-			volunteerToGroup[member.ID] = group
-		}
-	}
-
-	// Process each shift
-	for _, shift := range state.Shifts {
-		// Skip closed shifts
-		if shift.Closed {
-			continue
-		}
-
-		groupsToAllocate := []*VolunteerGroup{}
-
-		// Process preallocated team lead
-		if shift.PreallocatedTeamLeadID != "" {
-			// Find the matching group
-			group, exists := volunteerToGroup[shift.PreallocatedTeamLeadID]
-			if !exists {
-				return fmt.Errorf("preallocated team lead not found: volunteer ID %s for shift %s",
-					shift.PreallocatedTeamLeadID, shift.Date)
-			}
-
-			// Find the actual team lead volunteer in the group
-			var teamLead *Volunteer
-			for i := range group.Members {
-				if group.Members[i].ID == shift.PreallocatedTeamLeadID {
-					if !group.Members[i].IsTeamLead {
-						return fmt.Errorf("preallocated team lead ID %s is not marked as team lead for shift %s",
-							shift.PreallocatedTeamLeadID, shift.Date)
-					}
-					teamLead = &group.Members[i]
-					break
-				}
-			}
-
-			if teamLead == nil {
-				return fmt.Errorf("team lead volunteer %s not found in group for shift %s",
-					shift.PreallocatedTeamLeadID, shift.Date)
-			}
-
-			// Check if shift already has a team lead
-			// TODO: team leads are kinda half handled by a criterion and half not. Fix that
-			if shift.TeamLead != nil {
-				return fmt.Errorf("shift %s already has a team lead, cannot preallocate %s",
-					shift.Date, shift.PreallocatedTeamLeadID)
-			}
-
-			groupsToAllocate = append(groupsToAllocate, group)
-		}
-
-		// Process preallocated ordinary volunteers
-		for _, volunteerID := range shift.PreallocatedVolunteerIDs {
-			group, exists := volunteerToGroup[volunteerID]
-			if !exists {
-				return fmt.Errorf("preallocated volunteer not found: volunteer ID %s for shift %s",
-					volunteerID, shift.Date)
-			}
-
-			// Check if this group is already allocated to this shift
-			alreadyAllocated := false
-			for _, allocatedGroup := range shift.AllocatedGroups {
-				if allocatedGroup.GroupKey == group.GroupKey {
-					alreadyAllocated = true
-					break
-				}
-			}
-
-			if alreadyAllocated {
-				// Group already allocated (possibly via team lead preallocation)
-				continue
-			}
-
-			groupsToAllocate = append(groupsToAllocate, group)
-		}
-		for _, group := range groupsToAllocate {
-			a.allocateGroupToShift(group, shift)
-		}
-	}
-
-	return nil
-}
-
-func InitAllocation(config AllocationConfig) (Allocator, error) {
-	// Validate config
-	if len(config.ShiftDates) == 0 {
-		return Allocator{}, fmt.Errorf("no shift dates provided")
-	}
-	if len(config.Volunteers) == 0 {
-		return Allocator{}, fmt.Errorf("no volunteers provided")
-	}
-	if config.DefaultShiftSize < 0 {
-		return Allocator{}, fmt.Errorf("default shift size must be non-negative, got %d", config.DefaultShiftSize)
-	}
-	if config.MaxAllocationFrequency <= 0 || config.MaxAllocationFrequency > 1 {
-		return Allocator{}, fmt.Errorf("max allocation frequency must be between 0 and 1, got %.2f", config.MaxAllocationFrequency)
-	}
-
-	volunteerState, err := InitVolunteerGroups(
-		InitVolunteerGroupsInput{
-			Volunteers:       config.Volunteers,
-			Availability:     config.Availability,
-			TotalShifts:      len(config.ShiftDates),
-			HistoricalShifts: config.HistoricalShifts,
-		},
-	)
-	if err != nil {
-		return Allocator{}, err
-	}
-
-	shifts, err := InitShifts(
-		InitShiftsInput{
-			ShiftDates:       config.ShiftDates,
-			DefaultShiftSize: config.DefaultShiftSize,
-			Overrides:        config.Overrides,
-			VolunteerState:   volunteerState,
-		},
-	)
-	if err != nil {
-		return Allocator{}, err
-	}
-
-	// Calculate capacity metrics for resource-constrained detection
-	maxAllocationCount := int(float64(len(shifts)) * config.MaxAllocationFrequency)
-	totalCapacity, totalSlotsNeeded, openShiftCount := calculateCapacityMetrics(volunteerState, shifts, maxAllocationCount)
-
-	// Create initial rota state
-	state := &RotaState{
-		Shifts:                         shifts,
-		VolunteerState:                 volunteerState,
-		HistoricalShifts:               config.HistoricalShifts,
-		MaxAllocationFrequency:         config.MaxAllocationFrequency,
-		WeightCurrentRotaUrgency:       config.WeightCurrentRotaUrgency,
-		WeightOverallFrequencyFairness: config.WeightOverallFrequencyFairness,
-		WeightPromoteGroup:             config.WeightPromoteGroup,
-		TotalVolunteerCapacity:         totalCapacity,
-		TotalSlotsNeeded:               totalSlotsNeeded,
-		OpenShiftCount:                 openShiftCount,
-	}
-
-	return Allocator{
-		criteria: config.Criteria,
-		state:    state,
-	}, nil
 }

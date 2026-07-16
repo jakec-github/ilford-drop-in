@@ -1,10 +1,8 @@
-package services
+package allocator
 
 import (
 	"fmt"
 	"sort"
-
-	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 )
 
 // This file defines the JSON contract between the Go CLI and the Python
@@ -12,7 +10,7 @@ import (
 // the Python side), plus the conversions to and from allocator types.
 //
 // Go owns grouping: volunteer groups and their resolved availability are
-// built here via allocator.InitVolunteerGroups and sent to Python, which
+// built here via InitVolunteerGroups and sent to Python, which
 // only does arithmetic over them.
 
 // CpsatMember is one volunteer inside a group.
@@ -92,19 +90,19 @@ type CpsatOutput struct {
 	Diagnostics    CpsatDiagnostics   `json:"diagnostics"`
 }
 
-// buildCpsatInput assembles the Python allocator's input, reusing the
-// greedy allocator's exported initialisation so grouping, availability
-// resolution and override application are never duplicated.
-func buildCpsatInput(
-	volunteers []allocator.Volunteer,
-	availability []allocator.VolunteerAvailability,
+// BuildCpsatInput assembles the Python allocator's input, reusing the
+// package's model initialisation so grouping, availability resolution and
+// override application are never duplicated.
+func BuildCpsatInput(
+	volunteers []Volunteer,
+	availability []VolunteerAvailability,
 	shiftDateStrings []string,
 	defaultShiftSize int,
-	overrides []allocator.ShiftOverride,
-	historicalShifts []*allocator.Shift,
+	overrides []ShiftOverride,
+	historicalShifts []*Shift,
 	maxAllocationFrequency float64,
 ) (*CpsatInput, error) {
-	volunteerState, err := allocator.InitVolunteerGroups(allocator.InitVolunteerGroupsInput{
+	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:       volunteers,
 		Availability:     availability,
 		TotalShifts:      len(shiftDateStrings),
@@ -117,11 +115,11 @@ func buildCpsatInput(
 	// InitShifts resolves per-shift size/closed/preallocations from the
 	// overrides. AvailableGroups isn't part of the contract (Python
 	// derives availability from groups), so an empty state suffices.
-	shiftSpecs, err := allocator.InitShifts(allocator.InitShiftsInput{
+	shiftSpecs, err := InitShifts(InitShiftsInput{
 		ShiftDates:       shiftDateStrings,
 		DefaultShiftSize: defaultShiftSize,
 		Overrides:        overrides,
-		VolunteerState:   &allocator.VolunteerState{VolunteerGroups: []*allocator.VolunteerGroup{}},
+		VolunteerState:   &VolunteerState{VolunteerGroups: []*VolunteerGroup{}},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize shifts: %w", err)
@@ -186,18 +184,18 @@ func buildCpsatInput(
 	return input, nil
 }
 
-// cpsatOutputToAllocatorShifts rebuilds allocator.Shift values from the
-// solver output so persistence (convertToDBAllocations) and printing
-// reuse the existing code paths.
-func cpsatOutputToAllocatorShifts(output *CpsatOutput, volunteers []allocator.Volunteer) ([]*allocator.Shift, error) {
-	volunteersByID := make(map[string]allocator.Volunteer, len(volunteers))
+// CpsatOutputToShifts rebuilds Shift values from the solver output so
+// persistence (convertToDBAllocations) and printing reuse the existing
+// code paths.
+func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift, error) {
+	volunteersByID := make(map[string]Volunteer, len(volunteers))
 	for _, vol := range volunteers {
 		volunteersByID[vol.ID] = vol
 	}
 
-	shifts := make([]*allocator.Shift, len(output.Shifts))
+	shifts := make([]*Shift, len(output.Shifts))
 	for i, outShift := range output.Shifts {
-		var teamLead *allocator.Volunteer
+		var teamLead *Volunteer
 		memberIDs := outShift.VolunteerIDs
 		if outShift.TeamLeadID != "" {
 			vol, exists := volunteersByID[outShift.TeamLeadID]
@@ -210,7 +208,7 @@ func cpsatOutputToAllocatorShifts(output *CpsatOutput, volunteers []allocator.Vo
 
 		// Regroup members by GroupKey (individuals keyed by name, as in
 		// InitVolunteerGroups) and rebuild groups with the shared helper.
-		membersByGroup := make(map[string][]allocator.Volunteer)
+		membersByGroup := make(map[string][]Volunteer)
 		groupOrder := []string{}
 		for _, id := range memberIDs {
 			vol, exists := volunteersByID[id]
@@ -227,16 +225,16 @@ func cpsatOutputToAllocatorShifts(output *CpsatOutput, volunteers []allocator.Vo
 			membersByGroup[groupKey] = append(membersByGroup[groupKey], vol)
 		}
 
-		allocatedGroups := make([]*allocator.VolunteerGroup, 0, len(groupOrder))
+		allocatedGroups := make([]*VolunteerGroup, 0, len(groupOrder))
 		maleCount := 0
 		for _, groupKey := range groupOrder {
-			group := allocator.BuildVolunteerGroup(groupKey, membersByGroup[groupKey])
+			group := BuildVolunteerGroup(groupKey, membersByGroup[groupKey])
 			group.AllocatedShiftIndices = []int{outShift.Index}
 			allocatedGroups = append(allocatedGroups, group)
 			maleCount += group.MaleCount
 		}
 
-		shifts[i] = &allocator.Shift{
+		shifts[i] = &Shift{
 			Date:                 outShift.Date,
 			Index:                outShift.Index,
 			Size:                 outShift.Size,
