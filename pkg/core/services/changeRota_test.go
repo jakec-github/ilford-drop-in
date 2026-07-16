@@ -14,14 +14,22 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// mockChangeRotaStore implements ChangeRotaStore for testing
+// mockChangeRotaStore implements ChangeRotaStore for testing. Its WithRotaLock
+// records the requested lock and hands the mock itself to the callback as the
+// transaction-bound store.
 type mockChangeRotaStore struct {
 	shifts      []db.Shift
 	allocations []db.Allocation
 	alterations []db.Alteration
 
+	lockedRotaIDs       [][]string
 	insertedCover       *db.Cover
 	insertedAlterations []db.Alteration
+}
+
+func (m *mockChangeRotaStore) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store db.RotaChangeStore) error) error {
+	m.lockedRotaIDs = append(m.lockedRotaIDs, rotaIDs)
+	return fn(m)
 }
 
 func (m *mockChangeRotaStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {

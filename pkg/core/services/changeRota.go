@@ -14,12 +14,13 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// ChangeRotaStore defines the database operations needed for changing a rota
+// ChangeRotaStore defines the database operations needed for changing a rota.
+// State reads, validation, and the insert all happen inside WithRotaLock so
+// concurrent changes (and allocations) of the same rota serialise instead of
+// both validating against the same pre-state (issue #41, hazards H1 and H2).
 type ChangeRotaStore interface {
 	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
-	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error)
-	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error)
-	InsertCoverAndAlterations(ctx context.Context, cover *db.Cover, alterations []db.Alteration) error
+	WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store db.RotaChangeStore) error) error
 }
 
 // ChangeRotaParams holds the input parameters for a rota change
@@ -106,52 +107,67 @@ func ChangeRota(
 		}
 	}
 
-	// Step 3: Build effective state for the primary date
-	effectiveState, err := buildEffectiveState(ctx, database, params.Date)
-	if err != nil {
-		return nil, err
+	// Steps 3-8 run under the rotation-row lock: the effective-state reads,
+	// the validation against them, and the insert must be one atomic span, or
+	// a concurrent change or allocation could commit between validation and
+	// insert and invalidate what was just checked (issue #41, H1 and H2).
+	// Locking both rotas (deduplicated, in consistent order) covers a swap
+	// that crosses rotas. External calls (volunteer fetch above) stay outside
+	// so no network I/O happens while rows are locked.
+	lockRotaIDs := []string{rotaID}
+	if swapRotaID != "" {
+		lockRotaIDs = append(lockRotaIDs, swapRotaID)
 	}
 
-	// Step 4: Validate against current effective state
-	if err := validateDateChanges(effectiveState, params.Date, params.Out, params.In, params.OutCustom, params.InCustom); err != nil {
-		return nil, err
-	}
+	coverID := uuid.New().String()
+	var alterations []db.Alteration
+	err = database.WithRotaLock(ctx, lockRotaIDs, func(store db.RotaChangeStore) error {
+		// Build effective state for the primary date and validate against it
+		effectiveState, err := buildEffectiveState(ctx, store, params.Date)
+		if err != nil {
+			return err
+		}
 
-	// Validate swap date (with in/out reversed), using its own effective state
-	swapEffectiveState := effectiveState
-	if params.SwapDate != "" {
-		if params.SwapDate != params.Date {
-			swapEffectiveState, err = buildEffectiveState(ctx, database, params.SwapDate)
-			if err != nil {
-				return nil, err
+		if err := validateDateChanges(effectiveState, params.Date, params.Out, params.In, params.OutCustom, params.InCustom); err != nil {
+			return err
+		}
+
+		// Validate swap date (with in/out reversed), using its own effective state
+		swapEffectiveState := effectiveState
+		if params.SwapDate != "" {
+			if params.SwapDate != params.Date {
+				swapEffectiveState, err = buildEffectiveState(ctx, store, params.SwapDate)
+				if err != nil {
+					return err
+				}
+			}
+			if err := validateDateChanges(swapEffectiveState, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom); err != nil {
+				return fmt.Errorf("swap date: %w", err)
 			}
 		}
-		if err := validateDateChanges(swapEffectiveState, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom); err != nil {
-			return nil, fmt.Errorf("swap date: %w", err)
+
+		// Create cover record
+		cover := &db.Cover{
+			ID:        coverID,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
+			Reason:    params.Reason,
+			UserEmail: params.UserEmail,
 		}
-	}
 
-	// Step 5: Create cover record
-	coverID := uuid.New().String()
-	cover := &db.Cover{
-		ID:        coverID,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-		Reason:    params.Reason,
-		UserEmail: params.UserEmail,
-	}
+		// Build alterations for the primary date, then reverse alterations for
+		// the swap date (which may use a different rota ID)
+		alterations = append(alterations, buildAlterationsForDate(rotaID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState[params.Date])...)
+		if params.SwapDate != "" {
+			alterations = append(alterations, buildAlterationsForDate(swapRotaID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState[params.SwapDate])...)
+		}
 
-	// Step 6: Build alterations for the primary date
-	var alterations []db.Alteration
-	alterations = append(alterations, buildAlterationsForDate(rotaID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState[params.Date])...)
-
-	// Step 7: Build reverse alterations for swap date (may use a different rota ID)
-	if params.SwapDate != "" {
-		alterations = append(alterations, buildAlterationsForDate(swapRotaID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState[params.SwapDate])...)
-	}
-
-	// Step 8: Insert cover and alterations atomically
-	if err := database.InsertCoverAndAlterations(ctx, cover, alterations); err != nil {
-		return nil, fmt.Errorf("failed to insert cover and alterations: %w", err)
+		if err := store.InsertCoverAndAlterations(ctx, cover, alterations); err != nil {
+			return fmt.Errorf("failed to insert cover and alterations: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	logger.Info("Rota change recorded",
@@ -165,19 +181,21 @@ func ChangeRota(
 }
 
 // buildEffectiveState computes the current effective allocations for a single
-// date by applying that date's existing alterations to its base allocations
-func buildEffectiveState(ctx context.Context, database ChangeRotaStore, dateStr string) (map[string][]db.Allocation, error) {
+// date by applying that date's existing alterations to its base allocations.
+// It reads through the lock-holding transaction's store, so the state cannot
+// change between this read and the caller's insert.
+func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, dateStr string) (map[string][]db.Allocation, error) {
 	date, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
 		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
 	}
 
-	dateAllocations, err := database.GetAllocationsInRange(ctx, date, date)
+	dateAllocations, err := store.GetAllocationsInRange(ctx, date, date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
 
-	dateAlterations, err := database.GetAlterationsInRange(ctx, date, date)
+	dateAlterations, err := store.GetAlterationsInRange(ctx, date, date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}

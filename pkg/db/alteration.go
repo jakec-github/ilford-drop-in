@@ -12,8 +12,12 @@ import (
 // from and to (inclusive). A zero time leaves that bound open. The date is
 // hydrated from the joined shift, not the legacy shift_date column (ADR 0001).
 func (d *DB) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error) {
+	return getAlterationsInRange(ctx, d.pool, from, to)
+}
+
+func getAlterationsInRange(ctx context.Context, q querier, from, to time.Time) ([]Alteration, error) {
 	where, args := shiftDateWhere(from, to)
-	rows, err := d.pool.Query(ctx, `
+	rows, err := q.Query(ctx, `
 		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
 		FROM alteration a
 		JOIN shift s ON s.id = a.shift_id
