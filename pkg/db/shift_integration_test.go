@@ -22,12 +22,13 @@ func TestGetShiftsInRange(t *testing.T) {
 
 	// rota1 is allocated; rota2 is minted but left unallocated.
 	rota1 := &db.Rotation{ID: uuid.New().String()}
+	shift1 := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota1.ID}
 	require.NoError(t, database.InsertRotationAndShifts(ctx, rota1, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota1.ID},
+		shift1,
 		{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota1.ID},
 	}))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), RotaID: rota1.ID, ShiftDate: "2026-08-02", Role: "team-lead", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift1.ID, Role: "team-lead", VolunteerID: "alice"}},
 		rota1.ID, time.Now()))
 
 	rota2 := &db.Rotation{ID: uuid.New().String()}
@@ -68,8 +69,8 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	shiftB := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
 	require.NoError(t, database.InsertRotationAndShifts(ctx, rota, []db.Shift{shiftA, shiftB}))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), RotaID: rota.ID, ShiftDate: shiftA.Date, Role: "team-lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), RotaID: rota.ID, ShiftDate: shiftB.Date, Role: "volunteer", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "team-lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: shiftB.ID, Role: "volunteer", VolunteerID: "bob"},
 	}, rota.ID, time.Now()))
 
 	// An alteration on shiftB only; its cover_id must reference the cover row.
@@ -77,7 +78,7 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	require.NoError(t, database.WithRotaLock(ctx, []string{rota.ID}, func(store db.RotaChangeStore) error {
 		return store.InsertCoverAndAlterations(ctx,
 			&db.Cover{ID: coverID, Reason: "cover", UserEmail: "jane@example.com"},
-			[]db.Alteration{{ID: uuid.New().String(), RotaID: rota.ID, ShiftDate: shiftB.Date, Direction: "remove", VolunteerID: "bob", CoverID: coverID}})
+			[]db.Alteration{{ID: uuid.New().String(), ShiftID: shiftB.ID, Direction: "remove", VolunteerID: "bob", CoverID: coverID}})
 	}))
 
 	// Scoping to shiftA returns only its allocation and no alterations.
@@ -85,7 +86,7 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allocs, 1)
 	assert.Equal(t, "alice", allocs[0].VolunteerID)
-	assert.Equal(t, shiftA.Date, allocs[0].ShiftDate)
+	assert.Equal(t, shiftA.ID, allocs[0].ShiftID)
 
 	alts, err := database.GetAlterationsByShiftIDs(ctx, []string{shiftA.ID})
 	require.NoError(t, err)
@@ -95,7 +96,7 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	alts, err = database.GetAlterationsByShiftIDs(ctx, []string{shiftB.ID})
 	require.NoError(t, err)
 	require.Len(t, alts, 1)
-	assert.Equal(t, shiftB.Date, alts[0].ShiftDate)
+	assert.Equal(t, shiftB.ID, alts[0].ShiftID)
 
 	// Both shifts returns both allocations.
 	allocs, err = database.GetAllocationsByShiftIDs(ctx, []string{shiftA.ID, shiftB.ID})

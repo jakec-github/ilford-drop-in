@@ -8,62 +8,27 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetAlterationsInRange retrieves alteration records whose shift falls between
-// from and to (inclusive). A zero time leaves that bound open. The date is
-// hydrated from the joined shift, not the legacy shift_date column (ADR 0001).
-func (d *DB) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error) {
-	return getAlterationsInRange(ctx, d.pool, from, to)
-}
-
-func getAlterationsInRange(ctx context.Context, q querier, from, to time.Time) ([]Alteration, error) {
-	where, args := shiftDateWhere(from, to)
-	rows, err := q.Query(ctx, `
-		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
-		FROM alteration a
-		JOIN shift s ON s.id = a.shift_id
-		`+where+`
-		ORDER BY a.set_time ASC
-	`, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query alterations: %w", err)
-	}
-	return scanAlterations(rows)
-}
-
 // GetAlterationsByShiftIDs retrieves the alteration records belonging to the
 // given shifts. Like GetAllocationsByShiftIDs, it scopes by the shift set the
-// caller already holds rather than a second date-range scan (ADR 0001). The
-// rota and date are hydrated from the joined shift; an empty id set returns no
-// rows without a query.
+// caller already holds rather than a second date-range scan (ADR 0001). Each
+// record carries only its shift_id; rota and date live on the shift. An empty
+// id set returns no rows without a query.
 func (d *DB) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Alteration, error) {
+	return getAlterationsByShiftIDs(ctx, d.pool, shiftIDs)
+}
+
+func getAlterationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string) ([]Alteration, error) {
 	if len(shiftIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := d.pool.Query(ctx, `
-		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
-		FROM alteration a
-		JOIN shift s ON s.id = a.shift_id
-		WHERE a.shift_id = ANY($1)
-		ORDER BY a.set_time ASC
+	rows, err := q.Query(ctx, `
+		SELECT id, shift_id, direction, volunteer_id, custom_value, cover_id, set_time, role
+		FROM alteration
+		WHERE shift_id = ANY($1)
+		ORDER BY set_time ASC
 	`, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query alterations by shift: %w", err)
-	}
-	return scanAlterations(rows)
-}
-
-// GetAlterationsByRotaID retrieves the alteration records for a single rota.
-// The rota and date are read from the joined shift, not legacy columns (ADR 0001).
-func (d *DB) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]Alteration, error) {
-	rows, err := d.pool.Query(ctx, `
-		SELECT a.id, s.date, s.rota_id, a.direction, a.volunteer_id, a.custom_value, a.cover_id, a.set_time, a.role
-		FROM alteration a
-		JOIN shift s ON s.id = a.shift_id
-		WHERE s.rota_id = $1
-		ORDER BY a.set_time ASC
-	`, rotaID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query alterations for rota %s: %w", rotaID, err)
 	}
 	return scanAlterations(rows)
 }
@@ -74,13 +39,11 @@ func scanAlterations(rows pgx.Rows) ([]Alteration, error) {
 	var alterations []Alteration
 	for rows.Next() {
 		var a Alteration
-		var shiftDate time.Time
 		var setTime time.Time
 		var volunteerID, customValue, role *string
-		if err := rows.Scan(&a.ID, &shiftDate, &a.RotaID, &a.Direction, &volunteerID, &customValue, &a.CoverID, &setTime, &role); err != nil {
+		if err := rows.Scan(&a.ID, &a.ShiftID, &a.Direction, &volunteerID, &customValue, &a.CoverID, &setTime, &role); err != nil {
 			return nil, fmt.Errorf("failed to scan alteration: %w", err)
 		}
-		a.ShiftDate = shiftDate.Format("2006-01-02")
 		a.SetTime = setTime.UTC().Format(time.RFC3339)
 		if volunteerID != nil {
 			a.VolunteerID = *volunteerID

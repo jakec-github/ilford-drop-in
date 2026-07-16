@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,8 +22,8 @@ type querier interface {
 // the locking transaction, so a flow's validation and insert see one
 // consistent snapshot of the locked rotas.
 type RotaChangeStore interface {
-	GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]Allocation, error)
-	GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error)
+	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Allocation, error)
+	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Alteration, error)
 	InsertCoverAndAlterations(ctx context.Context, cover *Cover, alterations []Alteration) error
 }
 
@@ -69,12 +68,12 @@ type rotaTx struct {
 	tx pgx.Tx
 }
 
-func (r *rotaTx) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]Allocation, error) {
-	return getAllocationsInRange(ctx, r.tx, from, to)
+func (r *rotaTx) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Allocation, error) {
+	return getAllocationsByShiftIDs(ctx, r.tx, shiftIDs)
 }
 
-func (r *rotaTx) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]Alteration, error) {
-	return getAlterationsInRange(ctx, r.tx, from, to)
+func (r *rotaTx) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Alteration, error) {
+	return getAlterationsByShiftIDs(ctx, r.tx, shiftIDs)
 }
 
 func (r *rotaTx) InsertCoverAndAlterations(ctx context.Context, cover *Cover, alterations []Alteration) error {

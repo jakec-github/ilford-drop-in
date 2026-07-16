@@ -29,11 +29,12 @@ type AvailabilityRequest struct {
 	FormSent    bool
 }
 
-// Allocation represents a database allocation record
+// Allocation represents a database allocation record. It is keyed solely by
+// ShiftID; rota and date live on the referenced shift, never denormalised here
+// (ADR 0001).
 type Allocation struct {
 	ID          string
-	RotaID      string
-	ShiftDate   string // DATE
+	ShiftID     string // UUID
 	Role        string
 	VolunteerID string
 	CustomEntry string
@@ -47,11 +48,12 @@ type Cover struct {
 	UserEmail string
 }
 
-// Alteration represents a database alteration record (individual change to a shift)
+// Alteration represents a database alteration record (individual change to a
+// shift). Like Allocation it is keyed solely by ShiftID; rota and date live on
+// the referenced shift (ADR 0001).
 type Alteration struct {
 	ID          string // UUID
-	ShiftDate   string // DATE
-	RotaID      string // UUID
+	ShiftID     string // UUID
 	Direction   string // "add" or "remove"
 	VolunteerID string // nullable
 	CustomValue string // nullable
