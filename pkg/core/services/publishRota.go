@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/teambition/rrule-go"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -230,21 +229,15 @@ func findPreviousRotaTabTitle(rotations []db.Rotation, targetRota *db.Rotation, 
 
 // isShiftClosed checks if a shift is marked as closed by any matching RotaOverride
 func isShiftClosed(dateStr string, overrides []config.RotaOverride, shiftDates []time.Time, logger *zap.Logger) bool {
-	// Determine the date range for RRule generation
-	var rotaStart, rotaEnd time.Time
-	if len(shiftDates) > 0 {
-		rotaStart = shiftDates[0]
-		rotaEnd = shiftDates[len(shiftDates)-1]
-	}
-
 	for _, override := range overrides {
 		// Skip if not marked as closed
 		if !override.Closed {
 			continue
 		}
 
-		// Parse the RRule
-		rule, err := rrule.StrToRRule(override.RRule)
+		// Parse the RRule into a date matcher; the closed check warns and skips
+		// an unparseable rrule.
+		matches, err := utils.NewRRuleMatcher(override.RRule, shiftDates)
 		if err != nil {
 			logger.Warn("Failed to parse rrule for closed check",
 				zap.String("rrule", override.RRule),
@@ -252,15 +245,8 @@ func isShiftClosed(dateStr string, overrides []config.RotaOverride, shiftDates [
 			continue
 		}
 
-		// Check if this date matches the RRule
-		searchStart := rotaStart.AddDate(0, 0, -7)
-		searchEnd := rotaEnd.AddDate(0, 0, 7)
-		rule.DTStart(searchStart)
-		occurrences := rule.Between(searchStart, searchEnd, true)
-		for _, occurrence := range occurrences {
-			if occurrence.Format("2006-01-02") == dateStr {
-				return true
-			}
+		if matches(dateStr) {
+			return true
 		}
 	}
 

@@ -7,18 +7,19 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/teambition/rrule-go"
 	"gopkg.in/yaml.v3"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
 
 // RotaOverride defines overrides to apply when generating rotas
 type RotaOverride struct {
-	RRule                     string   `yaml:"rrule" validate:"required"`
-	CustomPreallocations      []string `yaml:"customPreallocations,omitempty"`
-	ShiftSize                 *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
-	Closed                    bool     `yaml:"closed,omitempty"`
-	PreallocatedVolunteerIDs  []string `yaml:"preallocatedVolunteerIDs,omitempty"`
-	PreallocatedTeamLeadID    string   `yaml:"preallocatedTeamLeadID,omitempty"`
+	RRule                    string   `yaml:"rrule" validate:"required"`
+	CustomPreallocations     []string `yaml:"customPreallocations,omitempty"`
+	ShiftSize                *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
+	Closed                   bool     `yaml:"closed,omitempty"`
+	PreallocatedVolunteerIDs []string `yaml:"preallocatedVolunteerIDs,omitempty"`
+	PreallocatedTeamLeadID   string   `yaml:"preallocatedTeamLeadID,omitempty"`
 }
 
 // ServerConfig holds settings for the HTTP server
@@ -114,9 +115,10 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// Validate rrule syntax for each override
+	// Validate rrule syntax for each override, reusing the shared parser so
+	// rrule parsing lives in exactly one place.
 	for i, override := range cfg.RotaOverrides {
-		if _, err := rrule.StrToRRule(override.RRule); err != nil {
+		if _, err := utils.ParseRRule(override.RRule); err != nil {
 			return fmt.Errorf("invalid rrule in rotaOverrides[%d]: %w", i, err)
 		}
 	}

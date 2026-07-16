@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/teambition/rrule-go"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -522,16 +521,10 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 	}
 	matchers := make([]overrideMatcher, 0)
 
-	// Determine the date range for RRule generation
-	var rotaStart, rotaEnd time.Time
-	if len(shiftDates) > 0 {
-		rotaStart = shiftDates[0]
-		rotaEnd = shiftDates[len(shiftDates)-1]
-	}
-
 	for i, override := range cfg.RotaOverrides {
-		// Parse the RRule
-		rule, err := rrule.StrToRRule(override.RRule)
+		// Parse the RRule into a date matcher; the view path warns and skips an
+		// unparseable rrule.
+		matcher, err := utils.NewRRuleMatcher(override.RRule, shiftDates)
 		if err != nil {
 			logger.Warn("Failed to parse rrule for override",
 				zap.Int("override_index", i),
@@ -553,27 +546,11 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 			zap.Any("shift_size", shiftSizePtr),
 			zap.Int("preallocation_count", preallocationCount))
 
-		// Create matcher function
-		overrideIndex := i
-		ruleForClosure := rule
-		matcher := func(dateKey string) bool {
-			searchStart := rotaStart.AddDate(0, 0, -7)
-			searchEnd := rotaEnd.AddDate(0, 0, 7)
-			ruleForClosure.DTStart(searchStart)
-			occurrences := ruleForClosure.Between(searchStart, searchEnd, true)
-			for _, occurrence := range occurrences {
-				if occurrence.Format("2006-01-02") == dateKey {
-					return true
-				}
-			}
-			return false
-		}
-
 		matchers = append(matchers, overrideMatcher{
 			matches:            matcher,
 			shiftSize:          shiftSizePtr,
 			preallocationCount: preallocationCount,
-			overrideIndex:      overrideIndex,
+			overrideIndex:      i,
 		})
 	}
 
