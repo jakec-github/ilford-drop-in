@@ -16,7 +16,6 @@ type createAlterationRequest struct {
 	OutCustom string `json:"outCustom,omitempty"`
 	SwapDate  string `json:"swapDate,omitempty"`
 	Reason    string `json:"reason"`
-	UserEmail string `json:"userEmail"`
 }
 
 type alterationResponse struct {
@@ -42,13 +41,6 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// The CLI derives the audit email from the OAuth token; the API has no
-	// auth yet, so the caller must supply it
-	if req.UserEmail == "" {
-		h.writeError(w, http.StatusBadRequest, "userEmail is required")
-		return
-	}
-
 	params := services.ChangeRotaParams{
 		Date:      req.Date,
 		In:        req.In,
@@ -57,7 +49,9 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		OutCustom: req.OutCustom,
 		SwapDate:  req.SwapDate,
 		Reason:    req.Reason,
-		UserEmail: req.UserEmail,
+		// The actor is the verified admin from the session, not a trusted
+		// client field. requireAdmin gates this route, so it is always set.
+		UserEmail: adminEmail(r.Context()),
 	}
 
 	result, err := services.ChangeRota(r.Context(), h.store, h.volunteers, h.cfg, params, h.logger)

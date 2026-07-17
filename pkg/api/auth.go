@@ -195,18 +195,33 @@ func (a *Authenticator) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// adminEmailContextKey keys the verified admin email stashed in a request's
+// context by requireAdmin. Unexported so only this package can set or read it.
+type adminEmailContextKey struct{}
+
 // requireAdmin wraps a handler, allowing it through only for a valid admin
 // session. It re-checks the allowlist on every request, so revoking an admin in
 // config locks out their still-valid cookie on the next request after reload.
-// It gates nothing yet (that is #12); it lands here alongside the login flow.
+// The verified admin email is stashed in the request context so gated handlers
+// can attribute the action without re-parsing the cookie.
 func (a *Authenticator) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := a.adminFromRequest(r); !ok {
+		email, ok := a.adminFromRequest(r)
+		if !ok {
 			http.Error(w, "not authorised", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), adminEmailContextKey{}, email)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// adminEmail returns the verified admin email requireAdmin stashed in ctx. It is
+// only present on requests that passed through requireAdmin; the empty string
+// means the handler was not gated.
+func adminEmail(ctx context.Context) string {
+	email, _ := ctx.Value(adminEmailContextKey{}).(string)
+	return email
 }
 
 // adminFromRequest returns the email of a valid admin session on the request, if
