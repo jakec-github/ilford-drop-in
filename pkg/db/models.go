@@ -40,6 +40,19 @@ type Allocation struct {
 	CustomEntry string
 }
 
+// ManualPreallocation represents a database manual preallocation record: a
+// person pinned to a shift before allocation runs. Like Allocation it is keyed
+// solely by ShiftID; rota and date live on the referenced shift (ADR 0001). It
+// mirrors the allocation row shape — a volunteer pin sets VolunteerID, a custom
+// entry sets CustomValue, and Role is "Team lead" or "Service volunteer".
+type ManualPreallocation struct {
+	ID          string // UUID
+	ShiftID     string // UUID
+	Role        string
+	VolunteerID string // nullable
+	CustomValue string // nullable
+}
+
 // Cover represents a database cover record (audit trail for rota changes)
 type Cover struct {
 	ID        string // UUID
