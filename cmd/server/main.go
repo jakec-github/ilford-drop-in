@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/api"
@@ -60,12 +59,17 @@ func run(env string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The server holds no Sheets credential of its own: the volunteer roster is
-	// populated by the admin-triggered sync using the admin's OAuth token. The
-	// store starts empty and is filled on the first sync.
+	// The volunteer roster is fetched from the sheet with the server's own
+	// service account: once at startup (below) and again on each admin sync. The
+	// admin only triggers the refetch — no token is taken from them.
+	serviceAccount, err := config.LoadServiceAccountWithEnv(env)
+	if err != nil {
+		return fmt.Errorf("failed to load service account: %w", err)
+	}
+
 	volunteers := api.NewVolunteerStore()
-	syncVolunteers := func(r *http.Request, token *oauth2.Token) error {
-		client, err := sheetsclient.NewClientFromToken(r.Context(), token)
+	syncVolunteers := func(ctx context.Context) error {
+		client, err := sheetsclient.NewClientFromServiceAccount(ctx, serviceAccount.JSON)
 		if err != nil {
 			return fmt.Errorf("failed to build sheets client for sync: %w", err)
 		}
@@ -76,6 +80,14 @@ func run(env string) error {
 		volunteers.Replace(fetched)
 		logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
 		return nil
+	}
+
+	// Populate the roster at startup so reads work before any admin syncs. A
+	// failure here (transient Sheets outage, say) is not fatal: the server boots
+	// with an empty roster and an admin can retry via the sync button, matching
+	// the store's "degrade to no volunteers" behaviour.
+	if err := syncVolunteers(ctx); err != nil {
+		logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
 	}
 
 	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger, syncVolunteers)

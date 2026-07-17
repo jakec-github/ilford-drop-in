@@ -8,35 +8,34 @@ not a permanent secret, and users of the public-facing site have no way to re-au
 server when it expires. The in-memory caching strategy (`pkg/api/volunteercache.go`) also isn't
 loved.
 
-**Decision**: replace the server's own Sheets access with an admin-triggered sync. Admins log in
-via OIDC with Google; a "Sync volunteers" button (shown to admins only) fetches the sheet using
-the *admin's* OAuth access token and repopulates the server's volunteer data. Admins run the sync
-after editing the sheet.
+**Decision**: replace the installed-app token with a **service account** that has read access to
+the volunteer sheet. The server holds the service account key (loaded from config, like the OAuth
+client configs) and reads the sheet as itself: once at startup to populate the roster, and again on
+an admin-triggered sync. Admins log in via OIDC with Google; a "Sync volunteers" button (shown to
+admins only) triggers the refetch. The admin only needs to be authorised — no token is taken from
+them, so a sync is a plain authenticated POST rather than an OAuth round-trip.
 
-Key correction that makes this work: the OIDC *ID token* cannot call the Sheets API. The Sheets
-fetch needs an OAuth *access token* with the `spreadsheets.readonly` scope — but both come out of
-the same Google authorization flow. Login requests only identity scopes; the Sheets scope is
-requested via **incremental authorization** the first time an admin clicks Sync. The access token
-is used once, inside the sync request, and discarded — never stored (storing it would recreate the
-expiring-token problem this design solves).
-
-Considered and rejected for now: a service account with the sheet shared to it (permanent
-credential to manage, and OIDC + admin gating is wanted anyway for alterations auth). The two
-approaches compose, so a service account could be added later as a background freshener.
+> **Revised 2026-07-17.** This originally used the *admin's* OAuth access token, obtained via
+> incremental authorization the first time an admin clicked Sync and discarded after a one-shot
+> fetch. That avoided a permanent stored credential, but meant the roster was empty after every
+> restart until an admin synced, and every sync depended on the admin re-consenting to the Sheets
+> scope. Switching to a service account trades a managed credential for a roster that is warm at
+> startup and a sync that needs no per-user grant. OIDC login and admin gating are unchanged — they
+> are still wanted for alterations auth; only the *credential that reads the sheet* changed.
 
 ## Decisions made
 
 | Question | Decision |
 |---|---|
-| Which credential fetches the sheet | Admin's OAuth access token, via Sync button |
+| Which credential fetches the sheet | Server's own service account (read access shared to the sheet); loaded from `serviceAccount.<env>.json` |
+| When the roster is populated | At startup, then on each admin-triggered sync |
 | Volunteer storage | Keep the in-memory cache (not Postgres) for now |
-| Access token lifetime handling | Use once per sync, discard; re-prompt if expired (~1h life) |
 | Admin identification | Email allowlist in per-env config |
 | Sessions | Signed cookie (HMAC), stateless — no session store |
 | Session model | Admin-only: a non-allowlisted account is rejected at the callback, no cookie set. A session existing means admin |
 | Allowlist enforcement | Re-checked against config on every request; the cookie proves identity (email), not authority. Removing an admin takes effect on config reload, not cookie expiry |
 | Session lifetime | 60 days |
-| Config placement | `sessionSecret` + `adminEmails` under the `server:` block of `drop_in_config.<env>.yaml`; web OAuth client in `oauthClientWeb.<env>.json` (both already gitignored) |
+| Config placement | `sessionSecret` + `adminEmails` under the `server:` block of `drop_in_config.<env>.yaml`; web OAuth client in `oauthClientWeb.<env>.json`; service account key in `serviceAccount.<env>.json` (all gitignored) |
 | Dev topology | `/auth` proxied through the frontend dev server (`web/dev.ts`); registered dev redirect URI is `http://localhost:5173/auth/callback` |
 | Post-login redirect | `/` |
 
@@ -88,15 +87,15 @@ approaches compose, so a service account could be added later as a background fr
 - `requireAdmin` middleware wrapping admin routes. This same middleware later replaces the
   trusted `userEmail` field in `POST /alterations`.
 
-### 4. Sync endpoint + incremental scope grant
+### 4. Sync endpoint (service account)
 
-- Sync button click with no Sheets grant yet → redirect through the authorize endpoint again with
-  `scope=https://www.googleapis.com/auth/spreadsheets.readonly` and `include_granted_scopes=true`.
-- Callback receives an access token; use it for a one-shot `ListVolunteers` fetch, repopulate the
-  cache, discard the token. If the token is expired, re-prompt — an admin is present by
-  construction.
-- The admin must have read access to the sheet themselves — true by construction, since admins are
-  the ones editing it.
+- `POST /auth/sync`, gated by `requireAdmin`. No OAuth round-trip: the handler calls an injected
+  `VolunteerSyncFunc`, which builds a read-only Sheets client from the service account key
+  (`sheetsclient.NewClientFromServiceAccount`), runs `ListVolunteers`, and replaces the cached
+  roster wholesale. Returns 204 on success, 502 on a failed fetch, 503 if no sync function is wired.
+- The same `VolunteerSyncFunc` is called once at startup so the roster is warm before any admin
+  syncs. A startup failure is logged and non-fatal — the server boots empty and an admin can retry.
+- The service account must have read access to the sheet (shared to its `client_email`).
 
 ### 5. Cache surgery (`pkg/api/volunteercache.go`)
 
@@ -116,14 +115,17 @@ or they will error five minutes after every sync:
 - Login is a plain `<a href="/auth/login">` — the whole dance is redirects, no JS SDK, no
   client-side token handling. Keep auth in the cookie even if the frontend ends up an SPA.
 - Show logged-in state via `GET /auth/me` (email + logout button in the header); show the Sync
-  button to admins.
+  button to admins. The Sync button is a `fetch` `POST /auth/sync` (session cookie sent
+  automatically) that reflects the outcome inline — no redirect.
 
 ## Known trade-offs / caveats
 
-- **Restarts empty the roster.** With the in-memory cache and no server-held credential, a restart
-  leaves `/shifts` and calendars without volunteer data until an admin syncs. Cheap mitigation if
-  it bites: have sync also write a JSON snapshot to disk and load it at startup; graduate to a
-  Postgres table only if volunteers ever need querying.
+- **A managed credential to guard.** The service account key is a long-lived secret: keep it out of
+  git (gitignored like the OAuth client files) and rotate it if leaked. This is the cost traded for
+  a roster that survives restarts and a sync that needs no per-admin consent.
+- **Startup depends on the sheet, softly.** Populating at startup means a Sheets outage at boot
+  leaves the roster empty until an admin syncs — logged, non-fatal, and no worse than the old
+  always-empty-on-restart behaviour.
 - **Freshness becomes a human process.** An admin who edits the sheet and forgets to sync leaves
   the site stale indefinitely (today it self-heals within 5 minutes). Acceptable because the
   editor and the syncer are the same person.
@@ -154,8 +156,9 @@ accommodate the later tickets.
   non-allowlisted account is rejected at the callback.
 - **Session integrity**: tamper with the cookie value and confirm `requireAdmin` rejects it;
   confirm logout clears it.
-- **Sync**: edit a volunteer in the sheet, click Sync, confirm `/shifts` reflects the change and
-  the incremental consent screen appears only on first sync.
-- **No self-fetch remains**: after a sync, wait past the old 5-minute TTL and request `/shifts`
-  and an unknown-volunteer calendar — confirm the server serves cached data / 404s without
-  attempting a Sheets call (no token errors in logs).
+- **Startup populate**: boot the server with the service account key and confirm `/shifts` has
+  volunteer data before any sync.
+- **Sync**: edit a volunteer in the sheet, click Sync, confirm the POST returns 204 and `/shifts`
+  reflects the change — no consent screen (the server reads as the service account).
+- **No self-fetch remains**: request an unknown-volunteer calendar and confirm the server 404s
+  without attempting a Sheets call (no token errors in logs); the roster only changes on sync.

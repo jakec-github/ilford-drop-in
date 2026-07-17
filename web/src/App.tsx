@@ -93,7 +93,7 @@ function AdminView() {
 
 function App() {
   // Routing is a bare pathname switch: both views are reached by full-page
-  // navigation (the sync flow is a chain of server-side OAuth redirects), so a
+  // navigation (login is a chain of server-side OAuth redirects), so a
   // client-side router earns its keep nowhere here.
   const isAdminRoute = window.location.pathname === "/admin";
 
