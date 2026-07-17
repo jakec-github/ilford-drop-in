@@ -1,24 +1,19 @@
 import { useEffect, useState } from "react";
 import RotaViewer from "./components/RotaViewer";
-import { fetchRota, fetchCurrentAdmin, logout } from "./api";
+import { fetchRota } from "./api";
+import { useAuth } from "./auth-context";
 import type { RotaShift } from "./types";
 
 // AuthStatus shows a login link when logged out, or the admin's email plus a
-// logout button when logged in. The whole OAuth dance is server-side redirects,
-// so login is a plain link.
+// logout button when logged in. It reads the global auth state so login status
+// is shared with the rest of the UI. The whole OAuth dance is server-side
+// redirects, so login is a plain link.
 function AuthStatus() {
-  const [email, setEmail] = useState<string | null>(null);
+  const { email, loading, logout } = useAuth();
 
-  useEffect(() => {
-    fetchCurrentAdmin()
-      .then(setEmail)
-      .catch(() => setEmail(null));
-  }, []);
-
-  async function handleLogout() {
-    await logout();
-    setEmail(null);
-  }
+  // Wait for the initial session check so we don't flash "Admin login" at an
+  // admin who is already signed in.
+  if (loading) return null;
 
   if (email === null) {
     return (
@@ -31,7 +26,7 @@ function AuthStatus() {
   return (
     <span className="auth-status">
       {email}
-      <button type="button" onClick={handleLogout}>
+      <button type="button" onClick={logout}>
         Log out
       </button>
     </span>
