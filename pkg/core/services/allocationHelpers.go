@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +24,7 @@ type AllocateRotaStore interface {
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
+	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
@@ -300,6 +302,143 @@ func buildHistoricalShifts(
 	logger.Debug("Built historical shifts", zap.Int("shift_count", len(historicalShifts)))
 
 	return historicalShifts, nil
+}
+
+// configPreallocationsForDate collects the config-derived preallocations that
+// apply to a single date, mirroring InitShifts' per-date append semantics: the
+// set of preallocated volunteer ids, the (last) team-lead id, the set of custom
+// entries, and whether config closes the date. Manual pins are deduped against
+// exactly what config already contributes for that date.
+func configPreallocationsForDate(date string, overrides []allocator.ShiftOverride) (volIDs map[string]bool, teamLead string, customs map[string]bool, closed bool) {
+	volIDs = make(map[string]bool)
+	customs = make(map[string]bool)
+	for _, o := range overrides {
+		if !o.AppliesTo(date) {
+			continue
+		}
+		if o.Closed {
+			closed = true
+			continue
+		}
+		for _, id := range o.PreallocatedVolunteerIDs {
+			volIDs[id] = true
+		}
+		for _, c := range o.CustomPreallocations {
+			customs[c] = true
+		}
+		if o.PreallocatedTeamLeadID != "" {
+			teamLead = o.PreallocatedTeamLeadID
+		}
+	}
+	return volIDs, teamLead, customs, closed
+}
+
+// exactDateMatcher returns an AppliesTo predicate matching exactly one date, so
+// a synthetic manual-preallocation override touches only its own shift.
+func exactDateMatcher(date string) func(string) bool {
+	return func(d string) bool { return d == date }
+}
+
+// buildManualPreallocationOverrides turns each manual pin into a synthetic,
+// exact-date allocator.ShiftOverride so InitShifts unions them with the
+// config-derived overrides through its existing append semantics — no new merge
+// logic in the solver (issue #39 / ADR 0003). Manual is add-only: a pin that
+// duplicates a config contribution for the same date (same volunteer id, same
+// custom entry, or a team lead when config already pins one) is dropped so it
+// never doubles a seat; config stays authoritative for the single-valued
+// team-lead slot. A pin whose date config closes contributes nothing.
+func buildManualPreallocationOverrides(
+	manualPins []db.ManualPreallocation,
+	dateByShiftID map[string]string,
+	configOverrides []allocator.ShiftOverride,
+) ([]allocator.ShiftOverride, error) {
+	overrides := make([]allocator.ShiftOverride, 0, len(manualPins))
+
+	for _, pin := range manualPins {
+		date, ok := dateByShiftID[pin.ShiftID]
+		if !ok {
+			return nil, fmt.Errorf("manual preallocation %s references shift %s with no minted date", pin.ID, pin.ShiftID)
+		}
+
+		configVolIDs, configTL, configCustoms, configClosed := configPreallocationsForDate(date, configOverrides)
+		if configClosed {
+			// Config closes this date; a manual pin cannot reopen it.
+			continue
+		}
+
+		override := allocator.ShiftOverride{AppliesTo: exactDateMatcher(date)}
+		switch {
+		case pin.Role == string(model.RoleTeamLead):
+			if configTL != "" {
+				continue // config is authoritative for the team-lead slot
+			}
+			override.PreallocatedTeamLeadID = pin.VolunteerID
+		case pin.VolunteerID != "":
+			if configVolIDs[pin.VolunteerID] {
+				continue // already preallocated by config
+			}
+			override.PreallocatedVolunteerIDs = []string{pin.VolunteerID}
+		case pin.CustomValue != "":
+			if configCustoms[pin.CustomValue] {
+				continue // identical custom entry already preallocated by config
+			}
+			override.CustomPreallocations = []string{pin.CustomValue}
+		default:
+			return nil, fmt.Errorf("manual preallocation %s has neither a volunteer nor a custom value", pin.ID)
+		}
+
+		overrides = append(overrides, override)
+	}
+
+	return overrides, nil
+}
+
+// checkPreallocationsResolve verifies, before the solver runs, that every
+// preallocated volunteer still resolves to an active volunteer. A pin whose
+// volunteer has gone inactive or been deleted would otherwise surface as the
+// solver's opaque ProblemError; here it fails loudly, naming the offending
+// pin(s). It covers both manual pins and config preallocations (ADR 0003 asks
+// the check to shield config too). Custom (non-volunteer) pins carry no id and
+// are not checked.
+func checkPreallocationsResolve(
+	manualPins []db.ManualPreallocation,
+	dateByShiftID map[string]string,
+	configOverrides []allocator.ShiftOverride,
+	shiftDates []time.Time,
+	activeIDs map[string]bool,
+) error {
+	var offenders []string
+
+	for _, pin := range manualPins {
+		if pin.VolunteerID == "" {
+			continue
+		}
+		if !activeIDs[pin.VolunteerID] {
+			offenders = append(offenders, fmt.Sprintf("manual pin for %s: volunteer %s is not active", dateByShiftID[pin.ShiftID], pin.VolunteerID))
+		}
+	}
+
+	for _, date := range shiftDates {
+		dateStr := date.Format("2006-01-02")
+		for _, o := range configOverrides {
+			if !o.AppliesTo(dateStr) || o.Closed {
+				continue
+			}
+			for _, id := range o.PreallocatedVolunteerIDs {
+				if !activeIDs[id] {
+					offenders = append(offenders, fmt.Sprintf("config pin for %s: volunteer %s is not active", dateStr, id))
+				}
+			}
+			if o.PreallocatedTeamLeadID != "" && !activeIDs[o.PreallocatedTeamLeadID] {
+				offenders = append(offenders, fmt.Sprintf("config pin for %s: team lead %s is not active", dateStr, o.PreallocatedTeamLeadID))
+			}
+		}
+	}
+
+	if len(offenders) > 0 {
+		return fmt.Errorf("preallocated volunteers are no longer active: %s", strings.Join(offenders, "; "))
+	}
+	return nil
 }
 
 // findPreviousRotation finds the rotation immediately before the target rotation
