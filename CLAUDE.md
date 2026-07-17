@@ -13,7 +13,8 @@
 ## PR workflow
 
 - Never commit directly to main. Start each ticket on a branch named
-  `issue-<n>-<slug>`, cut from up-to-date main.
+  `issue-<n>-<slug>`, cut from up-to-date main. Ensure that main is up-to-date
+  with origin/main.
 - When the ticket's acceptance criteria pass, push the branch and open a PR
   with `gh pr create` — titled after the ticket, with `Closes #<n>` in the body.
 - Request review from `jakec-github`. Never merge a PR; merging is the
