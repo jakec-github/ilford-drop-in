@@ -37,6 +37,7 @@ type ShiftAssignee struct {
 	CustomEntry string // empty for volunteers
 	Name        string // volunteer display name, or the custom entry verbatim
 	Role        string
+	Group       string // volunteer's group key; empty for custom entries and ungrouped volunteers
 }
 
 // Shift is one minted shift after applying alterations. Unallocated shifts are
@@ -219,6 +220,7 @@ func buildAssignees(allocations []db.Allocation, volunteersByID map[string]model
 				assignee.Name = a.VolunteerID
 			} else {
 				assignee.Name = volunteer.DisplayName
+				assignee.Group = volunteer.GroupKey
 			}
 		}
 		assignees = append(assignees, assignee)

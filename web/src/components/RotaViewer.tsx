@@ -1,38 +1,95 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
-import type { RotaShift } from "../types";
+import type { Assignee, RotaShift } from "../types";
 import "./RotaViewer.css";
 
 interface RotaViewerProps {
   rotaShifts: RotaShift[];
+  // Admins additionally see shifts whose rota has not been allocated yet.
+  isAdmin: boolean;
 }
 
-function formatBritishDate(dateStr: string): string {
+// A shift that exists but has not been through allocation yet: no assignees,
+// and not deliberately closed. Hidden from the public; flagged for admins.
+function isUnallocated(shift: RotaShift): boolean {
+  return !shift.allocated && !shift.closed;
+}
+
+// "2 Feb" — weekday and year are redundant on the rota.
+function formatShiftDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+// Group membership is shown by a corner dot; the colour just needs to be stable
+// per group and tell two groups apart, so we hash the group key into this list.
+// The eight are mid-toned (legible on both themes) and spread so the closest
+// pair still sits ~32 ΔE apart — no two land as look-alikes.
+const GROUP_COLOURS = [
+  "#d6455a",
+  "#e2711d",
+  "#c7a92b",
+  "#4c9a2a",
+  "#1ca3a3",
+  "#3d6fd6",
+  "#8b52d6",
+  "#c94fa0",
+];
+
+function groupColour(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return GROUP_COLOURS[hash % GROUP_COLOURS.length];
 }
 
 function getAllNames(shifts: RotaShift[]): string[] {
   const names = new Set<string>();
   for (const shift of shifts) {
-    if (shift.teamLead && shift.teamLead !== "CLOSED") names.add(shift.teamLead);
-    for (const vol of shift.volunteers) names.add(vol);
+    for (const a of shift.assignees) names.add(a.name);
   }
   return Array.from(names).sort();
 }
 
 function getUpcomingShifts(shifts: RotaShift[], name: string): RotaShift[] {
   if (!name) return [];
-  return shifts.filter(
-    (shift) => shift.teamLead === name || shift.volunteers.includes(name),
+  return shifts.filter((shift) => shift.assignees.some((a) => a.name === name));
+}
+
+function Chip({
+  assignee,
+  selected,
+  onClick,
+}: {
+  assignee: Assignee;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const cls = [
+    "chip",
+    `role-${assignee.role}`,
+    assignee.custom ? "custom" : "volunteer",
+    assignee.group ? "has-group" : "",
+    selected ? "selected" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <span className={cls} onClick={onClick}>
+      {assignee.name}
+      {assignee.group && (
+        <span
+          className="chip-group-dot"
+          style={{ background: groupColour(assignee.group) }}
+          title={`Group: ${assignee.group}`}
+        />
+      )}
+    </span>
   );
 }
 
-function ShiftCard({
+function ShiftRow({
   shift,
   selectedName,
   onSelectName,
@@ -41,45 +98,48 @@ function ShiftCard({
   selectedName: string;
   onSelectName: (name: string) => void;
 }) {
-  const isClosed = shift.teamLead === "CLOSED";
-
-  function handleNameClick(name: string) {
+  function handleClick(name: string) {
     onSelectName(name === selectedName ? "" : name);
   }
 
-  return (
-    <div className={`shift-card${isClosed ? " closed" : ""}`}>
-      <div className="shift-date">{formatBritishDate(shift.date)}</div>
-      <div className="shift-team-lead">
-        {isClosed ? (
-          <span className="shift-closed-label">Closed</span>
-        ) : shift.teamLead ? (
-          <span
-            className={`team-lead-chip clickable${shift.teamLead === selectedName ? " match" : ""}`}
-            onClick={() => handleNameClick(shift.teamLead)}
-          >
-            {shift.teamLead}
-          </span>
-        ) : null}
+  const unallocated = isUnallocated(shift);
+  const rowCls = [
+    "shift-row",
+    shift.closed ? "closed" : "",
+    unallocated ? "unallocated" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  let body;
+  if (shift.closed) {
+    body = <span className="shift-note">Closed</span>;
+  } else if (unallocated) {
+    body = <span className="shift-note">Not yet allocated</span>;
+  } else {
+    body = (
+      <div className="shift-people">
+        {shift.assignees.map((a, i) => (
+          <Chip
+            key={i}
+            assignee={a}
+            selected={a.name === selectedName}
+            onClick={() => handleClick(a.name)}
+          />
+        ))}
       </div>
-      {!isClosed && (
-        <div className="shift-volunteers">
-          {shift.volunteers.map((vol, i) => (
-            <span
-              key={i}
-              className={`volunteer-name clickable${vol === selectedName ? " match" : ""}`}
-              onClick={() => handleNameClick(vol)}
-            >
-              {vol}
-            </span>
-          ))}
-        </div>
-      )}
+    );
+  }
+
+  return (
+    <div className={rowCls}>
+      <div className="shift-date">{formatShiftDate(shift.date)}</div>
+      {body}
     </div>
   );
 }
 
-export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
+export default function RotaViewer({ rotaShifts, isAdmin }: RotaViewerProps) {
   const [selectedName, setSelectedName] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
@@ -87,10 +147,17 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const allNames = useMemo(() => getAllNames(rotaShifts), [rotaShifts]);
+  // The public only sees shifts with something to show — allocated or closed.
+  // Admins also see unallocated shifts, flagged so they stand out.
+  const visibleShifts = useMemo(
+    () => (isAdmin ? rotaShifts : rotaShifts.filter((s) => !isUnallocated(s))),
+    [rotaShifts, isAdmin],
+  );
+
+  const allNames = useMemo(() => getAllNames(visibleShifts), [visibleShifts]);
   const upcomingShifts = useMemo(
-    () => getUpcomingShifts(rotaShifts, selectedName),
-    [rotaShifts, selectedName],
+    () => getUpcomingShifts(visibleShifts, selectedName),
+    [visibleShifts, selectedName],
   );
 
   const filteredNames = allNames.filter((n) =>
@@ -218,7 +285,7 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
               <span className="upcoming-dates">
                 {upcomingShifts
                   .slice(0, 5)
-                  .map((s) => formatBritishDate(s.date))
+                  .map((s) => formatShiftDate(s.date))
                   .join(" · ")}
               </span>
             </>
@@ -228,24 +295,15 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
         </div>
       )}
 
-      <div className="rota-table">
-        <div className="rota-table-header">
-          <div className="header-row">
-            <th>Date</th>
-            <th>Team Lead</th>
-            <th>Volunteers</th>
-          </div>
-        </div>
-        <div className="rota-table-body">
-          {rotaShifts.map((shift, i) => (
-            <ShiftCard
-              key={i}
-              shift={shift}
-              selectedName={selectedName}
-              onSelectName={setSelectedName}
-            />
-          ))}
-        </div>
+      <div className="rota-list">
+        {visibleShifts.map((shift, i) => (
+          <ShiftRow
+            key={i}
+            shift={shift}
+            selectedName={selectedName}
+            onSelectName={setSelectedName}
+          />
+        ))}
       </div>
     </div>
   );

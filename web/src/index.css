@@ -6,6 +6,10 @@
   --accent: #aa3bff;
   --accent-bg: rgba(170, 59, 255, 0.1);
 
+  /* Chip role colours: the colour a person wears on a shift. */
+  --role-lead: #aa3bff;
+  --role-volunteer: #0b8a6f;
+
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
 
   font: 16px/1.5 var(--sans);
@@ -23,6 +27,8 @@
     --border: #2e303a;
     --accent: #c084fc;
     --accent-bg: rgba(192, 132, 252, 0.15);
+    --role-lead: #c084fc;
+    --role-volunteer: #2dd4a7;
   }
 }
 

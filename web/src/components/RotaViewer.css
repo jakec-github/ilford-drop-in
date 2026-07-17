@@ -1,5 +1,5 @@
 .rota-viewer {
-  max-width: 900px;
+  max-width: 640px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -139,100 +139,123 @@
   font-style: italic;
 }
 
-/* Team lead chip */
-.team-lead-chip {
-  display: inline-block;
-  border: 2px solid var(--accent);
-  color: var(--accent);
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.team-lead-chip.match {
-  background: var(--accent);
-  color: #fff;
-}
-
-.team-lead-chip.clickable:hover:not(.match) {
-  background: var(--accent-bg);
-}
-
-/* Volunteer match highlight */
-.volunteer-name.match {
-  background: var(--accent);
-  color: #fff;
-}
-
-.clickable {
-  cursor: pointer;
-}
-
-.volunteer-name.clickable:hover:not(.match) {
-  background: color-mix(in srgb, var(--accent-bg) 100%, var(--accent) 20%);
-}
-
-/* Mobile: card layout (default) */
-.rota-table {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.rota-table-header {
-  display: none;
-}
-
-.shift-card {
+/* Shift list: one flush, connected list at every width. Rows touch and share
+   hairline dividers; only the outer container is rounded. */
+.rota-list {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.shift-card.closed {
-  opacity: 0.6;
+.shift-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shift-row:last-child {
+  border-bottom: none;
+}
+
+.shift-row.closed {
+  opacity: 0.55;
 }
 
 .shift-date {
+  flex-shrink: 0;
+  width: 3.5rem;
   font-weight: 600;
-  color: var(--text-h);
-  margin-bottom: 8px;
   font-size: 15px;
-}
-
-.shift-team-lead {
-  font-size: 14px;
   color: var(--text-h);
-  margin-bottom: 8px;
 }
 
-.shift-team-lead:empty {
-  margin-bottom: 0;
-}
-
-.shift-closed-label {
-  font-weight: 500;
+.shift-note {
   font-style: italic;
   color: var(--text);
 }
 
-.shift-volunteers {
+/* Unallocated shifts (admin-only): a faint diagonal hatch marks them as
+   "rota not run yet", distinct from a closed shift's flat dimming. */
+.shift-row.unallocated {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--border) 60%, transparent) 6px 7px
+  );
+}
+
+.shift-people {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
-.volunteer-name {
+/* Chips: colour = role held on this shift. Outlined by default, light fill on
+   hover, solid fill when selected. */
+.chip {
+  position: relative;
   display: inline-block;
-  background: var(--accent-bg);
-  color: var(--text-h);
   padding: 3px 10px;
-  border-radius: 12px;
   font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  border: 1.5px solid var(--chip);
+  color: var(--chip);
+  background: transparent;
+  cursor: pointer;
 }
 
-/* Desktop: table layout */
+.chip.role-lead {
+  --chip: var(--role-lead);
+}
+
+.chip.role-volunteer {
+  --chip: var(--role-volunteer);
+}
+
+/* Volunteers are rounded pills; custom (manual) entries are squared tags. */
+.chip.volunteer {
+  border-radius: 12px;
+}
+
+.chip.custom {
+  border-radius: 3px;
+  font-style: italic;
+}
+
+/* Square the corner the group dot sits in so the dot tucks into a right angle
+   rather than floating off a rounded pill. */
+.chip.has-group {
+  border-top-right-radius: 3px;
+}
+
+.chip:hover:not(.selected) {
+  background: color-mix(in srgb, var(--chip) 14%, transparent);
+}
+
+.chip.selected {
+  background: var(--chip);
+  color: #fff;
+}
+
+/* Group membership: a small corner dot, one stable colour per group. The ring
+   keeps it legible over both the page and a filled (selected) chip. */
+.chip-group-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+/* Desktop: same list, just roomier. */
 @media (min-width: 700px) {
   .rota-viewer {
     padding: 24px;
@@ -252,74 +275,16 @@
     margin-bottom: 24px;
   }
 
-  .rota-table {
-    display: table;
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .rota-table-header {
-    display: table-header-group;
-  }
-
-  .rota-table-header .header-row {
-    display: table-row;
-  }
-
-  .rota-table-header th {
-    display: table-cell;
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text);
-    padding: 8px 12px;
-    border-bottom: 2px solid var(--border);
-    text-align: left;
-  }
-
-  .rota-table-body {
-    display: table-row-group;
-  }
-
-  .shift-card {
-    display: table-row;
-    border: none;
-    border-radius: 0;
-    padding: 0;
-  }
-
-  .shift-card > * {
-    display: table-cell;
-    padding: 12px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
+  .shift-row {
+    padding: 14px 18px;
   }
 
   .shift-date {
-    white-space: nowrap;
-    margin-bottom: 0;
+    width: 4rem;
   }
 
-  .shift-team-lead {
-    white-space: nowrap;
-    margin-bottom: 0;
-    font-size: inherit;
-  }
-
-  .shift-volunteers {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .volunteer-name {
+  .chip {
     font-size: 14px;
     padding: 4px 12px;
-  }
-
-  .team-lead-chip {
-    font-size: 14px;
-    padding: 3px 12px;
   }
 }

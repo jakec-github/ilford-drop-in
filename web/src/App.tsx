@@ -51,8 +51,10 @@ function Header() {
   );
 }
 
-// HomeView is the public rota page.
+// HomeView is the public rota page. An admin session (a non-null email) also
+// reveals shifts whose rota has not been allocated yet.
 function HomeView() {
+  const { email } = useAuth();
   const [rota, setRota] = useState<RotaShift[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +72,7 @@ function HomeView() {
   if (rota === null) {
     return <p className="app-status">Loading rota…</p>;
   }
-  return <RotaViewer rotaShifts={rota} />;
+  return <RotaViewer rotaShifts={rota} isAdmin={email !== null} />;
 }
 
 // AdminView renders the admin dashboard, but only for a logged-in admin. It
