@@ -26,19 +26,9 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 
 	volunteer := findVolunteerByID(volunteers, volunteerID)
 	if volunteer == nil {
-		// A miss may be a volunteer added since the cache was filled, and
-		// their first request is typically a calendar app validating a new
-		// subscription, so retry against a fresh roster before 404ing.
-		if refresher, ok := h.volunteers.(VolunteerRefresher); ok {
-			volunteers, err = refresher.RefreshVolunteers(h.cfg)
-			if err != nil {
-				h.writeServiceError(w, err)
-				return
-			}
-			volunteer = findVolunteerByID(volunteers, volunteerID)
-		}
-	}
-	if volunteer == nil {
+		// The roster is whatever the last sync loaded; there is no self-fetch to
+		// fall back on. A volunteer added to the sheet but not yet synced 404s
+		// until an admin syncs — acceptable, since the editor is the syncer.
 		h.writeError(w, http.StatusNotFound, "volunteer not found")
 		return
 	}

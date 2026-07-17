@@ -51,6 +51,26 @@ func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig, env stri
 	}, nil
 }
 
+// NewClientFromToken builds a Sheets client from an already-obtained OAuth
+// token, skipping the installed-app authorization flow NewClient runs. The
+// admin-triggered volunteer sync uses this with the admin's short-lived access
+// token: the token is used for a one-shot read and discarded, so no refresh
+// token or persistence is involved.
+func NewClientFromToken(ctx context.Context, token *oauth2.Token) (*Client, error) {
+	httpClient := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
+
+	service, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sheets service: %w", err)
+	}
+
+	return &Client{
+		service: service,
+		token:   token,
+		ctx:     ctx,
+	}, nil
+}
+
 // Service returns the underlying sheets service for direct API access
 func (c *Client) Service() *sheets.Service {
 	return c.service

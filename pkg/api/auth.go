@@ -38,11 +38,16 @@ type Authenticator struct {
 	adminEmails  map[string]struct{} // lowercased allowlist
 	secure       bool                // set the cookie Secure flag (prod only)
 	logger       *zap.Logger
+	// syncVolunteers runs an admin-triggered volunteer sync with the admin's
+	// access token. Injected by the composition root; nil disables the sync
+	// callback.
+	syncVolunteers VolunteerSyncFunc
 }
 
 // NewAuthenticator builds an Authenticator. It performs OIDC provider discovery
-// against Google, so it makes a network call and can fail.
-func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, srv *config.ServerConfig, env string, logger *zap.Logger) (*Authenticator, error) {
+// against Google, so it makes a network call and can fail. syncVolunteers is
+// invoked by the sync callback with the admin's Sheets-scoped access token.
+func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, srv *config.ServerConfig, env string, logger *zap.Logger, syncVolunteers VolunteerSyncFunc) (*Authenticator, error) {
 	provider, err := oidc.NewProvider(ctx, googleIssuer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover OIDC provider: %w", err)
@@ -67,12 +72,13 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 	}
 
 	return &Authenticator{
-		oauth2Config: oauth2Config,
-		verifier:     provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
-		secret:       []byte(srv.SessionSecret),
-		adminEmails:  admin,
-		secure:       env == "prod",
-		logger:       logger,
+		oauth2Config:   oauth2Config,
+		verifier:       provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
+		secret:         []byte(srv.SessionSecret),
+		adminEmails:    admin,
+		secure:         env == "prod",
+		logger:         logger,
+		syncVolunteers: syncVolunteers,
 	}, nil
 }
 
@@ -82,6 +88,9 @@ func (a *Authenticator) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/callback", a.handleCallback)
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /auth/me", a.handleMe)
+	// Starting a sync requires an existing admin session; the callback is shared
+	// with login and branches on the sync state cookie.
+	mux.Handle("GET /auth/sync", a.requireAdmin(http.HandlerFunc(a.handleSyncStart)))
 }
 
 // handleLogin starts the OIDC flow: stash a random state in a short-lived cookie
@@ -111,6 +120,13 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 // ID token, check the allowlist, and set the session cookie. Non-admins are
 // rejected here with no cookie set.
 func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
+	// A sync round-trip returns to this same redirect URI. If the sync state
+	// cookie matches, it is a sync, not a login — the two are told apart here.
+	if c, err := r.Cookie(syncStateCookieName); err == nil && c.Value != "" && c.Value == r.URL.Query().Get("state") {
+		a.handleSyncCallback(w, r)
+		return
+	}
+
 	stateCookie, err := r.Cookie(stateCookieName)
 	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
 		http.Error(w, "invalid OAuth state", http.StatusBadRequest)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/api"
@@ -18,8 +19,6 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
 )
-
-const volunteerCacheTTL = 5 * time.Minute
 
 func main() {
 	env := flag.String("env", "", "Environment (required: test, prod, etc.)")
@@ -53,11 +52,6 @@ func run(env string) error {
 		return fmt.Errorf("server config missing: add server.port to drop_in_config.%s.yaml", env)
 	}
 
-	oauthCfg, err := config.LoadOAuthClientWithEnv(env)
-	if err != nil {
-		return fmt.Errorf("failed to load OAuth client config: %w", err)
-	}
-
 	webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
 	if err != nil {
 		return fmt.Errorf("failed to load web OAuth client config: %w", err)
@@ -66,12 +60,25 @@ func run(env string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	sheetsClient, err := sheetsclient.NewClient(ctx, oauthCfg, env)
-	if err != nil {
-		return fmt.Errorf("failed to create sheets client: %w", err)
+	// The server holds no Sheets credential of its own: the volunteer roster is
+	// populated by the admin-triggered sync using the admin's OAuth token. The
+	// store starts empty and is filled on the first sync.
+	volunteers := api.NewVolunteerStore()
+	syncVolunteers := func(r *http.Request, token *oauth2.Token) error {
+		client, err := sheetsclient.NewClientFromToken(r.Context(), token)
+		if err != nil {
+			return fmt.Errorf("failed to build sheets client for sync: %w", err)
+		}
+		fetched, err := client.ListVolunteers(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
+		}
+		volunteers.Replace(fetched)
+		logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
+		return nil
 	}
 
-	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger)
+	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger, syncVolunteers)
 	if err != nil {
 		return fmt.Errorf("failed to create authenticator: %w", err)
 	}
@@ -85,7 +92,6 @@ func run(env string) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	volunteers := api.NewCachingVolunteerClient(sheetsClient, volunteerCacheTTL)
 	handler := api.NewHandler(database, volunteers, cfg, authenticator, logger)
 
 	server := &http.Server{

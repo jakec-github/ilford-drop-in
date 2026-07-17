@@ -17,7 +17,6 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -560,30 +559,6 @@ func TestCalendarEndpoint_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestCalendarEndpoint_VolunteerAddedAfterCacheFill(t *testing.T) {
-	inner := testVolunteers()
-	cached := NewCachingVolunteerClient(inner, time.Hour)
-	handler := NewHandler(&mockStore{}, cached, apiTestCfg, newTestAuthenticator(), zap.NewNop()).Routes()
-
-	// Warm the cache, as unattended calendar polling does continuously
-	rec := doRequest(t, handler, http.MethodGet, "/calendars/alice.ics", "")
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	// Dana joins after the cache was filled, then requests her calendar
-	inner.volunteers = append(inner.volunteers, model.Volunteer{ID: "dana", DisplayName: "Dana", Role: model.RoleVolunteer})
-	backdateCacheFill(t, cached, minRefreshInterval)
-
-	rec = doRequest(t, handler, http.MethodGet, "/calendars/dana.ics", "")
-	assert.Equal(t, http.StatusOK, rec.Code, "just-added volunteer must trigger a cache refresh, not a 404")
-
-	// A genuinely unknown ID still 404s, and the rate limit stops it from
-	// forcing another Sheets fetch
-	callsBefore := inner.calls
-	rec = doRequest(t, handler, http.MethodGet, "/calendars/nobody.ics", "")
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-	assert.Equal(t, callsBefore, inner.calls, "miss within the rate limit must not refetch")
-}
-
 func TestCalendarEndpoint_EmptyFeedIsValid(t *testing.T) {
 	// Charlie exists but has no shifts
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/calendars/charlie.ics", "")
@@ -600,85 +575,4 @@ func TestMethodNotAllowed(t *testing.T) {
 
 	rec = doRequest(t, handler, http.MethodGet, "/alterations", "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
-}
-
-func TestCachingVolunteerClient(t *testing.T) {
-	inner := testVolunteers()
-	cached := NewCachingVolunteerClient(inner, time.Minute)
-
-	first, err := cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-	second, err := cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-
-	assert.Equal(t, first, second)
-	assert.Equal(t, 1, inner.calls, "second call within TTL must be served from cache")
-}
-
-func TestCachingVolunteerClient_ExpiredTTL(t *testing.T) {
-	inner := testVolunteers()
-	cached := NewCachingVolunteerClient(inner, time.Nanosecond)
-
-	_, err := cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-	time.Sleep(time.Millisecond)
-	_, err = cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-
-	assert.Equal(t, 2, inner.calls, "expired cache must refetch")
-}
-
-func TestCachingVolunteerClient_RefreshBypassesTTL(t *testing.T) {
-	inner := testVolunteers()
-	cached := NewCachingVolunteerClient(inner, time.Hour)
-
-	_, err := cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-
-	// A volunteer joins after the cache was filled
-	inner.volunteers = append(inner.volunteers, model.Volunteer{ID: "dana", DisplayName: "Dana", Role: model.RoleVolunteer})
-	backdateCacheFill(t, cached, minRefreshInterval)
-
-	volunteers, err := cached.(VolunteerRefresher).RefreshVolunteers(apiTestCfg)
-	require.NoError(t, err)
-	assert.Len(t, volunteers, 4, "refresh must bypass the TTL and see the new volunteer")
-	assert.Equal(t, 2, inner.calls)
-}
-
-func TestCachingVolunteerClient_RefreshRateLimited(t *testing.T) {
-	inner := testVolunteers()
-	cached := NewCachingVolunteerClient(inner, time.Hour)
-
-	_, err := cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-
-	volunteers, err := cached.(VolunteerRefresher).RefreshVolunteers(apiTestCfg)
-	require.NoError(t, err)
-	assert.Len(t, volunteers, 3)
-	assert.Equal(t, 1, inner.calls, "refresh just after a fill must be served from cache")
-}
-
-// backdateCacheFill ages the cache past the forced-refresh rate limit while
-// staying inside the TTL
-func backdateCacheFill(t *testing.T, client services.VolunteerClient, age time.Duration) {
-	t.Helper()
-	c, ok := client.(*cachingVolunteerClient)
-	require.True(t, ok)
-	c.mu.Lock()
-	c.fetchedAt = c.fetchedAt.Add(-age)
-	c.mu.Unlock()
-}
-
-func TestCachingVolunteerClient_ErrorNotCached(t *testing.T) {
-	inner := &mockVolunteerClient{err: errors.New("sheets unavailable")}
-	cached := NewCachingVolunteerClient(inner, time.Minute)
-
-	_, err := cached.ListVolunteers(apiTestCfg)
-	require.Error(t, err)
-
-	inner.err = nil
-	inner.volunteers = []model.Volunteer{{ID: "alice"}}
-	volunteers, err := cached.ListVolunteers(apiTestCfg)
-	require.NoError(t, err)
-	assert.Len(t, volunteers, 1)
 }

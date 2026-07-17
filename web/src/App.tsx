@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import RotaViewer from "./components/RotaViewer";
+import AdminDashboard from "./components/AdminDashboard";
 import { fetchRota } from "./api";
 import { useAuth } from "./auth-context";
 import type { RotaShift } from "./types";
@@ -33,7 +34,24 @@ function AuthStatus() {
   );
 }
 
-function App() {
+// Header carries the shared auth state and, for admins, a link to the admin
+// dashboard. An admin session is exactly a non-null email — only admins are
+// issued one — so the link gates on that.
+function Header() {
+  const { email } = useAuth();
+
+  return (
+    <header className="app-header">
+      <nav className="app-nav">
+        {email !== null && <a href="/admin">Admin</a>}
+      </nav>
+      <AuthStatus />
+    </header>
+  );
+}
+
+// HomeView is the public rota page.
+function HomeView() {
   const [rota, setRota] = useState<RotaShift[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,18 +63,44 @@ function App() {
       });
   }, []);
 
+  if (error) {
+    return <p className="app-status">Could not load the rota: {error}</p>;
+  }
+  if (rota === null) {
+    return <p className="app-status">Loading rota…</p>;
+  }
+  return <RotaViewer rotaShifts={rota} />;
+}
+
+// AdminView renders the admin dashboard, but only for a logged-in admin. It
+// waits for the initial session check so it doesn't flash the login prompt at
+// an admin who is already signed in.
+function AdminView() {
+  const { email, loading } = useAuth();
+
+  if (loading) {
+    return <p className="app-status">Loading…</p>;
+  }
+  if (email === null) {
+    return (
+      <p className="app-status">
+        This page is for admins. <a href="/auth/login">Admin login</a>
+      </p>
+    );
+  }
+  return <AdminDashboard />;
+}
+
+function App() {
+  // Routing is a bare pathname switch: both views are reached by full-page
+  // navigation (the sync flow is a chain of server-side OAuth redirects), so a
+  // client-side router earns its keep nowhere here.
+  const isAdminRoute = window.location.pathname === "/admin";
+
   return (
     <>
-      <header className="app-header">
-        <AuthStatus />
-      </header>
-      {error ? (
-        <p className="app-status">Could not load the rota: {error}</p>
-      ) : rota === null ? (
-        <p className="app-status">Loading rota…</p>
-      ) : (
-        <RotaViewer rotaShifts={rota} />
-      )}
+      <Header />
+      {isAdminRoute ? <AdminView /> : <HomeView />}
     </>
   );
 }

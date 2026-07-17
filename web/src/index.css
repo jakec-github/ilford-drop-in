@@ -43,10 +43,17 @@ h2 {
 
 .app-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.app-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.875rem;
 }
 
 .auth-status {
@@ -71,4 +78,50 @@ h2 {
   border-radius: 6px;
   padding: 0.25rem 0.625rem;
   cursor: pointer;
+}
+
+.admin-dashboard {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.admin-panel {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.admin-panel h2 {
+  margin-top: 0;
+}
+
+.button {
+  display: inline-block;
+  font: inherit;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sync-result {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.sync-result--ok {
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.sync-result--error {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.1);
+  border-color: rgba(185, 28, 28, 0.3);
 }
