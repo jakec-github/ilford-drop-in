@@ -21,6 +21,7 @@ type assigneeResponse struct {
 	CustomEntry string `json:"customEntry,omitempty"`
 	Name        string `json:"name"`
 	Role        string `json:"role,omitempty"`
+	Group       string `json:"group,omitempty"`
 }
 
 type listShiftsResponse struct {
@@ -54,6 +55,7 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 				CustomEntry: a.CustomEntry,
 				Name:        a.Name,
 				Role:        a.Role,
+				Group:       a.Group,
 			})
 		}
 

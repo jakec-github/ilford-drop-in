@@ -105,8 +105,8 @@ func (m *mockListShiftsStore) GetAlterationsByShiftIDs(ctx context.Context, shif
 func listShiftsVolunteers() *mockChangeRotaVolClient {
 	return &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead},
-			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer},
+			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead, GroupKey: "smith-family"},
+			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer, GroupKey: "smith-family"},
 			{ID: "charlie", DisplayName: "Charlie", Role: model.RoleVolunteer},
 		},
 	}
@@ -147,6 +147,10 @@ func TestListShifts_BaseAllocations(t *testing.T) {
 	assert.Equal(t, "External Org", first.Assignees[2].Name)
 	assert.Equal(t, "External Org", first.Assignees[2].CustomEntry)
 	assert.Empty(t, first.Assignees[2].VolunteerID)
+
+	// A volunteer's group key rides along on the assignee; custom entries carry none.
+	assert.Equal(t, "smith-family", first.Assignees[0].Group)
+	assert.Empty(t, first.Assignees[2].Group)
 }
 
 func TestListShifts_UnallocatedRotaShiftsAppear(t *testing.T) {

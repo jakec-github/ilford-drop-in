@@ -1,38 +1,85 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
-import type { RotaShift } from "../types";
+import type { Assignee, RotaShift } from "../types";
 import "./RotaViewer.css";
 
 interface RotaViewerProps {
   rotaShifts: RotaShift[];
 }
 
-function formatBritishDate(dateStr: string): string {
+// "2 Feb" — weekday and year are redundant on the rota.
+function formatShiftDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+// Curated, evenly-spread palette. Group membership is shown by a corner dot;
+// the colour just needs to be stable per group and distinct between groups, so
+// we hash the group key into this list.
+const GROUP_COLOURS = [
+  "#e8590c",
+  "#2f9e44",
+  "#1971c2",
+  "#e64980",
+  "#f08c00",
+  "#7048e8",
+  "#0ca678",
+  "#c2255c",
+];
+
+function groupColour(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return GROUP_COLOURS[hash % GROUP_COLOURS.length];
 }
 
 function getAllNames(shifts: RotaShift[]): string[] {
   const names = new Set<string>();
   for (const shift of shifts) {
-    if (shift.teamLead && shift.teamLead !== "CLOSED") names.add(shift.teamLead);
-    for (const vol of shift.volunteers) names.add(vol);
+    for (const a of shift.assignees) names.add(a.name);
   }
   return Array.from(names).sort();
 }
 
 function getUpcomingShifts(shifts: RotaShift[], name: string): RotaShift[] {
   if (!name) return [];
-  return shifts.filter(
-    (shift) => shift.teamLead === name || shift.volunteers.includes(name),
+  return shifts.filter((shift) => shift.assignees.some((a) => a.name === name));
+}
+
+function Chip({
+  assignee,
+  selected,
+  onClick,
+}: {
+  assignee: Assignee;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const cls = [
+    "chip",
+    `role-${assignee.role}`,
+    assignee.custom ? "custom" : "volunteer",
+    selected ? "selected" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <span className={cls} onClick={onClick}>
+      {assignee.name}
+      {assignee.group && (
+        <span
+          className="chip-group-dot"
+          style={{ background: groupColour(assignee.group) }}
+          title={`Group: ${assignee.group}`}
+        />
+      )}
+    </span>
   );
 }
 
-function ShiftCard({
+function ShiftRow({
   shift,
   selectedName,
   onSelectName,
@@ -41,37 +88,24 @@ function ShiftCard({
   selectedName: string;
   onSelectName: (name: string) => void;
 }) {
-  const isClosed = shift.teamLead === "CLOSED";
-
-  function handleNameClick(name: string) {
+  function handleClick(name: string) {
     onSelectName(name === selectedName ? "" : name);
   }
 
   return (
-    <div className={`shift-card${isClosed ? " closed" : ""}`}>
-      <div className="shift-date">{formatBritishDate(shift.date)}</div>
-      <div className="shift-team-lead">
-        {isClosed ? (
-          <span className="shift-closed-label">Closed</span>
-        ) : shift.teamLead ? (
-          <span
-            className={`team-lead-chip clickable${shift.teamLead === selectedName ? " match" : ""}`}
-            onClick={() => handleNameClick(shift.teamLead)}
-          >
-            {shift.teamLead}
-          </span>
-        ) : null}
-      </div>
-      {!isClosed && (
-        <div className="shift-volunteers">
-          {shift.volunteers.map((vol, i) => (
-            <span
+    <div className={`shift-row${shift.closed ? " closed" : ""}`}>
+      <div className="shift-date">{formatShiftDate(shift.date)}</div>
+      {shift.closed ? (
+        <span className="shift-closed-label">Closed</span>
+      ) : (
+        <div className="shift-people">
+          {shift.assignees.map((a, i) => (
+            <Chip
               key={i}
-              className={`volunteer-name clickable${vol === selectedName ? " match" : ""}`}
-              onClick={() => handleNameClick(vol)}
-            >
-              {vol}
-            </span>
+              assignee={a}
+              selected={a.name === selectedName}
+              onClick={() => handleClick(a.name)}
+            />
           ))}
         </div>
       )}
@@ -218,7 +252,7 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
               <span className="upcoming-dates">
                 {upcomingShifts
                   .slice(0, 5)
-                  .map((s) => formatBritishDate(s.date))
+                  .map((s) => formatShiftDate(s.date))
                   .join(" · ")}
               </span>
             </>
@@ -228,24 +262,15 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
         </div>
       )}
 
-      <div className="rota-table">
-        <div className="rota-table-header">
-          <div className="header-row">
-            <th>Date</th>
-            <th>Team Lead</th>
-            <th>Volunteers</th>
-          </div>
-        </div>
-        <div className="rota-table-body">
-          {rotaShifts.map((shift, i) => (
-            <ShiftCard
-              key={i}
-              shift={shift}
-              selectedName={selectedName}
-              onSelectName={setSelectedName}
-            />
-          ))}
-        </div>
+      <div className="rota-list">
+        {rotaShifts.map((shift, i) => (
+          <ShiftRow
+            key={i}
+            shift={shift}
+            selectedName={selectedName}
+            onSelectName={setSelectedName}
+          />
+        ))}
       </div>
     </div>
   );

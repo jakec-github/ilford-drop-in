@@ -7,6 +7,7 @@ interface ApiAssignee {
   customEntry?: string;
   name: string;
   role?: string;
+  group?: string;
 }
 
 interface ApiShift {
@@ -22,17 +23,18 @@ interface ListShiftsResponse {
 }
 
 function toRotaShift(shift: ApiShift): RotaShift {
-  const teamLead = shift.assignees.find((a) => a.role === TEAM_LEAD_ROLE);
-  const volunteers = shift.assignees
-    .filter((a) => a !== teamLead)
-    .map((a) => a.name);
-
   return {
     date: shift.date,
-    teamLead: shift.closed ? "CLOSED" : (teamLead?.name ?? ""),
-    volunteers: shift.closed ? [] : volunteers,
-    hotFood: "",
-    collection: "",
+    closed: shift.closed,
+    // Closed shifts carry no meaningful assignees.
+    assignees: shift.closed
+      ? []
+      : shift.assignees.map((a) => ({
+          name: a.name,
+          role: a.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
+          custom: !a.volunteerId,
+          group: a.group || null,
+        })),
   };
 }
 
