@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -85,6 +86,26 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 	}
 
 	return shifts, nil
+}
+
+// shiftDateWhere builds a WHERE clause bounding the shift's date (aliased s),
+// with zero times leaving the corresponding bound open. Its sole remaining user
+// is GetShiftsInRange.
+func shiftDateWhere(from, to time.Time) (string, []any) {
+	var conds []string
+	var args []any
+	if !from.IsZero() {
+		args = append(args, from)
+		conds = append(conds, fmt.Sprintf("s.date >= $%d", len(args)))
+	}
+	if !to.IsZero() {
+		args = append(args, to)
+		conds = append(conds, fmt.Sprintf("s.date <= $%d", len(args)))
+	}
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
 // GetShiftByDate retrieves the single shift on the given date, or nil if no

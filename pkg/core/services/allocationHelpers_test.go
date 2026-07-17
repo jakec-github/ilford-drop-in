@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -21,7 +20,9 @@ import (
 
 // sundayShifts builds the shift rows a rota's backfill would have produced:
 // one shift per consecutive Sunday from start, mirroring the old date
-// arithmetic so tests can feed shift rows through the mock stores.
+// arithmetic so tests can feed shift rows through the mock stores. The shift id
+// is the date string: dates are globally unique (the real schema's date UNIQUE
+// constraint), so a date doubles as a stable shift id in tests.
 func sundayShifts(rotaID, start string, count int) []db.Shift {
 	startDate, err := time.Parse("2006-01-02", start)
 	if err != nil {
@@ -29,11 +30,18 @@ func sundayShifts(rotaID, start string, count int) []db.Shift {
 	}
 	shifts := make([]db.Shift, count)
 	for i := 0; i < count; i++ {
-		shifts[i] = db.Shift{
-			ID:     fmt.Sprintf("%s-shift-%d", rotaID, i),
-			RotaID: rotaID,
-			Date:   startDate.AddDate(0, 0, i*7).Format("2006-01-02"),
-		}
+		date := startDate.AddDate(0, 0, i*7).Format("2006-01-02")
+		shifts[i] = db.Shift{ID: date, RotaID: rotaID, Date: date}
+	}
+	return shifts
+}
+
+// shiftsOnDates builds shift rows for a rota on the given dates, using each date
+// as its shift id (see sundayShifts).
+func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
+	shifts := make([]db.Shift, len(dates))
+	for i, d := range dates {
+		shifts[i] = db.Shift{ID: d, RotaID: rotaID, Date: d}
 	}
 	return shifts
 }
@@ -83,26 +91,28 @@ func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Cont
 	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error) {
+func (m *mockAllocateRotaStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
 	if m.getAllocationsErr != nil {
 		return nil, m.getAllocationsErr
 	}
+	want := idSet(shiftIDs)
 	var filtered []db.Allocation
 	for _, a := range m.allocations {
-		if a.RotaID == rotaID {
+		if want[a.ShiftID] {
 			filtered = append(filtered, a)
 		}
 	}
 	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error) {
+func (m *mockAllocateRotaStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
 	if m.getAlterationsErr != nil {
 		return nil, m.getAlterationsErr
 	}
+	want := idSet(shiftIDs)
 	var filtered []db.Alteration
 	for _, a := range m.alterations {
-		if a.RotaID == rotaID {
+		if want[a.ShiftID] {
 			filtered = append(filtered, a)
 		}
 	}
@@ -177,7 +187,9 @@ func TestConvertToDBAllocations(t *testing.T) {
 		},
 	}
 
-	allocations := convertToDBAllocations("rota-1", shifts)
+	shiftIDByDate := map[string]string{"2025-01-05": "shift-jan-5"}
+	allocations, err := convertToDBAllocations(shiftIDByDate, shifts)
+	require.NoError(t, err)
 
 	// Should have 1 regular allocation (Bob) + 1 team lead (Alice) + 1 pre-allocated (John) = 3 total
 	// Alice is in the group AND the team lead, so she should only appear once as team lead
@@ -187,8 +199,7 @@ func TestConvertToDBAllocations(t *testing.T) {
 	roles := make(map[string]int)
 	for _, alloc := range allocations {
 		roles[alloc.Role]++
-		assert.Equal(t, "rota-1", alloc.RotaID)
-		assert.Equal(t, "2025-01-05", alloc.ShiftDate)
+		assert.Equal(t, "shift-jan-5", alloc.ShiftID)
 	}
 
 	assert.Equal(t, 1, roles[string(model.RoleTeamLead)], "Should have 1 team lead")
@@ -203,6 +214,22 @@ func TestConvertToDBAllocations(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Should have pre-allocated volunteer")
+}
+
+func TestConvertToDBAllocations_MissingShiftFails(t *testing.T) {
+	// The solver only ever sees minted dates, so a date absent from the shift
+	// map is a broken invariant: convertToDBAllocations must fail loudly rather
+	// than emit an allocation that would trip the shift_id FK on insert.
+	shifts := []*allocator.Shift{
+		{
+			Date:     "2025-01-05",
+			TeamLead: &allocator.Volunteer{ID: "alice", IsTeamLead: true},
+		},
+	}
+
+	_, err := convertToDBAllocations(map[string]string{"2025-01-12": "shift-other"}, shifts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "2025-01-05")
 }
 
 func TestFilterActiveVols(t *testing.T) {
@@ -232,20 +259,21 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 2}, // Old rota
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}, // Current rota
 		},
+		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08"),
 		// Allocations from the old rota (rota-0)
 		// Alice and Bob are a couple (group_alice_bob)
 		// Charlie has been deleted from the volunteer sheet (unknown id)
 		// Dave is individual
 		allocations: []db.Allocation{
 			// Shift 1 - Dec 1: Alice (group), Bob (group), Charlie (individual)
-			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "bob", Role: string(model.RoleTeamLead)},
-			{ID: "alloc-3", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "bob", Role: string(model.RoleTeamLead)},
+			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
 			// Shift 2 - Dec 8: Dave (individual), Charlie (individual)
-			{ID: "alloc-4", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "dave", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-5", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
-			// Allocations from current rota (should be ignored)
-			{ID: "alloc-6", RotaID: "rota-1", ShiftDate: "2025-01-05", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-4", ShiftID: "2024-12-08", VolunteerID: "dave", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-5", ShiftID: "2024-12-08", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
+			// Allocations from current rota (not one of rota-0's shifts): ignored
+			{ID: "alloc-6", ShiftID: "2025-01-05", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 		},
 	}
 
@@ -311,11 +339,12 @@ func TestBuildHistoricalShifts_KeepsShiftsWithNoKnownVolunteers(t *testing.T) {
 			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 3},
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3},
 		},
+		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08", "2024-12-15"),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 			// Dec 15 (the true last shift) was worked only by a deleted volunteer.
-			{ID: "alloc-3", RotaID: "rota-0", ShiftDate: "2024-12-15", VolunteerID: "ghost", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-3", ShiftID: "2024-12-15", VolunteerID: "ghost", Role: string(model.RoleVolunteer)},
 		},
 	}
 
@@ -351,17 +380,18 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 2},
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
 		},
+		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08"),
 		allocations: []db.Allocation{
 			// Dec 1: Alice worked as published.
-			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 			// Dec 8: Alice dropped out and Dave covered (see alterations).
-			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 		},
 		alterations: []db.Alteration{
-			{ID: "alt-1", RotaID: "rota-0", ShiftDate: "2024-12-08", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:00Z"},
-			{ID: "alt-2", RotaID: "rota-0", ShiftDate: "2024-12-08", Direction: "add", VolunteerID: "dave", Role: string(model.RoleVolunteer), SetTime: "2024-12-05T10:00:01Z"},
-			// Alteration on a different rota: must be ignored.
-			{ID: "alt-3", RotaID: "rota-1", ShiftDate: "2024-12-01", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:02Z"},
+			{ID: "alt-1", ShiftID: "2024-12-08", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:00Z"},
+			{ID: "alt-2", ShiftID: "2024-12-08", Direction: "add", VolunteerID: "dave", Role: string(model.RoleVolunteer), SetTime: "2024-12-05T10:00:01Z"},
+			// Alteration on another rota's shift (not one of rota-0's): must be ignored.
+			{ID: "alt-3", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:02Z"},
 		},
 	}
 
@@ -439,11 +469,12 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 1},
 			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
 		},
+		shifts: shiftsOnDates("rota-0", "2024-12-01"),
 		allocations: []db.Allocation{
 			// Regular allocation
-			{ID: "alloc-1", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
 			// Custom entry (should be ignored)
-			{ID: "alloc-2", RotaID: "rota-0", ShiftDate: "2024-12-01", VolunteerID: "", CustomEntry: "External John", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "", CustomEntry: "External John", Role: string(model.RoleVolunteer)},
 		},
 	}
 

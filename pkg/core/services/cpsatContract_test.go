@@ -192,8 +192,12 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 
 	// convertToDBAllocations reuses the rebuilt shifts: 2 volunteer rows
 	// (bob, diana) + 1 team lead row (alice) + 1 custom entry row.
-	dbAllocations := convertToDBAllocations("rota-1", shifts)
+	dbAllocations, err := convertToDBAllocations(map[string]string{"2026-07-13": "shift-1"}, shifts)
+	require.NoError(t, err)
 	assert.Len(t, dbAllocations, 4)
+	for _, a := range dbAllocations {
+		assert.Equal(t, "shift-1", a.ShiftID)
+	}
 
 	// Unknown IDs from the solver are rejected.
 	output.Shifts[0].VolunteerIDs = []string{"nobody"}

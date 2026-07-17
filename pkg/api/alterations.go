@@ -68,16 +68,19 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 
 	h.writeJSON(w, http.StatusCreated, createAlterationResponse{
 		CoverID:     result.CoverID,
-		Alterations: toAlterationResponses(result.Alterations),
+		Alterations: toAlterationResponses(result.Alterations, result.DatesByShiftID),
 	})
 }
 
-func toAlterationResponses(alterations []db.Alteration) []alterationResponse {
+// toAlterationResponses renders each alteration's shift date from the change
+// result's shift-id->date map, keeping the JSON contract's shiftDate field
+// while alterations themselves are keyed by shift id (ADR 0001).
+func toAlterationResponses(alterations []db.Alteration, datesByShiftID map[string]string) []alterationResponse {
 	responses := make([]alterationResponse, 0, len(alterations))
 	for _, a := range alterations {
 		responses = append(responses, alterationResponse{
 			ID:          a.ID,
-			ShiftDate:   a.ShiftDate,
+			ShiftDate:   datesByShiftID[a.ShiftID],
 			Direction:   a.Direction,
 			VolunteerID: a.VolunteerID,
 			CustomValue: a.CustomValue,

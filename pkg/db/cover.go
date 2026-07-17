@@ -30,14 +30,13 @@ func insertCoverAndAlterations(ctx context.Context, q querier, cover *Cover, alt
 			role = &a.Role
 		}
 
-		// Resolve the minted shift for this rota and date and store only its
-		// reference; the shift is the sole authority on rota and date (ADR 0001).
-		// A missing shift trips the NOT NULL constraint and fails loudly.
+		// The alteration references its shift directly; the shift is the sole
+		// authority on rota and date (ADR 0001). An unknown ShiftID trips the
+		// shift_id FK constraint and fails loudly.
 		_, err := q.Exec(ctx, `
 			INSERT INTO alteration (id, direction, volunteer_id, custom_value, cover_id, role, shift_id)
-			VALUES ($1, $2, $3, $4, $5, $6,
-				(SELECT id FROM shift WHERE rota_id = $7 AND date = $8))
-		`, a.ID, a.Direction, volunteerID, customValue, a.CoverID, role, a.RotaID, a.ShiftDate)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, a.ID, a.Direction, volunteerID, customValue, a.CoverID, role, a.ShiftID)
 		if err != nil {
 			return fmt.Errorf("failed to insert alteration: %w", err)
 		}

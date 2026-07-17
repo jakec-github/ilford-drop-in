@@ -7,11 +7,12 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// ApplyAlterations takes allocations grouped by date and a list of alterations,
-// and returns the modified allocation map. Alterations are applied in set_time order.
-// This function is pure (no DB calls) and used by both changeRota (validation) and publishRota (output).
+// ApplyAlterations takes allocations grouped by shift id and a list of
+// alterations, and returns the modified allocation map. Alterations are applied
+// in set_time order. This function is pure (no DB calls) and used by both
+// changeRota (validation) and publishRota (output).
 func ApplyAlterations(
-	allocationsByDate map[string][]db.Allocation,
+	allocationsByShiftID map[string][]db.Allocation,
 	alterations []db.Alteration,
 ) map[string][]db.Allocation {
 	// Sort alterations by set_time to ensure deterministic ordering
@@ -22,11 +23,11 @@ func ApplyAlterations(
 	})
 
 	for _, alt := range sorted {
-		dateStr := alt.ShiftDate
+		shiftID := alt.ShiftID
 
 		switch alt.Direction {
 		case "remove":
-			allocations := allocationsByDate[dateStr]
+			allocations := allocationsByShiftID[shiftID]
 			filtered := make([]db.Allocation, 0, len(allocations))
 			for _, a := range allocations {
 				if alt.VolunteerID != "" && a.VolunteerID == alt.VolunteerID {
@@ -37,7 +38,7 @@ func ApplyAlterations(
 				}
 				filtered = append(filtered, a)
 			}
-			allocationsByDate[dateStr] = filtered
+			allocationsByShiftID[shiftID] = filtered
 
 		case "add":
 			role := alt.Role
@@ -45,19 +46,18 @@ func ApplyAlterations(
 				role = string(model.RoleVolunteer)
 			}
 			newAlloc := db.Allocation{
-				Role: role,
+				ShiftID: shiftID,
+				Role:    role,
 			}
 			if alt.VolunteerID != "" {
 				newAlloc.VolunteerID = alt.VolunteerID
-				newAlloc.ShiftDate = dateStr
 			}
 			if alt.CustomValue != "" {
 				newAlloc.CustomEntry = alt.CustomValue
-				newAlloc.ShiftDate = dateStr
 			}
-			allocationsByDate[dateStr] = append(allocationsByDate[dateStr], newAlloc)
+			allocationsByShiftID[shiftID] = append(allocationsByShiftID[shiftID], newAlloc)
 		}
 	}
 
-	return allocationsByDate
+	return allocationsByShiftID
 }

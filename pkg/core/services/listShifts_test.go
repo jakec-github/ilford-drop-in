@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -15,11 +16,12 @@ import (
 )
 
 // mockListShiftsStore implements ListShiftsStore for testing. When shifts is
-// nil, the store synthesises one allocated shift per distinct allocation date,
-// so tests that only care about allocated shifts need not spell out the shift
-// table; tests exercising unallocated shifts set shifts explicitly. The
-// allocation/alteration fetches are scoped by shift id, mirroring production:
-// the store maps the requested ids back to dates through its shift set.
+// nil, the store synthesises one allocated shift per distinct allocation shift
+// id, so tests that only care about allocated shifts need not spell out the
+// shift table; tests exercising unallocated shifts set shifts explicitly.
+// Fixtures use the date string as the shift id for convenience, so a derived
+// shift's id doubles as its date. Allocation/alteration fetches are scoped by
+// shift id, mirroring production.
 type mockListShiftsStore struct {
 	shifts      []db.ShiftInRange
 	allocations []db.Allocation
@@ -28,7 +30,7 @@ type mockListShiftsStore struct {
 
 // allShifts is the canonical shift set the store would hold, each with an id.
 // Explicit shifts without an id default to date-as-id for convenience; derived
-// shifts use the allocation's date as the id.
+// shifts use the allocation's shift id as both id and date.
 func (m *mockListShiftsStore) allShifts() []db.ShiftInRange {
 	if m.shifts != nil {
 		out := make([]db.ShiftInRange, len(m.shifts))
@@ -44,33 +46,24 @@ func (m *mockListShiftsStore) allShifts() []db.ShiftInRange {
 	seen := make(map[string]bool)
 	var derived []db.ShiftInRange
 	for _, a := range m.allocations {
-		if seen[a.ShiftDate] {
+		if seen[a.ShiftID] {
 			continue
 		}
-		seen[a.ShiftDate] = true
+		seen[a.ShiftID] = true
 		derived = append(derived, db.ShiftInRange{
-			Shift:     db.Shift{ID: a.ShiftDate, Date: a.ShiftDate, RotaID: a.RotaID},
+			Shift:     db.Shift{ID: a.ShiftID, Date: a.ShiftID},
 			Allocated: true,
 		})
 	}
 	return derived
 }
 
-// datesForShiftIDs maps a set of shift ids back to their dates via the shift
-// set, so allocation/alteration lookups can filter by date as production filters
-// by shift_id.
-func (m *mockListShiftsStore) datesForShiftIDs(shiftIDs []string) map[string]bool {
-	want := make(map[string]bool, len(shiftIDs))
-	for _, id := range shiftIDs {
-		want[id] = true
+func idSet(ids []string) map[string]bool {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
 	}
-	dates := make(map[string]bool)
-	for _, s := range m.allShifts() {
-		if want[s.ID] {
-			dates[s.Date] = true
-		}
-	}
-	return dates
+	return set
 }
 
 func (m *mockListShiftsStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
@@ -80,14 +73,17 @@ func (m *mockListShiftsStore) GetShiftsInRange(ctx context.Context, from, to tim
 			filtered = append(filtered, s)
 		}
 	}
+	// Mirror the DB's ORDER BY date: production trusts this ordering rather than
+	// sorting itself.
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].Date < filtered[j].Date })
 	return filtered, nil
 }
 
 func (m *mockListShiftsStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
-	dates := m.datesForShiftIDs(shiftIDs)
+	want := idSet(shiftIDs)
 	var filtered []db.Allocation
 	for _, a := range m.allocations {
-		if dates[a.ShiftDate] {
+		if want[a.ShiftID] {
 			filtered = append(filtered, a)
 		}
 	}
@@ -95,10 +91,10 @@ func (m *mockListShiftsStore) GetAllocationsByShiftIDs(ctx context.Context, shif
 }
 
 func (m *mockListShiftsStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
-	dates := m.datesForShiftIDs(shiftIDs)
+	want := idSet(shiftIDs)
 	var filtered []db.Alteration
 	for _, a := range m.alterations {
-		if dates[a.ShiftDate] {
+		if want[a.ShiftID] {
 			filtered = append(filtered, a)
 		}
 	}
@@ -122,10 +118,10 @@ func TestListShifts_BaseAllocations(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a3", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a4", RotaID: "rota-1", ShiftDate: "2025-01-05", CustomEntry: "External Org"},
+			{ID: "a1", ShiftID:"2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", ShiftID:"2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a3", ShiftID:"2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a4", ShiftID:"2025-01-05", CustomEntry: "External Org"},
 		},
 	}
 
@@ -167,7 +163,7 @@ func TestListShifts_UnallocatedRotaShiftsAppear(t *testing.T) {
 			{Shift: db.Shift{Date: "2025-01-19", RotaID: "rota-2"}, Allocated: false},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID:"2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 		},
 	}
 
@@ -194,7 +190,7 @@ func TestListShifts_BaseAllocationsReportAllocated(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID:"2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 		},
 	}
 
@@ -210,11 +206,11 @@ func TestListShifts_AlterationsApplied(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID:"2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{
-			{ID: "alt1", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T10:00:00Z"},
-			{ID: "alt2", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "add", VolunteerID: "charlie", SetTime: "2025-01-02T10:00:00Z"},
+			{ID: "alt1", ShiftID:"2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T10:00:00Z"},
+			{ID: "alt2", ShiftID:"2025-01-05", Direction: "add", VolunteerID: "charlie", SetTime: "2025-01-02T10:00:00Z"},
 		},
 	}
 
@@ -235,9 +231,9 @@ func TestListShifts_DateFilters(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a2", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", ShiftDate: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
@@ -291,8 +287,8 @@ func TestListShifts_ClosedShift(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a2", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
@@ -312,7 +308,7 @@ func TestListShifts_UnknownVolunteerDegradesToRawID(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "ghost-id"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "ghost-id"},
 		},
 	}
 

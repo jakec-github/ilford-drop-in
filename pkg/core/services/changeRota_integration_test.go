@@ -24,14 +24,32 @@ func seedAllocatedRota(t *testing.T, database *db.DB) string {
 	ctx := context.Background()
 
 	rotaID := uuid.New().String()
+	shiftID := uuid.New().String()
 	require.NoError(t, database.InsertRotationAndShifts(ctx, &db.Rotation{ID: rotaID}, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rotaID},
+		{ID: shiftID, Date: "2026-08-02", RotaID: rotaID},
 	}))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), RotaID: rotaID, ShiftDate: "2026-08-02", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: shiftID, Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 	}, rotaID, time.Now()))
 
 	return rotaID
+}
+
+// alterationsForRota reads a rota's alterations via its shifts, the shift_id-keyed
+// path that replaced GetAlterationsByRotaID (ADR 0001).
+func alterationsForRota(t *testing.T, database *db.DB, rotaID string) []db.Alteration {
+	t.Helper()
+	ctx := context.Background()
+
+	shifts, err := database.GetShiftsByRotaID(ctx, rotaID)
+	require.NoError(t, err)
+	shiftIDs := make([]string, len(shifts))
+	for i, s := range shifts {
+		shiftIDs[i] = s.ID
+	}
+	alterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
+	require.NoError(t, err)
+	return alterations
 }
 
 // TestChangeRotaConcurrentIdenticalAdds covers hazard H1 (issue #41): two
@@ -76,8 +94,7 @@ func TestChangeRotaConcurrentIdenticalAdds(t *testing.T) {
 	assert.Equal(t, 1, successes, "exactly one change must commit")
 	assert.Equal(t, 1, conflicts, "the losing change must fail with ErrConflict")
 
-	alterations, err := database.GetAlterationsByRotaID(ctx, rotaID)
-	require.NoError(t, err)
+	alterations := alterationsForRota(t, database, rotaID)
 	require.Len(t, alterations, 1, "the shift must gain dave exactly once")
 	assert.Equal(t, "dave", alterations[0].VolunteerID)
 	assert.Equal(t, "add", alterations[0].Direction)
@@ -138,7 +155,6 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 	err = <-changeErr
 	require.ErrorIs(t, err, ErrConflict, "change must see the committed allocation of dave")
 
-	alterations, err := database.GetAlterationsByRotaID(ctx, rotaID)
-	require.NoError(t, err)
+	alterations := alterationsForRota(t, database, rotaID)
 	assert.Empty(t, alterations, "the conflicting change must write nothing")
 }

@@ -42,20 +42,22 @@ func (m *mockChangeRotaStore) GetShiftByDate(ctx context.Context, date time.Time
 	return nil, nil
 }
 
-func (m *mockChangeRotaStore) GetAllocationsInRange(ctx context.Context, from, to time.Time) ([]db.Allocation, error) {
+func (m *mockChangeRotaStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
+	want := idSet(shiftIDs)
 	var filtered []db.Allocation
 	for _, a := range m.allocations {
-		if shiftDateInRange(a.ShiftDate, from, to) {
+		if want[a.ShiftID] {
 			filtered = append(filtered, a)
 		}
 	}
 	return filtered, nil
 }
 
-func (m *mockChangeRotaStore) GetAlterationsInRange(ctx context.Context, from, to time.Time) ([]db.Alteration, error) {
+func (m *mockChangeRotaStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error) {
+	want := idSet(shiftIDs)
 	var filtered []db.Alteration
 	for _, a := range m.alterations {
-		if shiftDateInRange(a.ShiftDate, from, to) {
+		if want[a.ShiftID] {
 			filtered = append(filtered, a)
 		}
 	}
@@ -110,9 +112,9 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
 		},
 	}
 
@@ -151,12 +153,12 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 
 	require.NotNil(t, removeAlt)
 	assert.Equal(t, "bob", removeAlt.VolunteerID)
-	assert.Equal(t, "2025-01-05", removeAlt.ShiftDate)
-	assert.Equal(t, "rota-1", removeAlt.RotaID)
+	assert.Equal(t, "2025-01-05", removeAlt.ShiftID)
+	assert.Equal(t, "2025-01-05", result.DatesByShiftID[removeAlt.ShiftID])
 
 	require.NotNil(t, addAlt)
 	assert.Equal(t, "dave", addAlt.VolunteerID)
-	assert.Equal(t, "2025-01-05", addAlt.ShiftDate)
+	assert.Equal(t, "2025-01-05", addAlt.ShiftID)
 }
 
 func TestChangeRota_SwapDate(t *testing.T) {
@@ -166,8 +168,8 @@ func TestChangeRota_SwapDate(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
@@ -191,19 +193,19 @@ func TestChangeRota_SwapDate(t *testing.T) {
 	// Swap date: remove bob, add alice (reversed)
 	var primaryRemove, primaryAdd, swapRemove, swapAdd int
 	for _, alt := range store.insertedAlterations {
-		if alt.ShiftDate == "2025-01-05" && alt.Direction == "remove" {
+		if alt.ShiftID == "2025-01-05" && alt.Direction == "remove" {
 			primaryRemove++
 			assert.Equal(t, "alice", alt.VolunteerID)
 		}
-		if alt.ShiftDate == "2025-01-05" && alt.Direction == "add" {
+		if alt.ShiftID == "2025-01-05" && alt.Direction == "add" {
 			primaryAdd++
 			assert.Equal(t, "bob", alt.VolunteerID)
 		}
-		if alt.ShiftDate == "2025-01-12" && alt.Direction == "remove" {
+		if alt.ShiftID == "2025-01-12" && alt.Direction == "remove" {
 			swapRemove++
 			assert.Equal(t, "bob", alt.VolunteerID)
 		}
-		if alt.ShiftDate == "2025-01-12" && alt.Direction == "add" {
+		if alt.ShiftID == "2025-01-12" && alt.Direction == "add" {
 			swapAdd++
 			assert.Equal(t, "alice", alt.VolunteerID)
 		}
@@ -222,7 +224,7 @@ func TestChangeRota_CustomInOut(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), CustomEntry: "External John"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), CustomEntry: "External John"},
 		},
 	}
 
@@ -302,7 +304,7 @@ func TestChangeRota_RemoveVolunteerNotOnShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 		},
 	}
 
@@ -325,7 +327,7 @@ func TestChangeRota_AddVolunteerAlreadyOnShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 		},
 	}
 
@@ -349,7 +351,7 @@ func TestChangeRota_RemoveCustomNotOnShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 		},
 	}
 
@@ -372,7 +374,7 @@ func TestChangeRota_AddDuplicateCustomAllowed(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), CustomEntry: "Org X"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), CustomEntry: "Org X"},
 		},
 	}
 
@@ -403,9 +405,9 @@ func TestChangeRota_SwapDateValidation(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "alice"}, // alice is also on swap date
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "alice"}, // alice is also on swap date
 		},
 	}
 
@@ -449,7 +451,7 @@ func TestChangeRota_OnlyOut(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 		},
 	}
 
@@ -476,7 +478,7 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 		},
 	}
 
@@ -508,8 +510,8 @@ func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
 			sundayShifts("rota-2", "2025-01-19", 2)...,
 		),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-2", ShiftDate: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
@@ -528,16 +530,18 @@ func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
 
 	assert.Len(t, result.Alterations, 4)
 
-	// Primary date alterations should use rota-1
-	// Swap date alterations should use rota-2
+	// Rota identity now lives on the shift, so the cross-rota span shows up as
+	// both rotas being locked together and the alterations carrying the two
+	// rotas' shift ids (2025-01-12 in rota-1, 2025-01-19 in rota-2).
+	require.Len(t, store.lockedRotaIDs, 1)
+	assert.ElementsMatch(t, []string{"rota-1", "rota-2"}, store.lockedRotaIDs[0])
+
+	byShift := map[string]int{}
 	for _, alt := range store.insertedAlterations {
-		if alt.ShiftDate == "2025-01-12" {
-			assert.Equal(t, "rota-1", alt.RotaID, "primary date should use rota-1")
-		}
-		if alt.ShiftDate == "2025-01-19" {
-			assert.Equal(t, "rota-2", alt.RotaID, "swap date should use rota-2")
-		}
+		byShift[alt.ShiftID]++
 	}
+	assert.Equal(t, 2, byShift["2025-01-12"], "primary date on rota-1's shift")
+	assert.Equal(t, 2, byShift["2025-01-19"], "swap date on rota-2's shift")
 }
 
 func TestChangeRota_RespectsExistingAlterations(t *testing.T) {
@@ -548,11 +552,11 @@ func TestChangeRota_RespectsExistingAlterations(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{
-			{ID: "prev-alt", RotaID: "rota-1", ShiftDate: "2025-01-05", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
+			{ID: "prev-alt", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
 		},
 	}
 
@@ -612,7 +616,7 @@ func TestChangeRota_TeamLeadGetsCorrectRole(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
 		},
 	}
 
@@ -655,8 +659,8 @@ func TestChangeRota_VolunteerReplacesTeamLead_InheritsRole(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
@@ -692,8 +696,8 @@ func TestChangeRota_TeamLeadReplacesVolunteer_InheritsRole(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
@@ -737,8 +741,8 @@ func TestChangeRota_TeamLeadAddedToShiftWithExistingTeamLead_Downgraded(t *testi
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", RotaID: "rota-1", ShiftDate: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 

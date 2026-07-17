@@ -18,7 +18,7 @@ import (
 // without writing anything.
 func TestAllocateRotaRefusesAlreadyAllocatedRota(t *testing.T) {
 	// Give the rota real shifts too, so that without the guard the flow would
-	// proceed past rotaShiftDates and fail with a different error — pinning the
+	// proceed past the shift lookup and fail with a different error — pinning the
 	// test to the guard rather than an incidental downstream failure.
 	store := &mockAllocateRotaStore{
 		rotations: []db.Rotation{
