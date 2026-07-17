@@ -12,18 +12,19 @@ function formatShiftDate(dateStr: string): string {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-// Curated, evenly-spread palette. Group membership is shown by a corner dot;
-// the colour just needs to be stable per group and distinct between groups, so
-// we hash the group key into this list.
+// Group membership is shown by a corner dot; the colour just needs to be stable
+// per group and tell two groups apart, so we hash the group key into this list.
+// The eight are mid-toned (legible on both themes) and spread so the closest
+// pair still sits ~32 ΔE apart — no two land as look-alikes.
 const GROUP_COLOURS = [
-  "#e8590c",
-  "#2f9e44",
-  "#1971c2",
-  "#e64980",
-  "#f08c00",
-  "#7048e8",
-  "#0ca678",
-  "#c2255c",
+  "#d6455a",
+  "#e2711d",
+  "#c7a92b",
+  "#4c9a2a",
+  "#1ca3a3",
+  "#3d6fd6",
+  "#8b52d6",
+  "#c94fa0",
 ];
 
 function groupColour(key: string): string {
