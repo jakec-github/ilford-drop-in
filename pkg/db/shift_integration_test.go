@@ -112,6 +112,31 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	assert.Empty(t, alts)
 }
 
+// TestInsertAllocationsUnknownShiftIDFails pins the new failure mode after the
+// shift_id re-key (ADR 0001): an allocation carrying a ShiftID with no matching
+// shift row is rejected by the shift_id FK, and the whole transaction rolls
+// back (the rotation is not marked allocated). This replaced the old NOT NULL
+// trip on the resolved-via-subselect shift_id.
+func TestInsertAllocationsUnknownShiftIDFails(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	require.NoError(t, database.InsertRotationAndShifts(ctx, rota, []db.Shift{
+		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID},
+	}))
+
+	err := database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
+		{ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "volunteer", VolunteerID: "alice"},
+	}, rota.ID, time.Now())
+	require.Error(t, err, "an unknown ShiftID must be rejected by the FK")
+
+	rotations, err := database.GetRotations(ctx)
+	require.NoError(t, err)
+	require.Len(t, rotations, 1)
+	assert.Empty(t, rotations[0].AllocatedDatetime, "the failed insert must not mark the rota allocated")
+}
+
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
 // shift.date UNIQUE constraint (issue #41, hazard B1): two rotas minting the
 // same shift date cannot both commit. The constraint exists for ADR 0001
