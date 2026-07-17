@@ -40,3 +40,35 @@ h2 {
   text-align: center;
   padding: 3rem 1rem;
 }
+
+.app-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.auth-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.auth-status a,
+.app-header a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.auth-status button {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.625rem;
+  cursor: pointer;
+}

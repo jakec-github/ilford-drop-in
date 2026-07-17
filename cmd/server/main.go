@@ -58,12 +58,22 @@ func run(env string) error {
 		return fmt.Errorf("failed to load OAuth client config: %w", err)
 	}
 
+	webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
+	if err != nil {
+		return fmt.Errorf("failed to load web OAuth client config: %w", err)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	sheetsClient, err := sheetsclient.NewClient(ctx, oauthCfg, env)
 	if err != nil {
 		return fmt.Errorf("failed to create sheets client: %w", err)
+	}
+
+	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticator: %w", err)
 	}
 
 	database, err := db.NewDB(ctx, cfg.DatabaseURL)
@@ -76,7 +86,7 @@ func run(env string) error {
 	}
 
 	volunteers := api.NewCachingVolunteerClient(sheetsClient, volunteerCacheTTL)
-	handler := api.NewHandler(database, volunteers, cfg, logger)
+	handler := api.NewHandler(database, volunteers, cfg, authenticator, logger)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

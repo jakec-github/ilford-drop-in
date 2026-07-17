@@ -17,7 +17,7 @@ await build();
 watch("./src", { recursive: true }, build);
 
 const apiPort = process.env.API_PORT ?? "8080";
-const apiPrefixes = ["/shifts", "/alterations", "/calendars"];
+const apiPrefixes = ["/shifts", "/alterations", "/calendars", "/auth"];
 
 const server = Bun.serve({
   port: 5173,
@@ -27,10 +27,13 @@ const server = Bun.serve({
     const pathname = url.pathname;
 
     if (apiPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      // redirect: "manual" so the 302 from /auth/login to Google reaches the
+      // browser instead of being followed server-side here.
       return fetch(`http://localhost:${apiPort}${pathname}${url.search}`, {
         method: req.method,
         headers: req.headers,
         body: req.body,
+        redirect: "manual",
       });
     }
 

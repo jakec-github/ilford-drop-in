@@ -251,8 +251,19 @@ func testVolunteers() *mockVolunteerClient {
 	}
 }
 
+// newTestAuthenticator builds an Authenticator with only the fields the
+// non-OAuth paths need. oauth2Config and verifier stay nil: the login and
+// callback endpoints are exercised via the live round-trip, not these tests.
+func newTestAuthenticator() *Authenticator {
+	return &Authenticator{
+		secret:      []byte("test-session-secret-0123456789ab"),
+		adminEmails: map[string]struct{}{"admin@example.com": {}},
+		logger:      zap.NewNop(),
+	}
+}
+
 func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Handler {
-	return NewHandler(store, volunteers, apiTestCfg, zap.NewNop()).Routes()
+	return NewHandler(store, volunteers, apiTestCfg, newTestAuthenticator(), zap.NewNop()).Routes()
 }
 
 func doRequest(t *testing.T, handler http.Handler, method, target, body string) *httptest.ResponseRecorder {
@@ -524,7 +535,7 @@ func TestCalendarEndpoint_NotFound(t *testing.T) {
 func TestCalendarEndpoint_VolunteerAddedAfterCacheFill(t *testing.T) {
 	inner := testVolunteers()
 	cached := NewCachingVolunteerClient(inner, time.Hour)
-	handler := NewHandler(&mockStore{}, cached, apiTestCfg, zap.NewNop()).Routes()
+	handler := NewHandler(&mockStore{}, cached, apiTestCfg, newTestAuthenticator(), zap.NewNop()).Routes()
 
 	// Warm the cache, as unattended calendar polling does continuously
 	rec := doRequest(t, handler, http.MethodGet, "/calendars/alice.ics", "")

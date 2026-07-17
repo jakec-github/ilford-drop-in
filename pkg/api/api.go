@@ -23,15 +23,17 @@ type Handler struct {
 	store      Store
 	volunteers services.VolunteerClient
 	cfg        *config.Config
+	auth       *Authenticator
 	logger     *zap.Logger
 }
 
 // NewHandler creates an API handler with its dependencies
-func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, logger *zap.Logger) *Handler {
+func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, logger *zap.Logger) *Handler {
 	return &Handler{
 		store:      store,
 		volunteers: volunteers,
 		cfg:        cfg,
+		auth:       auth,
 		logger:     logger,
 	}
 }
@@ -45,6 +47,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /preallocations", h.handleCreatePreallocation)
 	mux.HandleFunc("DELETE /preallocations/{id}", h.handleDeletePreallocation)
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
+	h.auth.registerRoutes(mux)
 	return mux
 }
 

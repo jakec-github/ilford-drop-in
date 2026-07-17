@@ -387,15 +387,37 @@ func TestValidate_ServerConfig(t *testing.T) {
 		ShiftEndTime:           "21:30",
 	}
 
+	validServer := func() *ServerConfig {
+		return &ServerConfig{
+			Port:          8080,
+			SessionSecret: "a-sufficiently-long-secret",
+			AdminEmails:   []string{"admin@example.com"},
+		}
+	}
+
 	valid := base
-	valid.Server = &ServerConfig{Port: 8080}
+	valid.Server = validServer()
 	assert.NoError(t, Validate(&valid))
 
-	invalid := base
-	invalid.Server = &ServerConfig{Port: 0}
-	err := Validate(&invalid)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "validation failed")
+	invalidPort := base
+	invalidPort.Server = validServer()
+	invalidPort.Server.Port = 0
+	assert.Error(t, Validate(&invalidPort))
+
+	missingSecret := base
+	missingSecret.Server = validServer()
+	missingSecret.Server.SessionSecret = ""
+	assert.Error(t, Validate(&missingSecret))
+
+	noAdmins := base
+	noAdmins.Server = validServer()
+	noAdmins.Server.AdminEmails = nil
+	assert.Error(t, Validate(&noAdmins))
+
+	badAdminEmail := base
+	badAdminEmail.Server = validServer()
+	badAdminEmail.Server.AdminEmails = []string{"not-an-email"}
+	assert.Error(t, Validate(&badAdminEmail))
 }
 
 func TestShiftTimes(t *testing.T) {

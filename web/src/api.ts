@@ -36,6 +36,26 @@ function toRotaShift(shift: ApiShift): RotaShift {
   };
 }
 
+// fetchCurrentAdmin returns the logged-in admin's email, or null if there is no
+// active admin session.
+export async function fetchCurrentAdmin(): Promise<string | null> {
+  const res = await fetch("/auth/me");
+  if (res.status === 401) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to check login state (${res.status})`);
+  }
+  const data = (await res.json()) as { email: string };
+  return data.email;
+}
+
+// logout clears the admin session cookie.
+export async function logout(): Promise<void> {
+  const res = await fetch("/auth/logout", { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Failed to log out (${res.status})`);
+  }
+}
+
 export async function fetchRota(): Promise<RotaShift[]> {
   const today = new Date().toLocaleDateString("en-CA");
   const res = await fetch(`/shifts?from=${today}`);
