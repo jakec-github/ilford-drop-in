@@ -33,6 +33,12 @@ approaches compose, so a service account could be added later as a background fr
 | Access token lifetime handling | Use once per sync, discard; re-prompt if expired (~1h life) |
 | Admin identification | Email allowlist in per-env config |
 | Sessions | Signed cookie (HMAC), stateless — no session store |
+| Session model | Admin-only: a non-allowlisted account is rejected at the callback, no cookie set. A session existing means admin |
+| Allowlist enforcement | Re-checked against config on every request; the cookie proves identity (email), not authority. Removing an admin takes effect on config reload, not cookie expiry |
+| Session lifetime | 60 days |
+| Config placement | `sessionSecret` + `adminEmails` under the `server:` block of `drop_in_config.<env>.yaml`; web OAuth client in `oauthClientWeb.<env>.json` (both already gitignored) |
+| Dev topology | `/auth` proxied through the frontend dev server (`web/dev.ts`); registered dev redirect URI is `http://localhost:5173/auth/callback` |
+| Post-login redirect | `/` |
 
 ## Current state (relevant code)
 
@@ -75,9 +81,10 @@ approaches compose, so a service account could be added later as a background fr
   cookie.
 - `POST /auth/logout` — clear cookie.
 - `GET /auth/me` — return the session's email so the frontend can show logged-in state.
-- Session cookie: HMAC-signed over email + expiry. `HttpOnly`, `SameSite=Lax`, and
-  `Secure` conditional on env (`Secure: env != "dev"` — Safari rejects Secure cookies on
-  plain-HTTP localhost; Chrome/Firefox allow them).
+- Session cookie: HMAC-signed over email + expiry (60 days). `HttpOnly`, `SameSite=Lax`, and
+  `Secure` conditional on env (`Secure: env == "prod"` — envs in this repo are `test` and
+  `prod`; `test` is local dev, and Safari rejects Secure cookies on plain-HTTP localhost).
+- After a successful callback, redirect the browser to `/`.
 - `requireAdmin` middleware wrapping admin routes. This same middleware later replaces the
   trusted `userEmail` field in `POST /alterations`.
 
@@ -102,11 +109,14 @@ or they will error five minutes after every sync:
   admin syncs — acceptable, since the admin who added them is the one who syncs.
 - Add a sync entry point that replaces the cached slice wholesale.
 
-### 6. Frontend (minimal; frontend not yet scaffolded)
+### 6. Frontend (minimal; React/Bun app in `web/`)
 
+- Add `/auth` to the proxied prefixes in `web/dev.ts` so the whole OAuth dance runs on the
+  `localhost:5173` origin in dev.
 - Login is a plain `<a href="/auth/login">` — the whole dance is redirects, no JS SDK, no
   client-side token handling. Keep auth in the cookie even if the frontend ends up an SPA.
-- Show logged-in state via `GET /auth/me`; show the Sync button to admins.
+- Show logged-in state via `GET /auth/me` (email + logout button in the header); show the Sync
+  button to admins.
 
 ## Known trade-offs / caveats
 
@@ -126,9 +136,16 @@ or they will error five minutes after every sync:
 
 ## Sequencing
 
-Items 1-3 (OIDC login + admin gating) are severable from items 4-5 (sync + cache changes) and are
-independently useful — they can land first to fix alterations auth, with the Sheets scope
-machinery added when the Sync button becomes real. Nothing in items 1-3 changes to accommodate 4.
+Ticketed 2026-07-17 as three ordered issues:
+
+1. **#48 — OIDC admin login**: items 2-3 plus the minimal frontend slice of item 6. Ships the
+   `/auth` endpoints and the `requireAdmin` middleware, but gates nothing.
+2. **#12 — gate admin endpoints**: wrap the write endpoints with `requireAdmin` and drop the
+   trusted `userEmail` field from `POST /alterations`. Blocked by #48.
+3. **#11 — admin-triggered volunteer sync**: items 4-5 and the Sync button.
+
+Item 1 (Google console) is manual work by Jake, a prerequisite of #48. Nothing in #48 changes to
+accommodate the later tickets.
 
 ## Verification
 

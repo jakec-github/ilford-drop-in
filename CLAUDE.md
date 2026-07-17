@@ -19,6 +19,9 @@
   with `gh pr create` — titled after the ticket, with `Closes #<n>` in the body.
 - Request review from `jakec-github`. Never merge a PR; merging is the
   reviewer's decision.
+- The agent token cannot request reviewers via `gh pr edit --add-reviewer`
+  (GraphQL needs `read:org`). Use the REST endpoint instead:
+  `gh api repos/{owner}/{repo}/pulls/<n>/requested_reviewers -f 'reviewers[]=jakec-github'`
 - After review is requested switch back to main
 - To address review feedback: read the PR conversation (`gh pr view <n>
 --comments`), the inline review threads (`gh api

@@ -56,6 +56,13 @@ _Avoid_: pin (except as the informal verb, "pin to a Shift")
 A Preallocation declared by a Rota Override's recurrence rule. Authoritative:
 a Manual Preallocation can never remove or replace it.
 
+**Admin**:
+A trusted person authorised to manage the rota and volunteer data, identified
+by the email of their Google account against an explicit allowlist. Being an
+Admin is a live fact about the allowlist, not a property of a credential. All
+other visitors are anonymous; there are no other authenticated roles.
+_Avoid_: user, staff
+
 **Manual Preallocation**:
 A Preallocation set ad hoc on a single Shift, editable only while the Shift's
 Rotation is unallocated. Add-only — it can force a person on but never suppress
