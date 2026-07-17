@@ -51,6 +51,27 @@ func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig, env stri
 	}, nil
 }
 
+// NewClientFromServiceAccount builds a read-only Sheets client authenticated as
+// a service account with access to the volunteer sheet, skipping the
+// installed-app authorization flow NewClient runs. keyJSON is the verbatim
+// service account key; the Google client libraries parse it and mint their own
+// tokens, so no interactive flow or token persistence is involved. The client
+// requests the read-only Sheets scope only — sync only reads.
+func NewClientFromServiceAccount(ctx context.Context, keyJSON []byte) (*Client, error) {
+	service, err := sheets.NewService(ctx,
+		option.WithCredentialsJSON(keyJSON),
+		option.WithScopes(sheets.SpreadsheetsReadonlyScope),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sheets service: %w", err)
+	}
+
+	return &Client{
+		service: service,
+		ctx:     ctx,
+	}, nil
+}
+
 // Service returns the underlying sheets service for direct API access
 func (c *Client) Service() *sheets.Service {
 	return c.service

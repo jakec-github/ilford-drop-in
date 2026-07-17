@@ -19,8 +19,6 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
 )
 
-const volunteerCacheTTL = 5 * time.Minute
-
 func main() {
 	env := flag.String("env", "", "Environment (required: test, prod, etc.)")
 	flag.Parse()
@@ -53,11 +51,6 @@ func run(env string) error {
 		return fmt.Errorf("server config missing: add server.port to drop_in_config.%s.yaml", env)
 	}
 
-	oauthCfg, err := config.LoadOAuthClientWithEnv(env)
-	if err != nil {
-		return fmt.Errorf("failed to load OAuth client config: %w", err)
-	}
-
 	webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
 	if err != nil {
 		return fmt.Errorf("failed to load web OAuth client config: %w", err)
@@ -66,12 +59,38 @@ func run(env string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	sheetsClient, err := sheetsclient.NewClient(ctx, oauthCfg, env)
+	// The volunteer roster is fetched from the sheet with the server's own
+	// service account: once at startup (below) and again on each admin sync. The
+	// admin only triggers the refetch — no token is taken from them.
+	serviceAccount, err := config.LoadServiceAccountWithEnv(env)
 	if err != nil {
-		return fmt.Errorf("failed to create sheets client: %w", err)
+		return fmt.Errorf("failed to load service account: %w", err)
 	}
 
-	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger)
+	volunteers := api.NewVolunteerStore()
+	syncVolunteers := func(ctx context.Context) error {
+		client, err := sheetsclient.NewClientFromServiceAccount(ctx, serviceAccount.JSON)
+		if err != nil {
+			return fmt.Errorf("failed to build sheets client for sync: %w", err)
+		}
+		fetched, err := client.ListVolunteers(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
+		}
+		volunteers.Replace(fetched)
+		logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
+		return nil
+	}
+
+	// Populate the roster at startup so reads work before any admin syncs. A
+	// failure here (transient Sheets outage, say) is not fatal: the server boots
+	// with an empty roster and an admin can retry via the sync button, matching
+	// the store's "degrade to no volunteers" behaviour.
+	if err := syncVolunteers(ctx); err != nil {
+		logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
+	}
+
+	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger, syncVolunteers)
 	if err != nil {
 		return fmt.Errorf("failed to create authenticator: %w", err)
 	}
@@ -85,7 +104,6 @@ func run(env string) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	volunteers := api.NewCachingVolunteerClient(sheetsClient, volunteerCacheTTL)
 	handler := api.NewHandler(database, volunteers, cfg, authenticator, logger)
 
 	server := &http.Server{
