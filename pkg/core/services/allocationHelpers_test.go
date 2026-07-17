@@ -48,17 +48,19 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 
 // mockAllocateRotaStore implements AllocateRotaStore for testing
 type mockAllocateRotaStore struct {
-	rotations            []db.Rotation
-	shifts               []db.Shift
-	availabilityRequests []db.AvailabilityRequest
-	allocations          []db.Allocation
-	alterations          []db.Alteration
-	insertedAllocations  []db.Allocation
-	getRotationsErr      error
-	getAvailabilityErr   error
-	getAllocationsErr    error
-	getAlterationsErr    error
-	insertAllocationsErr error
+	rotations                  []db.Rotation
+	shifts                     []db.Shift
+	availabilityRequests       []db.AvailabilityRequest
+	allocations                []db.Allocation
+	alterations                []db.Alteration
+	manualPreallocations       []db.ManualPreallocation
+	insertedAllocations        []db.Allocation
+	getRotationsErr            error
+	getAvailabilityErr         error
+	getAllocationsErr          error
+	getAlterationsErr          error
+	getManualPreallocationsErr error
+	insertAllocationsErr       error
 }
 
 func (m *mockAllocateRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -114,6 +116,20 @@ func (m *mockAllocateRotaStore) GetAlterationsByShiftIDs(ctx context.Context, sh
 	for _, a := range m.alterations {
 		if want[a.ShiftID] {
 			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockAllocateRotaStore) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error) {
+	if m.getManualPreallocationsErr != nil {
+		return nil, m.getManualPreallocationsErr
+	}
+	want := idSet(shiftIDs)
+	var filtered []db.ManualPreallocation
+	for _, p := range m.manualPreallocations {
+		if want[p.ShiftID] {
+			filtered = append(filtered, p)
 		}
 	}
 	return filtered, nil

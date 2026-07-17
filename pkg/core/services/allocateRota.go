@@ -83,8 +83,12 @@ func AllocateRota(
 		return nil, err
 	}
 	shiftIDByDate := make(map[string]string, len(shifts))
-	for _, s := range shifts {
+	dateByShiftID := make(map[string]string, len(shifts))
+	shiftIDs := make([]string, len(shifts))
+	for i, s := range shifts {
 		shiftIDByDate[s.Date] = s.ID
+		dateByShiftID[s.ID] = s.Date
+		shiftIDs[i] = s.ID
 	}
 
 	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)
@@ -144,6 +148,30 @@ func AllocateRota(
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rota overrides: %w", err)
 	}
+
+	// Manual preallocations (issue #39): union operator-set pins with the config
+	// preallocations. Each pin becomes a synthetic exact-date override appended
+	// to the config-derived overrides so InitShifts unions them with no new merge
+	// logic; add-only, deduped against identical config contributions.
+	manualPins, err := database.GetManualPreallocationsByShiftIDs(ctx, shiftIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manual preallocations: %w", err)
+	}
+	activeIDs := make(map[string]bool, len(activeVolunteers))
+	for _, v := range activeVolunteers {
+		activeIDs[v.ID] = true
+	}
+	// Pre-solve stale-pin check: fail loudly, naming the pin, rather than letting
+	// an inactive/deleted preallocated volunteer surface as the solver's opaque
+	// ProblemError (covers config pins too, per ADR 0003).
+	if err := checkPreallocationsResolve(manualPins, dateByShiftID, allocatorOverrides, shiftDates, activeIDs); err != nil {
+		return nil, err
+	}
+	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides)
+	if err != nil {
+		return nil, err
+	}
+	allocatorOverrides = append(allocatorOverrides, manualOverrides...)
 
 	// Build the solver input and run the Python subprocess.
 	input, err := allocator.BuildCpsatInput(

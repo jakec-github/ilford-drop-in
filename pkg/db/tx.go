@@ -35,6 +35,18 @@ type RotaChangeStore interface {
 // against other WithRotaLock flows (issue #41, hazards H1 and H2). An error
 // from fn rolls the whole transaction back.
 func (d *DB) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store RotaChangeStore) error) error {
+	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
+		return fn(&rotaTx{tx: tx})
+	})
+}
+
+// withRotaLockTx is the shared locking span behind WithRotaLock and
+// WithRotaPreallocationLock: it begins a transaction, locks the given rotation
+// rows FOR UPDATE (deduplicated, sorted, so overlapping lock sets cannot
+// deadlock), runs fn against the raw transaction, and commits — or rolls the
+// whole thing back on any error. Callers wrap tx in whatever store view their
+// flow needs.
+func (d *DB) withRotaLockTx(ctx context.Context, rotaIDs []string, fn func(tx pgx.Tx) error) error {
 	ids := slices.Clone(rotaIDs)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
@@ -52,7 +64,7 @@ func (d *DB) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store R
 		}
 	}
 
-	if err := fn(&rotaTx{tx: tx}); err != nil {
+	if err := fn(tx); err != nil {
 		return err
 	}
 
@@ -61,6 +73,29 @@ func (d *DB) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store R
 	}
 
 	return nil
+}
+
+// PreallocationTxStore is the transaction-bound view WithRotaPreallocationLock
+// hands its callback: reading the rota's allocation state, reading existing
+// pins, and inserting or deleting a pin all run inside the same locking
+// transaction, so the frozen-after-allocation guard and the duplicate-assignee
+// checks validate against a snapshot that cannot change before the write lands
+// (issue #39, mirroring the changeRota locking discipline).
+type PreallocationTxStore interface {
+	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
+	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]ManualPreallocation, error)
+	InsertManualPreallocation(ctx context.Context, mp ManualPreallocation) error
+	DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error)
+}
+
+// WithRotaPreallocationLock runs fn under the same rotation-row lock as
+// WithRotaLock (so preallocation mutations serialise against allocation and
+// against each other), handing the callback a PreallocationTxStore bound to the
+// locking transaction.
+func (d *DB) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store PreallocationTxStore) error) error {
+	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
+		return fn(&rotaTx{tx: tx})
+	})
 }
 
 // rotaTx implements RotaChangeStore against the locking transaction.
@@ -78,4 +113,20 @@ func (r *rotaTx) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string
 
 func (r *rotaTx) InsertCoverAndAlterations(ctx context.Context, cover *Cover, alterations []Alteration) error {
 	return insertCoverAndAlterations(ctx, r.tx, cover, alterations)
+}
+
+func (r *rotaTx) RotaAllocated(ctx context.Context, rotaID string) (bool, error) {
+	return rotaAllocated(ctx, r.tx, rotaID)
+}
+
+func (r *rotaTx) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]ManualPreallocation, error) {
+	return getManualPreallocationsByShiftIDs(ctx, r.tx, shiftIDs)
+}
+
+func (r *rotaTx) InsertManualPreallocation(ctx context.Context, mp ManualPreallocation) error {
+	return insertManualPreallocation(ctx, r.tx, mp)
+}
+
+func (r *rotaTx) DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error) {
+	return deleteManualPreallocationByID(ctx, r.tx, id)
 }

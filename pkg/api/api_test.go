@@ -23,15 +23,19 @@ import (
 
 // mockStore implements Store for testing
 type mockStore struct {
-	shifts        []db.Shift
-	shiftsInRange []db.ShiftInRange
-	allocations   []db.Allocation
-	alterations   []db.Alteration
+	shifts               []db.Shift
+	shiftsInRange        []db.ShiftInRange
+	allocations          []db.Allocation
+	alterations          []db.Alteration
+	manualPreallocations []db.ManualPreallocation
+	allocatedRotas       map[string]bool
 
-	insertedCover       *db.Cover
-	insertedAlterations []db.Alteration
-	insertErr           error
-	getShiftsErr        error
+	insertedCover           *db.Cover
+	insertedAlterations     []db.Alteration
+	insertedPreallocations  []db.ManualPreallocation
+	deletedPreallocationIDs []string
+	insertErr               error
+	getShiftsErr            error
 }
 
 // allShiftsInRange is the canonical shift set the store would hold, each with an
@@ -122,6 +126,66 @@ func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shi
 		}
 	}
 	return nil, nil
+}
+
+// GetManualPreallocationsByShiftIDs returns the pins on the given shifts.
+func (m *mockStore) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error) {
+	want := idSet(shiftIDs)
+	var filtered []db.ManualPreallocation
+	for _, p := range m.manualPreallocations {
+		if want[p.ShiftID] {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered, nil
+}
+
+// GetManualPreallocationByID finds a pin and resolves its shift.
+func (m *mockStore) GetManualPreallocationByID(ctx context.Context, id string) (*db.ManualPreallocation, *db.Shift, error) {
+	for i := range m.manualPreallocations {
+		if m.manualPreallocations[i].ID != id {
+			continue
+		}
+		p := m.manualPreallocations[i]
+		for j := range m.shifts {
+			if m.shifts[j].ID == p.ShiftID {
+				return &p, &m.shifts[j], nil
+			}
+		}
+		return &p, nil, nil
+	}
+	return nil, nil, nil
+}
+
+// WithRotaPreallocationLock hands the mock itself to the callback as the
+// transaction-bound store; lock semantics are covered by the db and services
+// integration tests.
+func (m *mockStore) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store db.PreallocationTxStore) error) error {
+	return fn(m)
+}
+
+func (m *mockStore) RotaAllocated(ctx context.Context, rotaID string) (bool, error) {
+	return m.allocatedRotas[rotaID], nil
+}
+
+func (m *mockStore) InsertManualPreallocation(ctx context.Context, mp db.ManualPreallocation) error {
+	if m.insertErr != nil {
+		return m.insertErr
+	}
+	m.manualPreallocations = append(m.manualPreallocations, mp)
+	m.insertedPreallocations = append(m.insertedPreallocations, mp)
+	return nil
+}
+
+func (m *mockStore) DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error) {
+	for i := range m.manualPreallocations {
+		if m.manualPreallocations[i].ID == id {
+			m.manualPreallocations = append(m.manualPreallocations[:i], m.manualPreallocations[i+1:]...)
+			m.deletedPreallocationIDs = append(m.deletedPreallocationIDs, id)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // idSet turns a shift id slice into a lookup set.
