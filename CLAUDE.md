@@ -2,6 +2,20 @@
 
 - Use British English
 
+## Frontend structure
+
+- `web/src/ui/` — domain-blind primitives; must not import `types.ts` or
+  reference domain concepts (volunteers, shifts, rotas). Each colocates its
+  CSS (`Button.tsx` + `Button.css`).
+- `web/src/components/` — domain-aware components and views.
+- Rule of two: extract into `ui/` only when a second consumer exists, in that
+  consumer's PR — never speculatively.
+- Routing: hand-rolled pathname switch until routes outgrow it (third route or
+  first parameterised route); then wouter, not react-router.
+- State: view-local by default; context only for app-global concerns (auth).
+  Server data behind per-resource hooks — views never call `fetch` directly.
+  No state library; if server caching ever earns a dependency, TanStack Query.
+
 ## Agent skills
 
 - Issue tracker: GitHub issues on this repo — conventions in `docs/agents/issue-tracker.md`

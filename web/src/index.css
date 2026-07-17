@@ -69,17 +69,6 @@ h2 {
   text-decoration: none;
 }
 
-.auth-status button {
-  font: inherit;
-  font-size: 0.875rem;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.25rem 0.625rem;
-  cursor: pointer;
-}
-
 .admin-dashboard {
   max-width: 42rem;
   margin: 0 auto;
@@ -95,18 +84,6 @@ h2 {
 
 .admin-panel h2 {
   margin-top: 0;
-}
-
-.button {
-  display: inline-block;
-  font: inherit;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-  text-decoration: none;
-  cursor: pointer;
 }
 
 .sync-result {

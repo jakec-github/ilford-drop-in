@@ -3,6 +3,7 @@ import RotaViewer from "./components/RotaViewer";
 import AdminDashboard from "./components/AdminDashboard";
 import { fetchRota } from "./api";
 import { useAuth } from "./auth-context";
+import Button from "./ui/Button";
 import type { RotaShift } from "./types";
 
 // AuthStatus shows a login link when logged out, or the admin's email plus a
@@ -27,9 +28,9 @@ function AuthStatus() {
   return (
     <span className="auth-status">
       {email}
-      <button type="button" onClick={logout}>
+      <Button size="small" onClick={logout}>
         Log out
-      </button>
+      </Button>
     </span>
   );
 }

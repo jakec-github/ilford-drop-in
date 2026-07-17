@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Button from "../ui/Button";
 
 type SyncState = "idle" | "syncing" | "ok" | "error";
 
@@ -29,14 +30,9 @@ export default function AdminDashboard() {
           Pull the latest volunteer roster from the Google Sheet. Run this after
           editing the sheet.
         </p>
-        <button
-          className="button"
-          type="button"
-          onClick={sync}
-          disabled={state === "syncing"}
-        >
+        <Button onClick={sync} disabled={state === "syncing"}>
           {state === "syncing" ? "Syncing…" : "Sync volunteers"}
-        </button>
+        </Button>
 
         {state === "ok" && (
           <p className="sync-result sync-result--ok">Volunteers synced.</p>

@@ -1,0 +1,16 @@
+.button {
+  display: inline-block;
+  font: inherit;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button--small {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.625rem;
+}
