@@ -42,10 +42,10 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /shifts", h.handleListShifts)
-	mux.HandleFunc("POST /alterations", h.handleCreateAlteration)
+	mux.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	mux.HandleFunc("GET /preallocations", h.handleListPreallocations)
-	mux.HandleFunc("POST /preallocations", h.handleCreatePreallocation)
-	mux.HandleFunc("DELETE /preallocations/{id}", h.handleDeletePreallocation)
+	mux.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))
+	mux.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	h.auth.registerRoutes(mux)
 	return mux

@@ -256,25 +256,35 @@ func testVolunteers() *mockVolunteerClient {
 // callback endpoints are exercised via the live round-trip, not these tests.
 func newTestAuthenticator() *Authenticator {
 	return &Authenticator{
-		secret:      []byte("test-session-secret-0123456789ab"),
-		adminEmails: map[string]struct{}{"admin@example.com": {}},
+		secret:      testSecret,
+		adminEmails: map[string]struct{}{testAdminEmail: {}},
 		logger:      zap.NewNop(),
 	}
 }
+
+// testAdminEmail is the allowlisted admin newTestAuthenticator recognises.
+const testAdminEmail = "admin@example.com"
 
 func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Handler {
 	return NewHandler(store, volunteers, apiTestCfg, newTestAuthenticator(), zap.NewNop()).Routes()
 }
 
-func doRequest(t *testing.T, handler http.Handler, method, target, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	var reader *strings.Reader
-	if body == "" {
-		reader = strings.NewReader("")
-	} else {
-		reader = strings.NewReader(body)
+// adminCookie is a valid admin session cookie for testAdminEmail, signed with
+// the same secret newTestAuthenticator uses, so requests carrying it pass
+// requireAdmin on the gated write endpoints.
+func adminCookie() *http.Cookie {
+	return &http.Cookie{
+		Name:  sessionCookieName,
+		Value: signSession(testSecret, testAdminEmail, time.Now().Add(time.Hour)),
 	}
-	req := httptest.NewRequest(method, target, reader)
+}
+
+func doRequest(t *testing.T, handler http.Handler, method, target, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -414,9 +424,9 @@ func alterationTestStore() *mockStore {
 
 func TestCreateAlterationEndpoint(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover","userEmail":"jane@example.com"}`
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body)
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp struct {
@@ -431,11 +441,35 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	assert.NotEmpty(t, resp.CoverID)
 	require.Len(t, resp.Alterations, 2)
 
-	// Proves ChangeRota persisted through the store
+	// Proves ChangeRota persisted through the store, attributing the change to
+	// the verified admin session rather than any client-supplied field.
 	require.NotNil(t, store.insertedCover)
 	assert.Equal(t, "Holiday cover", store.insertedCover.Reason)
-	assert.Equal(t, "jane@example.com", store.insertedCover.UserEmail)
+	assert.Equal(t, testAdminEmail, store.insertedCover.UserEmail)
 	assert.Len(t, store.insertedAlterations, 2)
+}
+
+// TestCreateAlterationEndpoint_RequiresAdmin proves the write endpoint is gated:
+// no session cookie means no attribution to trust, so the request is rejected
+// before any change is attempted.
+func TestCreateAlterationEndpoint_RequiresAdmin(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover"}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Nil(t, store.insertedCover, "an unauthenticated request must not persist a change")
+}
+
+// TestCreateAlterationEndpoint_RejectsClientUserEmail proves the old trusted
+// userEmail field is gone: supplying it is now an unknown field, not an actor
+// override.
+func TestCreateAlterationEndpoint_RejectsClientUserEmail(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","out":"bob","reason":"x","userEmail":"attacker@example.com"}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body, adminCookie())
+	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
 func TestCreateAlterationEndpoint_Errors(t *testing.T) {
@@ -453,31 +487,25 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name:       "unknown field",
-			body:       `{"date":"2026-01-11","out":"bob","reason":"x","userEmail":"a@b.c","bogus":true}`,
-			store:      alterationTestStore(),
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "missing userEmail",
-			body:       `{"date":"2026-01-11","out":"bob","reason":"x"}`,
+			body:       `{"date":"2026-01-11","out":"bob","reason":"x","bogus":true}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "missing reason",
-			body:       `{"date":"2026-01-11","out":"bob","userEmail":"a@b.c"}`,
+			body:       `{"date":"2026-01-11","out":"bob"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","in":"nobody","reason":"x","userEmail":"a@b.c"}`,
+			body:       `{"date":"2026-01-11","in":"nobody","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "volunteer not on shift",
-			body:       `{"date":"2026-01-11","out":"charlie","reason":"x","userEmail":"a@b.c"}`,
+			body:       `{"date":"2026-01-11","out":"charlie","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusConflict,
 		},
@@ -488,14 +516,14 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 				s.insertErr = errors.New("disk full")
 				return s
 			}(),
-			body:       `{"date":"2026-01-11","out":"bob","reason":"x","userEmail":"a@b.c"}`,
+			body:       `{"date":"2026-01-11","out":"bob","reason":"x"}`,
 			wantStatus: http.StatusInternalServerError,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/alterations", tt.body)
+			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/alterations", tt.body, adminCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 		})
 	}
