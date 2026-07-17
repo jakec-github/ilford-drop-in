@@ -65,7 +65,7 @@ Examples:
 				if vol == "" {
 					vol = fmt.Sprintf("[%s]", alt.CustomValue)
 				}
-				fmt.Printf("  %s %s on %s\n", alt.Direction, vol, alt.ShiftDate)
+				fmt.Printf("  %s %s on %s\n", alt.Direction, vol, result.DatesByShiftID[alt.ShiftID])
 			}
 
 			app.Logger.Info("Rota change completed",
