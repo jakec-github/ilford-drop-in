@@ -61,6 +61,7 @@ function Chip({
     "chip",
     `role-${assignee.role}`,
     assignee.custom ? "custom" : "volunteer",
+    assignee.group ? "has-group" : "",
     selected ? "selected" : "",
   ]
     .filter(Boolean)

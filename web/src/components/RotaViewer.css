@@ -215,6 +215,13 @@
 
 .chip.custom {
   border-radius: 3px;
+  font-style: italic;
+}
+
+/* Square the corner the group dot sits in so the dot tucks into a right angle
+   rather than floating off a rounded pill. */
+.chip.has-group {
+  border-top-right-radius: 3px;
 }
 
 .chip:hover:not(.selected) {
