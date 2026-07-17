@@ -25,6 +25,12 @@ type RotaOverride struct {
 // ServerConfig holds settings for the HTTP server
 type ServerConfig struct {
 	Port int `yaml:"port" validate:"required,min=1,max=65535"`
+	// SessionSecret signs admin session cookies (HMAC). Keep it secret and stable;
+	// rotating it invalidates all live sessions.
+	SessionSecret string `yaml:"sessionSecret" validate:"required,min=16"`
+	// AdminEmails is the allowlist of Google accounts permitted to log in as Admin.
+	// Compared case-insensitively and re-checked on every request.
+	AdminEmails []string `yaml:"adminEmails" validate:"required,min=1,dive,email"`
 }
 
 // Config represents the application configuration
