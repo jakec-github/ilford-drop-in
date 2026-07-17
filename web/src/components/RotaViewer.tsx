@@ -4,6 +4,14 @@ import "./RotaViewer.css";
 
 interface RotaViewerProps {
   rotaShifts: RotaShift[];
+  // Admins additionally see shifts whose rota has not been allocated yet.
+  isAdmin: boolean;
+}
+
+// A shift that exists but has not been through allocation yet: no assignees,
+// and not deliberately closed. Hidden from the public; flagged for admins.
+function isUnallocated(shift: RotaShift): boolean {
+  return !shift.allocated && !shift.closed;
 }
 
 // "2 Feb" — weekday and year are redundant on the rota.
@@ -94,28 +102,44 @@ function ShiftRow({
     onSelectName(name === selectedName ? "" : name);
   }
 
+  const unallocated = isUnallocated(shift);
+  const rowCls = [
+    "shift-row",
+    shift.closed ? "closed" : "",
+    unallocated ? "unallocated" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  let body;
+  if (shift.closed) {
+    body = <span className="shift-note">Closed</span>;
+  } else if (unallocated) {
+    body = <span className="shift-note">Not yet allocated</span>;
+  } else {
+    body = (
+      <div className="shift-people">
+        {shift.assignees.map((a, i) => (
+          <Chip
+            key={i}
+            assignee={a}
+            selected={a.name === selectedName}
+            onClick={() => handleClick(a.name)}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className={`shift-row${shift.closed ? " closed" : ""}`}>
+    <div className={rowCls}>
       <div className="shift-date">{formatShiftDate(shift.date)}</div>
-      {shift.closed ? (
-        <span className="shift-closed-label">Closed</span>
-      ) : (
-        <div className="shift-people">
-          {shift.assignees.map((a, i) => (
-            <Chip
-              key={i}
-              assignee={a}
-              selected={a.name === selectedName}
-              onClick={() => handleClick(a.name)}
-            />
-          ))}
-        </div>
-      )}
+      {body}
     </div>
   );
 }
 
-export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
+export default function RotaViewer({ rotaShifts, isAdmin }: RotaViewerProps) {
   const [selectedName, setSelectedName] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
@@ -123,10 +147,17 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const allNames = useMemo(() => getAllNames(rotaShifts), [rotaShifts]);
+  // The public only sees shifts with something to show — allocated or closed.
+  // Admins also see unallocated shifts, flagged so they stand out.
+  const visibleShifts = useMemo(
+    () => (isAdmin ? rotaShifts : rotaShifts.filter((s) => !isUnallocated(s))),
+    [rotaShifts, isAdmin],
+  );
+
+  const allNames = useMemo(() => getAllNames(visibleShifts), [visibleShifts]);
   const upcomingShifts = useMemo(
-    () => getUpcomingShifts(rotaShifts, selectedName),
-    [rotaShifts, selectedName],
+    () => getUpcomingShifts(visibleShifts, selectedName),
+    [visibleShifts, selectedName],
   );
 
   const filteredNames = allNames.filter((n) =>
@@ -265,7 +296,7 @@ export default function RotaViewer({ rotaShifts }: RotaViewerProps) {
       )}
 
       <div className="rota-list">
-        {rotaShifts.map((shift, i) => (
+        {visibleShifts.map((shift, i) => (
           <ShiftRow
             key={i}
             shift={shift}

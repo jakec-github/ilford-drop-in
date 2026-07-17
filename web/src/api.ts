@@ -15,6 +15,7 @@ interface ApiShift {
   start: string;
   end: string;
   closed: boolean;
+  allocated: boolean;
   assignees: ApiAssignee[];
 }
 
@@ -26,6 +27,7 @@ function toRotaShift(shift: ApiShift): RotaShift {
   return {
     date: shift.date,
     closed: shift.closed,
+    allocated: shift.allocated,
     // Closed shifts carry no meaningful assignees.
     assignees: shift.closed
       ? []

@@ -172,9 +172,19 @@
   color: var(--text-h);
 }
 
-.shift-closed-label {
+.shift-note {
   font-style: italic;
   color: var(--text);
+}
+
+/* Unallocated shifts (admin-only): a faint diagonal hatch marks them as
+   "rota not run yet", distinct from a closed shift's flat dimming. */
+.shift-row.unallocated {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--border) 60%, transparent) 6px 7px
+  );
 }
 
 .shift-people {

@@ -15,5 +15,8 @@ export interface Assignee {
 export interface RotaShift {
   date: string;
   closed: boolean;
+  // allocated is false for a minted shift whose rota has not been run yet: it
+  // exists but has no assignees. Shown only to admins (with a distinct style).
+  allocated: boolean;
   assignees: Assignee[];
 }
