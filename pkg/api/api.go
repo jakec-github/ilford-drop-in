@@ -15,6 +15,7 @@ import (
 type Store interface {
 	services.ChangeRotaStore
 	services.ListShiftsStore
+	services.PreallocationStore
 }
 
 // Handler serves the HTTP API
@@ -40,6 +41,9 @@ func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /shifts", h.handleListShifts)
 	mux.HandleFunc("POST /alterations", h.handleCreateAlteration)
+	mux.HandleFunc("GET /preallocations", h.handleListPreallocations)
+	mux.HandleFunc("POST /preallocations", h.handleCreatePreallocation)
+	mux.HandleFunc("DELETE /preallocations/{id}", h.handleDeletePreallocation)
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	return mux
 }
