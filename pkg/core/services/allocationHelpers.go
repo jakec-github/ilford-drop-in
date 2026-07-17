@@ -21,8 +21,8 @@ type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
-	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
-	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
+	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
+	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
@@ -92,11 +92,20 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 	return result
 }
 
-// convertToDBAllocations converts allocator shifts to database allocation records
-func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Allocation {
+// convertToDBAllocations converts allocator shifts to database allocation
+// records, resolving each solver-output date to its minted shift id via
+// shiftIDByDate. A date with no minted shift is a broken invariant (the solver
+// only ever sees minted dates); it fails loudly here rather than tripping the
+// shift_id FK on insert (ADR 0001).
+func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator.Shift) ([]db.Allocation, error) {
 	allocations := make([]db.Allocation, 0)
 
 	for _, shift := range shifts {
+		shiftID, ok := shiftIDByDate[shift.Date]
+		if !ok {
+			return nil, fmt.Errorf("solver produced an allocation for date %s with no minted shift", shift.Date)
+		}
+
 		// Add allocations for regular volunteers in groups
 		for _, group := range shift.AllocatedGroups {
 			for _, member := range group.Members {
@@ -107,8 +116,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 
 				allocations = append(allocations, db.Allocation{
 					ID:          uuid.New().String(),
-					RotaID:      rotaID,
-					ShiftDate:   shift.Date,
+					ShiftID:     shiftID,
 					Role:        string(model.RoleVolunteer),
 					VolunteerID: member.ID,
 					CustomEntry: "",
@@ -120,8 +128,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		if shift.TeamLead != nil {
 			allocations = append(allocations, db.Allocation{
 				ID:          uuid.New().String(),
-				RotaID:      rotaID,
-				ShiftDate:   shift.Date,
+				ShiftID:     shiftID,
 				Role:        string(model.RoleTeamLead),
 				VolunteerID: shift.TeamLead.ID,
 				CustomEntry: "",
@@ -132,8 +139,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		for _, preAllocatedID := range shift.CustomPreallocations {
 			allocations = append(allocations, db.Allocation{
 				ID:          uuid.New().String(),
-				RotaID:      rotaID,
-				ShiftDate:   shift.Date,
+				ShiftID:     shiftID,
 				Role:        string(model.RoleVolunteer),
 				VolunteerID: "",
 				CustomEntry: preAllocatedID,
@@ -141,7 +147,7 @@ func convertToDBAllocations(rotaID string, shifts []*allocator.Shift) []db.Alloc
 		}
 	}
 
-	return allocations
+	return allocations, nil
 }
 
 // convertRotaOverrides converts config.RotaOverride to allocator.ShiftOverride
@@ -207,8 +213,21 @@ func buildHistoricalShifts(
 		zap.String("id", previousRota.ID),
 		zap.String("start", previousRota.Start))
 
+	// Read the previous rota's shifts to scope its allocations/alterations by id
+	// and to recover each shift's date for the historical output (ADR 0001).
+	previousRotaShifts, err := database.GetShiftsByRotaID(ctx, previousRota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
+	}
+	shiftIDs := make([]string, len(previousRotaShifts))
+	dateByShiftID := make(map[string]string, len(previousRotaShifts))
+	for i, s := range previousRotaShifts {
+		shiftIDs[i] = s.ID
+		dateByShiftID[s.ID] = s.Date
+	}
+
 	// Fetch the previous rota's allocations
-	previousRotaAllocations, err := database.GetAllocationsByRotaID(ctx, previousRota.ID)
+	previousRotaAllocations, err := database.GetAllocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
@@ -219,21 +238,21 @@ func buildHistoricalShifts(
 		return []*allocator.Shift{}, nil
 	}
 
-	// Group allocations by shift date, custom entries included so
+	// Group allocations by shift id, custom entries included so
 	// alterations that remove them can match.
-	allocationsByDate := make(map[string][]db.Allocation)
+	allocationsByShiftID := make(map[string][]db.Allocation)
 	for _, allocation := range previousRotaAllocations {
-		allocationsByDate[allocation.ShiftDate] = append(allocationsByDate[allocation.ShiftDate], allocation)
+		allocationsByShiftID[allocation.ShiftID] = append(allocationsByShiftID[allocation.ShiftID], allocation)
 	}
 
 	// Apply the previous rota's alterations so history reflects who
 	// actually worked (covers and swaps), not the rota as first published.
-	previousRotaAlterations, err := database.GetAlterationsByRotaID(ctx, previousRota.ID)
+	previousRotaAlterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 	logger.Debug("Applying alterations to historical shifts", zap.Int("count", len(previousRotaAlterations)))
-	allocationsByDate = utils.ApplyAlterations(allocationsByDate, previousRotaAlterations)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, previousRotaAlterations)
 
 	// Build a map of volunteers by ID for quick lookup
 	volunteersByID := make(map[string]allocator.Volunteer)
@@ -242,8 +261,8 @@ func buildHistoricalShifts(
 	}
 
 	// Build historical shifts
-	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByDate))
-	for shiftDate, allocations := range allocationsByDate {
+	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByShiftID))
+	for shiftID, allocations := range allocationsByShiftID {
 		// Group volunteers by their GroupKey to reconstruct volunteer groups,
 		// skipping custom entries and unknown volunteer ids
 		volunteersByGroup := make(map[string][]allocator.Volunteer)
@@ -267,7 +286,7 @@ func buildHistoricalShifts(
 
 		// Create the historical shift with only Date and AllocatedGroups
 		historicalShifts = append(historicalShifts, &allocator.Shift{
-			Date:            shiftDate,
+			Date:            dateByShiftID[shiftID],
 			AllocatedGroups: allocatedGroups,
 		})
 	}

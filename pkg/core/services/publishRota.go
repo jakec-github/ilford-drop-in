@@ -19,8 +19,8 @@ import (
 type PublishRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
-	GetAllocationsByRotaID(ctx context.Context, rotaID string) ([]db.Allocation, error)
-	GetAlterationsByRotaID(ctx context.Context, rotaID string) ([]db.Alteration, error)
+	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
+	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
 }
 
 // SheetsClient defines the sheets operations needed for publishing a rota
@@ -79,15 +79,29 @@ func PublishRota(
 		zap.String("start", targetRota.Start),
 		zap.Int("shift_count", targetRota.ShiftCount))
 
-	// Step 2: Read the rota's shift dates from the shift table (ADR 0001)
-	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
+	// Step 2: Read the rota's shifts from the shift table (ADR 0001). They carry
+	// both the ids that scope allocations/alterations and the dates used for
+	// display, so the two can never disagree. A rota always has at least one
+	// shift; an empty result is a broken invariant and fails loudly.
+	shifts, err := database.GetShiftsByRotaID(ctx, targetRota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
+	}
+	if len(shifts) == 0 {
+		return nil, fmt.Errorf("rota %s has no shifts", targetRota.ID)
+	}
+	shiftDates, err := utils.ShiftDatesFromShifts(shifts)
 	if err != nil {
 		return nil, err
 	}
+	shiftIDs := make([]string, len(shifts))
+	for i, s := range shifts {
+		shiftIDs[i] = s.ID
+	}
 
-	// Step 3: Fetch this rota's allocations
+	// Step 3: Fetch this rota's allocations, scoped by its shift ids (ADR 0001)
 	logger.Debug("Fetching allocations")
-	rotaAllocations, err := database.GetAllocationsByRotaID(ctx, targetRota.ID)
+	rotaAllocations, err := database.GetAllocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
@@ -106,30 +120,34 @@ func PublishRota(
 		volunteersByID[vol.ID] = vol
 	}
 
-	// Step 5: Group allocations by shift date
-	allocationsByDate := make(map[string][]db.Allocation)
+	// Step 5: Group allocations by shift id
+	allocationsByShiftID := make(map[string][]db.Allocation)
 	for _, allocation := range rotaAllocations {
-		allocationsByDate[allocation.ShiftDate] = append(allocationsByDate[allocation.ShiftDate], allocation)
+		allocationsByShiftID[allocation.ShiftID] = append(allocationsByShiftID[allocation.ShiftID], allocation)
 	}
 
 	// Step 5b: Apply alterations
 	logger.Debug("Fetching alterations")
-	rotaAlterations, err := database.GetAlterationsByRotaID(ctx, targetRota.ID)
+	rotaAlterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
-	allocationsByDate = utils.ApplyAlterations(allocationsByDate, rotaAlterations)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, rotaAlterations)
 
-	// Step 6: Build the published rota rows
-	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shiftDates))
+	// Step 6: Build the published rota rows, iterating the rota's shifts in date
+	// order and looking up each shift's effective allocations by id.
+	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shifts))
 
-	for _, shiftDate := range shiftDates {
-		dateStr := shiftDate.Format("2006-01-02")
-		allocations := allocationsByDate[dateStr]
+	for _, shift := range shifts {
+		shiftDate, err := time.Parse("2006-01-02", shift.Date)
+		if err != nil {
+			return nil, fmt.Errorf("invalid shift date %q: %w", shift.Date, err)
+		}
+		allocations := allocationsByShiftID[shift.ID]
 
 		// Check if this shift is closed
-		isClosed := isShiftClosed(dateStr, cfg.RotaOverrides, shiftDates, logger)
+		isClosed := isShiftClosed(shift.Date, cfg.RotaOverrides, shiftDates, logger)
 
 		row := sheetsclient.PublishedRotaRow{
 			Date:       shiftDate.Format("Mon Jan 02 2006"),
@@ -158,7 +176,7 @@ func PublishRota(
 			volunteer, exists := volunteersByID[allocation.VolunteerID]
 			if !exists {
 				return nil, fmt.Errorf("volunteer not found: %s (allocation %s, shift %s)",
-					allocation.VolunteerID, allocation.ID, dateStr)
+					allocation.VolunteerID, allocation.ID, shift.Date)
 			}
 
 			fullName := volunteer.DisplayName

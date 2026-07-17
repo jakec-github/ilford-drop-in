@@ -101,16 +101,16 @@ func ListShifts(
 		volunteersByID[v.ID] = v
 	}
 
-	allocationsByDate := make(map[string][]db.Allocation)
+	allocationsByShiftID := make(map[string][]db.Allocation)
 	for _, a := range allocations {
-		allocationsByDate[a.ShiftDate] = append(allocationsByDate[a.ShiftDate], a)
+		allocationsByShiftID[a.ShiftID] = append(allocationsByShiftID[a.ShiftID], a)
 	}
-	allocationsByDate = utils.ApplyAlterations(allocationsByDate, alterations)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, alterations)
 
 	alterationCounts := make(map[string]int)
 	lastChanged := make(map[string]time.Time)
 	for _, alt := range alterations {
-		alterationCounts[alt.ShiftDate]++
+		alterationCounts[alt.ShiftID]++
 		setTime, err := time.Parse(time.RFC3339, alt.SetTime)
 		if err != nil {
 			logger.Warn("Failed to parse alteration set_time",
@@ -118,44 +118,42 @@ func ListShifts(
 				zap.String("set_time", alt.SetTime))
 			continue
 		}
-		if setTime.After(lastChanged[alt.ShiftDate]) {
-			lastChanged[alt.ShiftDate] = setTime
+		if setTime.After(lastChanged[alt.ShiftID]) {
+			lastChanged[alt.ShiftID] = setTime
 		}
 	}
 
-	// The shift table drives which dates appear (ADR 0001), whether or not the
-	// rota has been allocated. Collect them both for output ordering and to
-	// bound the rrule search window in isShiftClosed.
-	allocatedByDate := make(map[string]bool, len(shiftsInRange))
+	// The shift table drives which shifts appear (ADR 0001), whether or not the
+	// rota has been allocated. shiftsInRange is already date-ordered by the DB;
+	// parse the dates once to bound the rrule search window in isShiftClosed,
+	// dropping any shift whose date will not parse.
 	shiftDates := make([]time.Time, 0, len(shiftsInRange))
+	validShifts := make([]db.ShiftInRange, 0, len(shiftsInRange))
 	for _, s := range shiftsInRange {
 		date, err := time.Parse("2006-01-02", s.Date)
 		if err != nil {
 			logger.Warn("Skipping shift with unparseable date", zap.String("date", s.Date))
 			continue
 		}
-		allocatedByDate[s.Date] = s.Allocated
 		shiftDates = append(shiftDates, date)
+		validShifts = append(validShifts, s)
 	}
-	sort.Slice(shiftDates, func(i, j int) bool { return shiftDates[i].Before(shiftDates[j]) })
 
-	shifts := make([]Shift, 0, len(shiftDates))
-	for _, date := range shiftDates {
-		dateStr := date.Format("2006-01-02")
-
+	shifts := make([]Shift, 0, len(validShifts))
+	for _, s := range validShifts {
 		shift := Shift{
-			Date:            dateStr,
-			Closed:          isShiftClosed(dateStr, cfg.RotaOverrides, shiftDates, logger),
-			Allocated:       allocatedByDate[dateStr],
-			AlterationCount: alterationCounts[dateStr],
-			LastChanged:     lastChanged[dateStr],
+			Date:            s.Date,
+			Closed:          isShiftClosed(s.Date, cfg.RotaOverrides, shiftDates, logger),
+			Allocated:       s.Allocated,
+			AlterationCount: alterationCounts[s.ID],
+			LastChanged:     lastChanged[s.ID],
 		}
 
 		// Assignees are meaningful only once the rota is allocated; an
 		// unallocated shift has none. Closed shifts also carry none, mirroring
 		// publishRota.
 		if shift.Allocated && !shift.Closed {
-			shift.Assignees = buildAssignees(allocationsByDate[dateStr], volunteersByID, logger)
+			shift.Assignees = buildAssignees(allocationsByShiftID[s.ID], volunteersByID, logger)
 		}
 
 		shifts = append(shifts, shift)

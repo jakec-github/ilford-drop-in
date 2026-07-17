@@ -68,9 +68,23 @@ func AllocateRota(
 		return nil, fmt.Errorf("rota %s is already allocated (at %s) - refusing to allocate again", targetRota.ID, targetRota.AllocatedDatetime)
 	}
 
-	shiftDates, err := rotaShiftDates(ctx, database, targetRota.ID)
+	// Read the rota's shifts once: the allocator works in dates, but persistence
+	// keys allocations by shift id (ADR 0001). shiftIDByDate carries the solver's
+	// date-keyed output back to the minted shift ids.
+	shifts, err := database.GetShiftsByRotaID(ctx, targetRota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
+	}
+	if len(shifts) == 0 {
+		return nil, fmt.Errorf("rota %s has no shifts", targetRota.ID)
+	}
+	shiftDates, err := utils.ShiftDatesFromShifts(shifts)
 	if err != nil {
 		return nil, err
+	}
+	shiftIDByDate := make(map[string]string, len(shifts))
+	for _, s := range shifts {
+		shiftIDByDate[s.Date] = s.ID
 	}
 
 	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)
@@ -173,7 +187,10 @@ func AllocateRota(
 		logger.Info("Saving allocations to database",
 			zap.Bool("success", output.Success),
 			zap.Bool("forced", forceCommit && !output.Success))
-		dbAllocations := convertToDBAllocations(targetRota.ID, allocatedShifts)
+		dbAllocations, err := convertToDBAllocations(shiftIDByDate, allocatedShifts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert allocations: %w", err)
+		}
 		if err := database.InsertAllocationsAndSetAllocated(ctx, dbAllocations, targetRota.ID, time.Now().UTC()); err != nil {
 			return nil, fmt.Errorf("failed to save allocations: %w", err)
 		}

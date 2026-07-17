@@ -35,10 +35,14 @@ type ChangeRotaParams struct {
 	UserEmail string // Email of the user making the change
 }
 
-// ChangeRotaResult contains the result of a rota change
+// ChangeRotaResult contains the result of a rota change. Alterations are keyed
+// by shift id (ADR 0001); DatesByShiftID maps each shift id touched by this
+// change back to its date so the API and CLI can still render dates without
+// re-resolving them.
 type ChangeRotaResult struct {
-	CoverID     string
-	Alterations []db.Alteration
+	CoverID        string
+	Alterations    []db.Alteration
+	DatesByShiftID map[string]string
 }
 
 // ChangeRota records a cover and its alterations for modifying a published rota.
@@ -92,16 +96,20 @@ func ChangeRota(
 		}
 	}
 
-	// Step 2: Resolve the target date to its shift's rota by lookup
-	rotaID, err := resolveShiftRota(ctx, database, params.Date)
+	// Step 2: Resolve the target date to its shift — the id keys allocations and
+	// alterations, the rota id is what the change locks, and the date is echoed
+	// back in the result. Shifts are immutable once minted, so resolving before
+	// the lock is safe.
+	shift, err := resolveShift(ctx, database, params.Date)
 	if err != nil {
 		return nil, err
 	}
 
-	// If swap_date is provided, resolve its rota (may be different)
-	var swapRotaID string
-	if params.SwapDate != "" {
-		swapRotaID, err = resolveShiftRota(ctx, database, params.SwapDate)
+	// If swap_date is provided, resolve its shift (may be in a different rota).
+	// A swap onto the same date reuses the primary shift.
+	swapShift := shift
+	if params.SwapDate != "" && params.SwapDate != params.Date {
+		swapShift, err = resolveShift(ctx, database, params.SwapDate)
 		if err != nil {
 			return nil, fmt.Errorf("swap date: %w", err)
 		}
@@ -114,16 +122,16 @@ func ChangeRota(
 	// Locking both rotas (deduplicated, in consistent order) covers a swap
 	// that crosses rotas. External calls (volunteer fetch above) stay outside
 	// so no network I/O happens while rows are locked.
-	lockRotaIDs := []string{rotaID}
-	if swapRotaID != "" {
-		lockRotaIDs = append(lockRotaIDs, swapRotaID)
+	lockRotaIDs := []string{shift.RotaID}
+	if params.SwapDate != "" {
+		lockRotaIDs = append(lockRotaIDs, swapShift.RotaID)
 	}
 
 	coverID := uuid.New().String()
 	var alterations []db.Alteration
 	err = database.WithRotaLock(ctx, lockRotaIDs, func(store db.RotaChangeStore) error {
-		// Build effective state for the primary date and validate against it
-		effectiveState, err := buildEffectiveState(ctx, store, params.Date)
+		// Build effective state for the primary shift and validate against it
+		effectiveState, err := buildEffectiveState(ctx, store, shift)
 		if err != nil {
 			return err
 		}
@@ -136,7 +144,7 @@ func ChangeRota(
 		swapEffectiveState := effectiveState
 		if params.SwapDate != "" {
 			if params.SwapDate != params.Date {
-				swapEffectiveState, err = buildEffectiveState(ctx, store, params.SwapDate)
+				swapEffectiveState, err = buildEffectiveState(ctx, store, swapShift)
 				if err != nil {
 					return err
 				}
@@ -154,11 +162,11 @@ func ChangeRota(
 			UserEmail: params.UserEmail,
 		}
 
-		// Build alterations for the primary date, then reverse alterations for
-		// the swap date (which may use a different rota ID)
-		alterations = append(alterations, buildAlterationsForDate(rotaID, coverID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState[params.Date])...)
+		// Build alterations for the primary shift, then reverse alterations for
+		// the swap shift (which may belong to a different rota)
+		alterations = append(alterations, buildAlterationsForShift(shift.ID, coverID, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState)...)
 		if params.SwapDate != "" {
-			alterations = append(alterations, buildAlterationsForDate(swapRotaID, coverID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState[params.SwapDate])...)
+			alterations = append(alterations, buildAlterationsForShift(swapShift.ID, coverID, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState)...)
 		}
 
 		if err := store.InsertCoverAndAlterations(ctx, cover, alterations); err != nil {
@@ -174,64 +182,62 @@ func ChangeRota(
 		zap.String("cover_id", coverID),
 		zap.Int("alteration_count", len(alterations)))
 
+	datesByShiftID := map[string]string{shift.ID: shift.Date}
+	if params.SwapDate != "" {
+		datesByShiftID[swapShift.ID] = swapShift.Date
+	}
+
 	return &ChangeRotaResult{
-		CoverID:     coverID,
-		Alterations: alterations,
+		CoverID:        coverID,
+		Alterations:    alterations,
+		DatesByShiftID: datesByShiftID,
 	}, nil
 }
 
 // buildEffectiveState computes the current effective allocations for a single
-// date by applying that date's existing alterations to its base allocations.
+// shift by applying that shift's existing alterations to its base allocations.
 // It reads through the lock-holding transaction's store, so the state cannot
-// change between this read and the caller's insert.
-func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, dateStr string) (map[string][]db.Allocation, error) {
+// change between this read and the caller's insert. The shift is a single date,
+// so the result is a flat allocation slice rather than a per-shift map.
+func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, shift *db.Shift) ([]db.Allocation, error) {
+	allocations, err := store.GetAllocationsByShiftIDs(ctx, []string{shift.ID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
+	}
+
+	alterations, err := store.GetAlterationsByShiftIDs(ctx, []string{shift.ID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
+	}
+
+	byShiftID := utils.ApplyAlterations(map[string][]db.Allocation{shift.ID: allocations}, alterations)
+	return byShiftID[shift.ID], nil
+}
+
+// resolveShift looks up the shift on the given date, rejecting dates with no
+// shift. This replaces recomputing rota arithmetic: a date now resolves to what
+// actually exists in the shift table (ADR 0001).
+func resolveShift(ctx context.Context, database ChangeRotaStore, dateStr string) (*db.Shift, error) {
 	date, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
 		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
 	}
 
-	dateAllocations, err := store.GetAllocationsInRange(ctx, date, date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
-	}
-
-	dateAlterations, err := store.GetAlterationsInRange(ctx, date, date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
-	}
-
-	allocationsByDate := make(map[string][]db.Allocation)
-	for _, a := range dateAllocations {
-		allocationsByDate[a.ShiftDate] = append(allocationsByDate[a.ShiftDate], a)
-	}
-
-	return utils.ApplyAlterations(allocationsByDate, dateAlterations), nil
-}
-
-// resolveShiftRota looks up the shift on the given date and returns its rota id,
-// rejecting dates with no shift. This replaces recomputing rota arithmetic:
-// a date now resolves to what actually exists in the shift table (ADR 0001).
-func resolveShiftRota(ctx context.Context, database ChangeRotaStore, dateStr string) (string, error) {
-	date, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return "", wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
-	}
-
 	shift, err := database.GetShiftByDate(ctx, date)
 	if err != nil {
-		return "", fmt.Errorf("failed to look up shift for date %s: %w", dateStr, err)
+		return nil, fmt.Errorf("failed to look up shift for date %s: %w", dateStr, err)
 	}
 	if shift == nil {
-		return "", wrapf(ErrNotFound, "date %s is not in any rota", dateStr)
+		return nil, wrapf(ErrNotFound, "date %s is not in any rota", dateStr)
 	}
 
-	return shift.RotaID, nil
+	return shift, nil
 }
 
-// validateDateChanges validates that the proposed changes are consistent with the current state
-func validateDateChanges(effectiveState map[string][]db.Allocation, dateStr, outVol, inVol, outCustom, inCustom string) error {
-	allocations := effectiveState[dateStr]
-
+// validateDateChanges validates that the proposed changes are consistent with
+// the shift's current effective allocations. dateStr is used only for error
+// messages.
+func validateDateChanges(allocations []db.Allocation, dateStr, outVol, inVol, outCustom, inCustom string) error {
 	// Validate outVol: must be currently on the shift
 	if outVol != "" {
 		found := false
@@ -275,16 +281,16 @@ func validateDateChanges(effectiveState map[string][]db.Allocation, dateStr, out
 	return nil
 }
 
-// buildAlterationsForDate creates alteration records for a single date.
-// dateAllocations is the effective state for the date, used to infer the role for "add" alterations.
-func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom, inCustom string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) []db.Alteration {
+// buildAlterationsForShift creates alteration records for a single shift.
+// dateAllocations is the shift's effective state, used to infer the role for
+// "add" alterations. Each alteration references the shift by id (ADR 0001).
+func buildAlterationsForShift(shiftID, coverID, outVol, inVol, outCustom, inCustom string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) []db.Alteration {
 	var alterations []db.Alteration
 
 	if outVol != "" {
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftDate:   dateStr,
-			RotaID:      rotaID,
+			ShiftID:     shiftID,
 			Direction:   "remove",
 			VolunteerID: outVol,
 			CoverID:     coverID,
@@ -295,8 +301,7 @@ func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom,
 		role := inferRole(inVol, outVol, volunteersByID, dateAllocations)
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftDate:   dateStr,
-			RotaID:      rotaID,
+			ShiftID:     shiftID,
 			Direction:   "add",
 			VolunteerID: inVol,
 			CoverID:     coverID,
@@ -307,8 +312,7 @@ func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom,
 	if outCustom != "" {
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftDate:   dateStr,
-			RotaID:      rotaID,
+			ShiftID:     shiftID,
 			Direction:   "remove",
 			CustomValue: outCustom,
 			CoverID:     coverID,
@@ -318,8 +322,7 @@ func buildAlterationsForDate(rotaID, coverID, dateStr, outVol, inVol, outCustom,
 	if inCustom != "" {
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftDate:   dateStr,
-			RotaID:      rotaID,
+			ShiftID:     shiftID,
 			Direction:   "add",
 			CustomValue: inCustom,
 			CoverID:     coverID,
