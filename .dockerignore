@@ -1,0 +1,24 @@
+# Secrets must never enter the build context
+drop_in_config.*.yaml
+oauthClient*.json
+serviceAccount*.json
+*.secret
+*.key
+.claude/
+
+# Build outputs and local state (web/dist is rebuilt inside the image)
+web/node_modules/
+web/dist/
+**/logs/
+/cli
+/server
+/cmd/cli/cli
+/cmd/server/server
+
+# Not part of the server image
+.git/
+.github/
+pyallocator/
+test_data/
+docs/
+deploy/

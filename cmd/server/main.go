@@ -17,6 +17,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
+	"github.com/jakechorley/ilford-drop-in/web"
 )
 
 func main() {
@@ -104,7 +105,7 @@ func run(env string) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	handler := api.NewHandler(database, volunteers, cfg, authenticator, logger)
+	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), logger)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -24,16 +25,20 @@ type Handler struct {
 	volunteers services.VolunteerClient
 	cfg        *config.Config
 	auth       *Authenticator
+	frontend   fs.FS
 	logger     *zap.Logger
 }
 
-// NewHandler creates an API handler with its dependencies
-func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, logger *zap.Logger) *Handler {
+// NewHandler creates an API handler with its dependencies. frontend is the
+// embedded frontend build; pass nil (or a build-less placeholder) to serve the
+// API only.
+func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, logger *zap.Logger) *Handler {
 	return &Handler{
 		store:      store,
 		volunteers: volunteers,
 		cfg:        cfg,
 		auth:       auth,
+		frontend:   frontend,
 		logger:     logger,
 	}
 }
@@ -48,6 +53,11 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	h.auth.registerRoutes(mux)
+	if hasFrontend(h.frontend) {
+		mux.Handle("GET /", frontendHandler(h.frontend))
+	} else {
+		h.logger.Info("No frontend build embedded; serving API only")
+	}
 	return mux
 }
 

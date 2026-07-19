@@ -1,4 +1,4 @@
-import { readdirSync, copyFileSync } from "fs";
+import { readdirSync, copyFileSync, existsSync } from "fs";
 
 const tsc = Bun.spawnSync(["tsc", "-b"], {
   stdio: ["inherit", "inherit", "inherit"],
@@ -17,8 +17,10 @@ if (!result.success) {
   process.exit(1);
 }
 
-for (const file of readdirSync("./public")) {
-  copyFileSync(`./public/${file}`, `./dist/${file}`);
+if (existsSync("./public")) {
+  for (const file of readdirSync("./public")) {
+    copyFileSync(`./public/${file}`, `./dist/${file}`);
+  }
 }
 
 console.log("Build complete!");

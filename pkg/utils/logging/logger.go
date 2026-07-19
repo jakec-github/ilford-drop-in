@@ -10,9 +10,23 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// InitLogger initializes a zap logger with console and file outputs
-// env is used to prefix the log file name
+// InitLogger initializes a zap logger. In prod it writes JSON to stdout only —
+// the container runtime owns log storage and rotation (ADR 0002). In other
+// environments it tees human-readable console output with a per-boot JSON file
+// under ./logs, and env is used to prefix the log file name.
 func InitLogger(env string) (*zap.Logger, error) {
+	if env == "prod" {
+		encoderConfig := zap.NewProductionEncoderConfig()
+		encoderConfig.TimeKey = "timestamp"
+		encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		core := zapcore.NewCore(
+			zapcore.NewJSONEncoder(encoderConfig),
+			zapcore.AddSync(os.Stdout),
+			zapcore.InfoLevel,
+		)
+		return zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel)), nil
+	}
+
 	// Create logs directory if it doesn't exist
 	logsDir := "logs"
 	if err := os.MkdirAll(logsDir, 0755); err != nil {

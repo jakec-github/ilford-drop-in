@@ -265,7 +265,7 @@ func newTestAuthenticator() *Authenticator {
 const testAdminEmail = "admin@example.com"
 
 func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Handler {
-	return NewHandler(store, volunteers, apiTestCfg, newTestAuthenticator(), zap.NewNop()).Routes()
+	return NewHandler(store, volunteers, apiTestCfg, newTestAuthenticator(), nil, zap.NewNop()).Routes()
 }
 
 // adminCookie is a valid admin session cookie for testAdminEmail, signed with
