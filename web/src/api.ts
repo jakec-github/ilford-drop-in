@@ -36,6 +36,7 @@ function toRotaShift(shift: ApiShift): RotaShift {
           role: a.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
           custom: !a.volunteerId,
           group: a.group || null,
+          volunteerId: a.volunteerId || null,
         })),
   };
 }

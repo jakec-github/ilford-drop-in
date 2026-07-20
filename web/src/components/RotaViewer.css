@@ -139,6 +139,48 @@
   font-style: italic;
 }
 
+/* Copy-calendar-link button: sits at the end of the upcoming strip, pushed
+   right when there's room and wrapping under the dates when there isn't. */
+.calendar-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  align-self: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.calendar-copy:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: var(--accent);
+}
+
+.calendar-copy svg {
+  flex-shrink: 0;
+}
+
+.calendar-copy.copied {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.calendar-copy.failed {
+  color: var(--role-lead);
+  border-color: color-mix(in srgb, var(--role-lead) 50%, var(--border));
+  background: var(--bg);
+}
+
 /* Shift list: one flush, connected list at every width. Rows touch and share
    hairline dividers; only the outer container is rounded. */
 .rota-list {

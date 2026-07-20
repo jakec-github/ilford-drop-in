@@ -5,11 +5,14 @@ export type Role = "lead" | "volunteer";
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
 // entry. Role is the role held on this shift, not the volunteer's intrinsic
 // role. Group is the volunteer's group key, or null for custom/ungrouped.
+// volunteerId is the real volunteer's id, or null for custom entries; it keys
+// their ICS calendar feed.
 export interface Assignee {
   name: string;
   role: Role;
   custom: boolean;
   group: string | null;
+  volunteerId: string | null;
 }
 
 export interface RotaShift {
