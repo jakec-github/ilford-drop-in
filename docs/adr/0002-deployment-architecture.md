@@ -32,29 +32,36 @@ and the droplet never builds anything or holds a git clone.
   keeps running from a laptop, connecting straight to the prod database —
   nothing operational runs on the box.
 - **Auto-deploy on merge, but gated until go-live.** The deploy step sits
-  behind a repository variable, off until the OIDC admin-sync work lands,
-  because until then the server cannot boot headless (it acquires a Sheets
-  token interactively at startup) and `POST /alterations` is
-  unauthenticated. Do not flip the gate before that work merges.
-- **Secrets are two plain files scp'd to the box** (`drop_in_config.prod.yaml`,
-  `oauthClient.prod.json`), mounted read-only into the container. Rejected
-  for now: SOPS-encrypted config in the repo, and secrets held in GitHub
-  Actions — both add machinery for two small files that change a few times
-  a year. Consequence: these files are the one thing the repo cannot
-  regenerate; keep copies with other personal secrets.
+  behind a repository variable, originally off because the server could not
+  boot headless (it acquired a Sheets token interactively at startup) and
+  `POST /alterations` was unauthenticated. The OIDC admin-sync work has
+  since landed (2026-07-18): the server fetches the roster with its own
+  service account (non-fatal on failure) and alterations are admin-gated,
+  so the gate now waits only on the remaining go-live prerequisites below.
+- **Secrets are three plain files scp'd to the box** (`drop_in_config.prod.yaml`,
+  `oauthClientWeb.prod.json`, `serviceAccount.prod.json`), mounted read-only
+  into the container. The installed-app OAuth client
+  (`oauthClient.prod.json`) is used only by the CLI from a laptop and never
+  goes on the box. Rejected for now: SOPS-encrypted config in the repo, and
+  secrets held in GitHub Actions — both add machinery for three small files
+  that change a few times a year. Consequence: these files are the one
+  thing the repo cannot regenerate; keep copies with other personal
+  secrets.
 - **Prod logs go to stdout only**, rotated by Docker's json-file driver.
   The existing per-boot log file under `./logs` is dev-only behaviour; in
   a container it is ephemeral, unrotated state with a second place to look.
 - **Provisioning is an idempotent script in the repo, not IaC.** One
   permanent droplet does not justify Terraform state; rebuilding the box
-  is: create droplet, run the script, scp the two config files.
+  is: create droplet, run the script, scp the three config files.
 
 ## Consequences
 
-- Go-live prerequisites: OIDC admin-sync merged, a domain registered and
+- Go-live prerequisites: the pipeline itself built (Dockerfile, Compose,
+  Caddyfile, workflow, provisioning script), a domain registered and
   pointed at the droplet (the same hostname goes into the Caddyfile and
-  the Google web-client redirect URI), config files on the box, deploy
-  gate flipped.
+  the Google web-client redirect URI), the three config files on the box,
+  deploy gate flipped. (OIDC admin-sync, formerly a prerequisite, merged
+  2026-07-18.)
 - Rollback is rerunning the deploy workflow on a previous SHA.
 - Everything assumes exactly one app instance: the in-memory volunteer
   cache and run-migrations-at-startup are both only safe with a single
