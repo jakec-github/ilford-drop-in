@@ -56,6 +56,67 @@ function getUpcomingShifts(shifts: RotaShift[], name: string): RotaShift[] {
   return shifts.filter((shift) => shift.assignees.some((a) => a.name === name));
 }
 
+// The id of the real volunteer behind a selected name, or null when the name
+// belongs only to custom (manual) entries. Custom entries have no calendar
+// feed, so they get no copy button.
+function getVolunteerId(shifts: RotaShift[], name: string): string | null {
+  if (!name) return null;
+  for (const shift of shifts) {
+    for (const a of shift.assignees) {
+      if (a.name === name && a.volunteerId) return a.volunteerId;
+    }
+  }
+  return null;
+}
+
+// Copies the volunteer's ICS subscription URL to the clipboard. One link
+// covers all their shifts and stays in sync as the rota changes; pasting it
+// into Google/Apple Calendar subscribes them.
+function CalendarCopyButton({ volunteerId }: { volunteerId: string }) {
+  const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  async function handleCopy() {
+    const url = `${window.location.origin}/calendars/${volunteerId}.ics`;
+    clearTimeout(timer.current);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setFailed(false);
+    } catch {
+      setCopied(false);
+      setFailed(true);
+    }
+    timer.current = setTimeout(() => {
+      setCopied(false);
+      setFailed(false);
+    }, 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      className={`calendar-copy${copied ? " copied" : ""}${failed ? " failed" : ""}`}
+      onClick={handleCopy}
+      aria-label="Copy calendar subscription link"
+      title="Copy calendar subscription link"
+    >
+      <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
+        <rect x="3" y="4" width="14" height="13" rx="2" fill="none"
+          stroke="currentColor" strokeWidth="1.6" />
+        <path d="M3 8h14M7 2.5v3M13 2.5v3" fill="none"
+          stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+      <span className="calendar-copy-text">
+        {copied ? "Copied!" : failed ? "Copy failed" : "Copy calendar link"}
+      </span>
+    </button>
+  );
+}
+
 function Chip({
   assignee,
   selected,
@@ -157,6 +218,10 @@ export default function RotaViewer({ rotaShifts, isAdmin }: RotaViewerProps) {
   const allNames = useMemo(() => getAllNames(visibleShifts), [visibleShifts]);
   const upcomingShifts = useMemo(
     () => getUpcomingShifts(visibleShifts, selectedName),
+    [visibleShifts, selectedName],
+  );
+  const selectedVolunteerId = useMemo(
+    () => getVolunteerId(visibleShifts, selectedName),
     [visibleShifts, selectedName],
   );
 
@@ -288,6 +353,9 @@ export default function RotaViewer({ rotaShifts, isAdmin }: RotaViewerProps) {
                   .map((s) => formatShiftDate(s.date))
                   .join(" · ")}
               </span>
+              {selectedVolunteerId && (
+                <CalendarCopyButton volunteerId={selectedVolunteerId} />
+              )}
             </>
           ) : (
             <span className="upcoming-none">No upcoming shifts for {selectedName}</span>
