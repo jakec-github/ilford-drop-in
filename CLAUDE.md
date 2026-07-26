@@ -1,3 +1,9 @@
+Guidance for AI agents and maintainers working in this repo. Outside
+contributors: see [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`docs/local-setup.md`](docs/local-setup.md) — the "Maintainer & agent
+operations" section below is specific to this repo's owner and automation and
+does not apply to you.
+
 ## Style
 
 - Use British English
@@ -17,6 +23,12 @@
   No state library; if server caching ever earns a dependency, TanStack Query.
 - Design: Mobile first for rota page. Admin tools must be usable on mobile but
   can work better on desktop
+
+# Maintainer & agent operations
+
+> Repo-owner and automation specifics. Not needed to develop against or
+> contribute to this project — outside contributors can ignore this whole
+> section.
 
 ## Agent skills
 
@@ -46,8 +58,9 @@ repos/{owner}/{repo}/pulls/<n>/comments`), and any failing checks
   as the fix lands (or push back with reasoning), and re-request review when
   done. Never resolve a thread without responding.
 
-  ## Simple PR workflow
-  - Only use this flow if requested by the user
-  - Do not create a new branch
-  - Do not commit changes
-  - Do not push a PR
+## Simple PR workflow
+
+- Only use this flow if requested by the user
+- Do not create a new branch
+- Do not commit changes
+- Do not push a PR

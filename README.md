@@ -1,258 +1,76 @@
-# Ilford Drop-in v2
+# Ilford Drop-in
 
-A CLI tool for managing volunteer rotas at the Ilford Drop-in Centre, which provides food and support to vulnerable community members in Ilford, London.
+Scheduling tools for a weekly charity drop-in in Ilford, London, which provides
+food and support to vulnerable community members. The system collects volunteer
+availability, allocates volunteers to shifts, and publishes the resulting rota.
+
+It has two parts:
+
+- A **Go CLI** (`cmd/cli`) for the admin workflow — defining rotas, requesting
+  availability, allocating, and publishing.
+- A **Go web server + React frontend** (`cmd/server`, `web/`) that serves the
+  public rota page and admin tools.
+
+The volunteer roster lives in Google Sheets; scheduling data lives in Postgres;
+allocation is solved by a Python CP-SAT service (`pyallocator/`).
+
+## Quick start
+
+```bash
+scripts/test-db.sh start     # local Postgres in Docker
+go build -o cli ./cmd/cli
+./cli -e test defineRota 12   # create a rota with 12 weekly shifts
+scripts/dev.sh test           # run server + frontend → http://localhost:5173
+```
+
+This needs a Google Cloud project and a few config files first — the full,
+step-by-step walkthrough is in **[`docs/local-setup.md`](docs/local-setup.md)**.
+
+> Production and the availability journey aren't expected to work for outside
+> contributors yet; local setup covers running the app and viewing the rota.
+
+## Documentation
+
+| Doc | What it covers |
+| --- | --- |
+| [`docs/local-setup.md`](docs/local-setup.md) | Full local setup: Google Cloud, config, database, running the app. |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute: project layout, standards, tests, PRs. |
+| [`CONTEXT.md`](CONTEXT.md) | Domain glossary (Shift, Rotation, Allocation, …). |
+| [`docs/adr/`](docs/adr/) | Architecture decision records. |
+| [`docs/deployment.md`](docs/deployment.md) | Deployment runbook (maintainers). |
+| [`web/README.md`](web/README.md) | Frontend details. |
+| [`pyallocator/README.md`](pyallocator/README.md) | The allocation service. |
+
+## CLI commands
+
+All commands take `-e`/`--env` to pick the config environment
+(`drop_in_config.<env>.yaml`):
+
+```bash
+./cli -e test <command> [args]
+./cli --help
+```
+
+| Command | Description |
+| --- | --- |
+| `listVolunteers` | List volunteers from the volunteer sheet. |
+| `defineRota <n>` | Create a rotation with `n` weekly shifts (DB only). |
+| `requestAvailability <deadline>` | Send availability requests to volunteers. |
+| `sendAvailabilityReminders <deadline>` | Remind volunteers who haven't responded. |
+| `viewResponses [rota_id]` | Show availability responses for a rota. |
+| `allocateRota [--seed <n>] [--dry-run]` | Generate the rota from responses. |
+| `publishRota` | Publish the latest rota to the rota sheet. |
+| `changeRota ...` | Apply post-allocation changes (covers/alterations). |
+| `viewHistoricalResponses ...` | Inspect past availability responses. |
+
+The availability/allocation/publish commands talk to Google Forms and Sheets;
+see [`docs/local-setup.md`](docs/local-setup.md) for what they need.
 
 ## Requirements
 
-- Go >= 1.25
+Go ≥ 1.25, Docker, and [Bun](https://bun.sh/) for the frontend. See
+[`docs/local-setup.md`](docs/local-setup.md) for the rest.
 
-## Prerequisites
+## Licence
 
-### Google Cloud Setup
-
-1. **Create a Google Cloud Project**
-   - Enable the Gmail, Google Sheets, and Google Forms APIs
-
-2. **Create an OAuth 2.0 Desktop Client**
-   - Download the credentials JSON file
-   - Save it as `oauthClient.<env>.json` (e.g., `oauthClient.test.json`)
-
-3. **Grant Access to Spreadsheets**
-   - The Google account you authenticate with needs access to:
-     - Volunteer spreadsheet
-     - Database spreadsheet (for storing rotations, requests, allocations, covers)
-     - Rota spreadsheet (for publishing the final schedule)
-
-### Configuration Files
-
-Create the following files in the v2 directory:
-
-#### 1. OAuth Client Configuration
-
-**File:** `oauthClient.<env>.json` (e.g., `oauthClient.test.json`)
-
-This file is downloaded from Google Cloud Console when creating your Desktop OAuth client.
-
-#### 2. Application Configuration
-
-**File:** `drop_in_config.<env>.yaml` (e.g., `drop_in_config.test.yaml`)
-
-```yaml
-# Google Sheet IDs
-volunteerSheetID: 'your-volunteer-sheet-id'
-rotaSheetID: 'your-rota-sheet-id'
-
-# PostgreSQL connection
-databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin?sslmode=disable'
-
-# Sheet tab names
-serviceVolunteersTab: 'Volunteers'
-
-# Gmail settings
-gmailUserID: 'me'
-gmailSender: 'your-email@gmail.com'
-
-# Allocation settings
-maxAllocationFrequency: 0.25 # Max 1/4 of shifts per volunteer
-defaultShiftSize: 2 # Default volunteers per shift (excluding team lead)
-
-# Optional rota overrides
-rotaOverrides:
-  - rrule: 'FREQ=WEEKLY;BYDAY=SU' # Weekly shifts on Sunday
-    customPreallocations: # Volunteers to be manually scheduled
-      - "John Doe"
-      - "Jane Smith"
-    shiftSize: 5 # Custom shift size
-```
-
-**Note:** Replace `<env>` with your environment name (e.g., `test`, `prod`). The environment is passed as a flag when running commands.
-
-## Test Data
-
-For testing, you can use the sample volunteer data:
-
-- `test_data/volunteers.csv` - Sample volunteer data for testing
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com//ilford-drop-in.git
-   cd ilford-drop-in/v2
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   go mod download
-   ```
-
-3. Build the CLI:
-   ```bash
-   go build -o cli cmd/cli/main.go
-   ```
-
-## Usage
-
-All commands require the `-e` or `--env` flag to specify which environment configuration to use:
-
-```bash
-./cli -e <environment> <command> [args]
-```
-
-### Available Commands
-
-#### List Volunteers
-
-View all volunteers from the volunteer spreadsheet:
-
-```bash
-./cli -e test listVolunteers
-```
-
-#### Define Rota
-
-Create a new rotation with a specified number of shifts:
-
-```bash
-./cli -e test defineRota 12
-```
-
-This will:
-
-- Find the latest existing rotation
-- Calculate the start date (next Sunday after the previous rotation ends)
-- Create weekly shift dates
-- Store the rotation in the database
-
-#### Request Availability (Coming Soon)
-
-Request availability from volunteers with a deadline:
-
-```bash
-./cli -e test requestAvailability 2025-10-15
-```
-
-#### Send Availability Reminders (Coming Soon)
-
-Send reminders to volunteers who haven't responded:
-
-```bash
-./cli -e test sendAvailabilityReminders 2025-10-15
-```
-
-#### View Responses (Coming Soon)
-
-View availability responses for a rota:
-
-```bash
-./cli -e test viewResponses [rota_id]
-```
-
-#### Generate Rota (Coming Soon)
-
-Generate the rota schedule from availability responses:
-
-```bash
-./cli -e test allocateRota [--seed <seed>] [--dry-run]
-```
-
-#### Publish Rota (Coming Soon)
-
-Publish the latest rota to the public rota sheet:
-
-```bash
-./cli -e test publishRota
-```
-
-#### Add Cover (Coming Soon)
-
-Add a volunteer cover/swap for a shift:
-
-```bash
-./cli -e test addCover <shift_date> <covered_volunteer_id> <covering_volunteer_id> [rota_id]
-```
-
-### Getting Help
-
-```bash
-./cli --help
-./cli <command> --help
-```
-
-## Development
-
-### Test Database Setup
-
-The test environment uses a local PostgreSQL database running in Docker. See the `./scripts/test-db.sh` helper script to set this up.
-
-Add this connection string to `drop_in_config.test.yaml`:
-
-```yaml
-database_url: postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable
-```
-
-**Requirements:** Docker must be installed and running.
-
-### Running Tests
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests for a specific package
-go test -v ./pkg/core/services/
-
-# Run tests with coverage
-go test -cover ./...
-```
-
-### Logging
-
-Logs are written to:
-
-- **Console:** Human-readable colored output (INFO level and above)
-- **File:** JSON format in `logs/<env>_<timestamp>.log` (DEBUG level and above)
-
-### Code Quality
-
-The project uses:
-
-- Structured logging with zap
-- Table-driven tests with testify
-- Interface-based design for testability
-- Clear separation between business logic and I/O
-
-## Architecture
-
-See `docs/architecture.md` for detailed architecture documentation.
-
-Key architectural decisions:
-
-- **SheetsSQL:** Treats Google Sheets as a SQL database with schema validation
-- **Service Layer:** Reusable business logic that can be called from CLI or future HTTP API
-- **Interface-Based Design:** Easy mocking and testing without real Google Sheets access
-- **Environment-Based Config:** Separate configurations for test/prod environments
-
-## Troubleshooting
-
-### "failed to load config" error
-
-- Ensure your config file is named correctly: `drop_in_config.<env>.yaml`
-- Verify the file is in the v2 directory
-
-### "failed to load OAuth client config" error
-
-- Ensure your OAuth file is named correctly: `oauthClient.<env>.json`
-- Verify you downloaded the correct file from Google Cloud Console
-
-### Authentication issues
-
-- Check that your Google account has access to all required spreadsheets
-- Verify the OAuth client has the necessary scopes enabled
-
-### Spreadsheet access errors
-
-- Ensure the authenticated Google account has edit access to all spreadsheets
-- Verify the sheet IDs in your config are correct
-- Check that the required tabs exist in the spreadsheets
+See [`LICENSE`](LICENSE).
