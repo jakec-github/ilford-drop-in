@@ -26,7 +26,9 @@ const server = Bun.serve({
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    if (apiPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    if (
+      apiPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+    ) {
       // redirect: "manual" so the 302 from /auth/login to Google reaches the
       // browser instead of being followed server-side here.
       return fetch(`http://localhost:${apiPort}${pathname}${url.search}`, {

@@ -1,0 +1,46 @@
+.admin-page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+/* The tab bar scrolls sideways rather than wrapping, so on a narrow phone the
+   tabs stay on one line and keep reading as a single row of choices. */
+.admin-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 1.5rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+
+.admin-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-tab {
+  flex: none;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text);
+  font-size: 0.875rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-tab--current {
+  border-bottom-color: var(--accent);
+  color: var(--text-h);
+}
+
+.admin-panel {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.admin-panel h2 {
+  margin-top: 0;
+}

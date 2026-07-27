@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link, Redirect, Route, Switch, useLocation } from "wouter";
 import RotaViewer from "./components/RotaViewer";
-import AdminDashboard from "./components/AdminDashboard";
+import AdminPage from "./components/AdminPage";
+import { ADMIN_TABS } from "./components/adminTabs";
 import { fetchRota } from "./api";
 import { useAuth } from "./auth-context";
 import Button from "./ui/Button";
@@ -35,16 +37,23 @@ function AuthStatus() {
   );
 }
 
-// Header carries the shared auth state and, for admins, a link to the admin
-// dashboard. An admin session is exactly a non-null email — only admins are
-// issued one — so the link gates on that.
+// Header carries the shared auth state plus the one link that moves between the
+// public rota and the admin area — whichever of the two you are not currently
+// on. An admin session is exactly a non-null email — only admins are issued one
+// — so the admin link gates on that.
 function Header() {
   const { email } = useAuth();
+  const [location] = useLocation();
+  const onAdmin = location.startsWith("/admin");
 
   return (
     <header className="app-header">
       <nav className="app-nav">
-        {email !== null && <a href="/admin">Admin</a>}
+        {onAdmin ? (
+          <Link href="/">Rota</Link>
+        ) : (
+          email !== null && <Link href="/admin">Admin</Link>
+        )}
       </nav>
       <AuthStatus />
     </header>
@@ -75,35 +84,31 @@ function HomeView() {
   return <RotaViewer rotaShifts={rota} isAdmin={email !== null} />;
 }
 
-// AdminView renders the admin dashboard, but only for a logged-in admin. It
-// waits for the initial session check so it doesn't flash the login prompt at
-// an admin who is already signed in.
-function AdminView() {
-  const { email, loading } = useAuth();
-
-  if (loading) {
-    return <p className="app-status">Loading…</p>;
-  }
-  if (email === null) {
-    return (
-      <p className="app-status">
-        This page is for admins. <a href="/auth/login">Admin login</a>
-      </p>
-    );
-  }
-  return <AdminDashboard />;
-}
-
 function App() {
-  // Routing is a bare pathname switch: both views are reached by full-page
-  // navigation (login is a chain of server-side OAuth redirects), so a
-  // client-side router earns its keep nowhere here.
-  const isAdminRoute = window.location.pathname === "/admin";
-
   return (
     <>
       <Header />
-      {isAdminRoute ? <AdminView /> : <HomeView />}
+      <Switch>
+        <Route path="/" component={HomeView} />
+
+        {/* /admin is the admin area's front door, not a page of its own: it
+            lands on the first tab. */}
+        <Route path="/admin">
+          <Redirect to={ADMIN_TABS[0].path} replace />
+        </Route>
+
+        {ADMIN_TABS.map((tab) => (
+          <Route key={tab.path} path={tab.path}>
+            <AdminPage tab={tab} />
+          </Route>
+        ))}
+
+        <Route>
+          <p className="app-status">
+            Page not found. <Link href="/">Back to the rota</Link>
+          </p>
+        </Route>
+      </Switch>
     </>
   );
 }

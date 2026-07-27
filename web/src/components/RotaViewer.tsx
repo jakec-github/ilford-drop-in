@@ -105,10 +105,23 @@ function CalendarCopyButton({ volunteerId }: { volunteerId: string }) {
       title="Copy calendar subscription link"
     >
       <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
-        <rect x="3" y="4" width="14" height="13" rx="2" fill="none"
-          stroke="currentColor" strokeWidth="1.6" />
-        <path d="M3 8h14M7 2.5v3M13 2.5v3" fill="none"
-          stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <rect
+          x="3"
+          y="4"
+          width="14"
+          height="13"
+          rx="2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M3 8h14M7 2.5v3M13 2.5v3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
       </svg>
       <span className="calendar-copy-text">
         {copied ? "Copied!" : failed ? "Copy failed" : "Copy calendar link"}
@@ -296,7 +309,10 @@ export default function RotaViewer({ rotaShifts, isAdmin }: RotaViewerProps) {
             className="rota-search"
             placeholder="Search by name…"
             value={open ? inputValue : selectedName}
-            onChange={(e) => { setInputValue(e.target.value); setActiveIndex(-1); }}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              setActiveIndex(-1);
+            }}
             onFocus={handleFocus}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
@@ -358,7 +374,9 @@ export default function RotaViewer({ rotaShifts, isAdmin }: RotaViewerProps) {
               )}
             </>
           ) : (
-            <span className="upcoming-none">No upcoming shifts for {selectedName}</span>
+            <span className="upcoming-none">
+              No upcoming shifts for {selectedName}
+            </span>
           )}
         </div>
       )}

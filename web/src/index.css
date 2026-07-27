@@ -74,37 +74,3 @@ h2 {
   color: var(--accent);
   text-decoration: none;
 }
-
-.admin-dashboard {
-  max-width: 42rem;
-  margin: 0 auto;
-  padding: 2rem 1rem;
-}
-
-.admin-panel {
-  margin-top: 1.5rem;
-  padding: 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.admin-panel h2 {
-  margin-top: 0;
-}
-
-.sync-result {
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.sync-result--ok {
-  color: var(--text-h);
-  background: var(--accent-bg);
-}
-
-.sync-result--error {
-  color: #b91c1c;
-  background: rgba(185, 28, 28, 0.1);
-  border-color: rgba(185, 28, 28, 0.3);
-}
