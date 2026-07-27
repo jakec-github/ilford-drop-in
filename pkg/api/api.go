@@ -52,6 +52,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))
 	mux.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
+	mux.Handle("GET /volunteers", h.auth.requireAdmin(http.HandlerFunc(h.handleListVolunteers)))
 	h.auth.registerRoutes(mux)
 	if hasFrontend(h.frontend) {
 		mux.Handle("GET /", frontendHandler(h.frontend))
