@@ -38,6 +38,13 @@ does not apply to you.
   from `.claude/settings.local.json` (untracked; never commit it)
 - Domain glossary: `CONTEXT.md`; decision records: `docs/adr/`
 
+## Worktrees
+
+- Working in a git worktree rather than the primary checkout: run
+  `scripts/worktree-init.sh` once inside it — credentials, config, ports,
+  `bun install` and the worktree's own database. Full workflow in
+  `docs/agents/worktrees.md`.
+
 ## PR workflow
 
 - Never commit directly to main. Start each ticket on a branch named

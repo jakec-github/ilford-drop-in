@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,9 +54,9 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 		return nil, fmt.Errorf("failed to discover OIDC provider: %w", err)
 	}
 
-	redirectURL := pickRedirectURI(webCfg.Web.RedirectURIs, env)
-	if redirectURL == "" {
-		return nil, fmt.Errorf("no redirect URI configured for env %q", env)
+	redirectURL, err := resolveRedirectURI(webCfg.Web.RedirectURIs, env, srv.RedirectURI)
+	if err != nil {
+		return nil, err
 	}
 
 	oauth2Config := &oauth2.Config{
@@ -271,20 +272,31 @@ func (a *Authenticator) clearCookie(w http.ResponseWriter, name, path string) {
 	})
 }
 
-// pickRedirectURI selects the registered redirect URI matching the environment:
-// a localhost URI for dev (env != "prod"), a non-localhost URI for prod. Falls
-// back to the first URI if none matches.
-func pickRedirectURI(uris []string, env string) string {
+// resolveRedirectURI selects the redirect URI to use from those registered with
+// the OAuth client. A non-empty preferred URI wins, but only if it is one of the
+// registered ones — Google rejects anything else, so failing here gives a far
+// clearer error than the consent screen would. Otherwise the URI is chosen by
+// locality: a localhost URI for dev (env != "prod"), a non-localhost URI for
+// prod, falling back to the first registered URI if none matches.
+func resolveRedirectURI(uris []string, env, preferred string) (string, error) {
+	if len(uris) == 0 {
+		return "", fmt.Errorf("no redirect URI registered with the OAuth client for env %q", env)
+	}
+
+	if preferred != "" {
+		if slices.Contains(uris, preferred) {
+			return preferred, nil
+		}
+		return "", fmt.Errorf("redirect URI %q is not registered with the OAuth client; registered: %v", preferred, uris)
+	}
+
 	wantLocal := env != "prod"
 	for _, u := range uris {
 		if isLocalhostURI(u) == wantLocal {
-			return u
+			return u, nil
 		}
 	}
-	if len(uris) > 0 {
-		return uris[0]
-	}
-	return ""
+	return uris[0], nil
 }
 
 func isLocalhostURI(raw string) bool {

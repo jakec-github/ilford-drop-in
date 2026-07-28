@@ -48,8 +48,12 @@ different part of the system. Set up all three for the `test` environment.
 
 3. **Web OAuth client** — used by the **server** for admin login.
    - Create credentials → OAuth client ID → **Web application**.
-   - Add an authorised redirect URI matching the server's login callback
-     (the server runs on `http://localhost:8080` locally).
+   - Add `http://localhost:5173/auth/callback` as an authorised redirect URI.
+     That is the **frontend** dev server, not the Go server on 8080: locally you
+     browse the app on 5173 and it proxies `/auth/*` through to the server, so
+     the URI Google sends the browser back to is the one on 5173. In production
+     the server serves the frontend itself, so there the callback is on the
+     app's own domain (see [`docs/deployment.md`](deployment.md)).
    - Download the JSON and save it as `oauthClientWeb.test.json`.
 
 4. **Service account** — used by the **server** to read the volunteer roster.
@@ -234,6 +238,7 @@ The Python allocator has its own tests — see [`pyallocator/README.md`](../pyal
 | Empty rota page | Run `./cli -e test defineRota 12` to create shifts. |
 | Empty roster / `failed to fetch volunteers` | Share the volunteer sheet with the service account email; check `volunteerSheetID` and `serviceVolunteersTab`. |
 | OAuth loops or missing scopes | Delete `~/.ilford-drop-in/tokens/token-test.json` and re-run to re-authorise. |
+| `redirect_uri_mismatch` on admin login | The web OAuth client needs `http://localhost:5173/auth/callback` registered ([§2](#2-google-cloud-project)) — the frontend's port, not the server's. |
 | Postgres unreachable | `scripts/test-db.sh start` (Docker must be running). |
 
 ## Credentials reference

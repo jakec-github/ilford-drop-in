@@ -31,6 +31,11 @@ type ServerConfig struct {
 	// AdminEmails is the allowlist of Google accounts permitted to log in as Admin.
 	// Compared case-insensitively and re-checked on every request.
 	AdminEmails []string `yaml:"adminEmails" validate:"required,min=1,dive,email"`
+	// RedirectURI names which of the OAuth client's registered redirect URIs to
+	// use for the login flow. Optional: when empty the server picks one by
+	// locality. Set it where the default guess is wrong — chiefly a git worktree,
+	// whose frontend runs on its own port (see docs/agents/worktrees.md).
+	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
 }
 
 // Config represents the application configuration
