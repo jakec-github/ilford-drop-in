@@ -45,11 +45,17 @@ terms (Shift, Rotation, Allocation, Alteration, …) in code and PRs.
 ```bash
 go test ./...                    # Go
 scripts/test-db.sh start         # enable Postgres integration tests
-cd web && bun test               # frontend, if applicable
+cd web && bun run build          # frontend: typecheck (tsc) and build
+cd web && bun run lint           # frontend lint
 ```
 
 Please add tests for new behaviour. Integration tests that touch the database
-use the throwaway-DB harness in `pkg/db/dbtest`.
+use the throwaway-DB harness in `pkg/db/dbtest`. They **skip silently** when the
+test Postgres isn't running, so `go test ./...` passes on a bare checkout without
+having exercised the schema — start the database first to run them for real.
+
+The frontend has no test suite yet; `bun run build` typechecks it, which is the
+closest equivalent for now.
 
 ## Pull requests
 
