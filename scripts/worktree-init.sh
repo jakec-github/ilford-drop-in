@@ -21,8 +21,11 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # The primary checkout is the directory holding the real .git directory; a
-# worktree's .git is a file pointing into it.
-PRIMARY_ROOT="$(cd "$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+# worktree's .git is a file pointing into it. --git-common-dir can answer
+# relative to the working directory, hence the fix-up.
+COMMON_GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir)"
+[[ "$COMMON_GIT_DIR" == /* ]] || COMMON_GIT_DIR="$REPO_ROOT/$COMMON_GIT_DIR"
+PRIMARY_ROOT="$(cd "$COMMON_GIT_DIR/.." && pwd)"
 
 ENV_FILE="$REPO_ROOT/.worktree.env"
 CONFIG_FILE="drop_in_config.test.yaml"
@@ -48,9 +51,10 @@ if [[ "$REPO_ROOT" == "$PRIMARY_ROOT" ]]; then
 fi
 
 WORKTREE_NAME="$(basename "$REPO_ROOT")"
-# Database and env-var names come from the directory name, so fold it to a
-# plain identifier.
-WORKTREE_SLUG="$(echo "$WORKTREE_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | sed 's/^_*//; s/_*$//')"
+# The database name comes from the directory name, so fold it to a plain
+# identifier, dropping the "ilford" the conventional name starts with:
+# ../ilford-issue-61 becomes ilford_wt_issue_61, not ilford_wt_ilford_issue_61.
+WORKTREE_SLUG="$(echo "$WORKTREE_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | sed 's/^_*//; s/_*$//; s/^ilford_//')"
 DB_NAME="ilford_wt_${WORKTREE_SLUG}"
 
 # --- port allocation ---------------------------------------------------------
@@ -147,6 +151,18 @@ done
 # The config is copied rather than linked: databaseURL, server.port and
 # server.redirectURI are all per-worktree.
 
+# Google only accepts redirect URIs registered with the web OAuth client, and the
+# server refuses to start on an unregistered one. Naming this worktree's URI is
+# therefore conditional on it being registered: without it everything but admin
+# login still works, which beats a server that will not boot.
+CONFIGURED_REDIRECT_URI="$REDIRECT_URI"
+REDIRECT_URI_REGISTERED=true
+if [[ -e "$REPO_ROOT/oauthClientWeb.test.json" ]] &&
+    ! grep -qF "\"${REDIRECT_URI}\"" "$REPO_ROOT/oauthClientWeb.test.json"; then
+    CONFIGURED_REDIRECT_URI=""
+    REDIRECT_URI_REGISTERED=false
+fi
+
 if [[ -e "$REPO_ROOT/$CONFIG_FILE" ]]; then
     echo "  ${CONFIG_FILE}: already present (not overwritten)"
 elif [[ ! -e "$PRIMARY_ROOT/$CONFIG_FILE" ]]; then
@@ -157,13 +173,13 @@ else
     # matching this worktree's frontend port.
     awk -v dburl="postgres://postgres:postgres@localhost:5432/${DB_NAME}?sslmode=disable" \
         -v port="${API_PORT}" \
-        -v redirect="${REDIRECT_URI}" '
+        -v redirect="${CONFIGURED_REDIRECT_URI}" '
         /^databaseURL:/ { printf "databaseURL: \"%s\"\n", dburl; next }
         /^[[:space:]]+port:/ && !seen {
             match($0, /^[[:space:]]+/)
             indent = substr($0, 1, RLENGTH)
             printf "%sport: %s\n", indent, port
-            printf "%sredirectURI: \"%s\"\n", indent, redirect
+            if (redirect != "") printf "%sredirectURI: \"%s\"\n", indent, redirect
             seen = 1
             next
         }
@@ -210,5 +226,12 @@ echo ""
 echo ""
 echo "Worktree ready."
 echo "  scripts/dev.sh test   → server on ${API_PORT}, frontend on http://localhost:${WEB_PORT}"
-echo "  Admin login needs ${REDIRECT_URI} registered with the web OAuth client"
-echo "  (Google Cloud console → Credentials → the web client → Authorised redirect URIs)."
+if [[ "$REDIRECT_URI_REGISTERED" == false ]]; then
+    echo ""
+    echo "  Admin login will NOT work in this worktree: ${REDIRECT_URI} is not"
+    echo "  registered with the web OAuth client. Everything else runs. To fix it once"
+    echo "  for all worktrees, add http://localhost:$((BASE_WEB_PORT + 1))/auth/callback ..."
+    echo "  http://localhost:$((BASE_WEB_PORT + MAX_OFFSET))/auth/callback in the Google Cloud console"
+    echo "  (Credentials → the web OAuth client → Authorised redirect URIs), then re-run"
+    echo "  this script after deleting ${CONFIG_FILE}."
+fi

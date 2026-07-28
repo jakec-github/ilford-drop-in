@@ -133,7 +133,10 @@ psql_connect() {
         target="$1"
         shift
     fi
-    docker exec -it "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${target}" "$@"
+    # -t only when there is a terminal, so 'psql -c "…"' works from a script too.
+    local docker_flags=(-i)
+    [[ -t 0 ]] && docker_flags=(-i -t)
+    docker exec "${docker_flags[@]}" "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${target}" "$@"
 }
 
 # sql runs a statement against the maintenance database, which is never the one
