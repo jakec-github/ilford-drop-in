@@ -7,13 +7,23 @@
 #
 # The frontend dev server proxies API requests to the web server on
 # localhost:8080 (override with API_PORT if the server config uses a
-# different port).
+# different port) and listens on 5173 (override with WEB_PORT).
 #
 
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV="${1:-}"
+
+# In a git worktree, ports and the shared CP-SAT venv come from the file
+# scripts/worktree-init.sh wrote (see docs/agents/worktrees.md). Absent in the
+# primary checkout, where the defaults are right.
+if [[ -f "$REPO_ROOT/.worktree.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.worktree.env"
+    set +a
+fi
 
 if [[ "$ENV" != "test" && "$ENV" != "prod" ]]; then
     echo "Usage: $0 {test|prod}"

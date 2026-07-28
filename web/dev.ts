@@ -17,10 +17,13 @@ await build();
 watch("./src", { recursive: true }, build);
 
 const apiPort = process.env.API_PORT ?? "8080";
+// WEB_PORT lets a second checkout (a git worktree, say) serve on its own port
+// without colliding with the primary one. See docs/agents/worktrees.md.
+const webPort = process.env.WEB_PORT ?? "5173";
 const apiPrefixes = ["/shifts", "/alterations", "/calendars", "/auth"];
 
 const server = Bun.serve({
-  port: 5173,
+  port: webPort,
   hostname: "0.0.0.0",
   async fetch(req) {
     const url = new URL(req.url);

@@ -22,15 +22,18 @@ DB_PASSWORD="postgres"
 DB_PORT="5432"
 
 usage() {
-    echo "Usage: $0 {start|stop|status|reset|logs|psql}"
+    echo "Usage: $0 {start|stop|status|reset|logs|psql|clone|drop|list}"
     echo ""
     echo "Commands:"
-    echo "  start   Start the PostgreSQL container (creates if needed)"
-    echo "  stop    Stop the PostgreSQL container"
-    echo "  status  Show container status"
-    echo "  reset   Stop container, delete volume, and start fresh"
-    echo "  logs    Show container logs"
-    echo "  psql    Connect to the database with psql"
+    echo "  start          Start the PostgreSQL container (creates if needed)"
+    echo "  stop           Stop the PostgreSQL container"
+    echo "  status         Show container status"
+    echo "  reset          Stop container, delete volume, and start fresh"
+    echo "  logs           Show container logs"
+    echo "  psql [db]      Connect with psql (default: ${DB_NAME})"
+    echo "  clone <db>     Copy ${DB_NAME} into a new database <db>"
+    echo "  drop <db>      Drop database <db> (refuses to drop ${DB_NAME})"
+    echo "  list           List the databases on this server"
     echo ""
     echo "Connection string:"
     echo "  postgres://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}?sslmode=disable"
@@ -123,7 +126,102 @@ logs() {
 }
 
 psql_connect() {
-    docker exec -it "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${DB_NAME}"
+    local target="${DB_NAME}"
+    # A leading non-flag argument names the database; anything else is passed
+    # through to psql (e.g. -c "SELECT ...").
+    if [[ -n "${1:-}" && "${1:0:1}" != "-" ]]; then
+        target="$1"
+        shift
+    fi
+    docker exec -it "${CONTAINER_NAME}" psql -U "${DB_USER}" -d "${target}" "$@"
+}
+
+# sql runs a statement against the maintenance database, which is never the one
+# being created or dropped.
+sql() {
+    docker exec "${CONTAINER_NAME}" psql -U "${DB_USER}" -d postgres -qtAc "$1"
+}
+
+require_running() {
+    if ! docker ps -q -f name="^${CONTAINER_NAME}$" | grep -q .; then
+        echo "Container ${CONTAINER_NAME} is not running — run '$0 start' first" >&2
+        exit 1
+    fi
+}
+
+# Database names are interpolated into SQL, so only accept plain identifiers.
+require_db_name() {
+    if [[ -z "$1" ]]; then
+        echo "Usage: $0 $2 <database>" >&2
+        exit 1
+    fi
+    if [[ ! "$1" =~ ^[a-z_][a-z0-9_]*$ ]]; then
+        echo "Invalid database name '$1' — use lowercase letters, digits and underscores" >&2
+        exit 1
+    fi
+}
+
+db_exists() {
+    [[ -n "$(sql "SELECT 1 FROM pg_database WHERE datname = '$1'")" ]]
+}
+
+# clone copies the seeded template database into a new one. Postgres does this
+# natively (CREATE DATABASE ... TEMPLATE), so no dump file is involved — but it
+# requires the template to have no open connections.
+clone() {
+    local target="$1"
+    require_db_name "$target" clone
+    require_running
+
+    if db_exists "$target"; then
+        echo "Database ${target} already exists — nothing to do"
+        return
+    fi
+
+    if ! db_exists "${DB_NAME}"; then
+        echo "Template database ${DB_NAME} does not exist on this server" >&2
+        exit 1
+    fi
+
+    local sessions
+    sessions="$(sql "SELECT count(*) FROM pg_stat_activity WHERE datname = '${DB_NAME}'")"
+    if [[ "$sessions" != "0" ]]; then
+        echo "Cannot clone ${DB_NAME}: ${sessions} open connection(s) to it." >&2
+        echo "Postgres needs the template idle. Stop anything connected to it (a running" >&2
+        echo "server, an open psql, a test run) and try again. To see who:" >&2
+        echo "  $0 psql -c \"SELECT pid, application_name, client_addr FROM pg_stat_activity WHERE datname = '${DB_NAME}'\"" >&2
+        exit 1
+    fi
+
+    echo "Cloning ${DB_NAME} into ${target}..."
+    sql "CREATE DATABASE ${target} TEMPLATE ${DB_NAME}" > /dev/null
+    echo "Created ${target}"
+    echo "  postgres://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${target}?sslmode=disable"
+}
+
+drop_db() {
+    local target="$1"
+    require_db_name "$target" drop
+    require_running
+
+    if [[ "$target" == "${DB_NAME}" ]]; then
+        echo "Refusing to drop ${DB_NAME} — it is the seeded template. Use '$0 reset' if you really mean it." >&2
+        exit 1
+    fi
+
+    if ! db_exists "$target"; then
+        echo "Database ${target} does not exist — nothing to do"
+        return
+    fi
+
+    echo "Dropping ${target}..."
+    sql "DROP DATABASE ${target} WITH (FORCE)" > /dev/null
+    echo "Dropped ${target}"
+}
+
+list() {
+    require_running
+    sql "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
 }
 
 case "${1:-}" in
@@ -132,6 +230,9 @@ case "${1:-}" in
     status) status ;;
     reset)  reset ;;
     logs)   logs ;;
-    psql)   psql_connect ;;
+    psql)   shift; psql_connect "$@" ;;
+    clone)  clone "${2:-}" ;;
+    drop)   drop_db "${2:-}" ;;
+    list)   list ;;
     *)      usage ;;
 esac

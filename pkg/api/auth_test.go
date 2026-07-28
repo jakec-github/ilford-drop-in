@@ -176,15 +176,47 @@ func TestHandleLogout_ClearsCookie(t *testing.T) {
 	assert.True(t, cleared.MaxAge < 0)
 }
 
-func TestPickRedirectURI(t *testing.T) {
+func TestResolveRedirectURI(t *testing.T) {
 	uris := []string{
 		"https://dropin.example.org/auth/callback",
 		"http://localhost:5173/auth/callback",
+		"http://localhost:5175/auth/callback",
 	}
 
-	assert.Equal(t, "http://localhost:5173/auth/callback", pickRedirectURI(uris, "test"))
-	assert.Equal(t, "https://dropin.example.org/auth/callback", pickRedirectURI(uris, "prod"))
-	// Falls back to the first URI when none matches the wanted locality.
-	assert.Equal(t, "http://localhost:5173/auth/callback", pickRedirectURI([]string{"http://localhost:5173/auth/callback"}, "prod"))
-	assert.Equal(t, "", pickRedirectURI(nil, "test"))
+	t.Run("picks by locality when no preference is given", func(t *testing.T) {
+		got, err := resolveRedirectURI(uris, "test", "")
+		require.NoError(t, err)
+		assert.Equal(t, "http://localhost:5173/auth/callback", got)
+
+		got, err = resolveRedirectURI(uris, "prod", "")
+		require.NoError(t, err)
+		assert.Equal(t, "https://dropin.example.org/auth/callback", got)
+	})
+
+	t.Run("falls back to the first URI when none matches the wanted locality", func(t *testing.T) {
+		got, err := resolveRedirectURI([]string{"http://localhost:5173/auth/callback"}, "prod", "")
+		require.NoError(t, err)
+		assert.Equal(t, "http://localhost:5173/auth/callback", got)
+	})
+
+	t.Run("errors when no URIs are registered", func(t *testing.T) {
+		_, err := resolveRedirectURI(nil, "test", "")
+		require.Error(t, err)
+	})
+
+	// A worktree serves the frontend on its own port, so it needs to name the
+	// registered callback that matches it rather than take the first localhost one.
+	t.Run("honours a preferred URI that is registered", func(t *testing.T) {
+		got, err := resolveRedirectURI(uris, "test", "http://localhost:5175/auth/callback")
+		require.NoError(t, err)
+		assert.Equal(t, "http://localhost:5175/auth/callback", got)
+	})
+
+	t.Run("rejects a preferred URI that is not registered", func(t *testing.T) {
+		_, err := resolveRedirectURI(uris, "test", "http://localhost:9999/auth/callback")
+		require.Error(t, err)
+		// The message should point at what is actually registered, since the fix
+		// is either to register the URI or to correct the config.
+		assert.Contains(t, err.Error(), "http://localhost:5173/auth/callback")
+	})
 }
