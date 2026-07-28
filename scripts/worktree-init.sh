@@ -8,11 +8,14 @@
 # that in one go, so an agent can start work in a new worktree without a human.
 #
 # Usage:
-#   scripts/worktree-init.sh              # set the worktree up
-#   scripts/worktree-init.sh --reset-db   # drop and re-clone this worktree's database
+#   scripts/worktree-init.sh                # set the worktree up
+#   scripts/worktree-init.sh --reset-db     # drop and re-clone this worktree's database
+#   scripts/worktree-init.sh --remove       # remove this worktree and drop its database
+#   scripts/worktree-init.sh --orphans      # list databases left by removed worktrees
 #
-# Run it from inside the worktree. Safe to re-run: existing links, the config
-# and the database are left alone unless --reset-db is passed.
+# Run it from inside the worktree (--orphans works from the primary checkout
+# too). Safe to re-run: existing links, the config and the database are left
+# alone unless --reset-db is passed.
 #
 # See docs/agents/worktrees.md for the workflow this belongs to.
 #
@@ -44,18 +47,95 @@ BASE_API_PORT=8080
 BASE_WEB_PORT=5173
 MAX_OFFSET=5
 
+# The database name comes from the worktree's directory name, folded to a plain
+# identifier and with the "ilford" the conventional name starts with dropped:
+# ../ilford-issue-61 becomes ilford_wt_issue_61, not ilford_wt_ilford_issue_61.
+db_name_for() {
+    local slug
+    slug="$(basename "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | sed 's/^_*//; s/_*$//; s/^ilford_//')"
+    echo "ilford_wt_${slug}"
+}
+
+# --- --orphans ---------------------------------------------------------------
+#
+# Removing a worktree does not remove the database it cloned, so those outlive
+# their worktree unless dropped. Read-only: it prints what to run rather than
+# dropping anything, since a database is cheap to keep and expensive to lose.
+
+orphan_dbs() {
+    local live=()
+    local path
+    while read -r path; do
+        live+=("$(db_name_for "$path")")
+    done < <(git -C "$REPO_ROOT" worktree list --porcelain | awk '/^worktree /{print $2}')
+
+    local found=false
+    local db
+    while read -r db; do
+        [[ "$db" == ilford_wt_* ]] || continue
+        local matched=false
+        local l
+        for l in "${live[@]:-}"; do
+            [[ "$l" == "$db" ]] && matched=true
+        done
+        if [[ "$matched" == false ]]; then
+            [[ "$found" == false ]] && echo "Databases with no matching worktree:"
+            found=true
+            echo "  ${db}    → scripts/test-db.sh drop ${db}"
+        fi
+    done < <("$PRIMARY_ROOT/scripts/test-db.sh" list)
+
+    [[ "$found" == false ]] && echo "No orphaned worktree databases."
+    return 0
+}
+
+if [[ "${1:-}" == "--orphans" ]]; then
+    orphan_dbs
+    exit 0
+fi
+
 if [[ "$REPO_ROOT" == "$PRIMARY_ROOT" ]]; then
     echo "This is the primary checkout, not a worktree — nothing to set up." >&2
     echo "Create a worktree first:  git worktree add ../ilford-<name> -b <branch>" >&2
+    echo "(--orphans works from here, and lists databases left behind by removed worktrees.)" >&2
     exit 1
 fi
 
 WORKTREE_NAME="$(basename "$REPO_ROOT")"
-# The database name comes from the directory name, so fold it to a plain
-# identifier, dropping the "ilford" the conventional name starts with:
-# ../ilford-issue-61 becomes ilford_wt_issue_61, not ilford_wt_ilford_issue_61.
-WORKTREE_SLUG="$(echo "$WORKTREE_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | sed 's/^_*//; s/_*$//; s/^ilford_//')"
-DB_NAME="ilford_wt_${WORKTREE_SLUG}"
+DB_NAME="$(db_name_for "$REPO_ROOT")"
+
+# --- --remove ----------------------------------------------------------------
+#
+# Teardown is the mirror of setup: the directory and everything git put in it,
+# then the database, which lives outside the directory and is the one thing
+# that would otherwise accumulate. The port offset needs nothing — it is read
+# from the live worktree list, so it frees itself the moment the tree goes.
+
+if [[ "${1:-}" == "--remove" ]]; then
+    # Built in full rather than as an optional flag: bash 3.2, which is what
+    # macOS ships, treats an empty array under `set -u` as unbound.
+    if [[ "${2:-}" == "--force" ]]; then
+        remove_cmd=(git worktree remove --force "$REPO_ROOT")
+    elif [[ -n "${2:-}" ]]; then
+        echo "Usage: $0 --remove [--force]" >&2
+        exit 1
+    else
+        remove_cmd=(git worktree remove "$REPO_ROOT")
+    fi
+
+    echo "Removing worktree '${WORKTREE_NAME}' and dropping ${DB_NAME}..."
+    # Run from the primary checkout: this script's own directory is about to go.
+    cd "$PRIMARY_ROOT"
+    if ! "${remove_cmd[@]}"; then
+        echo "" >&2
+        echo "Worktree not removed, so its database has been left alone." >&2
+        echo "Uncommitted work is the usual cause — check it, then re-run with --force." >&2
+        exit 1
+    fi
+    "$PRIMARY_ROOT/scripts/test-db.sh" drop "$DB_NAME"
+    echo "Removed. Port offset freed."
+    exit 0
+fi
 
 # --- port allocation ---------------------------------------------------------
 
@@ -116,7 +196,7 @@ if [[ "${1:-}" == "--reset-db" ]]; then
 fi
 
 if [[ -n "${1:-}" ]]; then
-    echo "Usage: $0 [--reset-db]" >&2
+    echo "Usage: $0 [--reset-db | --remove [--force] | --orphans]" >&2
     exit 1
 fi
 

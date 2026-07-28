@@ -97,14 +97,40 @@ docker exec ilford-pg-test pg_dump -U postgres ilford_dropin_test > ~/ilford-tem
 
 ## Finishing up
 
+Nothing cleans up on its own — there is no hook tying this to the PR being
+merged, and a worktree holds its port offset for as long as it exists, running
+or not. From inside the worktree:
+
 ```bash
-cd ../ilford-drop-in                        # back to the primary checkout
-git worktree remove ../ilford-<slug>
-scripts/test-db.sh drop ilford_wt_<slug>    # frees the name and the port offset
+scripts/worktree-init.sh --remove
 ```
 
-Removing the worktree releases its port offset for the next one — the offsets
-are read from the live worktree list, not a registry.
+That removes the directory and drops the database, which is the part that lives
+outside it and would otherwise pile up. Git refuses to remove a worktree holding
+uncommitted or untracked files; the script leaves the database alone when that
+happens and points at `--force`, so look at what you are discarding before
+reaching for it. The port offset needs nothing — offsets are read from the live
+worktree list rather than a registry, so removing the tree frees it.
+
+The equivalent by hand, if you would rather see each step:
+
+```bash
+cd ../ilford-drop-in                      # back to the primary checkout
+git worktree remove ../ilford-<slug>
+scripts/test-db.sh drop ilford_wt_<slug>
+```
+
+Removing a worktree without dropping its database leaves the database behind —
+it is the one piece git knows nothing about. To find any that have accumulated,
+from anywhere:
+
+```bash
+scripts/worktree-init.sh --orphans
+```
+
+It lists every `ilford_wt_*` database with no matching worktree and prints the
+command to drop each. It never drops anything itself: a stray database costs
+disk, and dropping the wrong one costs work.
 
 ## Notes
 
