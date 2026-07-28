@@ -44,6 +44,17 @@ OAuth client. Register `http://localhost:5174/auth/callback` through
 `http://localhost:5178/auth/callback` once (Google Cloud console → Credentials →
 the web OAuth client → Authorised redirect URIs) and every worktree is covered.
 
+**Pin the primary checkout's URI at the same time.** A config with no
+`server.redirectURI` takes the first localhost URI the OAuth client has
+registered — fine when 5173 is the only one, order-dependent once the worktree
+URIs are there too. Add this to the primary checkout's
+`drop_in_config.test.yaml` under `server:` when you register them, so its login
+cannot drift onto a worktree's port:
+
+```yaml
+  redirectURI: "http://localhost:5173/auth/callback"
+```
+
 Until that is done, `worktree-init.sh` leaves `server.redirectURI` out of the
 copied config and says so: the server still runs and everything but admin login
 works. Once the URIs are registered, delete `drop_in_config.test.yaml` in the
