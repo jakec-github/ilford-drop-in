@@ -39,6 +39,13 @@ func (db *DB) Close() {
 	db.pool.Close()
 }
 
+// Ping checks the database is reachable, acquiring a connection if the pool has
+// none idle. Used by GET /health, so a database that has gone away since startup
+// shows up as an unhealthy server rather than as failing requests.
+func (db *DB) Ping(ctx context.Context) error {
+	return db.pool.Ping(ctx)
+}
+
 // RunMigrations executes all pending SQL migration files in order.
 // It tracks which migrations have been applied in a schema_migrations table.
 func (db *DB) RunMigrations(ctx context.Context) error {

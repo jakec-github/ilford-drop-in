@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -17,6 +18,8 @@ type Store interface {
 	services.ChangeRotaStore
 	services.ListShiftsStore
 	services.PreallocationStore
+	// Ping reports whether the database is reachable, for GET /health.
+	Ping(ctx context.Context) error
 }
 
 // Handler serves the HTTP API
@@ -46,6 +49,7 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 // Routes returns the API's route table
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", h.handleHealth)
 	mux.HandleFunc("GET /shifts", h.handleListShifts)
 	mux.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	mux.HandleFunc("GET /preallocations", h.handleListPreallocations)
