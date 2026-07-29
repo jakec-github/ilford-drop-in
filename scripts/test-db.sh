@@ -22,7 +22,7 @@ DB_PASSWORD="postgres"
 DB_PORT="5432"
 
 usage() {
-    echo "Usage: $0 {start|stop|status|reset|logs|psql|clone|drop|list}"
+    echo "Usage: $0 {start|stop|status|reset|logs|psql|create|clone|drop|list}"
     echo ""
     echo "Commands:"
     echo "  start          Start the PostgreSQL container (creates if needed)"
@@ -31,6 +31,7 @@ usage() {
     echo "  reset          Stop container, delete volume, and start fresh"
     echo "  logs           Show container logs"
     echo "  psql [db]      Connect with psql (default: ${DB_NAME})"
+    echo "  create <db>    Create an empty database <db> (no-op if it exists)"
     echo "  clone <db>     Copy ${DB_NAME} into a new database <db>"
     echo "  drop <db>      Drop database <db> (refuses to drop ${DB_NAME})"
     echo "  list           List the databases on this server"
@@ -168,6 +169,25 @@ db_exists() {
     [[ -n "$(sql "SELECT 1 FROM pg_database WHERE datname = '$1'")" ]]
 }
 
+# create makes an empty database. Unlike clone it touches the template not at
+# all, so it works while something is connected to it — which is what the dev
+# stack needs, since its database is meant to start empty anyway.
+create() {
+    local target="$1"
+    require_db_name "$target" create
+    require_running
+
+    if db_exists "$target"; then
+        echo "Database ${target} already exists — nothing to do"
+        return
+    fi
+
+    echo "Creating ${target}..."
+    sql "CREATE DATABASE ${target}" > /dev/null
+    echo "Created ${target}"
+    echo "  postgres://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${target}?sslmode=disable"
+}
+
 # clone copies the seeded template database into a new one. Postgres does this
 # natively (CREATE DATABASE ... TEMPLATE), so no dump file is involved — but it
 # requires the template to have no open connections.
@@ -234,6 +254,7 @@ case "${1:-}" in
     reset)  reset ;;
     logs)   logs ;;
     psql)   shift; psql_connect "$@" ;;
+    create) create "${2:-}" ;;
     clone)  clone "${2:-}" ;;
     drop)   drop_db "${2:-}" ;;
     list)   list ;;

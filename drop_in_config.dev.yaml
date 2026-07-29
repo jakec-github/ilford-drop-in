@@ -1,0 +1,45 @@
+# Credential-free development environment. This is the ONE config file that is
+# committed: it holds no secrets, and a fresh checkout has to boot without a
+# human to hand it one (see docs/agents/dev-stack.md).
+#
+# Run it with:  scripts/dev-stack.sh start
+#
+# The devMode block at the bottom stubs out both halves of the Google
+# dependency, and internal/config.checkDevMode refuses to load this block under
+# any environment but "dev", so none of this can leak into test or prod.
+
+# Placeholders. Nothing reads a sheet in dev mode — the roster comes from
+# devMode.volunteersCSV — but the fields are required, so they are filled with
+# obviously-fake values rather than left out.
+volunteerSheetID: 'dev-no-sheet'
+serviceVolunteersTab: 'volunteers'
+rotaSheetID: 'dev-no-sheet'
+gmailUserID: 'dev@example.com'
+gmailSender: 'dev@example.com'
+
+# A database of its own, deliberately not ilford_dropin_test: that one is the
+# golden template git worktrees clone from, and Postgres refuses to clone a
+# database with a connection open on it. scripts/dev-stack.sh creates this one
+# if it is missing; migrations run on connect, and it stays empty — seeding is
+# out of scope (issue #68), so the rota page renders empty.
+databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslmode=disable'
+
+maxAllocationFrequency: 0.34
+defaultShiftSize: 4
+shiftStartTime: '19:30'
+shiftEndTime: '21:30'
+
+server:
+  port: 8080
+  # Not a secret: it signs sessions for a server that has already decided to
+  # mint an admin session for anyone who asks. Real environments use a real one.
+  sessionSecret: 'dev-only-not-a-secret'
+  adminEmails:
+    - 'agent@example.com'
+
+devMode:
+  # Login signs in as this address without contacting Google. It must appear in
+  # server.adminEmails above, or the server refuses to start.
+  adminEmail: 'agent@example.com'
+  # A CSV export of the volunteer sheet — same header row, same columns.
+  volunteersCSV: 'test_data/volunteers.csv'
