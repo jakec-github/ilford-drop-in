@@ -63,6 +63,24 @@ profile, output to `logs/playwright/`. Navigate to
 `http://localhost:8080/auth/login` first and the session carries through
 everything after it.
 
+It is pinned to `--browser chromium`, Playwright's own build, rather than the
+default `chrome` channel. Two reasons. It does not assume a Google Chrome
+install, so the config works on any checkout. And it does not drive the
+machine's everyday browser: launching that starts Chrome's updater, which tries
+to modify `/Applications/Google Chrome.app`, which macOS blocks under App
+Management — reported against whichever app is at the top of the process tree,
+so an agent's browsing surfaces as *"VS Code was prevented from modifying apps
+on your Mac"*. Playwright's headless shell has no updater and lives in
+`~/Library/Caches/ms-playwright/`, so nothing is ever asked for.
+
+That cache is per-user and shared by every Playwright process on the machine.
+The first run downloads into it (~100MB); after that it is free. To populate it
+by hand:
+
+```bash
+npx -y playwright install chromium
+```
+
 Work from **accessibility-tree snapshots**, not screenshots: they are cheaper,
 they are stable, and they say what a thing *is* rather than what it looks like.
 A screenshot is evidence to hand a human reviewer — never the basis for your own
