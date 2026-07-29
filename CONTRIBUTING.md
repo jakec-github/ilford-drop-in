@@ -43,6 +43,14 @@ terms (Shift, Rotation, Allocation, Alteration, …) in code and PRs.
 ## Tests
 
 ```bash
+scripts/check.sh                 # everything, one exit code
+```
+
+That is Go build, vet and tests, then the frontend typecheck (`tsc`, via the
+build) and lint. It takes seconds, and the same script runs in CI on every pull
+request. The individual commands, if you want to run one on its own:
+
+```bash
 go test ./...                    # Go
 scripts/test-db.sh start         # enable Postgres integration tests
 cd web && bun run build          # frontend: typecheck (tsc) and build
@@ -51,8 +59,10 @@ cd web && bun run lint           # frontend lint
 
 Please add tests for new behaviour. Integration tests that touch the database
 use the throwaway-DB harness in `pkg/db/dbtest`. They **skip silently** when the
-test Postgres isn't running, so `go test ./...` passes on a bare checkout without
-having exercised the schema — start the database first to run them for real.
+test Postgres isn't running, so a bare `go test ./...` on a checkout with no
+database passes without having exercised the schema. `check.sh` closes that hole:
+it starts the database first, and sets `DBTEST_REQUIRED` so an unreachable server
+fails the run instead of skipping it.
 
 The frontend has no test suite yet; `bun run build` typechecks it, which is the
 closest equivalent for now.
@@ -61,7 +71,7 @@ closest equivalent for now.
 
 - Branch off an up-to-date `main`; don't commit to `main` directly.
 - Keep PRs focused and reference any related issue.
-- Make sure `go test ./...` passes and the code builds before opening the PR.
+- Make sure `scripts/check.sh` passes before opening the PR; CI runs it too.
 - A maintainer reviews and merges — please don't merge your own PR.
 
 Issues and feature requests are tracked in this repository's GitHub issues.

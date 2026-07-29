@@ -1,0 +1,66 @@
+#!/bin/bash
+#
+# Everything a change has to pass, in one command with one exit code: Go build,
+# vet and tests, then the frontend typecheck (tsc, via the build) and lint.
+#
+# Usage: scripts/check.sh
+#
+# Meant to be fast enough to run before every push — seconds, not minutes.
+# Nothing that needs a browser or a running app belongs here.
+#
+# It starts the test Postgres itself, because the database integration tests
+# self-skip when the server is unreachable and a skipped run is indistinguishable
+# from a passing one (see pkg/db/dbtest). DBTEST_REQUIRED turns that skip into a
+# failure, so this script cannot report a green suite that exercised no schema.
+#
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Decided before the worktree env is sourced below, since that sets
+# TEST_DATABASE_URL. CI brings its own Postgres as a service container, and
+# test-db.sh pins DOCKER_CONTEXT=orbstack, which exists only on the maintainer's
+# machine. A caller who set TEST_DATABASE_URL has likewise pointed us at a server
+# of their own.
+START_DB=true
+if [[ -n "${CI:-}" || -n "${TEST_DATABASE_URL:-}" ]]; then
+    START_DB=false
+fi
+
+# In a git worktree, TEST_DATABASE_URL points the tests at this worktree's own
+# database (see docs/agents/worktrees.md). Absent in the primary checkout, where
+# the dbtest default is right.
+if [[ -f "$REPO_ROOT/.worktree.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.worktree.env"
+    set +a
+fi
+
+# Echoing each command before running it means a failure part-way through names
+# itself, without the caller having to count which step the output stopped at.
+run() {
+    echo ""
+    echo "==> $*"
+    "$@"
+}
+
+if [[ "$START_DB" == true ]]; then
+    run "$REPO_ROOT/scripts/test-db.sh" start
+fi
+
+cd "$REPO_ROOT"
+
+# go build covers the packages go test does not — the legacy CLI has no tests of
+# its own, so vet and test alone would let it rot.
+run go build ./...
+run go vet ./...
+run env DBTEST_REQUIRED=1 go test ./...
+
+# bun run build runs tsc -b first (web/build.ts), so this is the typecheck.
+(cd "$REPO_ROOT/web" && run bun run build)
+(cd "$REPO_ROOT/web" && run bun run lint)
+
+echo ""
+echo "All checks passed"
