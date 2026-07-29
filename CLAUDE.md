@@ -38,6 +38,16 @@ does not apply to you.
   from `.claude/settings.local.json` (untracked; never commit it)
 - Domain glossary: `CONTEXT.md`; decision records: `docs/adr/`
 
+## Running the app
+
+- To see the app rather than just its tests: `scripts/dev-stack.sh start`. It
+  boots the whole stack on <http://localhost:8080> with no Google credentials,
+  waits for `/health`, and returns — the server stays up detached. `.mcp.json`
+  configures `playwright-mcp` to drive it. Full workflow, and what is and is not
+  reachable against an empty database, in `docs/agents/dev-stack.md`.
+- Work from accessibility-tree snapshots. Screenshots are evidence for a human
+  reviewer, never your own verdict that something works.
+
 ## Worktrees
 
 - Working in a git worktree rather than the primary checkout: run

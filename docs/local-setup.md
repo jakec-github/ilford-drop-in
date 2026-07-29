@@ -4,8 +4,17 @@ This guide gets a new contributor from a fresh clone to a running rota page,
 using the system exactly as it works today. It is deliberately faithful to the
 current design: the app reads its volunteer roster from Google Sheets, and the
 CLI authenticates with Google on startup, so **you will need your own Google
-Cloud project**. A simpler, Google-free local mode may come later once the app
-is fully web-server driven — until then, this is the real path.
+Cloud project** for the path this guide describes.
+
+> **Just want to look at the app?** There is now a Google-free `dev`
+> environment: `scripts/dev-stack.sh start` boots the whole stack on
+> <http://localhost:8080> with no credentials at all, reading the roster from
+> `test_data/volunteers.csv` and logging you in as an admin without Google. It
+> needs only Docker, Go and Bun. The database starts empty, so the rota page
+> renders empty — everything else works. See
+> [`docs/agents/dev-stack.md`](agents/dev-stack.md). The rest of this guide is
+> the real, Sheets-backed path, and is what you need to develop against actual
+> data or to use the CLI.
 
 > **Scope.** Production and the availability journey (`requestAvailability`,
 > `viewResponses`, `allocateRota`, `publishRota`) are **not** expected to work
@@ -212,6 +221,10 @@ in `adminEmails`, via the web OAuth client from step 2.
 To run the frontend alone (assuming the server is already up), see
 [`web/README.md`](../web/README.md).
 
+For the credential-free alternative — one process on 8080, serving the built
+frontend itself, started in the background — see
+[`docs/agents/dev-stack.md`](agents/dev-stack.md).
+
 ## 8. Run the tests
 
 ```bash
@@ -249,3 +262,9 @@ The Python allocator has its own tests — see [`pyallocator/README.md`](../pyal
 | `oauthClientWeb.test.json` | Server (`internal/config/oauthweb.go`) | Web OAuth; admin login (OIDC). |
 | `serviceAccount.test.json` | Server (`internal/config/serviceaccount.go`) | Reads the volunteer sheet to sync the roster at startup and on admin sync. |
 | `drop_in_config.test.yaml` | Both (`internal/config/config.go`) | Sheet IDs, DB URL, shift/allocation settings, server config. |
+
+`drop_in_config.dev.yaml` is the one exception: it **is** committed, holds no
+secrets, and needs none of the three credential files above — it turns on the
+stubs described in [`docs/agents/dev-stack.md`](agents/dev-stack.md).
+`internal/config.checkDevMode` refuses to load its `devMode` block under any
+environment but `dev`, so it cannot affect `test` or `prod`.
