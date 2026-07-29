@@ -33,7 +33,7 @@ func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
 	}
 
 	// Parse volunteers
-	volunteers, err := parseVolunteers(values)
+	volunteers, err := ParseVolunteers(values)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse volunteers: %w", err)
 	}
@@ -88,8 +88,11 @@ func ComputeDisplayNames(volunteers []model.Volunteer) {
 	}
 }
 
-// parseVolunteers converts raw spreadsheet data into Volunteer structs
-func parseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
+// ParseVolunteers converts raw spreadsheet data into Volunteer structs. It is
+// exported because the same tabular shape arrives from more than one place: the
+// Sheets API here, and a CSV export in dev mode (internal/devmode). Both go
+// through this parser so the column contract is defined once.
+func ParseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 	if len(raw) < 1 {
 		return nil, fmt.Errorf("no header row found")
 	}

@@ -38,6 +38,26 @@ type ServerConfig struct {
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
 }
 
+// DevEnv is the only environment the development stubs may run in. It is
+// checked by name rather than by "not prod" so a new environment is
+// credential-backed unless someone deliberately calls it dev.
+const DevEnv = "dev"
+
+// DevModeConfig turns on the credential-free development stubs: the roster is
+// read from a CSV file instead of Google Sheets, and login mints an admin
+// session for AdminEmail instead of redirecting to Google. Present only in
+// drop_in_config.dev.yaml — see checkDevMode. Omit the block entirely for a
+// normal, Google-backed server.
+type DevModeConfig struct {
+	// AdminEmail is the account login signs in as. It must also appear in
+	// server.adminEmails, or the session it mints carries no authority.
+	AdminEmail string `yaml:"adminEmail" validate:"required,email"`
+	// VolunteersCSV is a CSV export of the volunteer sheet — same header row,
+	// same columns — read at startup and on each admin sync. Relative paths
+	// resolve from the server's working directory.
+	VolunteersCSV string `yaml:"volunteersCSV" validate:"required"`
+}
+
 // Config represents the application configuration
 type Config struct {
 	VolunteerSheetID       string         `yaml:"volunteerSheetID" validate:"required"`
@@ -53,6 +73,7 @@ type Config struct {
 	ShiftEndTime           string         `yaml:"shiftEndTime" validate:"required,datetime=15:04"`
 	ShiftTimezone          string         `yaml:"shiftTimezone,omitempty" validate:"omitempty,timezone"`
 	Server                 *ServerConfig  `yaml:"server,omitempty"`
+	DevMode                *DevModeConfig `yaml:"devMode,omitempty"`
 }
 
 // DefaultShiftTimezone is used when shiftTimezone is not set in the config
@@ -97,7 +118,30 @@ func LoadWithEnv(env string) (*Config, error) {
 		return nil, fmt.Errorf("failed to find config file: %w", err)
 	}
 
-	return LoadFromPath(configPath)
+	cfg, err := LoadFromPath(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// The env is only known here, not in LoadFromPath, so this is where the dev
+	// stubs can be pinned to the dev environment.
+	if err := checkDevMode(cfg, env); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+// checkDevMode rejects a devMode block outside the dev environment. The stubs
+// replace Google identity with a session minted for a configured address, so
+// enabling them anywhere real would hand admin to anyone who can reach
+// /auth/login. Failing the load is deliberate: silently ignoring the block
+// would leave an operator believing a gate they set is off when it is on.
+func checkDevMode(cfg *Config, env string) error {
+	if cfg.DevMode == nil || env == DevEnv {
+		return nil
+	}
+	return fmt.Errorf("devMode is only permitted in the %q environment, not %q: remove the devMode block from the config or run with -env %s", DevEnv, env, DevEnv)
 }
 
 // LoadFromPath loads and validates the configuration from a specific path
