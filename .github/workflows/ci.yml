@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # The same server scripts/test-db.sh runs locally: port 5432,
+    # postgres/postgres, and the database pkg/db/dbtest connects to when
+    # TEST_DATABASE_URL is unset. Each test then mints its own throwaway
+    # database on it.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ilford_dropin_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+        working-directory: web
+
+      # CI is set by the runner, so check.sh leaves the database to the service
+      # container above rather than reaching for Docker and OrbStack.
+      - name: Run checks
+        run: scripts/check.sh

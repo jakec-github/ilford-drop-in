@@ -228,15 +228,21 @@ frontend itself, started in the background — see
 ## 8. Run the tests
 
 ```bash
+scripts/check.sh                     # build, vet, tests, frontend typecheck + lint
 go test ./...                        # everything
 go test ./pkg/core/services/...      # one package
 go test -cover ./...                 # with coverage
 ```
 
+`scripts/check.sh` is the one to run before pushing — it is what CI runs on
+every pull request.
+
 Tests need **no Google credentials**. Integration tests that need Postgres
 mint throwaway databases on the `test-db.sh` server and **self-skip** if it
-isn't running, so `go test ./...` passes on a bare checkout. Start the DB
-(`scripts/test-db.sh start`) to exercise them.
+isn't running, so a bare `go test ./...` passes on a checkout with no database.
+Start the DB (`scripts/test-db.sh start`) to exercise them, or run
+`scripts/check.sh`, which starts it for you and fails rather than skips if it
+cannot be reached.
 
 The Python allocator has its own tests — see [`pyallocator/README.md`](../pyallocator/README.md).
 

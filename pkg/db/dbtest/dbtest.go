@@ -25,7 +25,8 @@ const defaultAdminURL = "postgres://postgres:postgres@localhost:5432/ilford_drop
 // migrations, and returns a connected *db.DB plus the database's connection
 // URL (for tests that need a raw connection alongside the store). The
 // database is dropped on test cleanup. Skips the test when the server is
-// unreachable — run `scripts/test-db.sh start` to enable these tests.
+// unreachable — run `scripts/test-db.sh start` to enable these tests, or set
+// DBTEST_REQUIRED to make that unreachability a failure instead of a skip.
 func New(t *testing.T) (*db.DB, string) {
 	t.Helper()
 	ctx := context.Background()
@@ -37,6 +38,12 @@ func New(t *testing.T) (*db.DB, string) {
 
 	admin, err := pgx.Connect(ctx, adminURL)
 	if err != nil {
+		// A skipped test and a passing one look identical without -v, so a run
+		// that means to cover the schema — scripts/check.sh, CI — sets
+		// DBTEST_REQUIRED and gets an honest failure rather than a silent pass.
+		if os.Getenv("DBTEST_REQUIRED") != "" {
+			t.Fatalf("test Postgres unreachable and DBTEST_REQUIRED is set: %v", err)
+		}
 		t.Skipf("test Postgres unreachable (run scripts/test-db.sh start): %v", err)
 	}
 
