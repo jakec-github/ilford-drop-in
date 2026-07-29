@@ -43,6 +43,10 @@ type Authenticator struct {
 	// own service account credential. Injected by the composition root; nil
 	// disables the sync endpoint.
 	syncVolunteers VolunteerSyncFunc
+	// stubEmail, when non-empty, replaces the Google round-trip: login mints a
+	// session for this address directly. Set only by NewStubAuthenticator, which
+	// the dev environment alone can reach (see authstub.go).
+	stubEmail string
 }
 
 // NewAuthenticator builds an Authenticator. It performs OIDC provider discovery
@@ -67,20 +71,25 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 		Scopes:       []string{oidc.ScopeOpenID, "email", "profile"},
 	}
 
-	admin := make(map[string]struct{}, len(srv.AdminEmails))
-	for _, e := range srv.AdminEmails {
-		admin[normaliseEmail(e)] = struct{}{}
-	}
-
 	return &Authenticator{
 		oauth2Config:   oauth2Config,
 		verifier:       provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
 		secret:         []byte(srv.SessionSecret),
-		adminEmails:    admin,
+		adminEmails:    adminAllowlist(srv.AdminEmails),
 		secure:         env == "prod",
 		logger:         logger,
 		syncVolunteers: syncVolunteers,
 	}, nil
+}
+
+// adminAllowlist folds the configured admin addresses into the lookup set
+// isAdmin checks.
+func adminAllowlist(emails []string) map[string]struct{} {
+	admin := make(map[string]struct{}, len(emails))
+	for _, e := range emails {
+		admin[normaliseEmail(e)] = struct{}{}
+	}
+	return admin
 }
 
 // registerRoutes attaches the /auth endpoints to mux.
@@ -96,8 +105,14 @@ func (a *Authenticator) registerRoutes(mux *http.ServeMux) {
 }
 
 // handleLogin starts the OIDC flow: stash a random state in a short-lived cookie
-// and redirect to Google's consent screen for identity scopes only.
+// and redirect to Google's consent screen for identity scopes only. In dev mode
+// there is no consent screen to visit, so it signs the stub admin in on the spot.
 func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if a.stubEmail != "" {
+		a.handleStubLogin(w, r)
+		return
+	}
+
 	state, err := randomToken()
 	if err != nil {
 		a.logger.Error("Failed to generate OAuth state", zap.Error(err))
@@ -122,6 +137,13 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 // ID token, check the allowlist, and set the session cookie. Non-admins are
 // rejected here with no cookie set.
 func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
+	if a.stubEmail != "" {
+		// No OAuth client exists to exchange a code with; say so rather than
+		// reach for the verifier the stub was never given.
+		http.Error(w, "OAuth callback is not available in dev mode", http.StatusNotFound)
+		return
+	}
+
 	stateCookie, err := r.Cookie(stateCookieName)
 	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
 		http.Error(w, "invalid OAuth state", http.StatusBadRequest)
@@ -170,20 +192,26 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.setSessionCookie(w, claims.Email)
+
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// setSessionCookie issues the signed admin session for email.
+func (a *Authenticator) setSessionCookie(w http.ResponseWriter, email string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName,
-		// Store the address Google asserted, not the folded form, so /auth/me
-		// shows the admin the email they recognise. Authority is re-checked by
-		// isAdmin, which folds both sides, so the stored form need not be canonical.
-		Value:    signSession(a.secret, claims.Email, time.Now().Add(sessionDuration)),
+		// Store the address the identity provider asserted, not the folded form,
+		// so /auth/me shows the admin the email they recognise. Authority is
+		// re-checked by isAdmin, which folds both sides, so the stored form need
+		// not be canonical.
+		Value:    signSession(a.secret, email, time.Now().Add(sessionDuration)),
 		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
 		HttpOnly: true,
 		Secure:   a.secure,
 		SameSite: http.SameSiteLaxMode,
 	})
-
-	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // handleLogout clears the session cookie.

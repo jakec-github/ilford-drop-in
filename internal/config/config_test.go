@@ -420,6 +420,107 @@ func TestValidate_ServerConfig(t *testing.T) {
 	assert.Error(t, Validate(&badAdminEmail))
 }
 
+func TestValidate_DevMode(t *testing.T) {
+	base := Config{
+		VolunteerSheetID:       "sheet123",
+		ServiceVolunteersTab:   "Volunteers",
+		RotaSheetID:            "rota456",
+		DatabaseURL:            "postgres://localhost:5432/test",
+		GmailUserID:            "user@example.com",
+		MaxAllocationFrequency: 0.25,
+		DefaultShiftSize:       2,
+		ShiftStartTime:         "19:30",
+		ShiftEndTime:           "21:30",
+	}
+
+	validDevMode := func() *DevModeConfig {
+		return &DevModeConfig{
+			AdminEmail:    "agent@example.com",
+			VolunteersCSV: "test_data/volunteers.csv",
+		}
+	}
+
+	valid := base
+	valid.DevMode = validDevMode()
+	assert.NoError(t, Validate(&valid))
+
+	missingEmail := base
+	missingEmail.DevMode = validDevMode()
+	missingEmail.DevMode.AdminEmail = ""
+	assert.Error(t, Validate(&missingEmail))
+
+	badEmail := base
+	badEmail.DevMode = validDevMode()
+	badEmail.DevMode.AdminEmail = "not-an-email"
+	assert.Error(t, Validate(&badEmail))
+
+	missingCSV := base
+	missingCSV.DevMode = validDevMode()
+	missingCSV.DevMode.VolunteersCSV = ""
+	assert.Error(t, Validate(&missingCSV))
+}
+
+// The dev stubs replace Google with a roster file and a session minted for a
+// configured address — catastrophic in prod, where anyone could then log in as
+// an admin. The env name is the gate: only "dev" may carry a devMode block.
+func TestCheckDevMode_OnlyPermittedInDevEnv(t *testing.T) {
+	withDevMode := &Config{DevMode: &DevModeConfig{
+		AdminEmail:    "agent@example.com",
+		VolunteersCSV: "test_data/volunteers.csv",
+	}}
+
+	assert.NoError(t, checkDevMode(withDevMode, DevEnv))
+
+	for _, env := range []string{"prod", "test", "staging", ""} {
+		err := checkDevMode(withDevMode, env)
+		require.Error(t, err, "env %q must not be allowed to enable dev mode", env)
+		assert.Contains(t, err.Error(), "devMode")
+	}
+
+	// A config without the block is fine anywhere, prod included.
+	for _, env := range []string{"prod", "test", DevEnv} {
+		assert.NoError(t, checkDevMode(&Config{}, env))
+	}
+}
+
+// The gate has to hold on the path the server actually loads config through,
+// not just on the helper underneath it.
+func TestLoadWithEnv_RejectsDevModeInProd(t *testing.T) {
+	dir := t.TempDir()
+	cfg := `
+volunteerSheetID: "sheet123"
+serviceVolunteersTab: "Volunteers"
+rotaSheetID: "rota456"
+databaseURL: "postgres://localhost:5432/test"
+gmailUserID: "user@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
+server:
+  port: 8080
+  sessionSecret: "a-sufficiently-long-secret"
+  adminEmails:
+    - "admin@example.com"
+devMode:
+  adminEmail: "agent@example.com"
+  volunteersCSV: "test_data/volunteers.csv"
+`
+	for _, env := range []string{"prod", DevEnv} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "drop_in_config."+env+".yaml"), []byte(cfg), 0644))
+	}
+	t.Chdir(dir)
+
+	_, err := LoadWithEnv("prod")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "devMode")
+
+	loaded, err := LoadWithEnv(DevEnv)
+	require.NoError(t, err)
+	require.NotNil(t, loaded.DevMode)
+	assert.Equal(t, "agent@example.com", loaded.DevMode.AdminEmail)
+}
+
 func TestShiftTimes(t *testing.T) {
 	cfg := &Config{
 		ShiftStartTime: "19:30",

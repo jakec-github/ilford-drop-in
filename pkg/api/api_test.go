@@ -34,6 +34,7 @@ type mockStore struct {
 	insertedPreallocations  []db.ManualPreallocation
 	deletedPreallocationIDs []string
 	insertErr               error
+	pingErr                 error
 	getShiftsErr            error
 }
 
@@ -206,6 +207,10 @@ func shiftDateInRange(dateStr string, from, to time.Time) bool {
 		return false
 	}
 	return true
+}
+
+func (m *mockStore) Ping(ctx context.Context) error {
+	return m.pingErr
 }
 
 // WithRotaLock hands the mock itself to the callback as the transaction-bound

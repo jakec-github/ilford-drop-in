@@ -26,6 +26,16 @@ scripts/dev.sh test           # run server + frontend → http://localhost:5173
 This needs a Google Cloud project and a few config files first — the full,
 step-by-step walkthrough is in **[`docs/local-setup.md`](docs/local-setup.md)**.
 
+To just look at the app, skip all of that:
+
+```bash
+scripts/dev-stack.sh start    # no credentials → http://localhost:8080
+```
+
+The `dev` environment reads its roster from a CSV and logs you in without
+Google. The database starts empty, so the rota page does too — see
+[`docs/agents/dev-stack.md`](docs/agents/dev-stack.md).
+
 > Production and the availability journey aren't expected to work for outside
 > contributors yet; local setup covers running the app and viewing the rota.
 
@@ -34,6 +44,7 @@ step-by-step walkthrough is in **[`docs/local-setup.md`](docs/local-setup.md)**.
 | Doc | What it covers |
 | --- | --- |
 | [`docs/local-setup.md`](docs/local-setup.md) | Full local setup: Google Cloud, config, database, running the app. |
+| [`docs/agents/dev-stack.md`](docs/agents/dev-stack.md) | Running the app with no credentials, and driving it headlessly. |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute: project layout, standards, tests, PRs. |
 | [`CONTEXT.md`](CONTEXT.md) | Domain glossary (Shift, Rotation, Allocation, …). |
 | [`docs/adr/`](docs/adr/) | Architecture decision records. |

@@ -16,6 +16,9 @@ drop_in_config.*.yaml
 oauthClient.*.json
 serviceAccount.*.json
 .token.json
+# The one exception: the dev environment holds no secrets and is committed, so
+# a fresh checkout boots with no setup at all (docs/agents/dev-stack.md).
+!drop_in_config.dev.yaml
 
 # Any other secrets
 *.secret

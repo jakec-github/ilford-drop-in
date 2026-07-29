@@ -89,6 +89,13 @@ connection it does that over comes from `TEST_DATABASE_URL`, which
 `.worktree.env` points at the worktree's own database so test runs never hold
 the template open.
 
+The credential-free `dev` stack ([dev-stack.md](dev-stack.md)) is the exception:
+its config is committed, so every worktree shares one `ilford_dropin_dev`
+database. That is fine because it is empty and stays empty — but two worktrees
+running `scripts/dev-stack.sh` at once are writing to the same database, so give
+one of them its own if that ever matters. Ports do not collide: `dev-stack.sh`
+sources `.worktree.env` and listens on this worktree's `API_PORT`.
+
 The template is worth backing up, since nothing can rebuild it:
 
 ```bash
