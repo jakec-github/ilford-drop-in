@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/internal/devmode"
 	"github.com/jakechorley/ilford-drop-in/pkg/api"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -22,6 +23,10 @@ import (
 
 func main() {
 	env := flag.String("env", "", "Environment (required: test, prod, etc.)")
+	// Overriding the port keeps one config file usable from several checkouts at
+	// once: a git worktree runs its own stack on its own port (see
+	// docs/agents/worktrees.md) without editing the config it shares.
+	port := flag.Int("port", 0, "Override server.port from the config (0 keeps the configured port)")
 	flag.Parse()
 
 	if *env == "" {
@@ -29,13 +34,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(*env); err != nil {
+	if err := run(*env, *port); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(env string) error {
+func run(env string, portOverride int) error {
 	logger, err := logging.InitLogger(env)
 	if err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
@@ -51,49 +56,87 @@ func run(env string) error {
 	if cfg.Server == nil {
 		return fmt.Errorf("server config missing: add server.port to drop_in_config.%s.yaml", env)
 	}
-
-	webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
-	if err != nil {
-		return fmt.Errorf("failed to load web OAuth client config: %w", err)
+	if portOverride != 0 {
+		cfg.Server.Port = portOverride
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The volunteer roster is fetched from the sheet with the server's own
-	// service account: once at startup (below) and again on each admin sync. The
-	// admin only triggers the refetch — no token is taken from them.
-	serviceAccount, err := config.LoadServiceAccountWithEnv(env)
-	if err != nil {
-		return fmt.Errorf("failed to load service account: %w", err)
-	}
-
 	volunteers := api.NewVolunteerStore()
-	syncVolunteers := func(ctx context.Context) error {
-		client, err := sheetsclient.NewClientFromServiceAccount(ctx, serviceAccount.JSON)
-		if err != nil {
-			return fmt.Errorf("failed to build sheets client for sync: %w", err)
-		}
-		fetched, err := client.ListVolunteers(cfg)
-		if err != nil {
-			return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
-		}
-		volunteers.Replace(fetched)
-		logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
-		return nil
-	}
 
-	// Populate the roster at startup so reads work before any admin syncs. A
-	// failure here (transient Sheets outage, say) is not fatal: the server boots
-	// with an empty roster and an admin can retry via the sync button, matching
-	// the store's "degrade to no volunteers" behaviour.
-	if err := syncVolunteers(ctx); err != nil {
-		logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
-	}
+	// Dev mode replaces both halves of the Google dependency — the roster fetch
+	// and the identity provider — so the server runs on a checkout with no
+	// credentials at all. Config keeps it to the dev environment; this branch is
+	// the only place it changes what gets built.
+	var syncVolunteers api.VolunteerSyncFunc
+	var authenticator *api.Authenticator
+	if cfg.DevMode != nil {
+		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues an admin session without verifying identity",
+			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
+			zap.String("adminEmail", cfg.DevMode.AdminEmail))
 
-	authenticator, err := api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger, syncVolunteers)
-	if err != nil {
-		return fmt.Errorf("failed to create authenticator: %w", err)
+		syncVolunteers = func(context.Context) error {
+			fetched, err := devmode.LoadVolunteers(cfg.DevMode.VolunteersCSV)
+			if err != nil {
+				return err
+			}
+			volunteers.Replace(fetched)
+			logger.Info("Volunteer roster loaded from CSV", zap.Int("count", len(fetched)))
+			return nil
+		}
+
+		// Unlike a Sheets outage this is a local file that either exists or does
+		// not, so an unreadable roster is a misconfiguration worth failing on
+		// rather than something a later sync might fix.
+		if err := syncVolunteers(ctx); err != nil {
+			return fmt.Errorf("failed to load the dev volunteer roster: %w", err)
+		}
+
+		authenticator, err = api.NewStubAuthenticator(cfg.DevMode, cfg.Server, logger, syncVolunteers)
+		if err != nil {
+			return fmt.Errorf("failed to create stub authenticator: %w", err)
+		}
+	} else {
+		webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
+		if err != nil {
+			return fmt.Errorf("failed to load web OAuth client config: %w", err)
+		}
+
+		// The volunteer roster is fetched from the sheet with the server's own
+		// service account: once at startup (below) and again on each admin sync. The
+		// admin only triggers the refetch — no token is taken from them.
+		serviceAccount, err := config.LoadServiceAccountWithEnv(env)
+		if err != nil {
+			return fmt.Errorf("failed to load service account: %w", err)
+		}
+
+		syncVolunteers = func(ctx context.Context) error {
+			client, err := sheetsclient.NewClientFromServiceAccount(ctx, serviceAccount.JSON)
+			if err != nil {
+				return fmt.Errorf("failed to build sheets client for sync: %w", err)
+			}
+			fetched, err := client.ListVolunteers(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
+			}
+			volunteers.Replace(fetched)
+			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
+			return nil
+		}
+
+		// Populate the roster at startup so reads work before any admin syncs. A
+		// failure here (transient Sheets outage, say) is not fatal: the server boots
+		// with an empty roster and an admin can retry via the sync button, matching
+		// the store's "degrade to no volunteers" behaviour.
+		if err := syncVolunteers(ctx); err != nil {
+			logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
+		}
+
+		authenticator, err = api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger, syncVolunteers)
+		if err != nil {
+			return fmt.Errorf("failed to create authenticator: %w", err)
+		}
 	}
 
 	database, err := db.NewDB(ctx, cfg.DatabaseURL)
