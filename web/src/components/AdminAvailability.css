@@ -1,0 +1,111 @@
+/* Title left, the one action top right — the same shape as the volunteers tab,
+   so the admin area reads consistently. */
+.round-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.round-head h2 {
+  margin: 0;
+}
+
+.round-caption {
+  margin: 1rem 0 0;
+  font-size: 0.75rem;
+}
+
+.round-progress {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-h);
+}
+
+.round-message {
+  margin: 1.5rem 0 0;
+}
+
+.round-message--error {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(185, 28, 28, 0.3);
+  border-radius: 6px;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.1);
+}
+
+.round-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.round-row {
+  padding: 0.75rem 0.875rem;
+}
+
+.round-row + .round-row {
+  border-top: 1px solid var(--border);
+}
+
+.round-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.round-name {
+  color: var(--text-h);
+}
+
+.round-tag {
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+/* Answered is the state an admin is scanning for, so it takes a colour. "No
+   reply" stays neutral: on a fresh round that is every row, and colouring it
+   would turn the whole list red for a round nobody has had time to answer. */
+.round-tag--replied {
+  border-color: var(--role-volunteer);
+  color: var(--role-volunteer);
+}
+
+.round-tag--covered {
+  border-color: var(--accent);
+  color: var(--accent);
+  white-space: normal;
+}
+
+.round-answer {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+}
+
+/* The link and its copy button. On a phone the URL takes its own line above the
+   button; from a tablet up they sit together. The URL always wraps rather than
+   scrolls, because an admin who cannot copy needs to be able to read it. */
+.round-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.round-link-url {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}

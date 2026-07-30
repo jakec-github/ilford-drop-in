@@ -78,6 +78,32 @@ so calling it twice gives you two consecutive rotas. To start over, empty the
 tables (`DELETE FROM shift; DELETE FROM rotation;`) rather than hunting for the
 rota you meant.
 
+## Collect availability
+
+With a rota defined, mint a round — one link per active volunteer — and then
+answer as one of them. Minting and the roster are admin-gated; the volunteer's
+link is not, which is the point of it.
+
+```bash
+curl -b cookies.txt -X POST localhost:8080/availability-rounds -d '{}'
+curl -b cookies.txt localhost:8080/availability-rounds        # who has answered
+curl -H 'Accept: application/json' localhost:8080/availability/<token>
+curl -H 'Accept: application/json' -H 'Content-Type: application/json' \
+     -X POST localhost:8080/availability/<token> -d '{"shiftIds":["<id>"]}'
+```
+
+The token is the last path segment of the `link` on each roster entry. Minting
+is idempotent: running it again after the roster changes adds links for the
+newcomers and leaves everyone else's alone.
+
+`/availability/<token>` is one URL serving two audiences. A browser navigating
+to it gets the volunteer's page; `Accept: application/json` gets the payload,
+with 404 for an unknown token and 410 once the rota has been allocated. Send the
+JSON `Accept` header explicitly or you will get HTML back.
+
+`shiftIds` is the volunteer's whole answer, never a delta — an absent shift is a
+no. Submitting again appends a generation and the latest wins.
+
 ## Drive it with a browser
 
 `.mcp.json` in the repo root configures `playwright-mcp` — headless, isolated
@@ -111,14 +137,17 @@ verdict that something works.
 ## What you can actually see
 
 The database starts **empty**. Shifts you can seed yourself (see
-[Define a rota](#define-a-rota)); everything downstream of allocation you cannot
-yet — availability answers have no DB representation (see the #62 triage). So:
+[Define a rota](#define-a-rota)) and so can availability answers (see
+[Collect availability](#collect-availability)); allocation itself you cannot,
+since the web server does not expose it. So:
 
 | Works | |
 | --- | --- |
 | Login and logout | The header shows the signed-in address and a Log out button |
 | Header nav | Rota ↔ Admin |
-| `/admin` tab routing | Redirects to `/admin/volunteers`; Config and Availability are unbuilt stubs |
+| `/admin` tab routing | Redirects to `/admin/volunteers`; Config is still an unbuilt stub |
+| The availability tab | Starts a round for the latest rota and lists every volunteer, their link and whether they have answered |
+| The volunteer's form | `/availability/<token>`, public — no session, no header, mobile first |
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |

@@ -1,5 +1,7 @@
 package db
 
+import "time"
+
 // Rotation represents a database rotation record
 type Rotation struct {
 	ID                string
@@ -27,6 +29,48 @@ type AvailabilityRequest struct {
 	FormID      string
 	FormURL     string
 	FormSent    bool
+}
+
+// AvailabilityRequestV2 is a tokenised availability request: one volunteer's
+// invitation to answer for one rota, addressed by an unguessable link rather
+// than a login. It is the replacement for AvailabilityRequest, running alongside
+// it through the expand phase (migration 011); the contract migration drops the
+// Forms table and this type takes the plain name.
+//
+// SentAt is empty until a send stamps it, which nothing does before slice 3 —
+// minting and sending are separate operations.
+type AvailabilityRequestV2 struct {
+	ID          string // UUID
+	RotaID      string // UUID
+	VolunteerID string
+	Token       string
+	SentAt      string // TIMESTAMPTZ, empty string if NULL
+}
+
+// Answers a volunteer may give for a shift. Only positives are stored — an
+// absent row is a no — so there is no NO to record. PREFERRED has no consumer
+// yet (ADR 0004).
+const (
+	AnswerYes       = "YES"
+	AnswerPreferred = "PREFERRED"
+)
+
+// ShiftAnswer is one positive within a generation: a shift the volunteer said
+// yes to, and how emphatically.
+type ShiftAnswer struct {
+	ShiftID string // UUID
+	Answer  string
+}
+
+// AvailabilityGeneration is one complete submission. Answers holds every shift
+// that submission said yes to, and is empty for a volunteer who submitted
+// nothing — a state the Forms encoding could not express, and which reads
+// differently from never having replied (no generation at all).
+type AvailabilityGeneration struct {
+	RequestID   string // UUID of the availability_request_v2 row
+	ResponseID  string // UUID
+	SubmittedAt time.Time
+	Answers     []ShiftAnswer
 }
 
 // Allocation represents a database allocation record. It is keyed solely by

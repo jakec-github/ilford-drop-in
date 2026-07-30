@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import AdminAvailability from "./AdminAvailability";
 import AdminRota from "./AdminRota";
 import AdminVolunteers from "./AdminVolunteers";
 
@@ -16,6 +17,10 @@ export interface AdminTab {
 export const ADMIN_TABS: AdminTab[] = [
   { path: "/admin/volunteers", label: "Volunteers", Panel: AdminVolunteers },
   { path: "/admin/config", label: "Config" },
-  { path: "/admin/availability", label: "Availability" },
+  {
+    path: "/admin/availability",
+    label: "Availability",
+    Panel: AdminAvailability,
+  },
   { path: "/admin/rota", label: "Rota", Panel: AdminRota },
 ];

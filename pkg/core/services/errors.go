@@ -14,6 +14,11 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrConflict indicates the request contradicts the current rota state
 	ErrConflict = errors.New("conflict")
+	// ErrGone indicates the thing addressed existed and has since stopped being
+	// usable — an availability link whose rota has been allocated. Distinct from
+	// ErrNotFound so the holder of a link is told they are late rather than
+	// wrong.
+	ErrGone = errors.New("gone")
 )
 
 // wrapf builds an error that matches sentinel via errors.Is without altering
