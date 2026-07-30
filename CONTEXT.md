@@ -35,8 +35,27 @@ The audited reason for a set of Alterations — who requested the change and why
 _Avoid_: swap
 
 **Availability Request**:
-An ask sent to one volunteer covering all Shifts in one Rotation's batch,
-answered via a single form.
+An ask issued to one volunteer covering all Shifts in one Rotation's batch,
+answered on a tokenised page the server serves itself. The token is the
+volunteer's identity — they never log in — and stops working once the Rotation
+is allocated.
+
+**Availability Round**:
+The set of Availability Requests for one Rotation. Minting a round and notifying
+the volunteers in it are separate acts: a minted request exists, with its link,
+before anyone has been told about it.
+
+**Availability Response**:
+One volunteer's submission answering their Availability Request. Responses are
+never edited — resubmitting appends another, and the latest before the cut-off
+wins. A response with no Shift Availability means available for nothing, which
+is distinct from not having answered.
+_Avoid_: form response, answer (for the whole submission)
+
+**Shift Availability**:
+One Shift a single Availability Response said yes to. Only positives are
+recorded, so a Shift absent from a response is a no; each response therefore
+states every open Shift it accepts, never a change since last time.
 
 **Closed**:
 A Shift on a date the drop-in does not run (e.g. a holiday closure). Currently
