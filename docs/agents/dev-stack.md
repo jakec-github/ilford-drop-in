@@ -98,13 +98,15 @@ So:
 | Header nav | Rota ↔ Admin |
 | `/admin` tab routing | Redirects to `/admin/volunteers`; Config, Availability and Rota are unbuilt stubs |
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
+| The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |
 | The 404 route | Any unmatched path renders "Page not found" |
 
 | Does not | |
 | --- | --- |
 | The rota page | Renders empty — no shifts in the database |
-| Roster in the UI | The Volunteers tab is a sync button only; it has no list view yet. The roster is visible through `GET /volunteers`, not on a page. Its copy also still says "from the Google Sheet" — in dev mode it is the CSV. |
+| Deep-linking an admin tab | `http://localhost:8081/admin/volunteers` typed straight into the address bar renders blank: the build emits relative asset paths, so a nested route asks for `/admin/chunk-*.js` and the SPA fallback answers with `index.html`. Reach the tab by loading `/` and clicking through. |
+| Sync copy | The Volunteers tab's sync caption says "the Google Sheet" — in dev mode it is the CSV. |
 | Anything Sheets, Forms or Gmail | Never reached in dev mode |
 
 To work against real data instead, point `databaseURL` at the maintainer's

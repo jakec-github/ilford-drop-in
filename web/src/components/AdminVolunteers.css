@@ -1,16 +1,159 @@
-.sync-result {
+/* Title left, sync top right. On a narrow phone the sync column keeps its right
+   alignment rather than wrapping under the title — it is one small button and a
+   caption, so it fits beside the heading at any width worth supporting. */
+.volunteers-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.volunteers-head h2 {
+  margin: 0;
+}
+
+.volunteers-sync {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  gap: 0.25rem;
+}
+
+.volunteers-sync-caption {
+  margin: 0;
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.volunteers-sync-caption--ok {
+  color: var(--role-volunteer);
+}
+
+.volunteers-sync-caption--error {
+  color: #b91c1c;
+}
+
+.volunteers-message {
+  margin: 1.5rem 0 0;
+}
+
+.volunteers-message--error {
   padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(185, 28, 28, 0.3);
   border-radius: 6px;
-}
-
-.sync-result--ok {
-  color: var(--text-h);
-  background: var(--accent-bg);
-}
-
-.sync-result--error {
   color: #b91c1c;
   background: rgba(185, 28, 28, 0.1);
-  border-color: rgba(185, 28, 28, 0.3);
+}
+
+/* Three summary figures. auto-fit lets them sit in one row on desktop and fall
+   to two-then-one as the panel narrows, without a breakpoint per arrangement. */
+.roster-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0 0;
+}
+
+.roster-count {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.roster-count dt {
+  font-size: 0.75rem;
+}
+
+.roster-count dd {
+  margin: 0.125rem 0 0;
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--text-h);
+}
+
+/* The denominator, on the one figure whose meaning depends on it. Sits in the
+   dd, so it has to undo the figure's size and colour. */
+.roster-count-note {
+  display: block;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.roster-caption {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.75rem;
+}
+
+.roster {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* Name above tags on a phone; name left, tags right on anything wider. */
+.roster-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.875rem;
+}
+
+.roster-row + .roster-row {
+  border-top: 1px solid var(--border);
+}
+
+/* Someone who has left is listed, not hidden — dimmed so it reads as history
+   without becoming unreadable. */
+.roster-row--inactive {
+  opacity: 0.55;
+}
+
+.roster-name {
+  color: var(--text-h);
+}
+
+.roster-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.roster-tag {
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+/* Team leads take the rota's lead colour, so a lead looks like a lead wherever
+   they appear. Service volunteers stay neutral: they are most of the roster, so
+   colouring them too would tell the eye nothing and drown out the leads. Every
+   row is still labelled — the colour is the emphasis, not the information. */
+.roster-tag--role-lead {
+  border-color: var(--role-lead);
+  color: var(--role-lead);
+}
+
+.roster-tag--inactive {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (min-width: 30rem) {
+  .roster-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .roster-tags {
+    justify-content: flex-end;
+  }
 }

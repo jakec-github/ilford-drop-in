@@ -1,4 +1,4 @@
-import type { RotaShift } from "./types";
+import type { RotaShift, Volunteer } from "./types";
 
 const TEAM_LEAD_ROLE = "Team lead";
 
@@ -21,6 +21,30 @@ interface ApiShift {
 
 interface ListShiftsResponse {
   shifts: ApiShift[];
+}
+
+interface ApiVolunteer {
+  id: string;
+  name: string;
+  role?: string;
+  group?: string;
+  gender?: string;
+  active: boolean;
+}
+
+interface ListVolunteersResponse {
+  volunteers: ApiVolunteer[];
+}
+
+function toVolunteer(v: ApiVolunteer): Volunteer {
+  return {
+    id: v.id,
+    name: v.name,
+    role: v.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
+    group: v.group || null,
+    gender: v.gender || null,
+    active: v.active,
+  };
 }
 
 function toRotaShift(shift: ApiShift): RotaShift {
@@ -69,4 +93,25 @@ export async function fetchRota(): Promise<RotaShift[]> {
   }
   const data = (await res.json()) as ListShiftsResponse;
   return data.shifts.map(toRotaShift);
+}
+
+// fetchVolunteers returns the whole synced roster, inactive volunteers included,
+// already sorted by name server-side. Admin-only.
+export async function fetchVolunteers(): Promise<Volunteer[]> {
+  const res = await fetch("/volunteers");
+  if (!res.ok) {
+    throw new Error(`Failed to load volunteers (${res.status})`);
+  }
+  const data = (await res.json()) as ListVolunteersResponse;
+  return data.volunteers.map(toVolunteer);
+}
+
+// syncVolunteers re-reads the roster sheet into the database. The server uses
+// its own service account, so this is a plain authenticated POST with no OAuth
+// redirect dance.
+export async function syncVolunteers(): Promise<void> {
+  const res = await fetch("/auth/sync", { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Failed to sync volunteers (${res.status})`);
+  }
 }

@@ -10,11 +10,17 @@ import (
 // fields GET /shifts already returns, so a picker and a rota chip describe the
 // same person the same way, plus active — the roster includes volunteers who
 // have left, and the caller decides what to do with them.
+//
+// Gender is the sheet's own text, uncoerced: the column is free text, so any
+// mapping to a fixed set of values would be this endpoint guessing on the
+// admin's behalf. The allocator's gender balancing does its own matching
+// (allocator.GenderMale), and so does anything counting the roster.
 type volunteerResponse struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Role   string `json:"role,omitempty"`
 	Group  string `json:"group,omitempty"`
+	Gender string `json:"gender,omitempty"`
 	Active bool   `json:"active"`
 }
 
@@ -44,6 +50,7 @@ func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
 			Name:   v.DisplayName,
 			Role:   string(v.Role),
 			Group:  v.GroupKey,
+			Gender: v.Gender,
 			Active: strings.EqualFold(v.Status, "Active"),
 		})
 	}

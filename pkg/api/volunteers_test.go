@@ -12,13 +12,13 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// rosterVolunteers is a roster with a mix of statuses and a group, to prove the
-// endpoint renders every field and hides nobody.
+// rosterVolunteers is a roster with a mix of statuses, genders and a group, to
+// prove the endpoint renders every field and hides nobody.
 func rosterVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active", GroupKey: "smith-family"},
-			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "active"},
+			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active", Gender: "Male", GroupKey: "smith-family"},
+			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "active", Gender: "Female"},
 			{ID: "charlie", DisplayName: "Charlie", Role: model.RoleVolunteer, Status: "Left"},
 		},
 	}
@@ -29,6 +29,7 @@ type volunteerBody struct {
 	Name   string `json:"name"`
 	Role   string `json:"role"`
 	Group  string `json:"group"`
+	Gender string `json:"gender"`
 	Active bool   `json:"active"`
 }
 
@@ -51,10 +52,34 @@ func TestListVolunteersEndpoint(t *testing.T) {
 	require.Len(t, volunteers, 3)
 	assert.Equal(t, []string{"alice", "bob", "charlie"}, []string{volunteers[0].ID, volunteers[1].ID, volunteers[2].ID})
 
-	assert.Equal(t, volunteerBody{ID: "alice", Name: "Alice", Role: string(model.RoleTeamLead), Active: true}, volunteers[0])
 	assert.Equal(t, volunteerBody{
-		ID: "bob", Name: "Bob", Role: string(model.RoleVolunteer), Group: "smith-family", Active: true,
+		ID: "alice", Name: "Alice", Role: string(model.RoleTeamLead), Gender: "Female", Active: true,
+	}, volunteers[0])
+	assert.Equal(t, volunteerBody{
+		ID: "bob", Name: "Bob", Role: string(model.RoleVolunteer), Group: "smith-family", Gender: "Male", Active: true,
 	}, volunteers[1])
+}
+
+// TestListVolunteersGenderPassesThrough proves gender crosses the API verbatim
+// rather than being coerced into a two-value enum. It is free text on the sheet:
+// the admin roster reports what is recorded, and a caller counting male
+// volunteers decides for itself what counts.
+func TestListVolunteersGenderPassesThrough(t *testing.T) {
+	client := &mockVolunteerClient{
+		volunteers: []model.Volunteer{
+			{ID: "a", DisplayName: "A", Status: "Active", Gender: "male"},
+			{ID: "b", DisplayName: "B", Status: "Active", Gender: "Prefer not to say"},
+			{ID: "c", DisplayName: "C", Status: "Active"},
+		},
+	}
+	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/volunteers", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	volunteers := decodeVolunteers(t, rec.Body.Bytes())
+	require.Len(t, volunteers, 3)
+	assert.Equal(t, "male", volunteers[0].Gender)
+	assert.Equal(t, "Prefer not to say", volunteers[1].Gender)
+	assert.Empty(t, volunteers[2].Gender, "an unrecorded gender must stay unrecorded, not become a guess")
 }
 
 // TestListVolunteersIncludesInactive proves left volunteers are still listed —
