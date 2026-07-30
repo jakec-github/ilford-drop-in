@@ -5,6 +5,9 @@ async function build() {
     entrypoints: ["./index.html"],
     outdir: "./dist",
     sourcemap: "inline",
+    // Matches the production build: root-absolute asset references, so nested
+    // routes survive a hard navigation here too. See web/build.ts.
+    publicPath: "/",
     define: { "process.env.NODE_ENV": '"development"' },
   });
   if (!result.success) {
