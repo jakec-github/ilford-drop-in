@@ -1,4 +1,4 @@
-import type { RotaShift, Volunteer } from "./types";
+import type { DefinedRota, RotaShift, Volunteer } from "./types";
 
 const TEAM_LEAD_ROLE = "Team lead";
 
@@ -35,6 +35,25 @@ interface ApiVolunteer {
 
 interface ListVolunteersResponse {
   volunteers: ApiVolunteer[];
+}
+
+interface DefineRotaResponse {
+  rotation: { id: string; start: string; end: string; shiftCount: number };
+  shifts: { id: string; date: string }[];
+}
+
+// The API reports a rejected request as {"error": "..."}, and that message is
+// written to be read — "shift count must be positive, got 0" tells an admin what
+// to change, where a bare 400 does not. Falls back to the status when the body
+// is not one of ours.
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string };
+    if (body.error) return body.error;
+  } catch {
+    // Not a JSON error body; the status is all we have.
+  }
+  return `${fallback} (${res.status})`;
 }
 
 function toVolunteer(v: ApiVolunteer): Volunteer {
@@ -106,6 +125,28 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
   }
   const data = (await res.json()) as ListVolunteersResponse;
   return data.volunteers.map(toVolunteer);
+}
+
+// defineRota defines the next rota — the weeks after the latest existing one —
+// and returns the shifts it minted. Admin-only, and deliberately not idempotent:
+// two calls define two consecutive rotas, so the caller is expected to show what
+// came back rather than treat it as a repeatable action.
+export async function defineRota(shiftCount: number): Promise<DefinedRota> {
+  const res = await fetch("/rotations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shiftCount }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to define the rota"));
+  }
+  const data = (await res.json()) as DefineRotaResponse;
+  return {
+    id: data.rotation.id,
+    start: data.rotation.start,
+    end: data.rotation.end,
+    shiftDates: data.shifts.map((s) => s.date),
+  };
 }
 
 // syncVolunteers re-reads the roster sheet into the database. The server uses

@@ -59,32 +59,30 @@ func TestDefineRota_NoExistingRotations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, time.Sunday, startDate.Weekday())
 
-	// Check shift dates
-	assert.Len(t, result.ShiftDates, 12)
-	for i, shiftDate := range result.ShiftDates {
-		assert.Equal(t, time.Sunday, shiftDate.Weekday(), "Shift %d should be on Sunday", i)
-		expectedDate := startDate.AddDate(0, 0, 7*i)
-		assert.Equal(t, expectedDate.Format("2006-01-02"), shiftDate.Format("2006-01-02"))
-	}
+	// End spans to the last shift, so the returned rotation reads the same as one
+	// later fetched back from the store
+	assert.Equal(t, startDate.AddDate(0, 0, 7*11).Format("2006-01-02"), result.Rotation.End)
 
 	// Check rotation was inserted
 	assert.Len(t, mock.insertedRotas, 1)
 	assert.Equal(t, result.Rotation, mock.insertedRotas[0])
 
-	// Rotation and its shifts are created together in a single store call
+	// Rotation and its shifts are created together in a single store call, and
+	// the result carries exactly the shifts that were inserted
 	require.Len(t, mock.insertedShifts, 1)
-	shifts := mock.insertedShifts[0]
-	require.Len(t, shifts, 12, "one shift minted per shift date")
+	require.Len(t, result.Shifts, 12, "one shift minted per shift date")
+	assert.Equal(t, mock.insertedShifts[0], result.Shifts)
 
 	seenIDs := make(map[string]bool)
-	for i, s := range shifts {
+	for i, s := range result.Shifts {
 		assert.NotEmpty(t, s.ID, "shift %d has an identity", i)
 		assert.False(t, seenIDs[s.ID], "shift ids are unique")
 		seenIDs[s.ID] = true
 
 		assert.Equal(t, result.Rotation.ID, s.RotaID, "shift %d belongs to the minting rotation", i)
-		expectedDate := startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
-		assert.Equal(t, expectedDate, s.Date, "shift %d is on the correct consecutive Sunday", i)
+		expectedDate := startDate.AddDate(0, 0, 7*i)
+		assert.Equal(t, time.Sunday, expectedDate.Weekday(), "shift %d should be on Sunday", i)
+		assert.Equal(t, expectedDate.Format("2006-01-02"), s.Date, "shift %d is on the correct consecutive Sunday", i)
 	}
 }
 
@@ -123,7 +121,7 @@ func TestDefineRota_WithExistingRotations(t *testing.T) {
 
 	assert.Equal(t, expectedStart.Format("2006-01-02"), startDate.Format("2006-01-02"))
 	assert.Equal(t, 6, result.Rotation.ShiftCount)
-	assert.Len(t, result.ShiftDates, 6)
+	assert.Len(t, result.Shifts, 6)
 }
 
 func TestDefineRota_InvalidShiftCount(t *testing.T) {
@@ -145,6 +143,9 @@ func TestDefineRota_InvalidShiftCount(t *testing.T) {
 			assert.Error(t, err)
 			assert.Nil(t, result)
 			assert.Contains(t, err.Error(), "shift count must be positive")
+			// Classified as bad input, so callers such as the HTTP API answer
+			// 400 rather than 500
+			assert.ErrorIs(t, err, ErrInvalidInput)
 		})
 	}
 }

@@ -1,0 +1,57 @@
+.define-rota-intro {
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+/* The count and the button sit on one line: the field is a couple of characters
+   wide, so they fit side by side even on a narrow phone. */
+.define-rota-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.define-rota-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.define-rota-field input {
+  /* Wide enough for two digits plus the spinner, so it reads as a small number
+     rather than a text field. */
+  width: 5rem;
+  padding: 0.5rem;
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.define-rota-error {
+  margin: 1.25rem 0 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(185, 28, 28, 0.3);
+  border-radius: 6px;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.1);
+}
+
+.define-rota-result {
+  margin: 1.5rem 0 0.5rem;
+  color: var(--text-h);
+}
+
+/* The dates just created. Numbered, because their order is the point — the first
+   is where the new rota starts. */
+.define-rota-dates {
+  margin: 0;
+  padding: 0 0 0 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.define-rota-dates li {
+  padding: 0.125rem 0;
+}

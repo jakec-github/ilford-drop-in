@@ -24,6 +24,7 @@ import (
 type mockStore struct {
 	shifts               []db.Shift
 	shiftsInRange        []db.ShiftInRange
+	rotations            []db.Rotation
 	allocations          []db.Allocation
 	alterations          []db.Alteration
 	manualPreallocations []db.ManualPreallocation
@@ -32,10 +33,13 @@ type mockStore struct {
 	insertedCover           *db.Cover
 	insertedAlterations     []db.Alteration
 	insertedPreallocations  []db.ManualPreallocation
+	insertedRotations       []db.Rotation
+	insertedShifts          []db.Shift
 	deletedPreallocationIDs []string
 	insertErr               error
 	pingErr                 error
 	getShiftsErr            error
+	getRotationsErr         error
 }
 
 // allShiftsInRange is the canonical shift set the store would hold, each with an
@@ -94,6 +98,33 @@ func (m *mockStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([
 	// Mirror the DB's ORDER BY date: production trusts this ordering.
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].Date < filtered[j].Date })
 	return filtered, nil
+}
+
+func (m *mockStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
+	if m.getRotationsErr != nil {
+		return nil, m.getRotationsErr
+	}
+	return m.rotations, nil
+}
+
+// InsertRotationAndShifts records the write and makes it visible to subsequent
+// reads, deriving the rotation's span from its shifts as the real store does
+// (ADR 0001) so a second define lands after the first.
+func (m *mockStore) InsertRotationAndShifts(ctx context.Context, rotation *db.Rotation, shifts []db.Shift) error {
+	if m.insertErr != nil {
+		return m.insertErr
+	}
+	stored := db.Rotation{
+		ID:         rotation.ID,
+		Start:      shifts[0].Date,
+		End:        shifts[len(shifts)-1].Date,
+		ShiftCount: len(shifts),
+	}
+	m.rotations = append(m.rotations, stored)
+	m.shifts = append(m.shifts, shifts...)
+	m.insertedRotations = append(m.insertedRotations, stored)
+	m.insertedShifts = append(m.insertedShifts, shifts...)
+	return nil
 }
 
 func (m *mockStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {

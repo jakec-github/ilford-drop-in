@@ -35,6 +35,17 @@ export interface Volunteer {
   active: boolean;
 }
 
+// DefinedRota is a rota that has just been defined: the span it covers and the
+// dates of the shifts it minted, in order. Returned by the define call so the
+// admin can see what they created — defining is not idempotent, so what came
+// back is the only confirmation of which weeks were taken.
+export interface DefinedRota {
+  id: string;
+  start: string;
+  end: string;
+  shiftDates: string[];
+}
+
 export interface RotaShift {
   date: string;
   closed: boolean;

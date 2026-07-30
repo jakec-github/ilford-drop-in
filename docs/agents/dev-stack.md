@@ -56,6 +56,28 @@ without it, and the address is still re-checked against `server.adminEmails` on
 every request. What you are looking at is the real gate, not an open door.
 `GET /auth/callback` 404s, since there is no OAuth exchange to complete.
 
+## Define a rota
+
+The database starts empty, so nothing downstream of a shift is reachable until a
+rota exists. Define one over the API — with the session from above:
+
+```bash
+curl -b cookies.txt -X POST localhost:8080/rotations -d '{"shiftCount": 6}'
+```
+
+That mints six weekly shifts and returns them with their ids;
+`GET /shifts` then serves them. The Rota tab in the admin area does the same
+thing through the UI.
+
+Seed through the endpoints rather than by writing rows into Postgres by hand:
+fixtures that bypass the code go stale as the schema moves, and a rota assembled
+by hand can be a shape the app would never create.
+
+Defining is **not idempotent** — each call takes the weeks after the last rota,
+so calling it twice gives you two consecutive rotas. To start over, empty the
+tables (`DELETE FROM shift; DELETE FROM rotation;`) rather than hunting for the
+rota you meant.
+
 ## Drive it with a browser
 
 `.mcp.json` in the repo root configures `playwright-mcp` — headless, isolated
@@ -88,23 +110,25 @@ verdict that something works.
 
 ## What you can actually see
 
-The database starts **empty**, and seeding is deliberately out of scope (issue
-#68; availability answers have no DB representation yet — see the #62 triage).
-So:
+The database starts **empty**. Shifts you can seed yourself (see
+[Define a rota](#define-a-rota)); everything downstream of allocation you cannot
+yet — availability answers have no DB representation (see the #62 triage). So:
 
 | Works | |
 | --- | --- |
 | Login and logout | The header shows the signed-in address and a Log out button |
 | Header nav | Rota ↔ Admin |
-| `/admin` tab routing | Redirects to `/admin/volunteers`; Config, Availability and Rota are unbuilt stubs |
+| `/admin` tab routing | Redirects to `/admin/volunteers`; Config and Availability are unbuilt stubs |
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |
+| The rota tab | Defines a rota and lists the shifts it minted, behind `requireAdmin` |
+| `POST /rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database |
 | The 404 route | Any unmatched path renders "Page not found" |
 
 | Does not | |
 | --- | --- |
-| The rota page | Renders empty — no shifts in the database |
+| The rota page | Renders empty until you define a rota. After that an admin sees the minted shifts flagged as unallocated, and the public sees nothing — filling them needs an allocation run, which the web server does not expose |
 | Deep-linking an admin tab | `http://localhost:8081/admin/volunteers` typed straight into the address bar renders blank: the build emits relative asset paths, so a nested route asks for `/admin/chunk-*.js` and the SPA fallback answers with `index.html`. Reach the tab by loading `/` and clicking through. |
 | Sync copy | The Volunteers tab's sync caption says "the Google Sheet" — in dev mode it is the CSV. |
 | Anything Sheets, Forms or Gmail | Never reached in dev mode |

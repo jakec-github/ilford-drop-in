@@ -12,10 +12,13 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// RotaResult represents the result of defining a new rota
+// RotaResult represents the result of defining a new rota: the rotation and the
+// shifts it minted, in date order. Callers get the shifts themselves rather than
+// bare dates, because a shift's id is its identity everywhere downstream
+// (ADR 0001).
 type RotaResult struct {
-	Rotation   *db.Rotation
-	ShiftDates []time.Time
+	Rotation *db.Rotation
+	Shifts   []db.Shift
 }
 
 // DefineRotaStore defines the database operations needed for defining a rota
@@ -29,7 +32,7 @@ type DefineRotaStore interface {
 // creates the rotation record, and calculates all shift dates
 func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logger, shiftCount int) (*RotaResult, error) {
 	if shiftCount <= 0 {
-		return nil, fmt.Errorf("shift count must be positive, got %d", shiftCount)
+		return nil, wrapf(ErrInvalidInput, "shift count must be positive, got %d", shiftCount)
 	}
 
 	logger.Debug("Defining new rota", zap.Int("shift_count", shiftCount))
@@ -81,17 +84,19 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 
 	// Mint this rotation's shifts (weekly shifts starting from start date).
 	// Rota definition is the sole place shift-date arithmetic lives.
-	shiftDates := make([]time.Time, shiftCount)
 	shifts := make([]db.Shift, shiftCount)
 	for i := 0; i < shiftCount; i++ {
-		shiftDate := startDate.AddDate(0, 0, 7*i)
-		shiftDates[i] = shiftDate
 		shifts[i] = db.Shift{
 			ID:     uuid.New().String(),
 			RotaID: rotation.ID,
-			Date:   shiftDate.Format("2006-01-02"),
+			Date:   startDate.AddDate(0, 0, 7*i).Format("2006-01-02"),
 		}
 	}
+
+	// The rotation's span is its shifts' span (ADR 0001): setting End here means
+	// the returned rotation reads the same as one fetched back from the store,
+	// which derives both ends from the shift rows.
+	rotation.End = shifts[len(shifts)-1].Date
 
 	// Insert the rotation and all of its shifts atomically, so a rota can
 	// never exist half-formed.
@@ -102,12 +107,12 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	logger.Debug("Rotation created successfully",
 		zap.String("rotation_id", rotation.ID),
 		zap.Int("shift_count", shiftCount),
-		zap.String("first_shift", shiftDates[0].Format("2006-01-02")),
-		zap.String("last_shift", shiftDates[len(shiftDates)-1].Format("2006-01-02")))
+		zap.String("first_shift", shifts[0].Date),
+		zap.String("last_shift", shifts[len(shifts)-1].Date))
 
 	return &RotaResult{
-		Rotation:   rotation,
-		ShiftDates: shiftDates,
+		Rotation: rotation,
+		Shifts:   shifts,
 	}, nil
 }
 
