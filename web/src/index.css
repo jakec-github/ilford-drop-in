@@ -47,6 +47,21 @@ h2 {
   padding: 3rem 1rem;
 }
 
+/* Text for screen readers only. For state carried visually by styling alone —
+   a dimmed row, a colour — which assistive tech cannot see. Clipped rather than
+   display:none, which would take it out of the accessibility tree too. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app-header {
   display: flex;
   justify-content: space-between;

@@ -26,6 +26,7 @@ interface ListShiftsResponse {
 interface ApiVolunteer {
   id: string;
   name: string;
+  fullName: string;
   role?: string;
   group?: string;
   gender?: string;
@@ -40,6 +41,7 @@ function toVolunteer(v: ApiVolunteer): Volunteer {
   return {
     id: v.id,
     name: v.name,
+    fullName: v.fullName,
     role: v.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
     group: v.group || null,
     gender: v.gender || null,

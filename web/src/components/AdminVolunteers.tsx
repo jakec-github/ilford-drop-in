@@ -21,16 +21,21 @@ interface RosterCounts {
   malePercentage: number | null;
 }
 
+// Gender is free text from the sheet, so "male" is matched case-insensitively
+// and anything else — "Female", "Prefer not to say", blank — simply is not male.
+// One definition, used by both the count and the tag, so the percentage can never
+// disagree with the rows it is counting.
+function isMale(volunteer: Volunteer): boolean {
+  return volunteer.gender?.toLowerCase() === "male";
+}
+
 // Every count is over active volunteers only: an admin sizing up the team wants
 // who can actually be rostered, not who has ever been on the sheet. Team leads
 // are a subset of that same total, not a separate population — a lead is a
 // volunteer holding the lead role.
-//
-// Gender is free text from the sheet, so "male" is matched case-insensitively
-// and anything else — "Female", "Prefer not to say", blank — simply is not male.
 function countRoster(volunteers: Volunteer[]): RosterCounts {
   const active = volunteers.filter((v) => v.active);
-  const male = active.filter((v) => v.gender?.toLowerCase() === "male").length;
+  const male = active.filter(isMale).length;
 
   return {
     activeVolunteers: active.length,
@@ -62,34 +67,33 @@ function Count({
   );
 }
 
-// One roster entry: the name, then the facts about them as tags. Role is tagged
-// on every row rather than only on leads — an admin reading a roster should not
-// have to infer a role from the absence of a label.
+// One roster entry: the full name, then only the tags that mark someone out from
+// the default. A service volunteer, a female volunteer and an ungrouped volunteer
+// are each the common case, so tagging them would put a label on nearly every row
+// and leave nothing standing out. What remains is what an admin scans for.
+//
+// Having left is shown by dimming the row alone. That is invisible to a screen
+// reader, so the state is also given as text only it can reach.
 function RosterRow({ volunteer }: { volunteer: Volunteer }) {
   return (
     <li
       className={`roster-row${volunteer.active ? "" : " roster-row--inactive"}`}
     >
-      <span className="roster-name">{volunteer.name}</span>
-      <span className="roster-tags">
-        <span
-          className={`roster-tag roster-tag--role-${volunteer.role}`}
-          title="Role"
-        >
-          {volunteer.role === "lead" ? "Team lead" : "Service volunteer"}
-        </span>
-        {volunteer.gender && (
-          <span className="roster-tag" title="Gender">
-            {volunteer.gender}
-          </span>
+      <span className="roster-name">
+        {volunteer.fullName}
+        {!volunteer.active && (
+          <span className="visually-hidden"> (no longer volunteering)</span>
         )}
+      </span>
+      <span className="roster-tags">
+        {volunteer.role === "lead" && (
+          <span className="roster-tag roster-tag--role-lead">Team lead</span>
+        )}
+        {isMale(volunteer) && <span className="roster-tag">Male</span>}
         {volunteer.group && (
           <span className="roster-tag" title="Group">
             {volunteer.group}
           </span>
-        )}
-        {!volunteer.active && (
-          <span className="roster-tag roster-tag--inactive">Inactive</span>
         )}
       </span>
     </li>
@@ -156,8 +160,7 @@ export default function AdminVolunteers() {
           </dl>
 
           <p className="roster-caption">
-            All {volunteers.length} volunteers on the sheet, including those who
-            have left.
+            All {volunteers.length} volunteers on the sheet.
           </p>
           <ul className="roster">
             {volunteers.map((v) => (
