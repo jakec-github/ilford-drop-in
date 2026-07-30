@@ -64,6 +64,8 @@ does not apply to you.
   vet, tests (with the database up, so they cannot silently skip), frontend
   typecheck and lint, in one exit code. Then push the branch and open a PR with
   `gh pr create` — titled after the ticket, with `Closes #<n>` in the body.
+- PRs that include visual changes to the front end should have screenshots
+  in the PR comments.
 - Request review from `jakec-github`. Never merge a PR; merging is the
   reviewer's decision.
 - The agent token cannot request reviewers via `gh pr edit --add-reviewer`
@@ -73,7 +75,7 @@ does not apply to you.
   not the inner loop — one deliberate wait at the end, catching what differs
   from your machine (uncommitted files, locally-skipped tests, accumulated
   state). Fix anything it catches before handing over.
-- Once the checks are green switch back to main
+- Once the checks are green switch back to `main` (unless on a worktree)
 - To address review feedback: read the PR conversation (`gh pr view <n>
 --comments`), the inline review threads (`gh api
 repos/{owner}/{repo}/pulls/<n>/comments`), and any failing checks
