@@ -33,6 +33,10 @@ type ChangeRotaParams struct {
 	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
 	Reason    string // Required reason for the change
 	UserEmail string // Email of the user making the change
+	// Role the incoming volunteer takes, overriding inferRole. Optional; when
+	// empty the role is inferred as before. Only meaningful alongside In and
+	// without SwapDate — see validateRoleOverride.
+	Role string
 }
 
 // ChangeRotaResult contains the result of a rota change. Alterations are keyed
@@ -71,6 +75,10 @@ func ChangeRota(
 
 	if params.Reason == "" {
 		return nil, wrapf(ErrInvalidInput, "--reason is required")
+	}
+
+	if err := validateRoleOverride(params); err != nil {
+		return nil, err
 	}
 
 	// Step 1b: Fetch volunteers and validate IDs
@@ -136,7 +144,7 @@ func ChangeRota(
 			return err
 		}
 
-		if err := validateDateChanges(effectiveState, params.Date, params.Out, params.In, params.OutCustom, params.InCustom); err != nil {
+		if err := validateDateChanges(effectiveState, volunteersByID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom); err != nil {
 			return err
 		}
 
@@ -149,7 +157,7 @@ func ChangeRota(
 					return err
 				}
 			}
-			if err := validateDateChanges(swapEffectiveState, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom); err != nil {
+			if err := validateDateChanges(swapEffectiveState, volunteersByID, params.SwapDate, params.In, params.Out, params.InCustom, params.OutCustom); err != nil {
 				return fmt.Errorf("swap date: %w", err)
 			}
 		}
@@ -164,9 +172,25 @@ func ChangeRota(
 
 		// Build alterations for the primary shift, then reverse alterations for
 		// the swap shift (which may belong to a different rota)
-		alterations = append(alterations, buildAlterationsForShift(shift.ID, coverID, params.Out, params.In, params.OutCustom, params.InCustom, volunteersByID, effectiveState)...)
+		alterations = append(alterations, buildAlterationsForShift(shiftChange{
+			shiftID:   shift.ID,
+			out:       params.Out,
+			in:        params.In,
+			outCustom: params.OutCustom,
+			inCustom:  params.InCustom,
+			role:      params.Role,
+		}, coverID, volunteersByID, effectiveState)...)
 		if params.SwapDate != "" {
-			alterations = append(alterations, buildAlterationsForShift(swapShift.ID, coverID, params.In, params.Out, params.InCustom, params.OutCustom, volunteersByID, swapEffectiveState)...)
+			// In and out change places: whoever leaves the primary shift joins
+			// this one. No role override — it is rejected alongside a swap,
+			// having no unambiguous person to name.
+			alterations = append(alterations, buildAlterationsForShift(shiftChange{
+				shiftID:   swapShift.ID,
+				out:       params.In,
+				in:        params.Out,
+				outCustom: params.InCustom,
+				inCustom:  params.OutCustom,
+			}, coverID, volunteersByID, swapEffectiveState)...)
 		}
 
 		if err := store.InsertCoverAndAlterations(ctx, cover, alterations); err != nil {
@@ -236,8 +260,8 @@ func resolveShift(ctx context.Context, database ChangeRotaStore, dateStr string)
 
 // validateDateChanges validates that the proposed changes are consistent with
 // the shift's current effective allocations. dateStr is used only for error
-// messages.
-func validateDateChanges(allocations []db.Allocation, dateStr, outVol, inVol, outCustom, inCustom string) error {
+// messages, and volunteersByID only to name people in them.
+func validateDateChanges(allocations []db.Allocation, volunteersByID map[string]model.Volunteer, dateStr, outVol, inVol, outCustom, inCustom string) error {
 	// Validate outVol: must be currently on the shift
 	if outVol != "" {
 		found := false
@@ -248,7 +272,7 @@ func validateDateChanges(allocations []db.Allocation, dateStr, outVol, inVol, ou
 			}
 		}
 		if !found {
-			return wrapf(ErrConflict, "volunteer %s is not on the shift for %s", outVol, dateStr)
+			return wrapf(ErrConflict, "%s is not on the shift for %s", volunteerLabel(outVol, volunteersByID), dateStr)
 		}
 	}
 
@@ -256,7 +280,7 @@ func validateDateChanges(allocations []db.Allocation, dateStr, outVol, inVol, ou
 	if inVol != "" {
 		for _, a := range allocations {
 			if a.VolunteerID == inVol {
-				return wrapf(ErrConflict, "volunteer %s is already on the shift for %s", inVol, dateStr)
+				return wrapf(ErrConflict, "%s is already on the shift for %s", volunteerLabel(inVol, volunteersByID), dateStr)
 			}
 		}
 	}
@@ -281,50 +305,76 @@ func validateDateChanges(allocations []db.Allocation, dateStr, outVol, inVol, ou
 	return nil
 }
 
+// volunteerLabel names a volunteer for an error message a human reads — the
+// rota UI shows these inline against the shift, where an opaque id says
+// nothing. Falls back to the id for anyone the roster does not know, which
+// cannot happen on the validation path but keeps the helper total.
+func volunteerLabel(id string, volunteersByID map[string]model.Volunteer) string {
+	if v, ok := volunteersByID[id]; ok && v.DisplayName != "" {
+		return v.DisplayName
+	}
+	return id
+}
+
+// shiftChange is one shift's half of a rota change: who leaves it, who joins
+// it, and the role the joining volunteer takes when the admin named one. A swap
+// is two of these — the second with in and out exchanged.
+type shiftChange struct {
+	shiftID   string
+	out       string // Volunteer ID leaving
+	in        string // Volunteer ID joining
+	outCustom string // Custom entry leaving
+	inCustom  string // Custom entry joining
+	role      string // Role for in, or empty to infer it
+}
+
 // buildAlterationsForShift creates alteration records for a single shift.
 // dateAllocations is the shift's effective state, used to infer the role for
 // "add" alterations. Each alteration references the shift by id (ADR 0001).
-func buildAlterationsForShift(shiftID, coverID, outVol, inVol, outCustom, inCustom string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) []db.Alteration {
+func buildAlterationsForShift(change shiftChange, coverID string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) []db.Alteration {
 	var alterations []db.Alteration
 
-	if outVol != "" {
+	if change.out != "" {
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftID:     shiftID,
+			ShiftID:     change.shiftID,
 			Direction:   "remove",
-			VolunteerID: outVol,
+			VolunteerID: change.out,
 			CoverID:     coverID,
 		})
 	}
 
-	if inVol != "" {
-		role := inferRole(inVol, outVol, volunteersByID, dateAllocations)
+	if change.in != "" {
+		role := change.role
+		if role == "" {
+			role = inferRole(change.in, change.out, volunteersByID, dateAllocations)
+		}
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftID:     shiftID,
+			ShiftID:     change.shiftID,
 			Direction:   "add",
-			VolunteerID: inVol,
+			VolunteerID: change.in,
 			CoverID:     coverID,
 			Role:        role,
 		})
 	}
 
-	if outCustom != "" {
+	if change.outCustom != "" {
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftID:     shiftID,
+			ShiftID:     change.shiftID,
 			Direction:   "remove",
-			CustomValue: outCustom,
+			CustomValue: change.outCustom,
 			CoverID:     coverID,
 		})
 	}
 
-	if inCustom != "" {
+	if change.inCustom != "" {
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
-			ShiftID:     shiftID,
+			ShiftID:     change.shiftID,
 			Direction:   "add",
-			CustomValue: inCustom,
+			CustomValue: change.inCustom,
 			CoverID:     coverID,
 		})
 	}
@@ -332,7 +382,30 @@ func buildAlterationsForShift(shiftID, coverID, outVol, inVol, outCustom, inCust
 	return alterations
 }
 
-// inferRole determines the role for an incoming volunteer.
+// validateRoleOverride checks a caller-supplied role. It names the volunteer
+// coming in on Date, so it needs one: a change with nobody coming in has no
+// role to set, and a swap has two incoming volunteers — one on each date — so
+// a single role would be applied to whichever the caller did not mean. Both are
+// rejected rather than silently ignored, since a role that vanishes is worse
+// than one that is refused.
+func validateRoleOverride(params ChangeRotaParams) error {
+	if params.Role == "" {
+		return nil
+	}
+	if !model.Role(params.Role).IsValid() {
+		return wrapf(ErrInvalidInput, "invalid role %q: expected %q or %q", params.Role, model.RoleTeamLead, model.RoleVolunteer)
+	}
+	if params.In == "" {
+		return wrapf(ErrInvalidInput, "a role can only be set for a volunteer coming in")
+	}
+	if params.SwapDate != "" {
+		return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming volunteer")
+	}
+	return nil
+}
+
+// inferRole determines the role for an incoming volunteer, where the caller has
+// not named one.
 // 1. Replacement: inherit the outgoing volunteer's role from the shift.
 // 2. Otherwise use the volunteer's own role, but downgrade team lead if one already exists.
 func inferRole(inVol, outVol string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) string {

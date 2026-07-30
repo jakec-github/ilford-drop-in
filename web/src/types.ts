@@ -46,6 +46,34 @@ export interface DefinedRota {
   shiftDates: string[];
 }
 
+// PersonRef identifies someone on a shift for the purpose of changing it. A
+// real volunteer is keyed by id; a custom (manual) entry has none, so it is
+// keyed by the text itself — which is also how the API removes one.
+export type PersonRef = { volunteerId: string } | { custom: string };
+
+// RotaChange is one change to a published rota, mirroring what POST /alterations
+// accepts. Every operation the rota page offers is one of these:
+//
+//   add     { date, in }
+//   remove  { date, out }
+//   move    { date: destination, in: person, swapDate: where they were }
+//   swap    { date: A's shift, out: A, in: B, swapDate: B's shift }
+//
+// swapDate applies the same change reversed on a second date, which is what
+// makes move and swap a single atomic request rather than two.
+//
+// role sets the role the incoming volunteer takes; omitted, the server infers
+// it. It cannot be combined with swapDate, where each date has its own incoming
+// person. reason is mandatory — the change is recorded against it.
+export interface RotaChange {
+  date: string;
+  in?: PersonRef;
+  out?: PersonRef;
+  swapDate?: string;
+  role?: Role;
+  reason: string;
+}
+
 export interface RotaShift {
   date: string;
   closed: boolean;

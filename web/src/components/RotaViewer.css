@@ -4,9 +4,17 @@
   padding: 16px;
 }
 
+.rota-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .rota-viewer h1 {
   font-size: 22px;
-  margin: 0 0 16px;
+  margin: 0;
 }
 
 /* Search */
@@ -243,11 +251,14 @@
 }
 
 /* Chips: colour = role held on this shift. Outlined by default, light fill on
-   hover, solid fill when selected. */
+   hover, solid fill when selected. Buttons rather than spans — they are
+   clickable on the public rota and are the handle for every edit on the admin
+   one, so they have to be reachable by keyboard either way. */
 .chip {
   position: relative;
   display: inline-block;
   padding: 3px 10px;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
@@ -255,6 +266,9 @@
   color: var(--chip);
   background: transparent;
   cursor: pointer;
+  /* The drag handle is the chip itself; without this a drag starts by
+     selecting the name instead. */
+  user-select: none;
 }
 
 .chip.role-lead {
@@ -288,6 +302,113 @@
 .chip.selected {
   background: var(--chip);
   color: #fff;
+}
+
+/* Editing (admin only) ------------------------------------------------------
+
+   Everything below is only rendered while an admin has editing turned on. */
+
+.rota-edit-hint,
+.rota-edit-banner {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.rota-edit-hint {
+  margin-top: 0;
+  background: color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+/* Focused programmatically when a pick starts, so it takes a focus ring like
+   anything else reached by keyboard — but not a stray one on a mouse click. */
+.rota-edit-banner:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.rota-edit-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+/* A shift that the person being carried can be dropped on. An outline rather
+   than a border so nothing reflows mid-drag. */
+.shift-row.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+}
+
+/* The chip currently being carried, left in place but visibly lifted out. */
+.chip.lifted {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+/* A chip that is not a destination for whoever is being carried. Still
+   focusable, and its label says why, but it does nothing. */
+.chip.chip-inert {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chip.chip-inert:hover {
+  background: transparent;
+}
+
+.shift-add {
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.shift-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.shift-move-here {
+  align-self: center;
+}
+
+/* The chip action menu and the inline error both take a whole line of the row,
+   under the chips they belong to. */
+.chip-menu,
+.shift-error {
+  flex-basis: 100%;
+  margin: 8px 0 0;
+}
+
+.chip-menu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.chip-menu-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.shift-error {
+  font-size: 13px;
+  color: var(--role-lead);
 }
 
 /* Group membership: a small corner dot, one stable colour per group. The ring
