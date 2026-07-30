@@ -108,8 +108,8 @@
 }
 
 /* Someone who has left is listed, not hidden — dimmed so it reads as history
-   without becoming unreadable. Dimming is the only visual signal, so the row also
-   carries .visually-hidden text for anyone not seeing it. */
+   without becoming unreadable, and tagged so the state does not rest on dimming
+   alone. */
 .roster-row--inactive {
   opacity: 0.55;
 }
@@ -139,6 +139,13 @@
 .roster-tag--role-lead {
   border-color: var(--role-lead);
   color: var(--role-lead);
+}
+
+/* Set in caps so it reads as a status rather than as another attribute of the
+   person, next to tags like "Male" and "Group A". */
+.roster-tag--inactive {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 @media (min-width: 30rem) {

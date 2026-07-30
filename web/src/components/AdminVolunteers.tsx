@@ -72,19 +72,14 @@ function Count({
 // are each the common case, so tagging them would put a label on nearly every row
 // and leave nothing standing out. What remains is what an admin scans for.
 //
-// Having left is shown by dimming the row alone. That is invisible to a screen
-// reader, so the state is also given as text only it can reach.
+// Not being active is one of those exceptions, so it is tagged as well as dimmed —
+// the tag is what carries the state to a screen reader, which cannot see dimming.
 function RosterRow({ volunteer }: { volunteer: Volunteer }) {
   return (
     <li
       className={`roster-row${volunteer.active ? "" : " roster-row--inactive"}`}
     >
-      <span className="roster-name">
-        {volunteer.fullName}
-        {!volunteer.active && (
-          <span className="visually-hidden"> (no longer volunteering)</span>
-        )}
-      </span>
+      <span className="roster-name">{volunteer.fullName}</span>
       <span className="roster-tags">
         {volunteer.role === "lead" && (
           <span className="roster-tag roster-tag--role-lead">Team lead</span>
@@ -94,6 +89,9 @@ function RosterRow({ volunteer }: { volunteer: Volunteer }) {
           <span className="roster-tag" title="Group">
             {volunteer.group}
           </span>
+        )}
+        {!volunteer.active && (
+          <span className="roster-tag roster-tag--inactive">Not active</span>
         )}
       </span>
     </li>
