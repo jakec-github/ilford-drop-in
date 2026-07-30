@@ -15,6 +15,26 @@ export interface Assignee {
   volunteerId: string | null;
 }
 
+// Volunteer is one entry of the admin roster. Role is the volunteer's intrinsic
+// role, unlike Assignee.role which is the role held on one shift. Group is their
+// group key, or null when they are not in one.
+//
+// name is the display name — the shortest unambiguous form, as the rota shows it.
+// fullName is first plus last, for screens with room for it.
+//
+// gender is free text as recorded on the roster sheet, so it is shown as-is and
+// null when nothing was recorded — never inferred. active is false for someone
+// who has stopped volunteering: the roster lists them rather than hiding them.
+export interface Volunteer {
+  id: string;
+  name: string;
+  fullName: string;
+  role: Role;
+  group: string | null;
+  gender: string | null;
+  active: boolean;
+}
+
 export interface RotaShift {
   date: string;
   closed: boolean;
