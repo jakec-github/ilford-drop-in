@@ -16,6 +16,7 @@ import (
 // Store defines the database operations the API needs (satisfied by *db.DB)
 type Store interface {
 	services.ChangeRotaStore
+	services.DefineRotaStore
 	services.ListShiftsStore
 	services.PreallocationStore
 	// Ping reports whether the database is reachable, for GET /health.
@@ -51,6 +52,7 @@ func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.handleHealth)
 	mux.HandleFunc("GET /shifts", h.handleListShifts)
+	mux.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	mux.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	mux.HandleFunc("GET /preallocations", h.handleListPreallocations)
 	mux.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))

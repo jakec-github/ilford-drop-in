@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import AdminRota from "./AdminRota";
 import AdminVolunteers from "./AdminVolunteers";
 
 // A tab is one admin route. Tabs without a Panel are stubs: the route and the
@@ -16,5 +17,5 @@ export const ADMIN_TABS: AdminTab[] = [
   { path: "/admin/volunteers", label: "Volunteers", Panel: AdminVolunteers },
   { path: "/admin/config", label: "Config" },
   { path: "/admin/availability", label: "Availability" },
-  { path: "/admin/rota", label: "Rota" },
+  { path: "/admin/rota", label: "Rota", Panel: AdminRota },
 ];

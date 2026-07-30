@@ -33,8 +33,8 @@ func DefineRotaCmd(app *AppContext) *cobra.Command {
 			fmt.Printf("Shift Count: %d\n\n", result.Rotation.ShiftCount)
 
 			fmt.Printf("Shift Dates:\n")
-			for i, shiftDate := range result.ShiftDates {
-				fmt.Printf("  %2d. %s\n", i+1, shiftDate.Format("2006-01-02 (Monday)"))
+			for i, shift := range result.Shifts {
+				fmt.Printf("  %2d. %s\n", i+1, shift.Date)
 			}
 			fmt.Println()
 
