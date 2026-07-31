@@ -70,7 +70,10 @@ func (h *Handler) Routes() http.Handler {
 	api.HandleFunc("GET /shifts", h.handleListShifts)
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
-	api.HandleFunc("GET /preallocations", h.handleListPreallocations)
+	// Reading pins is admin-only alongside writing them: a listing names people
+	// against dates whose rota has not been allocated, let alone published, and
+	// nothing outside the admin UI has any use for it.
+	api.Handle("GET /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleListPreallocations)))
 	api.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))
 	api.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
 	api.Handle("GET /volunteers", h.auth.requireAdmin(http.HandlerFunc(h.handleListVolunteers)))

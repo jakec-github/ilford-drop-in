@@ -14,12 +14,18 @@ type createPreallocationRequest struct {
 	TeamLead    bool   `json:"teamLead,omitempty"`
 }
 
+// preallocationResponse is one pin from either source. id is absent on a config
+// pin — it is derived from the rota overrides on every read, so there is nothing
+// to address a DELETE at, and its absence is what tells a client the pin is not
+// editable here.
 type preallocationResponse struct {
-	ID          string `json:"id"`
+	ID          string `json:"id,omitempty"`
 	Date        string `json:"date"`
 	Role        string `json:"role"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
+	Name        string `json:"name"`
+	Source      string `json:"source"`
 }
 
 type listPreallocationsResponse struct {
@@ -62,13 +68,14 @@ func (h *Handler) handleDeletePreallocation(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleListPreallocations returns the manual pins whose shift falls in the
-// optional from/to date range.
+// handleListPreallocations returns every pin — manual and config-derived —
+// whose shift falls in the optional from/to date range. Admin-only: it names
+// people against dates the rota has not published yet.
 func (h *Handler) handleListPreallocations(w http.ResponseWriter, r *http.Request) {
-	views, err := services.ListPreallocations(r.Context(), h.store, services.ListPreallocationsParams{
+	views, err := services.ListPreallocations(r.Context(), h.store, h.volunteers, h.cfg, services.ListPreallocationsParams{
 		From: r.URL.Query().Get("from"),
 		To:   r.URL.Query().Get("to"),
-	})
+	}, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -88,5 +95,7 @@ func toPreallocationResponse(v services.PreallocationView) preallocationResponse
 		Role:        v.Role,
 		VolunteerID: v.VolunteerID,
 		Custom:      v.Custom,
+		Name:        v.Name,
+		Source:      string(v.Source),
 	}
 }
