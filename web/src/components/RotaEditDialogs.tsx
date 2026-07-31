@@ -1,7 +1,13 @@
 import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
-import type { Assignee, PersonRef, Role, Volunteer } from "../types";
+import type {
+  Assignee,
+  PersonRef,
+  PreallocationSource,
+  Role,
+  Volunteer,
+} from "../types";
 import "./RotaEditDialogs.css";
 
 // Every change to a published rota is recorded against a reason, so both
@@ -270,6 +276,215 @@ export function AssigneeDialog({
           confirmLabel={change.kind === "add" ? "Add" : "Replace"}
           busy={busy}
           canConfirm={person !== null && reason.trim() !== ""}
+          onCancel={onCancel}
+        />
+      </form>
+    </Dialog>
+  );
+}
+
+// PinDialog picks someone to pin to a shift the rota has not been run for yet.
+//
+// No reason field, unlike every dialog above it. Those record a change to a
+// published rota, which contradicts something volunteers have already been
+// told; a pin is an instruction to an allocation that has not happened, so
+// there is nothing to account for.
+//
+// Role is only ever a question for a volunteer the roster records as a team
+// lead: the API refuses to pin anyone else as one, and a custom entry carries
+// no role at all. Where the answer is forced the dialog says what it is rather
+// than offering a control with one value in it.
+export function PinDialog({
+  dateLabel,
+  volunteers,
+  volunteersError,
+  leadPinnedBy,
+  pinnedNames,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  dateLabel: string;
+  // null while the roster is still loading. Already filtered to the people who
+  // can be pinned to this shift.
+  volunteers: Volunteer[] | null;
+  volunteersError: string | null;
+  // Where this shift's single team-lead slot is already spoken for, and by
+  // which source; null when it is free. Both sources rule out a second lead —
+  // config holds the slot outright, a manual one is a 409 — but only one of
+  // them can be given up from here, so the two cannot be flattened into a
+  // boolean without the dialog offering a way out that does not exist.
+  leadPinnedBy: PreallocationSource | null;
+  // Everyone already pinned here, by the name shown. A custom entry has no id —
+  // its text is its identity — so repeating one is a pin that would change
+  // nothing, and the two sources refuse it in different ways.
+  pinnedNames: string[];
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (person: PersonRef, role: Role) => void;
+}) {
+  const [choice, setChoice] = useState("");
+  const [customName, setCustomName] = useState("");
+  const [role, setRole] = useState<Role>("volunteer");
+
+  const isCustom = choice === CUSTOM_CHOICE;
+  const trimmedName = customName.trim();
+  const duplicateName = isCustom && pinnedNames.includes(trimmedName);
+  const person: PersonRef | null = isCustom
+    ? trimmedName && !duplicateName
+      ? { custom: trimmedName }
+      : null
+    : choice
+      ? { volunteerId: choice }
+      : null;
+
+  const chosen = volunteers?.find((v) => v.id === choice) ?? null;
+  const rosterLead = chosen?.role === "lead";
+  // The slot is the admin's to fill only when the person could hold it and it
+  // is still free.
+  const canChooseRole = rosterLead && leadPinnedBy === null;
+
+  function handleChoice(value: string) {
+    setChoice(value);
+    // Default to the role the volunteer holds on the roster, as adding to a
+    // shift does: pinning a team lead is nearly always pinning them to lead.
+    const picked = volunteers?.find((v) => v.id === value);
+    setRole(picked?.role === "lead" ? "lead" : "volunteer");
+  }
+
+  return (
+    <Dialog title={`Pin someone to ${dateLabel}`} onClose={onCancel}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (person) onConfirm(person, canChooseRole ? role : "volunteer");
+        }}
+      >
+        <p className="rota-edit-summary">
+          Whoever you pin is guaranteed this shift when the rota is allocated.
+        </p>
+
+        <label className="rota-edit-field">
+          Who
+          <select
+            value={choice}
+            onChange={(e) => handleChoice(e.target.value)}
+            disabled={volunteers === null && volunteersError === null}
+          >
+            <option value="">
+              {volunteers === null && volunteersError === null
+                ? "Loading the roster…"
+                : "Choose someone…"}
+            </option>
+            {volunteers?.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.fullName}
+              </option>
+            ))}
+            <option value={CUSTOM_CHOICE}>Someone not on the roster…</option>
+          </select>
+        </label>
+
+        {/* The roster failing is not a dead end: a custom entry needs nothing
+            from it, so the picker degrades to that rather than to nothing. */}
+        {volunteersError && (
+          <p className="rota-edit-note">
+            Could not load the roster ({volunteersError}). You can still pin
+            someone by name.
+          </p>
+        )}
+
+        {isCustom && (
+          <label className="rota-edit-field">
+            Name
+            <input
+              type="text"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              placeholder="e.g. Redbridge youth group"
+            />
+          </label>
+        )}
+
+        {/* Said before the pin is attempted rather than after: a repeat of a
+            manual entry is refused, and a repeat of a config one is dropped at
+            allocation, so it would otherwise look like it had worked. */}
+        {duplicateName && (
+          <p className="rota-edit-note">
+            {trimmedName} is already pinned to {dateLabel}.
+          </p>
+        )}
+
+        {canChooseRole && (
+          <label className="rota-edit-field">
+            Role
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+            >
+              <option value="lead">Team lead</option>
+              <option value="volunteer">Volunteer</option>
+            </select>
+          </label>
+        )}
+
+        {/* Says where the lead slot went as well as that it is gone: a config
+            pin is not something this dialog can tell the admin to undo, so
+            offering the same "remove it first" for both would send them looking
+            for a button that is deliberately not there. */}
+        {rosterLead && leadPinnedBy !== null && (
+          <p className="rota-edit-note">
+            {dateLabel} already has a team lead pinned, so {chosen.name} is
+            pinned as a service volunteer.{" "}
+            {leadPinnedBy === "config"
+              ? "That pin comes from the rota config; changing who leads means editing the config."
+              : "To pin a different lead, remove that pin first."}
+          </p>
+        )}
+
+        <DialogActions
+          confirmLabel="Pin"
+          busy={busy}
+          canConfirm={person !== null}
+          onCancel={onCancel}
+        />
+      </form>
+    </Dialog>
+  );
+}
+
+// UnpinDialog confirms taking one manual pin off a shift. Removing a pin is not
+// removing anyone from the rota — nobody has been allocated yet — so the
+// summary says what is actually being given up: the guarantee, not the shift.
+export function UnpinDialog({
+  name,
+  dateLabel,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  name: string;
+  dateLabel: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog title={`Remove pin for ${name}?`} onClose={onCancel}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onConfirm();
+        }}
+      >
+        <p className="rota-edit-summary">
+          {name} is no longer guaranteed {dateLabel}. They can still be
+          allocated there when the rota is run.
+        </p>
+        <DialogActions
+          confirmLabel="Remove pin"
+          busy={busy}
+          canConfirm
           onCancel={onCancel}
         />
       </form>

@@ -287,8 +287,10 @@
 }
 
 /* Shaped like a chip so a pinned name reads as the same kind of thing as an
-   allocated one, but dashed: pencilled in, not placed. Never interactive —
-   nothing on an unallocated shift can be dragged or edited. */
+   allocated one, but dashed: pencilled in, not placed. The chip itself is never
+   interactive — a pin cannot be dragged, searched for or opened. In editing
+   mode a manual one grows a remove button inside it; that button is the
+   interactive part, not the chip. */
 .prealloc-chip {
   display: inline-flex;
   align-items: baseline;
@@ -329,6 +331,38 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.75;
+}
+
+/* Sits inside the pin it removes, so it needs no label of its own on screen.
+   Padded out to a touch target the chip's own text size would not give it —
+   this is the primary way a pin comes off, and the rota page is mobile first. */
+.prealloc-unpin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  margin: -4px -5px -4px 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.prealloc-unpin:hover,
+.prealloc-unpin:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, var(--chip) 18%, transparent);
+}
+
+/* The pin button is on its own line under the pins, in a column layout, so it
+   has to be told not to stretch across the row. */
+.shift-pin {
+  align-self: flex-start;
 }
 
 .rota-notice {

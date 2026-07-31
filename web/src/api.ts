@@ -3,6 +3,7 @@ import type {
   AvailabilityLinkFailure,
   AvailabilityRound,
   DefinedRota,
+  NewPreallocation,
   PersonRef,
   Preallocation,
   PreallocationSource,
@@ -155,7 +156,9 @@ function toPreallocation(p: ApiPreallocation): Preallocation {
     // Anything the server does not name as a config pin is treated as manual:
     // manual is the weaker claim, and a mislabelled pin must not read as one
     // this UI cannot explain how to change.
-    source: (p.source === "config" ? "config" : "manual") as PreallocationSource,
+    source: (p.source === "config"
+      ? "config"
+      : "manual") as PreallocationSource,
   };
 }
 
@@ -170,6 +173,50 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
   }
   const data = (await res.json()) as ListPreallocationsResponse;
   return data.preallocations.map(toPreallocation);
+}
+
+// createPreallocation pins one person to a shift ahead of allocation, so the
+// allocator has to place them there. Admin-only, and refused once the rota has
+// been allocated — a pin can only promise something that has not happened yet.
+//
+// Resolves with nothing: the created pin comes back, but a caller showing pins
+// is showing both sources merged and sorted server-side, so it re-reads the
+// listing rather than splicing this one in. Throws the server's own message,
+// which names what it clashed with ("a team lead is already pinned to …").
+export async function createPreallocation(
+  pin: NewPreallocation,
+): Promise<void> {
+  const body: Record<string, string | boolean> = { date: pin.date };
+  if ("volunteerId" in pin.person) {
+    body.volunteerId = pin.person.volunteerId;
+    // Sent only when it is true: the API refuses teamLead for a volunteer the
+    // roster does not record as one, so sending false everywhere else would be
+    // an extra way to get it wrong.
+    if (pin.role === "lead") body.teamLead = true;
+  } else {
+    body.custom = pin.person.custom;
+  }
+
+  const res = await fetch("/api/preallocations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to pin someone"));
+  }
+}
+
+// deletePreallocation removes one manual pin by id. Config pins have no id and
+// no row behind them, so there is nothing here to address one at: changing one
+// means editing the server's config.
+export async function deletePreallocation(id: string): Promise<void> {
+  const res = await fetch(`/api/preallocations/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to remove the pin"));
+  }
 }
 
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,
@@ -335,7 +382,9 @@ export async function fetchAvailabilityForm(
   if (!res.ok) {
     throw (
       linkFailure(res.status) ??
-      new Error(await errorMessage(res, "Failed to load your availability form"))
+      new Error(
+        await errorMessage(res, "Failed to load your availability form"),
+      )
     );
   }
   return toForm((await res.json()) as ApiAvailabilityForm);
