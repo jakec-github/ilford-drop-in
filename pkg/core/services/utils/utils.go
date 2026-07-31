@@ -48,11 +48,18 @@ func FilterSentRequests(requests []db.AvailabilityRequest) []db.AvailabilityRequ
 	return filtered
 }
 
+// IsActive reports whether a volunteer is still volunteering. Status is free
+// text from the sheet, so it is matched case-insensitively and anything other
+// than "Active" is not.
+func IsActive(volunteer model.Volunteer) bool {
+	return strings.EqualFold(volunteer.Status, "Active")
+}
+
 // FilterActiveVolunteers filters volunteers to only those with "Active" status (case-insensitive)
 func FilterActiveVolunteers(volunteers []model.Volunteer) []model.Volunteer {
 	active := make([]model.Volunteer, 0)
 	for _, vol := range volunteers {
-		if strings.EqualFold(vol.Status, "Active") {
+		if IsActive(vol) {
 			active = append(active, vol)
 		}
 	}

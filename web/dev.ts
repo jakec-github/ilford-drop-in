@@ -35,6 +35,7 @@ const apiPrefixes = [
   "/rotations",
   "/preallocations",
   "/alterations",
+  "/availability-rounds",
   "/calendars",
   "/health",
   "/auth",

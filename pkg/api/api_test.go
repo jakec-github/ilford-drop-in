@@ -28,6 +28,7 @@ type mockStore struct {
 	allocations          []db.Allocation
 	alterations          []db.Alteration
 	manualPreallocations []db.ManualPreallocation
+	availabilityRequests []db.AvailabilityRequestV2
 	allocatedRotas       map[string]bool
 
 	insertedCover           *db.Cover
@@ -219,6 +220,64 @@ func (m *mockStore) DeleteManualPreallocationByID(ctx context.Context, id string
 	return false, nil
 }
 
+// GetShiftsByRotaID returns a rota's shifts in date order, as the real store does.
+func (m *mockStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
+	if m.getShiftsErr != nil {
+		return nil, m.getShiftsErr
+	}
+	var out []db.Shift
+	for _, s := range m.shifts {
+		if s.RotaID == rotaID {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })
+	return out, nil
+}
+
+// The availability round methods are stubs: this store exists to prove the
+// handlers wire up and gate correctly, and the round's behaviour is covered
+// against real Postgres (availability_integration_test.go) and by the service's
+// own in-memory store. Only the token lookup carries state, because the 404 for
+// an unknown link is decided here.
+func (m *mockStore) MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequestV2) (int, error) {
+	if m.insertErr != nil {
+		return 0, m.insertErr
+	}
+	m.availabilityRequests = append(m.availabilityRequests, requests...)
+	return len(requests), nil
+}
+
+func (m *mockStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
+	var out []db.AvailabilityRequestV2
+	for _, r := range m.availabilityRequests {
+		if r.RotaID == rotaID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockStore) GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequestV2, error) {
+	for i := range m.availabilityRequests {
+		if m.availabilityRequests[i].Token == token {
+			return &m.availabilityRequests[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockStore) GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error) {
+	return map[string]db.AvailabilityGeneration{}, nil
+}
+
+func (m *mockStore) InsertAvailabilityResponse(ctx context.Context, requestID string, answers []db.ShiftAnswer) (*db.AvailabilityGeneration, error) {
+	if m.insertErr != nil {
+		return nil, m.insertErr
+	}
+	return &db.AvailabilityGeneration{RequestID: requestID, ResponseID: "response-1", SubmittedAt: time.Now(), Answers: answers}, nil
+}
+
 // idSet turns a shift id slice into a lookup set.
 func idSet(ids []string) map[string]bool {
 	set := make(map[string]bool, len(ids))
@@ -279,9 +338,9 @@ var apiTestCfg = &config.Config{
 func testVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead},
-			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer},
-			{ID: "charlie", DisplayName: "Charlie", Role: model.RoleVolunteer},
+			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "Active"},
+			{ID: "bob", FirstName: "Bob", LastName: "Barnes", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Role: model.RoleVolunteer, Status: "Active"},
 		},
 	}
 }

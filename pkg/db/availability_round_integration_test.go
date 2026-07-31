@@ -1,0 +1,246 @@
+package db_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
+	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
+)
+
+// roundFixture mints a rota with three weekly shifts and returns its id plus the
+// shift ids in date order — the state every availability round is minted against.
+func roundFixture(t *testing.T, database *db.DB) (rotaID string, shiftIDs []string) {
+	t.Helper()
+	ctx := context.Background()
+
+	rotaID = uuid.New().String()
+	shifts := []db.Shift{
+		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-02"},
+		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-09"},
+		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-16"},
+	}
+	require.NoError(t, database.InsertRotationAndShifts(ctx, &db.Rotation{ID: rotaID}, shifts))
+
+	for _, s := range shifts {
+		shiftIDs = append(shiftIDs, s.ID)
+	}
+	return rotaID, shiftIDs
+}
+
+func request(rotaID, volunteerID, token string) db.AvailabilityRequestV2 {
+	return db.AvailabilityRequestV2{
+		ID:          uuid.New().String(),
+		RotaID:      rotaID,
+		VolunteerID: volunteerID,
+		Token:       token,
+	}
+}
+
+// TestMintAvailabilityRequestsIsIdempotent pins the acceptance criterion that
+// minting a round twice is a no-op rather than a duplicate or a 500: the second
+// mint reports nothing inserted and the first round's tokens survive, so links
+// already distributed keep working.
+func TestMintAvailabilityRequestsIsIdempotent(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, _ := roundFixture(t, database)
+
+	first := []db.AvailabilityRequestV2{
+		request(rotaID, "alice", "token-alice"),
+		request(rotaID, "bob", "token-bob"),
+	}
+	inserted, err := database.MintAvailabilityRequests(ctx, first)
+	require.NoError(t, err)
+	assert.Equal(t, 2, inserted)
+
+	// A second mint over the same volunteers plus a newcomer adds only the
+	// newcomer, and does not re-token alice or bob.
+	second := []db.AvailabilityRequestV2{
+		request(rotaID, "alice", "token-alice-2"),
+		request(rotaID, "bob", "token-bob-2"),
+		request(rotaID, "carol", "token-carol"),
+	}
+	inserted, err = database.MintAvailabilityRequests(ctx, second)
+	require.NoError(t, err)
+	assert.Equal(t, 1, inserted, "only the volunteer with no request yet is minted")
+
+	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rotaID)
+	require.NoError(t, err)
+	require.Len(t, requests, 3)
+
+	tokens := map[string]string{}
+	for _, r := range requests {
+		tokens[r.VolunteerID] = r.Token
+	}
+	assert.Equal(t, "token-alice", tokens["alice"], "an existing link must not be replaced")
+	assert.Equal(t, "token-bob", tokens["bob"])
+	assert.Equal(t, "token-carol", tokens["carol"])
+}
+
+// TestGetAvailabilityRequestByToken proves the token resolves to its request and
+// that an unknown one is a plain miss rather than an error — the 404 the
+// volunteer form depends on.
+func TestGetAvailabilityRequestByToken(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, _ := roundFixture(t, database)
+
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{
+		request(rotaID, "alice", "token-alice"),
+	})
+	require.NoError(t, err)
+
+	found, err := database.GetAvailabilityRequestByToken(ctx, "token-alice")
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, "alice", found.VolunteerID)
+	assert.Equal(t, rotaID, found.RotaID)
+	assert.Empty(t, found.SentAt, "minted but not sent")
+
+	missing, err := database.GetAvailabilityRequestByToken(ctx, "nope")
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+}
+
+// TestLatestAvailabilityTakesTheNewestGeneration is the core of ADR 0004:
+// resubmitting appends a generation and the latest wins wholesale. The second
+// generation drops a shift the first said yes to, which a delta-shaped read
+// would keep.
+func TestLatestAvailabilityTakesTheNewestGeneration(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, shiftIDs := roundFixture(t, database)
+
+	req := request(rotaID, "alice", "token-alice")
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	require.NoError(t, err)
+
+	_, err = database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
+		{ShiftID: shiftIDs[0], Answer: db.AnswerYes},
+		{ShiftID: shiftIDs[1], Answer: db.AnswerYes},
+	})
+	require.NoError(t, err)
+
+	second, err := database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
+		{ShiftID: shiftIDs[2], Answer: db.AnswerYes},
+	})
+	require.NoError(t, err)
+
+	latest, err := database.GetLatestAvailability(ctx, []string{req.ID}, nil)
+	require.NoError(t, err)
+	require.Contains(t, latest, req.ID)
+
+	generation := latest[req.ID]
+	assert.Equal(t, second.ResponseID, generation.ResponseID)
+	require.Len(t, generation.Answers, 1, "the latest generation replaces the earlier one wholesale")
+	assert.Equal(t, shiftIDs[2], generation.Answers[0].ShiftID)
+	assert.Equal(t, db.AnswerYes, generation.Answers[0].Answer)
+}
+
+// TestLatestAvailabilityRecordsAnEmptyGeneration covers "available for nothing",
+// which the Forms encoding could not express: a submission with no ticks is a
+// reply, and must not read as silence.
+func TestLatestAvailabilityRecordsAnEmptyGeneration(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, _ := roundFixture(t, database)
+
+	replied := request(rotaID, "alice", "token-alice")
+	silent := request(rotaID, "bob", "token-bob")
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{replied, silent})
+	require.NoError(t, err)
+
+	_, err = database.InsertAvailabilityResponse(ctx, replied.ID, nil)
+	require.NoError(t, err)
+
+	latest, err := database.GetLatestAvailability(ctx, []string{replied.ID, silent.ID}, nil)
+	require.NoError(t, err)
+
+	generation, ok := latest[replied.ID]
+	require.True(t, ok, "a submission with no ticks is still a reply")
+	assert.Empty(t, generation.Answers)
+	assert.False(t, generation.SubmittedAt.IsZero())
+
+	_, ok = latest[silent.ID]
+	assert.False(t, ok, "a volunteer who never replied has no generation at all")
+}
+
+// TestLatestAvailabilityRespectsTheCutoff proves the point-in-time read: a
+// generation submitted after the rota was allocated is invisible, and the answer
+// that was in before allocation is what stands.
+func TestLatestAvailabilityRespectsTheCutoff(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, shiftIDs := roundFixture(t, database)
+
+	req := request(rotaID, "alice", "token-alice")
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	require.NoError(t, err)
+
+	inTime, err := database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
+		{ShiftID: shiftIDs[0], Answer: db.AnswerYes},
+	})
+	require.NoError(t, err)
+
+	cutoff := inTime.SubmittedAt.Add(time.Millisecond)
+
+	// A later generation exists, but allocation has already happened.
+	_, err = database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
+		{ShiftID: shiftIDs[1], Answer: db.AnswerYes},
+	})
+	require.NoError(t, err)
+
+	latest, err := database.GetLatestAvailability(ctx, []string{req.ID}, &cutoff)
+	require.NoError(t, err)
+	generation := latest[req.ID]
+	assert.Equal(t, inTime.ResponseID, generation.ResponseID)
+	require.Len(t, generation.Answers, 1)
+	assert.Equal(t, shiftIDs[0], generation.Answers[0].ShiftID)
+
+	// Without the cutoff the later answer wins, so the filter is doing the work
+	// rather than the ordering happening to agree.
+	latest, err = database.GetLatestAvailability(ctx, []string{req.ID}, nil)
+	require.NoError(t, err)
+	require.Len(t, latest[req.ID].Answers, 1)
+	assert.Equal(t, shiftIDs[1], latest[req.ID].Answers[0].ShiftID)
+}
+
+// TestInsertAvailabilityResponseIsAtomic proves a generation cannot land
+// half-written: a shift id that is not a shift takes the whole submission down,
+// leaving no response row behind. A partial write would silently record
+// unavailability for the shifts that did not make it (ADR 0004).
+func TestInsertAvailabilityResponseIsAtomic(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, shiftIDs := roundFixture(t, database)
+
+	req := request(rotaID, "alice", "token-alice")
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	require.NoError(t, err)
+
+	_, err = database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
+		{ShiftID: shiftIDs[0], Answer: db.AnswerYes},
+		{ShiftID: uuid.New().String(), Answer: db.AnswerYes},
+	})
+	require.Error(t, err)
+
+	latest, err := database.GetLatestAvailability(ctx, []string{req.ID}, nil)
+	require.NoError(t, err)
+	assert.NotContains(t, latest, req.ID, "a rejected submission must not leave a response row")
+}
+
+// TestGetLatestAvailabilityHandlesNoRequests guards the batch read's empty case:
+// a round nobody has been minted into is a legitimate state, not an error.
+func TestGetLatestAvailabilityHandlesNoRequests(t *testing.T) {
+	database, _ := dbtest.New(t)
+
+	latest, err := database.GetLatestAvailability(context.Background(), nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, latest)
+}

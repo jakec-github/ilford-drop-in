@@ -76,6 +76,63 @@ export interface RotaChange {
   reason: string;
 }
 
+// AvailabilityShift is one of a rota's shifts as the availability screens show
+// it. Closed shifts are carried rather than dropped: a volunteer seeing the date
+// listed and shut knows the drop-in is not running, where a missing date just
+// looks like a mistake.
+export interface AvailabilityShift {
+  id: string;
+  date: string;
+  closed: boolean;
+}
+
+// AvailabilityEntry is one volunteer's place in a round, as an admin sees it.
+//
+// link is the volunteer's whole URL, ready to copy — distribution is
+// copy-the-link until sending is built, and stays the fallback when an email
+// bounces. coveredBy names group partners who have already answered: a group
+// answers as a unit, so a volunteer whose partner replied is covered rather than
+// missing, and chasing them would be chasing an answer we already have.
+export interface AvailabilityEntry {
+  volunteerId: string;
+  volunteerName: string;
+  link: string;
+  replied: boolean;
+  submittedAt: string | null;
+  availableShiftIds: string[];
+  coveredBy: string[];
+}
+
+// AvailabilityRound is a rota's round: its shifts, and where everyone asked has
+// got to. allocated means the round is closed — the links have stopped working,
+// so an admin looking at it is reading history.
+export interface AvailabilityRound {
+  rotaId: string;
+  start: string;
+  end: string;
+  allocated: boolean;
+  shifts: AvailabilityShift[];
+  entries: AvailabilityEntry[];
+}
+
+// AvailabilityFormState is what a volunteer sees behind their link.
+//
+// selectedShiftIds is the form's landing state, not a record: before a first
+// submission it holds every open shift, because the model is opt-out. Afterwards
+// it holds what they last said, so re-opening the link shows their answer.
+export interface AvailabilityFormState {
+  volunteerName: string;
+  groupMembers: string[];
+  shifts: AvailabilityShift[];
+  selectedShiftIds: string[];
+  submitted: boolean;
+  submittedAt: string | null;
+}
+
+// Why a link stopped working, kept apart because they mean different things to
+// the person holding it: "this was never a link" versus "you are too late".
+export type AvailabilityLinkFailure = "not-found" | "gone";
+
 export interface RotaShift {
   date: string;
   closed: boolean;

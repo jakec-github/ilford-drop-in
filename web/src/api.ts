@@ -1,4 +1,7 @@
 import type {
+  AvailabilityFormState,
+  AvailabilityLinkFailure,
+  AvailabilityRound,
   DefinedRota,
   PersonRef,
   RotaChange,
@@ -198,6 +201,150 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to change the rota"));
   }
+}
+
+interface ApiAvailabilityRound {
+  rotaId: string;
+  start: string;
+  end: string;
+  allocated: boolean;
+  shifts: { id: string; date: string; closed: boolean }[];
+  entries: {
+    volunteerId: string;
+    volunteerName: string;
+    link: string;
+    replied: boolean;
+    submittedAt?: string;
+    availableShiftIds: string[] | null;
+    coveredBy?: string[];
+  }[];
+}
+
+interface ApiAvailabilityForm {
+  volunteerName: string;
+  groupMembers: string[] | null;
+  shifts: { id: string; date: string; closed: boolean }[];
+  selectedShiftIds: string[] | null;
+  submitted: boolean;
+  submittedAt?: string;
+}
+
+function toRound(data: ApiAvailabilityRound): AvailabilityRound {
+  return {
+    rotaId: data.rotaId,
+    start: data.start,
+    end: data.end,
+    allocated: data.allocated,
+    shifts: data.shifts,
+    entries: data.entries.map((e) => ({
+      volunteerId: e.volunteerId,
+      volunteerName: e.volunteerName,
+      link: e.link,
+      replied: e.replied,
+      submittedAt: e.submittedAt ?? null,
+      availableShiftIds: e.availableShiftIds ?? [],
+      coveredBy: e.coveredBy ?? [],
+    })),
+  };
+}
+
+function toForm(data: ApiAvailabilityForm): AvailabilityFormState {
+  return {
+    volunteerName: data.volunteerName,
+    groupMembers: data.groupMembers ?? [],
+    shifts: data.shifts,
+    selectedShiftIds: data.selectedShiftIds ?? [],
+    submitted: data.submitted,
+    submittedAt: data.submittedAt ?? null,
+  };
+}
+
+// AvailabilityLinkError is a link that will never work again, as opposed to a
+// request that happened to fail. The two need different words on screen — one
+// asks the volunteer to check the link, the other tells them the rota is out —
+// so the reason is carried on the error rather than flattened into a message.
+export class AvailabilityLinkError extends Error {
+  readonly reason: AvailabilityLinkFailure;
+
+  constructor(reason: AvailabilityLinkFailure) {
+    super(reason);
+    this.name = "AvailabilityLinkError";
+    this.reason = reason;
+  }
+}
+
+// The volunteer's link is one URL for two audiences: a browser navigating to it
+// gets this app, and this fetch gets the JSON behind it. Asking for JSON
+// explicitly is what tells the two apart.
+const JSON_ACCEPT = { Accept: "application/json" };
+
+function linkFailure(status: number): AvailabilityLinkError | null {
+  if (status === 404) return new AvailabilityLinkError("not-found");
+  if (status === 410) return new AvailabilityLinkError("gone");
+  return null;
+}
+
+// fetchAvailabilityForm loads what is behind a volunteer's link. Public: the
+// link is the identity, and volunteers never log in.
+export async function fetchAvailabilityForm(
+  token: string,
+): Promise<AvailabilityFormState> {
+  const res = await fetch(`/availability/${encodeURIComponent(token)}`, {
+    headers: JSON_ACCEPT,
+  });
+  if (!res.ok) {
+    throw (
+      linkFailure(res.status) ??
+      new Error(await errorMessage(res, "Failed to load your availability form"))
+    );
+  }
+  return toForm((await res.json()) as ApiAvailabilityForm);
+}
+
+// submitAvailability records one complete answer. shiftIds is everything the
+// volunteer is available for, never just what changed: an absent shift is a no,
+// so a partial send would record unavailability they did not give.
+export async function submitAvailability(
+  token: string,
+  shiftIds: string[],
+): Promise<AvailabilityFormState> {
+  const res = await fetch(`/availability/${encodeURIComponent(token)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...JSON_ACCEPT },
+    body: JSON.stringify({ shiftIds }),
+  });
+  if (!res.ok) {
+    throw (
+      linkFailure(res.status) ??
+      new Error(await errorMessage(res, "Failed to send your availability"))
+    );
+  }
+  return toForm((await res.json()) as ApiAvailabilityForm);
+}
+
+// fetchAvailabilityRound reads the latest rota's round: who was asked, their
+// link, and who has answered. Admin-only — it returns every volunteer's link.
+export async function fetchAvailabilityRound(): Promise<AvailabilityRound> {
+  const res = await fetch("/availability-rounds");
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load the round"));
+  }
+  return toRound((await res.json()) as ApiAvailabilityRound);
+}
+
+// mintAvailabilityRound creates a link for every active volunteer on the latest
+// rota. Safe to repeat: running it again after the roster changes tops the round
+// up without replacing links already handed out.
+export async function mintAvailabilityRound(): Promise<AvailabilityRound> {
+  const res = await fetch("/availability-rounds", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to start the round"));
+  }
+  return toRound((await res.json()) as ApiAvailabilityRound);
 }
 
 // syncVolunteers re-reads the roster sheet into the database. The server uses
