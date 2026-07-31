@@ -28,7 +28,7 @@ type defineRotaResponse struct {
 func TestDefineRotaEndpoint(t *testing.T) {
 	store := &mockStore{}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/rotations", `{"shiftCount":6}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", `{"shiftCount":6}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp defineRotaResponse
@@ -58,9 +58,9 @@ func TestDefineRotaEndpoint_NotIdempotent(t *testing.T) {
 	store := &mockStore{}
 	handler := newTestHandler(store, testVolunteers())
 
-	first := doRequest(t, handler, http.MethodPost, "/rotations", `{"shiftCount":2}`, adminCookie())
+	first := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
-	second := doRequest(t, handler, http.MethodPost, "/rotations", `{"shiftCount":2}`, adminCookie())
+	second := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
 	require.Equal(t, http.StatusCreated, second.Code, second.Body.String())
 
 	var a, b defineRotaResponse
@@ -139,7 +139,7 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/rotations", tt.body, adminCookie())
+			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/rotations", tt.body, adminCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 			assert.Empty(t, tt.store.insertedRotations, "a rejected request must not define a rota")
 		})
@@ -155,7 +155,7 @@ func TestDefineRotaEndpoint_ExistingRota(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/rotations", `{"shiftCount":2}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp defineRotaResponse
@@ -169,12 +169,12 @@ func TestDefineRotaEndpoint_ExistingRota(t *testing.T) {
 func TestDefineRotaRequiresAdmin(t *testing.T) {
 	store := &mockStore{}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/rotations", `{"shiftCount":6}`)
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", `{"shiftCount":6}`)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, store.insertedRotations, "an unauthenticated request must not define a rota")
 }
 
 func TestRotationsMethodNotAllowed(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/rotations", "")
+	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/rotations", "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }

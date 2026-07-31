@@ -397,7 +397,7 @@ func TestListShiftsEndpoint(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/shifts", "")
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 
@@ -447,7 +447,7 @@ func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/shifts", "")
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp struct {
@@ -480,7 +480,7 @@ func TestListShiftsEndpoint_DateFilters(t *testing.T) {
 	}
 	handler := newTestHandler(store, testVolunteers())
 
-	rec := doRequest(t, handler, http.MethodGet, "/shifts?from=2026-01-12", "")
+	rec := doRequest(t, handler, http.MethodGet, "/api/shifts?from=2026-01-12", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
 		Shifts []struct {
@@ -491,14 +491,14 @@ func TestListShiftsEndpoint_DateFilters(t *testing.T) {
 	require.Len(t, resp.Shifts, 1)
 	assert.Equal(t, "2026-01-18", resp.Shifts[0].Date)
 
-	rec = doRequest(t, handler, http.MethodGet, "/shifts?from=bogus", "")
+	rec = doRequest(t, handler, http.MethodGet, "/api/shifts?from=bogus", "")
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestListShiftsEndpoint_StoreError(t *testing.T) {
 	store := &mockStore{getShiftsErr: errors.New("connection refused")}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/shifts", "")
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	assert.Contains(t, rec.Body.String(), "internal server error")
 	assert.NotContains(t, rec.Body.String(), "connection refused")
@@ -520,7 +520,7 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp struct {
@@ -550,7 +550,7 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"Leading tonight"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedAlterations, 1)
@@ -564,7 +564,7 @@ func TestCreateAlterationEndpoint_RequiresAdmin(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body)
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Nil(t, store.insertedCover, "an unauthenticated request must not persist a change")
 }
@@ -576,7 +576,7 @@ func TestCreateAlterationEndpoint_RejectsClientUserEmail(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","reason":"x","userEmail":"attacker@example.com"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
@@ -637,7 +637,7 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/alterations", tt.body, adminCookie())
+			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/alterations", tt.body, adminCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 		})
 	}
@@ -685,9 +685,72 @@ func TestCalendarEndpoint_EmptyFeedIsValid(t *testing.T) {
 func TestMethodNotAllowed(t *testing.T) {
 	handler := newTestHandler(&mockStore{}, testVolunteers())
 
-	rec := doRequest(t, handler, http.MethodDelete, "/shifts", "")
+	rec := doRequest(t, handler, http.MethodDelete, "/api/shifts", "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.Equal(t, "GET", rec.Header().Get("Allow"))
 
-	rec = doRequest(t, handler, http.MethodGet, "/alterations", "")
+	rec = doRequest(t, handler, http.MethodGet, "/api/alterations", "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+}
+
+// newFullStackHandler is the handler as it is deployed: API and frontend in one
+// process, which is the only configuration where the two namespaces can collide.
+func newFullStackHandler(store *mockStore) http.Handler {
+	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, zap.NewNop()).Routes()
+}
+
+// TestUnknownAPIPathIsAJSONNotFound: an endpoint that does not exist has to fail
+// as an endpoint. Flat on the mux, an unregistered path fell through to the SPA
+// and came back as index.html with a 200, so the caller's own JSON parse was the
+// first sign anything was wrong.
+func TestUnknownAPIPathIsAJSONNotFound(t *testing.T) {
+	handler := newFullStackHandler(&mockStore{})
+
+	for _, path := range []string{"/api/nonsense", "/api/shift", "/api/", "/api/volunteers/alice"} {
+		rec := doRequest(t, handler, http.MethodGet, path, "")
+		require.Equal(t, http.StatusNotFound, rec.Code, path)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "application/json", path)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body), path)
+		assert.NotEmpty(t, body["error"], path)
+	}
+}
+
+// TestFrontendOwnsEverythingOutsideTheAPI: with the data endpoints prefixed, the
+// SPA can claim any route it likes — including one named after a resource —
+// without a hard navigation and a soft one disagreeing about what lives there.
+func TestFrontendOwnsEverythingOutsideTheAPI(t *testing.T) {
+	handler := newFullStackHandler(&mockStore{})
+
+	for _, path := range []string{"/", "/admin", "/admin/volunteers", "/availability/some-token", "/volunteers"} {
+		rec := doRequest(t, handler, http.MethodGet, path, "")
+		require.Equal(t, http.StatusOK, rec.Code, path)
+		assert.Equal(t, "<html>app</html>", rec.Body.String(), path)
+	}
+}
+
+// TestUnprefixedRoutesStayPutBehindTheFrontend: three paths deliberately did not
+// move — /health is polled by the deploy tooling, /auth is a browser redirect
+// flow tied to a registered OAuth URI, and calendar URLs are subscribed to from
+// outside the app. Each has to keep answering rather than fall to the SPA.
+func TestUnprefixedRoutesStayPutBehindTheFrontend(t *testing.T) {
+	store := &mockStore{
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2026-01-11", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+		},
+	}
+	handler := newFullStackHandler(store)
+
+	rec := doRequest(t, handler, http.MethodGet, "/health", "")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
+
+	rec = doRequest(t, handler, http.MethodGet, "/calendars/alice.ics", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Header().Get("Content-Type"), "text/calendar")
+
+	rec = doRequest(t, handler, http.MethodGet, "/auth/me", "")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
@@ -100,17 +99,11 @@ func (h *Handler) handleGetAvailabilityRound(w http.ResponseWriter, r *http.Requ
 // handleAvailabilityForm serves what is behind a volunteer's link. It is public
 // and unauthenticated: the link is the identity, and volunteers never log in.
 //
-// A browser asking for this URL wants the page, not the payload, so an
-// HTML-preferring request is handed to the frontend and the SPA fetches the JSON
-// back from the same path. That keeps one URL — the one that goes in the email —
-// for both audiences, and keeps the status codes honest for anything driving the
-// loop over HTTP.
+// The link a volunteer is emailed is the page, /availability/{token}, which the
+// frontend owns; this is the payload the page fetches from under /api. One
+// concept, two URLs, and no guessing from an Accept header which of them a
+// caller meant.
 func (h *Handler) handleAvailabilityForm(w http.ResponseWriter, r *http.Request) {
-	if prefersHTML(r) && hasFrontend(h.frontend) {
-		frontendHandler(h.frontend).ServeHTTP(w, r)
-		return
-	}
-
 	form, err := services.GetAvailabilityForm(r.Context(), h.store, h.volunteers, h.cfg, h.logger, r.PathValue("token"))
 	if err != nil {
 		h.writeServiceError(w, err)
@@ -144,23 +137,10 @@ func (h *Handler) handleSubmitAvailability(w http.ResponseWriter, r *http.Reques
 	h.writeJSON(w, http.StatusOK, toFormResponse(form))
 }
 
-// prefersHTML reports whether the request came from something rendering pages
-// rather than consuming JSON. Browsers list text/html ahead of everything in
-// Accept; fetch, curl and the CLI do not.
-func prefersHTML(r *http.Request) bool {
-	accept := r.Header.Get("Accept")
-	html := strings.Index(accept, "text/html")
-	if html < 0 {
-		return false
-	}
-	// An explicit application/json wins wherever it appears: the SPA's own fetch
-	// sets it, and a browser's default Accept never mentions it.
-	return !strings.Contains(accept, "application/json")
-}
-
-// availabilityLink builds the absolute URL a volunteer is given. It is derived
-// from the request rather than configured, so a round minted through a dev stack
-// on localhost yields links that work there.
+// availabilityLink builds the absolute URL a volunteer is given — the page, not
+// the endpoint behind it. It is derived from the request rather than configured,
+// so a round minted through a dev stack on localhost yields links that work
+// there.
 func availabilityLink(r *http.Request, token string) string {
 	scheme := "https"
 	if r.TLS == nil {

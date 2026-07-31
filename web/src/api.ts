@@ -120,7 +120,7 @@ export async function logout(): Promise<void> {
 
 export async function fetchRota(): Promise<RotaShift[]> {
   const today = new Date().toLocaleDateString("en-CA");
-  const res = await fetch(`/shifts?from=${today}`);
+  const res = await fetch(`/api/shifts?from=${today}`);
   if (!res.ok) {
     throw new Error(`Failed to load shifts (${res.status})`);
   }
@@ -131,7 +131,7 @@ export async function fetchRota(): Promise<RotaShift[]> {
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,
 // already sorted by name server-side. Admin-only.
 export async function fetchVolunteers(): Promise<Volunteer[]> {
-  const res = await fetch("/volunteers");
+  const res = await fetch("/api/volunteers");
   if (!res.ok) {
     throw new Error(`Failed to load volunteers (${res.status})`);
   }
@@ -144,7 +144,7 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
 // two calls define two consecutive rotas, so the caller is expected to show what
 // came back rather than treat it as a repeatable action.
 export async function defineRota(shiftCount: number): Promise<DefinedRota> {
-  const res = await fetch("/rotations", {
+  const res = await fetch("/api/rotations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ shiftCount }),
@@ -193,7 +193,7 @@ export async function createAlteration(change: RotaChange): Promise<void> {
       change.role === "lead" ? TEAM_LEAD_ROLE : SERVICE_VOLUNTEER_ROLE;
   }
 
-  const res = await fetch("/alterations", {
+  const res = await fetch("/api/alterations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -273,11 +273,6 @@ export class AvailabilityLinkError extends Error {
   }
 }
 
-// The volunteer's link is one URL for two audiences: a browser navigating to it
-// gets this app, and this fetch gets the JSON behind it. Asking for JSON
-// explicitly is what tells the two apart.
-const JSON_ACCEPT = { Accept: "application/json" };
-
 function linkFailure(status: number): AvailabilityLinkError | null {
   if (status === 404) return new AvailabilityLinkError("not-found");
   if (status === 410) return new AvailabilityLinkError("gone");
@@ -286,12 +281,13 @@ function linkFailure(status: number): AvailabilityLinkError | null {
 
 // fetchAvailabilityForm loads what is behind a volunteer's link. Public: the
 // link is the identity, and volunteers never log in.
+//
+// The token appears in two URLs: /availability/{token} is the page the volunteer
+// is emailed, this is the payload behind it.
 export async function fetchAvailabilityForm(
   token: string,
 ): Promise<AvailabilityFormState> {
-  const res = await fetch(`/availability/${encodeURIComponent(token)}`, {
-    headers: JSON_ACCEPT,
-  });
+  const res = await fetch(`/api/availability/${encodeURIComponent(token)}`);
   if (!res.ok) {
     throw (
       linkFailure(res.status) ??
@@ -308,9 +304,9 @@ export async function submitAvailability(
   token: string,
   shiftIds: string[],
 ): Promise<AvailabilityFormState> {
-  const res = await fetch(`/availability/${encodeURIComponent(token)}`, {
+  const res = await fetch(`/api/availability/${encodeURIComponent(token)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...JSON_ACCEPT },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ shiftIds }),
   });
   if (!res.ok) {
@@ -325,7 +321,7 @@ export async function submitAvailability(
 // fetchAvailabilityRound reads the latest rota's round: who was asked, their
 // link, and who has answered. Admin-only — it returns every volunteer's link.
 export async function fetchAvailabilityRound(): Promise<AvailabilityRound> {
-  const res = await fetch("/availability-rounds");
+  const res = await fetch("/api/availability-rounds");
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the round"));
   }
@@ -336,7 +332,7 @@ export async function fetchAvailabilityRound(): Promise<AvailabilityRound> {
 // rota. Safe to repeat: running it again after the roster changes tops the round
 // up without replacing links already handed out.
 export async function mintAvailabilityRound(): Promise<AvailabilityRound> {
-  const res = await fetch("/availability-rounds", {
+  const res = await fetch("/api/availability-rounds", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",

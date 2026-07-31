@@ -23,7 +23,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 	ctx := context.Background()
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodPost, "/rotations", `{"shiftCount":3}`, adminCookie())
+	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp defineRotaResponse
@@ -49,7 +49,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 	}
 
 	// A second call defines the following rota rather than replacing this one.
-	rec = doRequest(t, handler, http.MethodPost, "/rotations", `{"shiftCount":1}`, adminCookie())
+	rec = doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var second defineRotaResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &second))
@@ -57,7 +57,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 
 	// GET /shifts now serves the minted shifts, unallocated and with nobody on
 	// them: the state #31 needs to request availability against.
-	rec = doRequest(t, handler, http.MethodGet, "/shifts?from="+resp.Rotation.Start, "")
+	rec = doRequest(t, handler, http.MethodGet, "/api/shifts?from="+resp.Rotation.Start, "")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var listed struct {

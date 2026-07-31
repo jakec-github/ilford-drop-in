@@ -30,8 +30,9 @@ bun install
 bun run dev
 ```
 
-The dev server proxies API requests (`/shifts`, `/alterations`, `/calendars`)
-to the web server on localhost:8080; set `API_PORT` to override.
+The dev server proxies the API (`/api/*`) and the endpoints outside it
+(`/auth`, `/calendars`, `/health`) to the web server on localhost:8080; set
+`API_PORT` to override.
 
 ## Build
 

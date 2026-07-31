@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -48,34 +49,92 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 	}
 }
 
-// Routes returns the API's route table
+// apiPrefix is the namespace the JSON API owns. Everything outside it belongs to
+// the frontend, so the two can name things freely without colliding.
+const apiPrefix = "/api"
+
+// Routes returns the API's route table.
+//
+// The data endpoints live under /api and the frontend gets everything else,
+// which is what lets a page and its payload share a name — /availability/{token}
+// is the volunteer's page, /api/availability/{token} is the JSON behind it — and
+// what makes a mistyped endpoint a 404 rather than index.html with a 200.
+//
+// Three paths deliberately stay unprefixed: /health, which the deploy tooling
+// and scripts/dev-stack.sh poll; /auth, a browser redirect flow whose callback
+// URI is registered with Google; and /calendars/{filename}, whose URLs are
+// subscribed to from volunteers' calendar apps and so cannot be moved without
+// breaking subscriptions that live outside this app.
 func (h *Handler) Routes() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", h.handleHealth)
-	mux.HandleFunc("GET /shifts", h.handleListShifts)
-	mux.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
-	mux.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
-	mux.HandleFunc("GET /preallocations", h.handleListPreallocations)
-	mux.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))
-	mux.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
-	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
-	mux.Handle("GET /volunteers", h.auth.requireAdmin(http.HandlerFunc(h.handleListVolunteers)))
+	api := http.NewServeMux()
+	api.HandleFunc("GET /shifts", h.handleListShifts)
+	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
+	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
+	api.HandleFunc("GET /preallocations", h.handleListPreallocations)
+	api.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))
+	api.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
+	api.Handle("GET /volunteers", h.auth.requireAdmin(http.HandlerFunc(h.handleListVolunteers)))
 	// Rounds are admin-only: the roster hands out every volunteer's link, which
 	// is a bearer credential for their availability.
-	mux.Handle("POST /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleMintAvailabilityRound)))
-	mux.Handle("GET /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleGetAvailabilityRound)))
+	api.Handle("POST /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleMintAvailabilityRound)))
+	api.Handle("GET /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleGetAvailabilityRound)))
 	// The volunteer's own link, public by design — the link is the identity and
 	// volunteers never log in. Registered under a separate prefix from the
 	// admin rounds above so neither path can shadow the other.
-	mux.HandleFunc("GET /availability/{token}", h.handleAvailabilityForm)
-	mux.HandleFunc("POST /availability/{token}", h.handleSubmitAvailability)
+	api.HandleFunc("GET /availability/{token}", h.handleAvailabilityForm)
+	api.HandleFunc("POST /availability/{token}", h.handleSubmitAvailability)
+
+	mux := http.NewServeMux()
+	mux.Handle(apiPrefix+"/", http.StripPrefix(apiPrefix, h.apiRouter(api)))
+	mux.HandleFunc("GET /health", h.handleHealth)
+	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	h.auth.registerRoutes(mux)
 	if hasFrontend(h.frontend) {
-		mux.Handle("GET /", frontendHandler(h.frontend))
+		// Registered without a method: a pattern matching fewer methods than
+		// /api/ but more paths conflicts with it. frontendHandler turns away
+		// anything but GET and HEAD itself.
+		mux.Handle("/", frontendHandler(h.frontend))
 	} else {
 		h.logger.Info("No frontend build embedded; serving API only")
 	}
 	return mux
+}
+
+// apiRouter serves the API mux, answering anything it does not route in JSON.
+// A client under /api is parsing JSON, so it must not be handed net/http's
+// plain-text 404 or 405 — the error body is the one place an unknown endpoint
+// gets to explain itself.
+func (h *Handler) apiRouter(api *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, pattern := api.Handler(r); pattern != "" {
+			api.ServeHTTP(w, r)
+			return
+		}
+		// No pattern matched, which the mux reports the same way whether the
+		// path is unknown or only the method is. Asking it about the other
+		// methods tells the two apart.
+		if allowed := allowedMethods(api, r); len(allowed) > 0 {
+			w.Header().Set("Allow", strings.Join(allowed, ", "))
+			h.writeError(w, http.StatusMethodNotAllowed, r.Method+" is not allowed on "+apiPrefix+r.URL.Path)
+			return
+		}
+		h.writeError(w, http.StatusNotFound, "unknown endpoint: "+apiPrefix+r.URL.Path)
+	})
+}
+
+// allowedMethods reports which methods the mux would route this request's path
+// under, in the order they would be listed in an Allow header.
+func allowedMethods(api *http.ServeMux, r *http.Request) []string {
+	var allowed []string
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		// Only the method, URL and Host take part in matching, so a probe needs
+		// nothing else — and carrying no body keeps it free of the real one.
+		probe := &http.Request{Method: method, URL: r.URL, Host: r.Host}
+		if _, pattern := api.Handler(probe); pattern != "" {
+			allowed = append(allowed, method)
+		}
+	}
+	return allowed
 }
 
 // writeJSON writes v as a JSON response with the given status

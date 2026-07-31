@@ -49,7 +49,7 @@ case "$cmd" in
         query=""
         [[ -n "$from" ]] && query="from=${from}"
         [[ -n "$to" ]] && query="${query:+${query}&}to=${to}"
-        url="${API_URL}/preallocations${query:+?${query}}"
+        url="${API_URL}/api/preallocations${query:+?${query}}"
         curl -sS "$url" | pretty
         ;;
 
@@ -84,7 +84,7 @@ case "$cmd" in
                 ;;
         esac
 
-        curl -sS -X POST "${API_URL}/preallocations" \
+        curl -sS -X POST "${API_URL}/api/preallocations" \
             -H 'Content-Type: application/json' \
             -d "$body" | pretty
         ;;
@@ -97,7 +97,7 @@ case "$cmd" in
         fi
         # DELETE returns 204 No Content on success; surface the status code so an
         # empty body is not mistaken for a silent failure.
-        code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${API_URL}/preallocations/${id}")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${API_URL}/api/preallocations/${id}")
         echo "HTTP ${code}"
         ;;
 
