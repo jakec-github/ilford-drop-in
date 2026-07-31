@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/utils"
 )
 
 const (
@@ -363,11 +362,9 @@ func normaliseEmail(email string) string {
 	return local + "@" + domain
 }
 
-// randomToken returns a URL-safe random token for OAuth state.
+// randomToken returns a URL-safe random token for OAuth state. It shares an
+// implementation with the availability links, which are bearer credentials of
+// the same shape: one definition means one entropy decision.
 func randomToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+	return utils.RandomToken()
 }

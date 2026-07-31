@@ -15,6 +15,7 @@ import (
 
 // Store defines the database operations the API needs (satisfied by *db.DB)
 type Store interface {
+	services.AvailabilityStore
 	services.ChangeRotaStore
 	services.DefineRotaStore
 	services.ListShiftsStore
@@ -59,6 +60,15 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	mux.Handle("GET /volunteers", h.auth.requireAdmin(http.HandlerFunc(h.handleListVolunteers)))
+	// Rounds are admin-only: the roster hands out every volunteer's link, which
+	// is a bearer credential for their availability.
+	mux.Handle("POST /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleMintAvailabilityRound)))
+	mux.Handle("GET /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleGetAvailabilityRound)))
+	// The volunteer's own link, public by design — the link is the identity and
+	// volunteers never log in. Registered under a separate prefix from the
+	// admin rounds above so neither path can shadow the other.
+	mux.HandleFunc("GET /availability/{token}", h.handleAvailabilityForm)
+	mux.HandleFunc("POST /availability/{token}", h.handleSubmitAvailability)
 	h.auth.registerRoutes(mux)
 	if hasFrontend(h.frontend) {
 		mux.Handle("GET /", frontendHandler(h.frontend))
@@ -92,6 +102,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, err error) {
 		h.writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, services.ErrConflict):
 		h.writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, services.ErrGone):
+		h.writeError(w, http.StatusGone, err.Error())
 	default:
 		h.logger.Error("Internal error handling request", zap.Error(err))
 		h.writeError(w, http.StatusInternalServerError, "internal server error")
