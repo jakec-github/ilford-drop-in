@@ -1,146 +1,181 @@
-# Research: Making roles configurable
+# Configurable roles: design
 
-## Context
+Design for issue #4. Supersedes the previous contents of this file, which
+mapped the blast radius across the Go allocator — deleted since (#34) — and is
+no longer a useful guide.
 
-Currently only two roles exist, hardcoded as constants: `RoleTeamLead` ("Team lead") and `RoleVolunteer` ("Service volunteer"). The team lead role has special behaviour baked deeply into the allocator, services, CLI display, and sheets output. The goal is to understand the full scope of what would need to change to support additional configurable roles.
+Decision record: [ADR 0005](adr/0005-roles-as-jobs-volunteers-hold.md).
+Language: `CONTEXT.md` (Role, Track, Seat, Shape). Note that `CONTEXT.md` now
+carries the agreed language ahead of the code; none of it is implemented yet.
 
-## Current role definition
+## The model
 
-**`pkg/core/model/models.go:3-12`** — Two hardcoded constants + `IsValid()` that only accepts these two values.
+A **Role** is a job on a Shift. A volunteer **holds** the Roles they will do,
+and only a holder may be allocated to one — eligibility is exact match, with no
+mapping layer and no open-to-all shortcut.
 
-## Where roles are referenced
+A **Track** is a line-up of mutually exclusive Roles: a person fills at most one
+Role per Track on a Shift, and Tracks are independent. Emma can be Team lead on
+the serving track and Food collector on the collection track; she can never be
+both Team lead and Assistant TL.
 
-### 1. Data ingestion — reading volunteers from Google Sheets
+A **Shape** is which Roles a Shift needs and how many **Seats** of each. The
+Shift owns it from mint. It is editable while the Rotation is unallocated and
+fixed once the allocator has run — the manual-preallocation rule (ADR 0003).
 
-| File | Lines | What it does |
-|---|---|---|
-| `pkg/clients/sheetsclient/volunteers.go` | 140-143 | Reads "Role" column, calls `role.IsValid()` — rejects anything that isn't "Team lead" or "Service volunteer" |
+### Config
 
-### 2. Model → Allocator conversion
+```yaml
+tracks:
+  - name: serving
+    requiresMale: true
+  - name: collection
+  - name: catering
 
-| File | Lines | What it does |
-|---|---|---|
-| `pkg/core/services/allocateRota.go` | 340 | `IsTeamLead: vol.Role == model.RoleTeamLead` — converts enum to boolean |
+roles:
+  - name: Team lead          track: serving     max: 1  priority: 1
+  - name: Assistant TL       track: serving     max: 1  priority: 2
+  - name: Food collector     track: collection  max: 1  priority: 3
+  - name: Service volunteer  track: serving             priority: 4
+  - name: Hot food           track: catering    max: 1  priority: 5
 
-### 3. Allocator layer — the deepest embedding
+defaultShape:
+  - role: Team lead          count: 1
+  - role: Assistant TL       count: 1
+  - role: Food collector     count: 1
+  - role: Service volunteer  count: 6
+```
 
-The allocator doesn't use the Role type at all. Instead it uses a **boolean `IsTeamLead`** on `Volunteer` and `HasTeamLead` on `VolunteerGroup`. This drives significant special-case logic:
+`max` is the ceiling — how many of that Role a Shift may ever hold, however it
+is edited. Omitted means no ceiling. `priority` orders the filling of Seats
+when people are scarce. Both are role-level so that a per-date Shape override
+cannot forget to cap team leads.
 
-| File | What it does |
+### Roster
+
+Roles are held in tick-box columns found by the `Role - ` prefix, so the
+sheet's many unread columns stay invisible and the data-validated tick cannot
+be mistyped:
+
+| Unique ID | First name | … | Role - Team lead | Role - Assistant TL | Role - Service volunteer | Role - Food collector |
+|---|---|---|---|---|---|---|
+| XYZ | Emma | | ✓ | ✓ | ✓ | |
+| ABC | Michael | | | ✓ | ✓ | |
+| DEF | Priya | | | | ✓ | ✓ |
+| GHI | Sam | | | | | ✓ |
+
+Config stays authoritative for which Roles exist. A `Role - ` column config
+does not name warns and does nothing; a configured Role with no column warns
+too, since nobody can hold it.
+
+## Rules
+
+**Allocating.** The solver fills Seats up to each Shape count, in Role priority
+order, never exceeding a count. Counts are targets, not minimums: a Shift with
+no available team lead still allocates with that Seat empty, exactly as today.
+A person may hold at most one Role per Track. For each Track marked
+`requiresMale`, every open Shift must either have a male somewhere in that
+Track or leave a Seat in it open, so one can be added by hand afterwards.
+
+**Editing an allocated rota.** The Role is named explicitly on every add —
+`inferRole()` goes. Ceilings alone govern edits, not the frozen Shape: adding a
+Food collector to a week whose Shape asked for none is fine; a second Team lead
+never is. Placing someone in a Role they do not hold warns and proceeds.
+
+**Pinning.** Every preallocation names a Role, custom entries included — which
+is what lets `"St John's team"` hold Hot food. Pinning someone to a Role they
+do not hold is an error, as the team-lead equivalent is today.
+
+Headcount is distinct people, so no Role needs a "counts toward shift size"
+flag.
+
+## What this replaces
+
+| Today | Becomes |
 |---|---|
-| `pkg/core/allocator/types.go:112` | `Volunteer.IsTeamLead bool` field |
-| `pkg/core/allocator/types.go:99` | `VolunteerGroup.HasTeamLead bool` field |
-| `pkg/core/allocator/types.go:134-136` | `Shift.TeamLead *Volunteer` — dedicated pointer, separate from `AllocatedGroups` |
-| `pkg/core/allocator/types.go:155` | `Shift.PreallocatedTeamLeadID string` |
-| `pkg/core/allocator/types.go:160-170` | `CurrentSize()` — excludes team leads from count |
-| `pkg/core/allocator/types.go:200-239` | `RemainingAvailableVolunteers()` — excludes team leads |
-| `pkg/core/allocator/types.go:241-274` | `RemainingAvailableTeamLeads()` — counts only team lead groups |
-| `pkg/core/allocator/types.go:276-324` | `RemainingAvailableMaleVolunteers()` — excludes team leads |
-| `pkg/core/allocator/types.go:350-359` | `OrdinaryVolunteerCount()` — excludes team leads |
-| `pkg/core/allocator/init.go:76,186,196` | `BuildVolunteerGroup` — sets `HasTeamLead` from members |
-| `pkg/core/allocator/init.go:382-417` | Team lead preallocation — validates volunteer is team lead, sets `shift.TeamLead` |
-| `pkg/core/allocator/allocator.go:187-195` | After allocating a group, extracts team lead member → sets `shift.TeamLead` |
-| `pkg/core/allocator/criteria/teamlead.go` | **Entire file** — `TeamLeadCriterion`: promotes TL groups, validates 1-per-shift, calculates scarcity affinity, final validation |
+| `RoleTeamLead` / `RoleVolunteer` constants, `Role.IsValid()` | Roles resolved from config |
+| `defaultShiftSize`, `RotaOverride.shiftSize` | `defaultShape`, Shape overrides |
+| `RotaOverride.preallocatedTeamLeadID` | A pin naming the Team lead Role |
+| `Volunteer.Role` (single) | The set of Roles a volunteer holds |
+| `Member.is_team_lead`, `VolunteerView.seat_cost` | Held Roles; no seat cost |
+| `x[(volunteer, shift)]` | `x[(volunteer, shift, role)]` + attendance var |
+| `at_most_one_team_lead` constraint | Per-Role ceilings |
+| `shift_capacity` counting ordinary seats | Per-Role Seat counts |
+| `male_required`'s two hardcoded escapes | Per-Track `requiresMale` |
+| `OutputShift.team_lead_id` + `volunteer_ids` | Role-tagged assignments |
+| `inferRole()` in `changeRota` | An explicit Role on every add |
+| `PublishedRotaRow.TeamLead`, hand-typed `HotFood` / `Collection` | A column per capped Role, list cell for uncapped |
 
-### 4. Allocator output → DB allocations
+## Blast radius
 
-| File | Lines | What it does |
-|---|---|---|
-| `pkg/core/services/allocateRota.go` | 354-356 | Skips team lead member from regular allocation list |
-| `pkg/core/services/allocateRota.go` | 358-365 | Writes regular volunteers with `RoleVolunteer` |
-| `pkg/core/services/allocateRota.go` | 371-380 | Writes team lead separately with `RoleTeamLead` |
+Config and model: `internal/config/config.go`, `pkg/core/model/models.go`.
 
-### 5. Services layer — role-specific logic
+Roster: `pkg/clients/sheetsclient/volunteers.go` (currently rejects any value
+that is not one of the two constants), `internal/devmode/roster.go`,
+`test_data/volunteers.csv`.
 
-| File | Lines | What it does |
-|---|---|---|
-| `pkg/core/services/changeRota.go` | 323-346 | `inferRole()` — inherits outgoing role on swap, downgrades duplicate team leads |
-| `pkg/core/services/publishRota.go` | 176-181 | Routes allocations to "TeamLead" column vs "Volunteers" column |
-| `pkg/core/services/viewResponses.go` | 515-522 | Counts team leads separately from volunteers, tracks `HasTeamLead` per shift |
-| `pkg/core/services/utils/alterations.go` | 42-44 | Defaults empty role to `RoleVolunteer` when applying alterations |
+Solver contract and pyallocator: `pkg/core/allocator/cpsat_contract.go`,
+`init.go`, `types.go`; `pyallocator/src/pyallocator/` — `domain.py`,
+`problem.py`, `model_builder.py`, `solution.py`, and the `constraints/` and
+`preferences/` packages.
 
-### 6. CLI display
+Services: `allocateRota.go`, `changeRota.go`, `publishRota.go`,
+`viewResponses.go`, `preallocations.go`, `allocationHelpers.go`,
+`listShifts.go`, `volunteerCalendar.go`, `utils/alterations.go`.
 
-| File | Lines | What it does |
-|---|---|---|
-| `cmd/cli/commands/allocate_rota.go` | 115,134,155 | Displays team lead separately, excludes from volunteer list |
-| `cmd/cli/commands/publish_rota.go` | 53 | "Team lead" table header |
-| `cmd/cli/commands/view_responses.go` | 112-119 | "Team Lead" availability row with ✓/✗ |
+Edges: `pkg/api/preallocations.go` and `volunteers.go`; `cmd/cli/commands/`
+(`allocate_rota.go`, `publish_rota.go`, `view_responses.go`);
+`pkg/clients/sheetsclient/rotas.go`; `web/src/api.ts`, `types.ts`,
+`RotaViewer.tsx`, `AdminVolunteers.tsx`.
 
-### 7. Sheets output
+Database: a `shift_requirement` table (slice 2). `allocation.role`,
+`alteration.role` and `manual_preallocation.role` stay `TEXT` holding the Role
+name, so historical rows remain readable when a Role is retired.
 
-| File | Lines | What it does |
-|---|---|---|
-| `pkg/clients/sheetsclient/rotas.go` | 14 | `PublishedRotaRow.TeamLead` — dedicated field |
-| `pkg/clients/sheetsclient/rotas.go` | 103,174,179,199,289 | "Team lead" column header in published sheets |
+## Slices
 
-### 8. Config
+**S1 — Roles and Tracks as data, behaviour unchanged.** Config gains tracks and
+roles; the roster moves to `Role - ` columns; the solver assigns Roles;
+services, CLI and published output stop special-casing team leads. Configured
+with one Track and the two existing Roles, output is identical to today, so the
+existing test suite is the oracle for the solver rewrite — the genuinely risky
+part. No user-visible change.
 
-| File | Lines | What it does |
-|---|---|---|
-| `internal/config/config.go` | 20 | `PreallocatedTeamLeadID` in `RotaOverride` — special field for preallocating a team lead to a shift |
+**S2 — Shifts own their Shape.** `shift_requirement` table written at
+define-rota, editable over HTTP and in the admin UI while the Rotation is
+unallocated, frozen at allocation. `defaultShiftSize` and
+`RotaOverride.shiftSize` retire in favour of `defaultShape` and Shape overrides.
 
-### 9. Database
+**S3 — The new Roles.** Assistant TL, Food collector and Hot food turned on:
+config entries, roster columns, published columns, and the rota editor's Role
+picker. Mostly configuration by this point.
 
-| File | Lines | What it does |
-|---|---|---|
-| `pkg/db/models.go` | 26 | `Allocation.Role string` — stores role per allocation record |
-| `pkg/db/models.go` | 50 | `Alteration.Role string` — stores role on "add" alterations |
+## Migration
 
-### 10. Tests (extensive)
+**Every team lead must hold both Team lead and Service volunteer.** Today a
+team lead is only a team lead on the roster, yet the allocator routinely places
+non-designated leads in ordinary seats (`solution.py` extracts one designated
+lead per shift and reports the rest as ordinary volunteers). Ticking only
+`Role - Team lead` would remove them from ordinary Seats and S1 would not be
+behaviour-preserving on its first solve.
 
-- `pkg/core/allocator/criteria/teamlead_test.go` — 15+ tests for TeamLeadCriterion
-- `pkg/core/allocator/init_test.go` — group formation with team leads
-- `pkg/core/allocator/e2e/allocator_test.go` — end-to-end with team lead couples
-- `pkg/core/services/allocateRota_test.go` — allocation with/without team leads
-- `pkg/core/services/viewResponses_test.go` — team lead availability calculations
-- `pkg/core/services/changeRota_test.go` — team lead swap logic
+`Service volunteer` keeps its name, so existing `allocation.role` values need
+no migration. The roster's existing single `Role` dropdown column is retired
+once the tick columns are populated.
 
-## Key design constraints causing coupling
+## Deliberately not in scope
 
-1. **Team leads don't count toward shift size** — shift size = only ordinary volunteers
-2. **Exactly 1 team lead per shift** — validated at allocation time and in final validation
-3. **Team lead is a separate pointer on `Shift`** — not just another allocated member
-4. **Groups can have at most 1 team lead** — validated during group initialisation
-5. **Team lead scarcity optimisation** — TeamLeadCriterion allocates TL groups first to scarce shifts
-6. **Sheets output has a dedicated "Team lead" column** — not a generic role column
-
-## What would need to change for configurable roles
-
-### Config additions
-- Define roles in config with properties: name, display label, count-per-shift requirement (e.g. "exactly 1", "at least 1", "0 or more"), whether they count toward shift size, whether they get a dedicated column in sheets output
-
-### Model layer
-- Remove hardcoded `RoleTeamLead`/`RoleVolunteer` constants (or keep as defaults)
-- Make `IsValid()` check against configured roles rather than hardcoded list
-
-### Allocator layer (heaviest changes)
-- Replace `IsTeamLead bool` on `Volunteer` with a `Role string` (or `Roles []string`)
-- Replace `HasTeamLead bool` on `VolunteerGroup` with role-aware metadata
-- Replace `Shift.TeamLead *Volunteer` with a generic `Shift.RoleAssignments map[string]*Volunteer` or similar
-- Generalise `CurrentSize()`, `RemainingAvailableVolunteers()`, etc. to be role-aware
-- Generalise or replace `TeamLeadCriterion` with a configurable role criterion
-- Update preallocation logic to support any role, not just team lead
-
-### Services layer
-- `convertToAllocatorVolunteers()` — map role string instead of boolean
-- `convertToDBAllocations()` — use actual role from allocation instead of hardcoded constants
-- `inferRole()` in changeRota — generalise deduplication logic
-- `publishRota` — route allocations to columns based on role config
-- `viewResponses` — track availability per configured role
-
-### Sheets output
-- Make columns dynamic based on configured roles rather than hardcoded "Team lead" + "Volunteers"
-
-### CLI display
-- Generalise display to show allocations per role
-
-## Estimated scope
-
-This is a **large refactor** touching ~30+ files. The allocator layer is the most complex part — the `IsTeamLead` boolean and `Shift.TeamLead` pointer are deeply woven into allocation logic, counting methods, criteria, and validation. The rest (services, CLI, sheets) would follow from the allocator changes.
-
-A phased approach would be advisable:
-1. **Phase 1**: Add role config and make model/validation role-aware
-2. **Phase 2**: Refactor allocator to use role strings instead of booleans
-3. **Phase 3**: Update services, CLI, and sheets output
-4. **Phase 4**: Add criterion configurability (which roles need exactly-1-per-shift, etc.)
+- **Multi-tenancy.** Roles becoming rows is what a second organisation would
+  need; scoping them to one is a separate axis, cheap to add later and
+  expensive to speculate on now.
+- **Generalised volunteer attributes.** `requiresMale` stays a named flag on a
+  Track rather than becoming a configurable cover requirement over arbitrary
+  attributes.
+- **Collection as its own activity.** Food collection is a Role on the drop-in
+  Shift, not a separate scheduling stream with its own dates and its own
+  availability round. That reading was considered and rejected as a much larger
+  change colliding with the availability work in #75/#76.
+- **Role authoring in the UI.** Roles are configured in YAML; Shapes are edited
+  per Shift in the UI (S2). If role authoring moves to the database later, it
+  should move wholesale rather than being seeded from config, so there is never
+  a moment with two sources of truth.

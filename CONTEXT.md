@@ -20,8 +20,31 @@ A batch of consecutive Shifts over which availability is requested and allocatio
 runs. Its span and size are derived from the Shifts it minted. Rota is an
 acceptable alias.
 
+**Role**:
+A job on a Shift — Team lead, Service volunteer, Food collector. A volunteer
+holds the Roles they will do, and only a holder may be allocated to one. The
+job and the holding of it share one name; there is no separate notion of being
+qualified for a job you do not hold.
+_Avoid_: position, qualification, badge
+
+**Track**:
+A line-up of mutually exclusive Roles. A person fills at most one Role per
+Track on a Shift, and Tracks are independent — the same person can lead the
+serving line-up and collect the food. A Track may require a male among its
+people.
+_Avoid_: group (which means couples and families), category, stream
+
+**Seat**:
+One place on a Shift: one Role, at most one person.
+
+**Shape**:
+Which Roles a Shift needs and how many Seats of each. Owned by the Shift and
+editable until its Rotation is allocated, fixed thereafter. Its counts are what
+the allocator fills up to, not minimums — Seats are routinely left empty.
+_Avoid_: shift size, template, structure
+
 **Allocation**:
-The assignment of one volunteer (or custom entry) to one role on one Shift,
+The assignment of one volunteer (or custom entry) to one Role on one Shift,
 produced by the allocator.
 
 **Alteration**:
@@ -63,12 +86,12 @@ declared by configured recurrence rules, not stored on the Shift.
 
 **Rota Override**:
 A configured recurrence rule that adjusts matching Shifts: marking them Closed,
-resizing them, or preallocating people.
+setting their Shape, or preallocating people.
 
 **Preallocation**:
-A person pinned to a specific Shift before Allocation runs, forcing the
-allocator to place them (their group included). Has two sources — Config and
-Manual — that union into one set.
+A person pinned to a specific Shift before Allocation runs, naming the Role
+they will fill and forcing the allocator to place them (their group included).
+Has two sources — Config and Manual — that union into one set.
 _Avoid_: pin (except as the informal verb, "pin to a Shift")
 
 **Config Preallocation**:
