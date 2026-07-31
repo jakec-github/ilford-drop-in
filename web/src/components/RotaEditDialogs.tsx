@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
-import type { PersonRef, Role, Volunteer } from "../types";
+import type { Assignee, PersonRef, Role, Volunteer } from "../types";
 import "./RotaEditDialogs.css";
 
 // Every change to a published rota is recorded against a reason, so both
@@ -98,12 +98,26 @@ export function ConfirmChangeDialog({
 // have no id, so the rota carries their name as typed.
 const CUSTOM_CHOICE = "custom";
 
-// AddAssigneeDialog picks who joins a shift, in which role, and why. Role is
-// asked rather than inferred: an allocated shift already has a team lead, so
-// the service would otherwise quietly downgrade an incoming one — fine as a
-// default, wrong when the admin is adding a second lead on purpose.
-export function AddAssigneeDialog({
+// What AssigneeDialog is being used for. Both cases pick a person and a reason;
+// they differ in where the incoming person's role comes from.
+export type AssigneeChange =
+  // leadTaken says the shift already has a team lead. A shift has exactly one,
+  // so joining as one is then not offered — and the server refuses it anyway.
+  | { kind: "add"; leadTaken: boolean }
+  // Whoever comes in takes the outgoing person's place, role included, which is
+  // what makes this a replacement rather than a removal followed by an add.
+  | { kind: "replace"; outgoing: Assignee };
+
+// AssigneeDialog picks who joins a shift and why — either alongside the people
+// already on it, or in place of one of them.
+//
+// Role is stated rather than inferred: the service infers it from the shift and
+// the volunteer's own roster role, and those rules are invisible from here. On
+// an add to a leadless shift the admin chooses; everywhere else the answer is
+// forced and the dialog says what it is instead of asking.
+export function AssigneeDialog({
   dateLabel,
+  change,
   volunteers,
   volunteersError,
   busy,
@@ -111,6 +125,7 @@ export function AddAssigneeDialog({
   onConfirm,
 }: {
   dateLabel: string;
+  change: AssigneeChange;
   // null while the roster is still loading. Already filtered to the people who
   // can join this shift.
   volunteers: Volunteer[] | null;
@@ -135,6 +150,15 @@ export function AddAssigneeDialog({
       ? { volunteerId: choice }
       : null;
 
+  // Only the add-to-a-leadless-shift case is the admin's to answer; the other
+  // two are settled by the shift itself.
+  const incomingRole: Role =
+    change.kind === "replace"
+      ? change.outgoing.role
+      : change.leadTaken
+        ? "volunteer"
+        : role;
+
   function handleChoice(value: string) {
     setChoice(value);
     // Default to the role the volunteer holds on the roster: it is the right
@@ -144,14 +168,36 @@ export function AddAssigneeDialog({
   }
 
   return (
-    <Dialog title={`Add someone to ${dateLabel}`} onClose={onCancel}>
+    <Dialog
+      title={
+        change.kind === "add"
+          ? `Add someone to ${dateLabel}`
+          : `Replace ${change.outgoing.name}`
+      }
+      onClose={onCancel}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (person)
-            onConfirm(person, reason.trim(), isCustom ? undefined : role);
+            onConfirm(
+              person,
+              reason.trim(),
+              isCustom ? undefined : incomingRole,
+            );
         }}
       >
+        {/* One request, not a removal and an add: the outgoing person leaves
+            and the incoming one arrives together, so the shift is never
+            briefly short-handed and the role passes straight across. */}
+        {change.kind === "replace" && (
+          <p className="rota-edit-summary">
+            Whoever you choose takes {change.outgoing.name}&rsquo;s place on{" "}
+            {dateLabel}
+            {change.outgoing.role === "lead" ? ", as team lead" : ""}.
+          </p>
+        )}
+
         <label className="rota-edit-field">
           Who
           <select
@@ -198,22 +244,30 @@ export function AddAssigneeDialog({
         {/* Not offered for a custom entry: the alterations API carries a role
             only for a real volunteer, so a choice here would be dropped
             silently. A visiting group is never the team lead anyway. */}
-        {!isCustom && (
-          <label className="rota-edit-field">
-            Role
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
-              <option value="volunteer">Volunteer</option>
-              <option value="lead">Team lead</option>
-            </select>
-          </label>
-        )}
+        {!isCustom &&
+          change.kind === "add" &&
+          (change.leadTaken ? (
+            <p className="rota-edit-note">
+              {dateLabel} already has a team lead, so whoever you add joins as a
+              service volunteer. To change who leads, replace the team lead
+              instead.
+            </p>
+          ) : (
+            <label className="rota-edit-field">
+              Role
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as Role)}
+              >
+                <option value="volunteer">Volunteer</option>
+                <option value="lead">Team lead</option>
+              </select>
+            </label>
+          ))}
 
         <ReasonField value={reason} onChange={setReason} />
         <DialogActions
-          confirmLabel="Add"
+          confirmLabel={change.kind === "add" ? "Add" : "Replace"}
           busy={busy}
           canConfirm={person !== null && reason.trim() !== ""}
           onCancel={onCancel}

@@ -793,11 +793,10 @@ func addedAlteration(t *testing.T, store *mockChangeRotaStore) db.Alteration {
 	return db.Alteration{}
 }
 
-// An explicit role is an admin's decision, so it beats every inference rule —
-// including the downgrade that would otherwise stop a shift having a second
-// team lead. Without that, asking for a team lead would silently fail on any
-// allocated shift, since allocation always gives one.
-func TestChangeRota_ExplicitRoleBeatsDowngrade(t *testing.T) {
+// An explicit role beats every inference rule bar one: a shift has a single
+// team lead, so asking for a second is refused rather than quietly downgraded.
+// Changing who leads is a replacement, not an addition.
+func TestChangeRota_ExplicitTeamLeadRefusedWhenShiftHasOne(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
@@ -810,6 +809,57 @@ func TestChangeRota_ExplicitRoleBeatsDowngrade(t *testing.T) {
 		In:        "bob",
 		Role:      string(model.RoleTeamLead),
 		Reason:    "Alice needs a co-lead",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "Alice", "the refusal should name the team lead already on the shift")
+	assert.Nil(t, store.insertedCover)
+}
+
+// The lead a replacement removes does not block the lead it adds: the role is
+// handed over, and the shift still ends with one. This is the only way to
+// change who leads a shift, so it has to work.
+func TestChangeRota_ExplicitTeamLeadReplacesTheTeamLead(t *testing.T) {
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		In:        "bob",
+		Role:      string(model.RoleTeamLead),
+		Reason:    "Alice is away; Bob leads",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, string(model.RoleTeamLead), addedAlteration(t, store).Role)
+}
+
+// A shift can lose its team lead — someone is removed, or a replacement is a
+// custom entry with no role. Naming the next one is then an addition, and
+// inference would not get there on its own: Bob is a service volunteer.
+func TestChangeRota_ExplicitTeamLeadAllowedWhenShiftHasNone(t *testing.T) {
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "bob",
+		Role:      string(model.RoleTeamLead),
+		Reason:    "Nobody is leading that week",
 		UserEmail: "test@example.com",
 	}
 

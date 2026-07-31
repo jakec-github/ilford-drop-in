@@ -56,6 +56,7 @@ export type PersonRef = { volunteerId: string } | { custom: string };
 //
 //   add     { date, in }
 //   remove  { date, out }
+//   replace { date, out: leaving, in: arriving }
 //   move    { date: destination, in: person, swapDate: where they were }
 //   swap    { date: A's shift, out: A, in: B, swapDate: B's shift }
 //
@@ -64,7 +65,8 @@ export type PersonRef = { volunteerId: string } | { custom: string };
 //
 // role sets the role the incoming volunteer takes; omitted, the server infers
 // it. It cannot be combined with swapDate, where each date has its own incoming
-// person. reason is mandatory — the change is recorded against it.
+// person, and team lead is refused where the shift already has one. reason is
+// mandatory — the change is recorded against it.
 export interface RotaChange {
   date: string;
   in?: PersonRef;

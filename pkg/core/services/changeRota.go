@@ -35,7 +35,8 @@ type ChangeRotaParams struct {
 	UserEmail string // Email of the user making the change
 	// Role the incoming volunteer takes, overriding inferRole. Optional; when
 	// empty the role is inferred as before. Only meaningful alongside In and
-	// without SwapDate — see validateRoleOverride.
+	// without SwapDate — see validateRoleOverride — and team lead is refused on
+	// a shift that already has one, see validateLeadNotTaken.
 	Role string
 }
 
@@ -145,6 +146,10 @@ func ChangeRota(
 		}
 
 		if err := validateDateChanges(effectiveState, volunteersByID, params.Date, params.Out, params.In, params.OutCustom, params.InCustom); err != nil {
+			return err
+		}
+
+		if err := validateLeadNotTaken(effectiveState, volunteersByID, params); err != nil {
 			return err
 		}
 
@@ -402,6 +407,42 @@ func validateRoleOverride(params ChangeRotaParams) error {
 		return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming volunteer")
 	}
 	return nil
+}
+
+// validateLeadNotTaken rejects an explicit team lead on a shift that already has
+// one. A shift has exactly one: inferRole enforces it by downgrading a second,
+// and the override must not be a way round it. Being told is better than being
+// silently downgraded, which is why this is a refusal rather than a demotion.
+//
+// The volunteer coming out does not count towards it — replacing the team lead
+// hands the role over rather than adding to it, which is how an admin changes
+// who leads a shift.
+//
+// It runs against the shift's effective state, so it sees leads arrived at by
+// earlier alterations and not only by allocation.
+func validateLeadNotTaken(allocations []db.Allocation, volunteersByID map[string]model.Volunteer, params ChangeRotaParams) error {
+	if params.Role != string(model.RoleTeamLead) {
+		return nil
+	}
+	for _, a := range allocations {
+		if a.Role != string(model.RoleTeamLead) {
+			continue
+		}
+		if params.Out != "" && a.VolunteerID == params.Out {
+			continue
+		}
+		return wrapf(ErrConflict, "the shift for %s already has a team lead (%s)", params.Date, allocationLabel(a, volunteersByID))
+	}
+	return nil
+}
+
+// allocationLabel names whoever holds an allocation for an error message a
+// human reads: a volunteer by display name, a custom entry by its text.
+func allocationLabel(a db.Allocation, volunteersByID map[string]model.Volunteer) string {
+	if a.VolunteerID == "" {
+		return a.CustomEntry
+	}
+	return volunteerLabel(a.VolunteerID, volunteersByID)
 }
 
 // inferRole determines the role for an incoming volunteer, where the caller has

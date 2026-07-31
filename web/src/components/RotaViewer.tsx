@@ -8,7 +8,8 @@ import type {
 } from "../types";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
-import { AddAssigneeDialog, ConfirmChangeDialog } from "./RotaEditDialogs";
+import type { AssigneeChange } from "./RotaEditDialogs";
+import { AssigneeDialog, ConfirmChangeDialog } from "./RotaEditDialogs";
 import "./RotaViewer.css";
 
 interface RotaViewerProps {
@@ -216,6 +217,7 @@ interface RowEdit {
   canSwapWith: (assignee: Assignee) => boolean;
   onOpenMenu: (key: string | null) => void;
   onRemove: (assignee: Assignee) => void;
+  onReplace: (assignee: Assignee) => void;
   onPickUp: (assignee: Assignee) => void;
   onDragStart: (assignee: Assignee) => void;
   onDragEnd: () => void;
@@ -306,18 +308,21 @@ function Chip({
   );
 }
 
-// ChipMenu is what a chip offers when tapped in editing mode: the two things
-// that can be done to one person on one shift. It is the touch and keyboard
-// route to everything drag and drop offers — "move or swap" picks the person
-// up, and the destination is then chosen from the rows themselves.
+// ChipMenu is what a chip offers when tapped in editing mode: everything that
+// can be done to one person on one shift. It is the touch and keyboard route to
+// everything drag and drop offers — "move or swap" picks the person up, and the
+// destination is then chosen from the rows themselves. Replace has no drag
+// equivalent: both people are on the same shift, so there is nowhere to drag to.
 function ChipMenu({
   name,
   onRemove,
+  onReplace,
   onPickUp,
   onClose,
 }: {
   name: string;
   onRemove: () => void;
+  onReplace: () => void;
   onPickUp: () => void;
   onClose: () => void;
 }) {
@@ -335,6 +340,9 @@ function ChipMenu({
       <span className="chip-menu-name">{name}</span>
       <Button ref={first} size="small" onClick={onPickUp}>
         Move or swap
+      </Button>
+      <Button size="small" onClick={onReplace}>
+        Replace
       </Button>
       <Button size="small" onClick={onRemove}>
         Remove
@@ -517,6 +525,7 @@ function ShiftRow({
         <ChipMenu
           name={menuAssignee.name}
           onRemove={() => edit.onRemove(menuAssignee)}
+          onReplace={() => edit.onReplace(menuAssignee)}
           onPickUp={() => edit.onPickUp(menuAssignee)}
           onClose={() => edit.onOpenMenu(null)}
         />
@@ -534,7 +543,9 @@ function ShiftRow({
 // EditDialog is the one modal the editing flow ever shows. Both kinds end in a
 // reason, because the API takes no change without one.
 type EditDialog =
-  | { kind: "add"; date: string }
+  // Someone joining the shift on date, either alongside the people already on
+  // it or in place of one of them.
+  | { kind: "assignee"; date: string; change: AssigneeChange }
   | {
       kind: "confirm";
       title: string;
@@ -725,6 +736,19 @@ export default function RotaViewer({
     });
   }
 
+  // A replacement is one request on one date: the outgoing person leaves and
+  // the incoming one arrives together, so the shift is never briefly short of
+  // someone and the incoming volunteer takes the role that was just vacated.
+  function askReplace(date: string, assignee: Assignee) {
+    setOpenMenu(null);
+    setChangeError(null);
+    setDialog({
+      kind: "assignee",
+      date,
+      change: { kind: "replace", outgoing: assignee },
+    });
+  }
+
   // A move is a swap with nobody coming back: the change is applied on the
   // destination and reversed on swapDate, which takes them off the shift they
   // came from. One request, so the rota is never briefly missing them or
@@ -793,6 +817,7 @@ export default function RotaViewer({
         ),
       onOpenMenu: setOpenMenu,
       onRemove: (a) => askRemove(shift.date, a),
+      onReplace: (a) => askReplace(shift.date, a),
       onPickUp: (a) => pickUp(shift.date, a, false),
       onDragStart: (a) => pickUp(shift.date, a, true),
       // Only clears a drag; a pick made by tapping outlives the pointer.
@@ -802,13 +827,24 @@ export default function RotaViewer({
       onAdd: () => {
         setChangeError(null);
         setOpenMenu(null);
-        setDialog({ kind: "add", date: shift.date });
+        setDialog({
+          kind: "assignee",
+          date: shift.date,
+          change: {
+            kind: "add",
+            // A shift has one team lead. Where it already has one, joining as
+            // one is not on offer — the way to change who leads is to replace
+            // them, which hands the role over rather than adding a second.
+            leadTaken: shift.assignees.some((a) => a.role === "lead"),
+          },
+        });
       },
     };
   }
 
-  // Who can still be added to a shift: everyone the roster knows, less the
-  // people already on it, whom the server would refuse anyway.
+  // Who can still join a shift: everyone the roster knows, less the people
+  // already on it, whom the server would refuse anyway. Replacing someone draws
+  // on the same list, which rules out replacing them with themselves.
   function addableTo(date: string): Volunteer[] | null {
     if (volunteers === null) return null;
     const onShift = new Set(
@@ -969,15 +1005,25 @@ export default function RotaViewer({
         />
       )}
 
-      {editing && dialog?.kind === "add" && (
-        <AddAssigneeDialog
+      {editing && dialog?.kind === "assignee" && (
+        <AssigneeDialog
           dateLabel={formatShiftDateLong(dialog.date)}
+          change={dialog.change}
           volunteers={addableTo(dialog.date)}
           volunteersError={volunteersError}
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={(person, reason, role) =>
-            void submit({ date: dialog.date, in: person, role, reason })
+            void submit({
+              date: dialog.date,
+              in: person,
+              out:
+                dialog.change.kind === "replace"
+                  ? personRef(dialog.change.outgoing)
+                  : undefined,
+              role,
+              reason,
+            })
           }
         />
       )}
