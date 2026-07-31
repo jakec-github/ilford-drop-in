@@ -1,0 +1,43 @@
+.rota-edit-summary {
+  margin: 0 0 1rem;
+  color: var(--text-h);
+}
+
+.rota-edit-field {
+  display: block;
+  margin-bottom: 0.875rem;
+  font-size: 0.875rem;
+}
+
+.rota-edit-field input,
+.rota-edit-field select {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  /* 16px keeps iOS Safari from zooming the page on focus. */
+  font: 16px/1.4 var(--sans);
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.rota-edit-field input:focus-visible,
+.rota-edit-field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rota-edit-note {
+  margin: -0.5rem 0 0.875rem;
+  font-size: 0.8125rem;
+}
+
+.rota-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}

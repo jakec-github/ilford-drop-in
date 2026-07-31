@@ -1,13 +1,11 @@
-import { useEffect, useState } from "react";
 import { Link, Redirect, Route, Switch, useLocation } from "wouter";
 import RotaViewer from "./components/RotaViewer";
 import AdminPage from "./components/AdminPage";
 import AvailabilityForm from "./components/AvailabilityForm";
 import { ADMIN_TABS } from "./components/adminTabs";
-import { fetchRota } from "./api";
+import { useRota } from "./hooks/useRota";
 import { useAuth } from "./auth-context";
 import Button from "./ui/Button";
-import type { RotaShift } from "./types";
 
 // AuthStatus shows a login link when logged out, or the admin's email plus a
 // logout button when logged in. It reads the global auth state so login status
@@ -62,27 +60,24 @@ function Header() {
 }
 
 // HomeView is the public rota page. An admin session (a non-null email) also
-// reveals shifts whose rota has not been allocated yet.
+// reveals shifts whose rota has not been allocated yet, and unlocks editing.
 function HomeView() {
   const { email } = useAuth();
-  const [rota, setRota] = useState<RotaShift[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchRota()
-      .then(setRota)
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to load rota");
-      });
-  }, []);
+  const { shifts, error, change } = useRota();
 
   if (error) {
     return <p className="app-status">Could not load the rota: {error}</p>;
   }
-  if (rota === null) {
+  if (shifts === null) {
     return <p className="app-status">Loading rota…</p>;
   }
-  return <RotaViewer rotaShifts={rota} isAdmin={email !== null} />;
+  return (
+    <RotaViewer
+      rotaShifts={shifts}
+      isAdmin={email !== null}
+      onChange={change}
+    />
+  );
 }
 
 function App() {

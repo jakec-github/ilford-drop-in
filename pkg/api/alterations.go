@@ -16,6 +16,9 @@ type createAlterationRequest struct {
 	OutCustom string `json:"outCustom,omitempty"`
 	SwapDate  string `json:"swapDate,omitempty"`
 	Reason    string `json:"reason"`
+	// Role the volunteer named by In takes on Date. Optional: omitted, the
+	// service infers it from the shift and the volunteer's own role.
+	Role string `json:"role,omitempty"`
 }
 
 type alterationResponse struct {
@@ -49,6 +52,7 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		OutCustom: req.OutCustom,
 		SwapDate:  req.SwapDate,
 		Reason:    req.Reason,
+		Role:      req.Role,
 		// The actor is the verified admin from the session, not a trusted
 		// client field. requireAdmin gates this route, so it is always set.
 		UserEmail: adminEmail(r.Context()),

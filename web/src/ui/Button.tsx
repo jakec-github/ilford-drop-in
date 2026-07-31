@@ -1,9 +1,11 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 import "./Button.css";
 
 // The shared button. Defaults to type="button" so it never submits a form by
-// accident; pass type="submit" explicitly where that is wanted.
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+// accident; pass type="submit" explicitly where that is wanted. ref is included
+// because a caller sometimes has to move focus onto it — React 19 passes it
+// through as an ordinary prop, so no forwardRef is needed.
+type ButtonProps = ComponentPropsWithRef<"button"> & {
   size?: "small";
 };
 

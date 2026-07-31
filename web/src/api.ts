@@ -3,11 +3,16 @@ import type {
   AvailabilityLinkFailure,
   AvailabilityRound,
   DefinedRota,
+  PersonRef,
+  RotaChange,
   RotaShift,
   Volunteer,
 } from "./types";
 
+// The API's role names, as stored against an allocation. The frontend's Role
+// is a two-value union, so these are the only two strings that cross the wire.
 const TEAM_LEAD_ROLE = "Team lead";
+const SERVICE_VOLUNTEER_ROLE = "Service volunteer";
 
 interface ApiAssignee {
   volunteerId?: string;
@@ -154,6 +159,48 @@ export async function defineRota(shiftCount: number): Promise<DefinedRota> {
     end: data.rotation.end,
     shiftDates: data.shifts.map((s) => s.date),
   };
+}
+
+// A person becomes either an id field (`in`/`out`) or a custom-entry field
+// (`inCustom`/`outCustom`), never both — the API distinguishes the two.
+function personFields(
+  direction: "in" | "out",
+  person: PersonRef,
+): Record<string, string> {
+  return "volunteerId" in person
+    ? { [direction]: person.volunteerId }
+    : { [`${direction}Custom`]: person.custom };
+}
+
+// createAlteration records one change to a published rota: an add, a remove, a
+// move or a swap (see RotaChange). It resolves on success and throws the
+// server's own message otherwise — a 409 explains which volunteer contradicts
+// the shift's current state, which is worth showing the admin verbatim.
+//
+// The rota it returns is not the changed one: alterations are layered over
+// allocations server-side, so the caller re-fetches the shifts rather than
+// patching what it has.
+export async function createAlteration(change: RotaChange): Promise<void> {
+  const body: Record<string, string> = {
+    date: change.date,
+    reason: change.reason,
+  };
+  if (change.in) Object.assign(body, personFields("in", change.in));
+  if (change.out) Object.assign(body, personFields("out", change.out));
+  if (change.swapDate) body.swapDate = change.swapDate;
+  if (change.role) {
+    body.role =
+      change.role === "lead" ? TEAM_LEAD_ROLE : SERVICE_VOLUNTEER_ROLE;
+  }
+
+  const res = await fetch("/alterations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to change the rota"));
+  }
 }
 
 interface ApiAvailabilityRound {

@@ -543,6 +543,20 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	assert.Len(t, store.insertedAlterations, 2)
 }
 
+// TestCreateAlterationEndpoint_Role proves an admin adding someone can say which
+// role they take, rather than accepting the one the service would infer — here a
+// team lead where the volunteer's own role is service volunteer.
+func TestCreateAlterationEndpoint_Role(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"Leading tonight"}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/alterations", body, adminCookie())
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	require.Len(t, store.insertedAlterations, 1)
+	assert.Equal(t, string(model.RoleTeamLead), store.insertedAlterations[0].Role)
+}
+
 // TestCreateAlterationEndpoint_RequiresAdmin proves the write endpoint is gated:
 // no session cookie means no attribution to trust, so the request is rejected
 // before any change is attempted.
@@ -602,6 +616,12 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 			body:       `{"date":"2026-01-11","out":"charlie","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusConflict,
+		},
+		{
+			name:       "unknown role",
+			body:       `{"date":"2026-01-11","in":"charlie","role":"Supervisor","reason":"x"}`,
+			store:      alterationTestStore(),
+			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name: "store insert failure",

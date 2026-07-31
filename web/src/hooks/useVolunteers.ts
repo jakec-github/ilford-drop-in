@@ -13,11 +13,20 @@ interface UseVolunteers {
   sync: () => Promise<void>;
 }
 
+interface UseVolunteersOptions {
+  // The roster is admin-only, so a view that shows it conditionally must be
+  // able to say "not yet": fetching it for a logged-out visitor would be a
+  // guaranteed 401 rendered as a load failure. Defaults to true.
+  enabled?: boolean;
+}
+
 // useVolunteers owns the admin roster: the read and the sync that invalidates
 // it. They belong together because a sync is only worth firing to change what
 // the list shows, so the hook reloads on success and the view never has to
 // remember to.
-export function useVolunteers(): UseVolunteers {
+export function useVolunteers({
+  enabled = true,
+}: UseVolunteersOptions = {}): UseVolunteers {
   const [volunteers, setVolunteers] = useState<Volunteer[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<SyncState>("idle");
@@ -42,8 +51,8 @@ export function useVolunteers(): UseVolunteers {
   );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (enabled) void load();
+  }, [enabled, load]);
 
   const sync = useCallback(async () => {
     setSyncState("syncing");

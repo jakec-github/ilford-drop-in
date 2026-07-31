@@ -1,0 +1,25 @@
+/* Full-width sheet on a phone, a centred card once there is room. Sized in
+   viewport units so a long form scrolls inside the dialog rather than pushing
+   its buttons off screen. */
+.dialog {
+  /* Padding inside the width, so the sheet still fits a narrow screen. */
+  box-sizing: border-box;
+  width: min(100%, 26rem);
+  max-height: 85dvh;
+  margin: auto;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  overflow-y: auto;
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.dialog-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+}
