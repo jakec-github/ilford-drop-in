@@ -164,3 +164,16 @@ export interface Preallocation {
   volunteerId: string | null;
   source: PreallocationSource;
 }
+
+// NewPreallocation is one person to pin to a shift the rota has not been run
+// for. Always a manual pin — config pins are written into the server's own
+// config, never over the API.
+//
+// role is what they are pinned as. "lead" is accepted only for a volunteer the
+// roster records as a team lead, and never for a custom entry, which the API
+// gives no role to.
+export interface NewPreallocation {
+  date: string;
+  person: PersonRef;
+  role: Role;
+}

@@ -1,12 +1,23 @@
-import { useEffect, useState } from "react";
-import { fetchPreallocations } from "../api";
-import type { Preallocation } from "../types";
+import { useCallback, useEffect, useState } from "react";
+import {
+  createPreallocation,
+  deletePreallocation,
+  fetchPreallocations,
+} from "../api";
+import type { NewPreallocation, Preallocation } from "../types";
 
 interface UsePreallocations {
   // null while the first load is still in flight; [] is "nobody is pinned",
   // which a caller renders differently from "not loaded yet".
   preallocations: Preallocation[] | null;
   error: string | null;
+  // Pins one person to a shift, then reloads. Rejects with the server's own
+  // message when the pin is refused, which is the whole explanation of why —
+  // the caller shows it rather than inventing one.
+  addPin: (pin: NewPreallocation) => Promise<void>;
+  // Removes one manual pin by id, then reloads. Only manual pins have an id;
+  // a config pin cannot be removed over the API at all.
+  removePin: (id: string) => Promise<void>;
 }
 
 interface UsePreallocationsOptions {
@@ -17,8 +28,13 @@ interface UsePreallocationsOptions {
 }
 
 // usePreallocations owns the pins the rota page shows against shifts that have
-// not been allocated yet. Read-only: pins are created and removed over the API
-// but nothing in the UI does that yet, so there is no invalidation to own.
+// not been allocated yet, and the two ways an admin changes them.
+//
+// A write re-reads the listing rather than patching what is held: a pin is
+// merged from two sources and ordered server-side, and the server can refuse or
+// silently absorb one (a manual pin that duplicates a config pin contributes
+// nothing at allocation). What comes back from the reload is what the allocator
+// will actually be handed.
 export function usePreallocations({
   enabled = true,
 }: UsePreallocationsOptions = {}): UsePreallocations {
@@ -26,6 +42,7 @@ export function usePreallocations({
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
 
   // Written with .then rather than await so no setState is reached
   // synchronously from the effect.
@@ -47,7 +64,35 @@ export function usePreallocations({
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, reloads]);
 
-  return { preallocations, error };
+  const reload = useCallback(() => setReloads((n) => n + 1), []);
+
+  // Reloads whether or not the write landed, then re-throws so the caller can
+  // say why. A refusal is the case that most needs the re-read: the server
+  // turned the write down because what is held here is no longer true — the pin
+  // was already removed, someone else took the lead slot — so leaving the old
+  // listing up would contradict the message next to it.
+  const write = useCallback(
+    async (apply: () => Promise<void>) => {
+      try {
+        await apply();
+      } finally {
+        reload();
+      }
+    },
+    [reload],
+  );
+
+  const addPin = useCallback(
+    (pin: NewPreallocation) => write(() => createPreallocation(pin)),
+    [write],
+  );
+
+  const removePin = useCallback(
+    (id: string) => write(() => deletePreallocation(id)),
+    [write],
+  );
+
+  return { preallocations, error, addPin, removePin };
 }

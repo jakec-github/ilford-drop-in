@@ -3,6 +3,7 @@ import type {
   Assignee,
   PersonRef,
   Preallocation,
+  Role,
   RotaChange,
   RotaShift,
   Volunteer,
@@ -11,7 +12,12 @@ import { usePreallocations } from "../hooks/usePreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
 import type { AssigneeChange } from "./RotaEditDialogs";
-import { AssigneeDialog, ConfirmChangeDialog } from "./RotaEditDialogs";
+import {
+  AssigneeDialog,
+  ConfirmChangeDialog,
+  PinDialog,
+  UnpinDialog,
+} from "./RotaEditDialogs";
 import "./RotaViewer.css";
 
 interface RotaViewerProps {
@@ -226,6 +232,11 @@ interface RowEdit {
   onSwapWith: (assignee: Assignee) => void;
   onMoveHere: () => void;
   onAdd: () => void;
+  // Pinning is the unallocated row's half of editing: those rows have nobody on
+  // them to drag, and what an admin can change there is who allocation will be
+  // made to place.
+  onPin: () => void;
+  onUnpin: (pin: Preallocation) => void;
 }
 
 function Chip({
@@ -383,15 +394,20 @@ function pinTitle(pin: Preallocation): string {
 }
 
 // PreallocationList shows who allocation is already committed to placing on a
-// shift it has not run for yet. Plain text, not chips: nothing here can be
-// dragged, removed or searched for — these people are not on the rota, they are
-// promised to it.
+// shift it has not run for yet. Not chips: nothing here can be dragged or
+// searched for — these people are not on the rota, they are promised to it. The
+// one thing that can be done to a pin is taking it off, and only where it came
+// from somewhere this UI can reach.
 function PreallocationList({
   date,
   pins,
+  onUnpin,
 }: {
   date: string;
   pins: Preallocation[];
+  // Absent unless editing is on. Offered per pin, since a config pin in the
+  // same list has no row behind it to remove.
+  onUnpin?: (pin: Preallocation) => void;
 }) {
   return (
     <div className="prealloc">
@@ -409,6 +425,31 @@ function PreallocationList({
           >
             {pin.name}
             <span className="prealloc-source">{pin.source}</span>
+            {onUnpin && pin.id !== null && (
+              <button
+                type="button"
+                className="prealloc-unpin"
+                // The date is in the label because the button is a bare cross:
+                // read out of the row's context, "Remove" alone does not say
+                // which pin, and the rows all look alike.
+                aria-label={`Remove ${pin.name}'s pin on ${formatShiftDateLong(date)}`}
+                onClick={() => onUnpin(pin)}
+              >
+                <svg
+                  viewBox="0 0 10 10"
+                  width="9"
+                  height="9"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M1 1l8 8M9 1L1 9"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -468,7 +509,28 @@ function ShiftRow({
     body = (
       <div className="shift-unallocated">
         <span className="shift-note">Not yet allocated</span>
-        {pins.length > 0 && <PreallocationList date={shift.date} pins={pins} />}
+        {pins.length > 0 && (
+          <PreallocationList
+            date={shift.date}
+            pins={pins}
+            // While someone is being carried the page narrows to placing them,
+            // the same way the Add buttons go away: an unallocated shift is not
+            // a destination, so its pins are only there to be read.
+            onUnpin={edit && !pending ? edit.onUnpin : undefined}
+          />
+        )}
+        {/* Editing an unallocated shift means changing who is promised it —
+            there is nobody on it to move around. */}
+        {edit && !pending && (
+          <button
+            type="button"
+            className="shift-add shift-pin"
+            aria-label={`Pin someone to ${formatShiftDateLong(shift.date)}`}
+            onClick={edit.onPin}
+          >
+            + Pin
+          </button>
+        )}
       </div>
     );
   } else {
@@ -608,7 +670,11 @@ type EditDialog =
       confirmLabel: string;
       // Fully specified bar the reason, which the dialog collects.
       change: Omit<RotaChange, "reason">;
-    };
+    }
+  // Someone being pinned to, or unpinned from, a shift the rota has not been
+  // run for. Not alterations: nothing is on the rota yet to alter.
+  | { kind: "pin"; date: string }
+  | { kind: "unpin"; pin: Preallocation };
 
 export default function RotaViewer({
   rotaShifts,
@@ -652,9 +718,12 @@ export default function RotaViewer({
   // admins see those, so only admins fetch them. Not gated on editing: who is
   // already promised to an unallocated shift is something to read, not a
   // change to make.
-  const { preallocations, error: preallocationsError } = usePreallocations({
-    enabled: isAdmin,
-  });
+  const {
+    preallocations,
+    error: preallocationsError,
+    addPin,
+    removePin,
+  } = usePreallocations({ enabled: isAdmin });
 
   const pinsByDate = useMemo(() => {
     const byDate = new Map<string, Preallocation[]>();
@@ -671,6 +740,13 @@ export default function RotaViewer({
   const visibleShifts = useMemo(
     () => (isAdmin ? rotaShifts : rotaShifts.filter((s) => !isUnallocated(s))),
     [rotaShifts, isAdmin],
+  );
+
+  // Whether anything on screen can be pinned to at all — only ever true for an
+  // admin, since the public is not shown unallocated shifts in the first place.
+  const hasUnallocated = useMemo(
+    () => visibleShifts.some(isUnallocated),
+    [visibleShifts],
   );
 
   const allNames = useMemo(() => getAllNames(visibleShifts), [visibleShifts]);
@@ -774,20 +850,23 @@ export default function RotaViewer({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [pending, openMenu, dialog]);
 
-  // Fires the change, then leaves the rota showing whatever the server now
-  // says. A refusal is not a failure of the app: the message explains which
-  // volunteer contradicts the shift, so it is shown against that shift and the
-  // rota is left exactly as it was — nothing was applied to roll back.
-  async function submit(change: RotaChange) {
+  // Fires one change against a shift, then leaves the page showing whatever the
+  // server now says. A refusal is not a failure of the app: the message explains
+  // what the change contradicts, so it is shown against the shift it was refused
+  // for and nothing is rolled back — nothing was applied.
+  async function run(
+    date: string,
+    apply: () => Promise<void>,
+    fallback: string,
+  ) {
     setSaving(true);
     try {
-      await onChange(change);
+      await apply();
       setChangeError(null);
     } catch (err) {
       setChangeError({
-        date: change.date,
-        message:
-          err instanceof Error ? err.message : "The change was not applied",
+        date,
+        message: err instanceof Error ? err.message : fallback,
       });
     } finally {
       setSaving(false);
@@ -795,6 +874,32 @@ export default function RotaViewer({
       setPending(null);
       setOpenMenu(null);
     }
+  }
+
+  function submit(change: RotaChange) {
+    return run(
+      change.date,
+      () => onChange(change),
+      "The change was not applied",
+    );
+  }
+
+  // Pinning goes through the same path as an alteration but is not one: it
+  // changes what allocation will do rather than what a published rota says, so
+  // it is its own request and its own reload.
+  function submitPin(date: string, person: PersonRef, role: Role) {
+    return run(
+      date,
+      () => addPin({ date, person, role }),
+      "The pin was not saved",
+    );
+  }
+
+  function submitUnpin(pin: Preallocation) {
+    // Only ever called for a manual pin, which is the only kind with an id.
+    if (pin.id === null) return;
+    const id = pin.id;
+    return run(pin.date, () => removePin(id), "The pin was not removed");
   }
 
   function askRemove(date: string, assignee: Assignee) {
@@ -912,6 +1017,16 @@ export default function RotaViewer({
           },
         });
       },
+      onPin: () => {
+        setChangeError(null);
+        setOpenMenu(null);
+        setDialog({ kind: "pin", date: shift.date });
+      },
+      onUnpin: (pin) => {
+        setChangeError(null);
+        setOpenMenu(null);
+        setDialog({ kind: "unpin", pin });
+      },
     };
   }
 
@@ -927,6 +1042,19 @@ export default function RotaViewer({
         .filter(Boolean),
     );
     return volunteers.filter((v) => !onShift.has(v.id));
+  }
+
+  // Who can still be pinned to an unallocated shift: the active roster, less
+  // anyone already pinned there from either source. Both exclusions matter and
+  // for different reasons — the server refuses a pin for an inactive volunteer
+  // or a repeat of a manual one, and silently drops a manual pin that repeats a
+  // config one, which would look like it had worked.
+  function pinnableTo(date: string): Volunteer[] | null {
+    if (volunteers === null) return null;
+    const pinned = new Set(
+      (pinsByDate.get(date) ?? []).map((p) => p.volunteerId).filter(Boolean),
+    );
+    return volunteers.filter((v) => v.active && !pinned.has(v.id));
   }
 
   return (
@@ -1049,6 +1177,16 @@ export default function RotaViewer({
         <p className="rota-edit-hint">
           Drag a name onto another shift to move them, or onto another name to
           swap. On a touchscreen, tap a name instead.
+          {/* Only where there is a shift it applies to. On a rota that has all
+              been allocated there is nothing to pin to, and the sentence would
+              send an admin looking for a button that is not on any row. */}
+          {hasUnallocated && (
+            <>
+              {" "}
+              Shifts the rota has not been run for take pins instead: whoever
+              you pin there is guaranteed the shift when it is allocated.
+            </>
+          )}
         </p>
       )}
 
@@ -1109,6 +1247,37 @@ export default function RotaViewer({
               reason,
             })
           }
+        />
+      )}
+
+      {editing && dialog?.kind === "pin" && (
+        <PinDialog
+          dateLabel={formatShiftDateLong(dialog.date)}
+          volunteers={pinnableTo(dialog.date)}
+          volunteersError={volunteersError}
+          // Config holds the team-lead slot outright and a manual lead pin
+          // takes it, so either kind rules out a second — but the dialog says
+          // different things about them, so it is told which.
+          leadPinnedBy={
+            (pinsByDate.get(dialog.date) ?? []).find((p) => p.role === "lead")
+              ?.source ?? null
+          }
+          pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={(person, role) =>
+            void submitPin(dialog.date, person, role)
+          }
+        />
+      )}
+
+      {editing && dialog?.kind === "unpin" && (
+        <UnpinDialog
+          name={dialog.pin.name}
+          dateLabel={formatShiftDateLong(dialog.pin.date)}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => void submitUnpin(dialog.pin)}
         />
       )}
     </div>
