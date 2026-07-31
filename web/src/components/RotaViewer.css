@@ -250,6 +250,93 @@
   min-width: 0;
 }
 
+/* Preallocations (admin-only, unallocated shifts) ---------------------------
+
+   Who allocation is already committed to placing here. They sit under the "not
+   yet allocated" note rather than beside it: the note is the state of the
+   shift, the pins are a qualification of it. */
+.shift-unallocated {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.prealloc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.prealloc-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.prealloc-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Shaped like a chip so a pinned name reads as the same kind of thing as an
+   allocated one, but dashed: pencilled in, not placed. Never interactive —
+   nothing on an unallocated shift can be dragged or edited. */
+.prealloc-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  border: 1.5px dashed var(--chip);
+  color: var(--chip);
+}
+
+.prealloc-chip.role-lead {
+  --chip: var(--role-lead);
+}
+
+.prealloc-chip.role-volunteer {
+  --chip: var(--role-volunteer);
+}
+
+/* Matching .chip: volunteers are rounded pills, custom entries squared tags. */
+.prealloc-chip.volunteer {
+  border-radius: 12px;
+}
+
+.prealloc-chip.custom {
+  border-radius: 3px;
+  font-style: italic;
+}
+
+/* Where the pin came from, on the pin itself: config pins cannot be undone from
+   here, and an admin hunting for the button needs to know that before they
+   look for one. */
+.prealloc-source {
+  font-size: 10px;
+  font-weight: 500;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.rota-notice {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--role-lead);
+}
+
 /* Chips: colour = role held on this shift. Outlined by default, light fill on
    hover, solid fill when selected. Buttons rather than spans — they are
    clickable on the public rota and are the handle for every edit on the admin

@@ -4,6 +4,8 @@ import type {
   AvailabilityRound,
   DefinedRota,
   PersonRef,
+  Preallocation,
+  PreallocationSource,
   RotaChange,
   RotaShift,
   Volunteer,
@@ -126,6 +128,48 @@ export async function fetchRota(): Promise<RotaShift[]> {
   }
   const data = (await res.json()) as ListShiftsResponse;
   return data.shifts.map(toRotaShift);
+}
+
+interface ApiPreallocation {
+  id?: string;
+  date: string;
+  role: string;
+  volunteerId?: string;
+  custom?: string;
+  name: string;
+  source: string;
+}
+
+interface ListPreallocationsResponse {
+  preallocations: ApiPreallocation[];
+}
+
+function toPreallocation(p: ApiPreallocation): Preallocation {
+  return {
+    id: p.id ?? null,
+    date: p.date,
+    role: p.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
+    name: p.name,
+    custom: !p.volunteerId,
+    volunteerId: p.volunteerId ?? null,
+    // Anything the server does not name as a config pin is treated as manual:
+    // manual is the weaker claim, and a mislabelled pin must not read as one
+    // this UI cannot explain how to change.
+    source: (p.source === "config" ? "config" : "manual") as PreallocationSource,
+  };
+}
+
+// fetchPreallocations returns everyone already pinned to a shift from today
+// onwards — both the config-derived pins and the manual ones — ordered by date.
+// Admin-only: a pin names someone against a date the rota has not published.
+export async function fetchPreallocations(): Promise<Preallocation[]> {
+  const today = new Date().toLocaleDateString("en-CA");
+  const res = await fetch(`/api/preallocations?from=${today}`);
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load preallocations"));
+  }
+  const data = (await res.json()) as ListPreallocationsResponse;
+  return data.preallocations.map(toPreallocation);
 }
 
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -197,27 +198,87 @@ func TestListPreallocationsEndpoint(t *testing.T) {
 		{ID: "pin-2", ShiftID: "s2", Role: string(model.RoleVolunteer), CustomValue: "External Helper"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations", "")
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations", "", adminCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var resp struct {
-		Preallocations []struct {
-			ID          string `json:"id"`
-			Date        string `json:"date"`
-			Role        string `json:"role"`
-			VolunteerID string `json:"volunteerId"`
-			Custom      string `json:"custom"`
-		} `json:"preallocations"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	resp := decodePreallocations(t, rec.Body.Bytes())
 	require.Len(t, resp.Preallocations, 2)
 
-	byID := map[string]string{}
+	byID := map[string]preallocationJSON{}
 	for _, p := range resp.Preallocations {
-		byID[p.ID] = p.Date
+		byID[p.ID] = p
 	}
-	assert.Equal(t, "2026-01-11", byID["pin-1"])
-	assert.Equal(t, "2026-01-18", byID["pin-2"])
+	assert.Equal(t, "2026-01-11", byID["pin-1"].Date)
+	assert.Equal(t, "Alice", byID["pin-1"].Name)
+	assert.Equal(t, "manual", byID["pin-1"].Source)
+	assert.Equal(t, "2026-01-18", byID["pin-2"].Date)
+	assert.Equal(t, "External Helper", byID["pin-2"].Name)
+	assert.Equal(t, "manual", byID["pin-2"].Source)
+}
+
+// preallocationJSON is the wire shape of one pin, so tests read the same fields
+// a client does.
+type preallocationJSON struct {
+	ID          string `json:"id"`
+	Date        string `json:"date"`
+	Role        string `json:"role"`
+	VolunteerID string `json:"volunteerId"`
+	Custom      string `json:"custom"`
+	Name        string `json:"name"`
+	Source      string `json:"source"`
+}
+
+func decodePreallocations(t *testing.T, body []byte) struct {
+	Preallocations []preallocationJSON `json:"preallocations"`
+} {
+	t.Helper()
+	var resp struct {
+		Preallocations []preallocationJSON `json:"preallocations"`
+	}
+	require.NoError(t, json.Unmarshal(body, &resp))
+	return resp
+}
+
+// The endpoint answers with both sources: a config Rota Override pinning
+// someone to 11 January shows up beside the manual pin on 18 January, without
+// an id, because there is no row to delete.
+func TestListPreallocationsEndpoint_ConfigPins(t *testing.T) {
+	store := preallocationTestStore()
+	store.manualPreallocations = []db.ManualPreallocation{
+		{ID: "pin-1", ShiftID: "s2", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+	}
+	cfg := &config.Config{
+		ShiftStartTime: "19:30",
+		ShiftEndTime:   "21:30",
+		RotaOverrides: []config.RotaOverride{{
+			RRule:                  "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=11",
+			PreallocatedTeamLeadID: "alice",
+			CustomPreallocations:   []string{"Scouts"},
+		}},
+	}
+
+	rec := doRequest(t, newTestHandlerWithConfig(store, activeVolunteers(), cfg), http.MethodGet, "/api/preallocations", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	resp := decodePreallocations(t, rec.Body.Bytes())
+	require.Len(t, resp.Preallocations, 3)
+
+	assert.Equal(t, preallocationJSON{
+		Date:        "2026-01-11",
+		Role:        string(model.RoleTeamLead),
+		VolunteerID: "alice",
+		Name:        "Alice",
+		Source:      "config",
+	}, resp.Preallocations[0])
+	assert.Equal(t, preallocationJSON{
+		Date:   "2026-01-11",
+		Role:   string(model.RoleVolunteer),
+		Custom: "Scouts",
+		Name:   "Scouts",
+		Source: "config",
+	}, resp.Preallocations[1])
+	assert.Equal(t, "pin-1", resp.Preallocations[2].ID)
+	assert.Equal(t, "manual", resp.Preallocations[2].Source)
 }
 
 func TestListPreallocationsEndpoint_DateFilter(t *testing.T) {
@@ -227,15 +288,10 @@ func TestListPreallocationsEndpoint_DateFilter(t *testing.T) {
 		{ID: "pin-2", ShiftID: "s2", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations?from=2026-01-12", "")
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations?from=2026-01-12", "", adminCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var resp struct {
-		Preallocations []struct {
-			ID string `json:"id"`
-		} `json:"preallocations"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	resp := decodePreallocations(t, rec.Body.Bytes())
 	require.Len(t, resp.Preallocations, 1)
 	assert.Equal(t, "pin-2", resp.Preallocations[0].ID)
 }
@@ -247,10 +303,11 @@ func TestPreallocationsMethodNotAllowed(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-// TestPreallocationWritesRequireAdmin proves both mutating pin endpoints are
-// gated: without a session they are rejected and nothing is persisted or
-// deleted. Reads (GET) stay open, so they are not exercised here.
-func TestPreallocationWritesRequireAdmin(t *testing.T) {
+// TestPreallocationsRequireAdmin proves all three pin endpoints are gated:
+// without a session they are rejected, nothing is persisted or deleted, and the
+// listing gives nothing away — it names people against dates the rota has not
+// published.
+func TestPreallocationsRequireAdmin(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.ManualPreallocation{
 		{ID: "pin-1", ShiftID: "s1", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
@@ -264,4 +321,8 @@ func TestPreallocationWritesRequireAdmin(t *testing.T) {
 	rec = doRequest(t, handler, http.MethodDelete, "/api/preallocations/pin-1", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, store.deletedPreallocationIDs, "an unauthenticated request must not delete a pin")
+
+	rec = doRequest(t, handler, http.MethodGet, "/api/preallocations", "")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "bob", "an unauthenticated request must not read who is pinned")
 }

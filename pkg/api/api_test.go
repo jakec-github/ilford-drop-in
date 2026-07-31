@@ -360,7 +360,14 @@ func newTestAuthenticator() *Authenticator {
 const testAdminEmail = "admin@example.com"
 
 func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Handler {
-	return NewHandler(store, volunteers, apiTestCfg, newTestAuthenticator(), nil, zap.NewNop()).Routes()
+	return newTestHandlerWithConfig(store, volunteers, apiTestCfg)
+}
+
+// newTestHandlerWithConfig is newTestHandler for the endpoints whose answer
+// depends on the config — chiefly the rota overrides, which are where config
+// preallocations and closed dates come from.
+func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient, cfg *config.Config) http.Handler {
+	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, zap.NewNop()).Routes()
 }
 
 // adminCookie is a valid admin session cookie for testAdminEmail, signed with

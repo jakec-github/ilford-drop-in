@@ -2,10 +2,12 @@ import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import type {
   Assignee,
   PersonRef,
+  Preallocation,
   RotaChange,
   RotaShift,
   Volunteer,
 } from "../types";
+import { usePreallocations } from "../hooks/usePreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
 import type { AssigneeChange } from "./RotaEditDialogs";
@@ -370,13 +372,61 @@ function swapBlockedReason(
   return `${assignee.name} is already on ${formatShiftDateLong(pending.date)}`;
 }
 
+// What a pin means and, where it can be changed at all, where. Config pins are
+// the answer to "why is this person already here" on a rota nobody has run yet,
+// and the answer is not somewhere this UI can reach.
+function pinTitle(pin: Preallocation): string {
+  const role = pin.role === "lead" ? " as team lead" : "";
+  return pin.source === "config"
+    ? `${pin.name} is pinned${role} by the rota config, and will be placed here when the rota is allocated. Changing it means editing the config.`
+    : `${pin.name} is pinned${role} to this shift, and will be placed here when the rota is allocated.`;
+}
+
+// PreallocationList shows who allocation is already committed to placing on a
+// shift it has not run for yet. Plain text, not chips: nothing here can be
+// dragged, removed or searched for — these people are not on the rota, they are
+// promised to it.
+function PreallocationList({
+  date,
+  pins,
+}: {
+  date: string;
+  pins: Preallocation[];
+}) {
+  return (
+    <div className="prealloc">
+      <span className="prealloc-label" id={`pinned-${date}`}>
+        Pinned:
+      </span>
+      <ul className="prealloc-list" aria-labelledby={`pinned-${date}`}>
+        {pins.map((pin) => (
+          <li
+            // Two pins on one shift can share a name only if they are the same
+            // person from both sources, which the source keeps apart.
+            key={`${pin.source}/${pin.volunteerId ?? pin.name}`}
+            className={`prealloc-chip role-${pin.role} ${pin.custom ? "custom" : "volunteer"}`}
+            title={pinTitle(pin)}
+          >
+            {pin.name}
+            <span className="prealloc-source">{pin.source}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ShiftRow({
   shift,
+  pins,
   selectedName,
   onSelectName,
   edit,
 }: {
   shift: RotaShift;
+  // Everyone already pinned to this shift. Only ever non-empty for an admin
+  // looking at a shift whose rota has not been allocated.
+  pins: Preallocation[];
   selectedName: string;
   onSelectName: (name: string) => void;
   edit: RowEdit | null;
@@ -415,7 +465,12 @@ function ShiftRow({
   if (shift.closed) {
     body = <span className="shift-note">Closed</span>;
   } else if (unallocated) {
-    body = <span className="shift-note">Not yet allocated</span>;
+    body = (
+      <div className="shift-unallocated">
+        <span className="shift-note">Not yet allocated</span>
+        {pins.length > 0 && <PreallocationList date={shift.date} pins={pins} />}
+      </div>
+    );
   } else {
     body = (
       <div className="shift-people">
@@ -592,6 +647,24 @@ export default function RotaViewer({
   const { volunteers, error: volunteersError } = useVolunteers({
     enabled: editing,
   });
+
+  // Pins only say anything about shifts the rota has not been run for, and only
+  // admins see those, so only admins fetch them. Not gated on editing: who is
+  // already promised to an unallocated shift is something to read, not a
+  // change to make.
+  const { preallocations, error: preallocationsError } = usePreallocations({
+    enabled: isAdmin,
+  });
+
+  const pinsByDate = useMemo(() => {
+    const byDate = new Map<string, Preallocation[]>();
+    for (const pin of preallocations ?? []) {
+      const forDate = byDate.get(pin.date);
+      if (forDate) forDate.push(pin);
+      else byDate.set(pin.date, [pin]);
+    }
+    return byDate;
+  }, [preallocations]);
 
   // The public only sees shifts with something to show — allocated or closed.
   // Admins also see unallocated shifts, flagged so they stand out.
@@ -979,11 +1052,22 @@ export default function RotaViewer({
         </p>
       )}
 
+      {/* A failed pin load leaves the unallocated rows looking empty when they
+          may not be, so it is said out loud rather than swallowed. It does not
+          stop the rota itself being read. */}
+      {preallocationsError && (
+        <p className="rota-notice" role="alert">
+          Could not load who is already pinned to unallocated shifts:{" "}
+          {preallocationsError}
+        </p>
+      )}
+
       <div className="rota-list">
         {visibleShifts.map((shift) => (
           <ShiftRow
             key={shift.date}
             shift={shift}
+            pins={pinsByDate.get(shift.date) ?? []}
             selectedName={selectedName}
             onSelectName={setSelectedName}
             edit={editing ? rowEdit(shift) : null}

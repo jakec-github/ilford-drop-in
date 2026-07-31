@@ -114,10 +114,10 @@ func (c *preallocVolClient) ListVolunteers(cfg *config.Config) ([]model.Voluntee
 func preallocVolunteers() *preallocVolClient {
 	return &preallocVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", Role: model.RoleTeamLead, Status: "Active"},
-			{ID: "bob", FirstName: "Bob", Role: model.RoleVolunteer, Status: "Active"},
-			{ID: "carol", FirstName: "Carol", Role: model.RoleVolunteer, Status: "Inactive"},
-			{ID: "dan", FirstName: "Dan", Role: model.RoleTeamLead, Status: "Active"},
+			{ID: "alice", FirstName: "Alice", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "Active"},
+			{ID: "bob", FirstName: "Bob", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active"},
+			{ID: "carol", FirstName: "Carol", DisplayName: "Carol", Role: model.RoleVolunteer, Status: "Inactive"},
+			{ID: "dan", FirstName: "Dan", DisplayName: "Dan", Role: model.RoleTeamLead, Status: "Active"},
 		},
 	}
 }
@@ -335,7 +335,7 @@ func TestListPreallocations(t *testing.T) {
 			{ID: "p2", ShiftID: "shift-2", Role: string(model.RoleVolunteer), CustomValue: "External"},
 		},
 	}
-	views, err := ListPreallocations(context.Background(), store, ListPreallocationsParams{})
+	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), testCfg, ListPreallocationsParams{}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, views, 2)
 
@@ -345,8 +345,12 @@ func TestListPreallocations(t *testing.T) {
 	}
 	assert.Equal(t, "2026-08-02", byID["p1"].Date)
 	assert.Equal(t, "alice", byID["p1"].VolunteerID)
+	assert.Equal(t, "Alice", byID["p1"].Name)
+	assert.Equal(t, PreallocationSourceManual, byID["p1"].Source)
 	assert.Equal(t, "2026-08-09", byID["p2"].Date)
 	assert.Equal(t, "External", byID["p2"].Custom)
+	assert.Equal(t, "External", byID["p2"].Name, "a custom pin is its own name")
+	assert.Equal(t, PreallocationSourceManual, byID["p2"].Source)
 }
 
 func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
@@ -360,8 +364,148 @@ func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
 			{ID: "p2", ShiftID: "shift-2", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
-	views, err := ListPreallocations(context.Background(), store, ListPreallocationsParams{From: "2026-08-05", To: "2026-08-12"})
+	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), testCfg,
+		ListPreallocationsParams{From: "2026-08-05", To: "2026-08-12"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, views, 1)
 	assert.Equal(t, "p2", views[0].ID)
+}
+
+// twoSundayStore is the listing fixture: two consecutive Sundays in one rota,
+// no pins of any kind. Config-derived pins are added by giving the call a config
+// whose rrule matches one or both dates.
+func twoSundayStore() *mockPreallocationStore {
+	return &mockPreallocationStore{
+		shiftRanges: []db.ShiftInRange{
+			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
+			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
+		},
+	}
+}
+
+func listPreallocs(t *testing.T, store *mockPreallocationStore, cfg *config.Config) []PreallocationView {
+	t.Helper()
+	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), cfg, ListPreallocationsParams{}, zap.NewNop())
+	require.NoError(t, err)
+	return views
+}
+
+// Config preallocations are not stored anywhere: they are resolved from the
+// rota overrides against the shifts in range, in all three flavours.
+func TestListPreallocations_IncludesConfigPins(t *testing.T) {
+	cfg := &config.Config{RotaOverrides: []config.RotaOverride{{
+		RRule:                    "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
+		PreallocatedTeamLeadID:   "alice",
+		PreallocatedVolunteerIDs: []string{"bob"},
+		CustomPreallocations:     []string{"Scouts"},
+	}}}
+
+	views := listPreallocs(t, twoSundayStore(), cfg)
+	require.Len(t, views, 3, "all three flavours land on 2 August only")
+
+	for _, v := range views {
+		assert.Equal(t, "2026-08-02", v.Date)
+		assert.Equal(t, PreallocationSourceConfig, v.Source)
+		assert.Empty(t, v.ID, "a config pin has no stored row to delete")
+	}
+
+	assert.Equal(t, string(model.RoleTeamLead), views[0].Role, "the team lead leads the date")
+	assert.Equal(t, "alice", views[0].VolunteerID)
+	assert.Equal(t, "Alice", views[0].Name)
+
+	assert.Equal(t, "bob", views[1].VolunteerID)
+	assert.Equal(t, "Bob", views[1].Name)
+	assert.Equal(t, string(model.RoleVolunteer), views[1].Role)
+
+	assert.Equal(t, "Scouts", views[2].Custom)
+	assert.Equal(t, "Scouts", views[2].Name)
+	assert.Empty(t, views[2].VolunteerID)
+}
+
+// A closed date carries no pins into allocation (InitShifts clears them), so it
+// must not show any either.
+func TestListPreallocations_ConfigPinsSkipClosedDates(t *testing.T) {
+	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedVolunteerIDs: []string{"bob"}},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Closed: true},
+	}}
+
+	assert.Empty(t, listPreallocs(t, twoSundayStore(), cfg))
+}
+
+// Two overrides pinning the same person to the same date are one seat at
+// allocation time, so they are one entry here.
+func TestListPreallocations_ConfigPinsDedupe(t *testing.T) {
+	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedVolunteerIDs: []string{"bob"}, CustomPreallocations: []string{"Scouts"}},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedVolunteerIDs: []string{"bob"}, CustomPreallocations: []string{"Scouts"}},
+	}}
+
+	views := listPreallocs(t, twoSundayStore(), cfg)
+	require.Len(t, views, 4, "two pins on each of the two Sundays, not three on the first")
+	for _, v := range views {
+		assert.Equal(t, PreallocationSourceConfig, v.Source)
+	}
+}
+
+// Config is authoritative for the single-valued team-lead slot: the last
+// matching override wins, exactly as InitShifts resolves it.
+func TestListPreallocations_ConfigTeamLeadLastOverrideWins(t *testing.T) {
+	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedTeamLeadID: "alice"},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedTeamLeadID: "dan"},
+	}}
+
+	views := listPreallocs(t, twoSundayStore(), cfg)
+	require.Len(t, views, 2)
+	assert.Equal(t, "2026-08-02", views[0].Date)
+	assert.Equal(t, "dan", views[0].VolunteerID)
+	assert.Equal(t, "2026-08-09", views[1].Date)
+	assert.Equal(t, "alice", views[1].VolunteerID)
+}
+
+// A config pin naming someone the roster no longer knows still has to be
+// visible — it is the reason allocation will fail, and hiding it hides the fix.
+func TestListPreallocations_UnknownConfigVolunteerShowsID(t *testing.T) {
+	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedVolunteerIDs: []string{"ghost"}},
+	}}
+
+	views := listPreallocs(t, twoSundayStore(), cfg)
+	require.Len(t, views, 1)
+	assert.Equal(t, "ghost", views[0].VolunteerID)
+	assert.Equal(t, "ghost", views[0].Name)
+}
+
+// Both sources come back from one call, ordered by date and then team lead
+// first — the order a shift is read in, not the order the two sources were
+// resolved in.
+func TestListPreallocations_MergesSourcesInDateOrder(t *testing.T) {
+	store := twoSundayStore()
+	store.preallocs = []db.ManualPreallocation{
+		{ID: "p1", ShiftID: "shift-2", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+		{ID: "p2", ShiftID: "shift-1", Role: string(model.RoleVolunteer), CustomValue: "Aardvark Group"},
+	}
+	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedTeamLeadID: "dan"},
+	}}
+
+	views := listPreallocs(t, store, cfg)
+	require.Len(t, views, 4)
+
+	type entry struct {
+		date   string
+		name   string
+		source PreallocationSource
+	}
+	got := make([]entry, 0, len(views))
+	for _, v := range views {
+		got = append(got, entry{v.Date, v.Name, v.Source})
+	}
+	assert.Equal(t, []entry{
+		{"2026-08-02", "Dan", PreallocationSourceConfig},
+		{"2026-08-02", "Aardvark Group", PreallocationSourceManual},
+		{"2026-08-09", "Dan", PreallocationSourceConfig},
+		{"2026-08-09", "Bob", PreallocationSourceManual},
+	}, got)
 }

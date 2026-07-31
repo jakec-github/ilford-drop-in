@@ -141,3 +141,26 @@ export interface RotaShift {
   allocated: boolean;
   assignees: Assignee[];
 }
+
+// Where a preallocation came from. "config" pins are written into the server's
+// rota overrides and can only be changed by editing that file; "manual" pins are
+// recorded against a single shift over the API. Both are guarantees the
+// allocator has to honour, so both are worth showing, but only one of them is
+// something an admin can undo from here.
+export type PreallocationSource = "config" | "manual";
+
+// Preallocation is one person the allocator is already committed to placing on a
+// shift, before allocation has run. name is what to show — a volunteer's display
+// name, or a custom entry (an outside group, say) verbatim.
+//
+// id addresses the stored pin for a delete, and is null for config pins, which
+// have no row behind them.
+export interface Preallocation {
+  id: string | null;
+  date: string;
+  role: Role;
+  name: string;
+  custom: boolean;
+  volunteerId: string | null;
+  source: PreallocationSource;
+}
