@@ -23,7 +23,22 @@ const apiPort = process.env.API_PORT ?? "8080";
 // WEB_PORT lets a second checkout (a git worktree, say) serve on its own port
 // without colliding with the primary one. See docs/agents/worktrees.md.
 const webPort = process.env.WEB_PORT ?? "5173";
-const apiPrefixes = ["/shifts", "/alterations", "/calendars", "/auth"];
+// Every path the Go server owns. Anything missing here is not proxied: it falls
+// through to the SPA fallback below and the caller gets index.html with a 200,
+// which surfaces as "Unexpected token '<'" when it tries to parse it as JSON.
+// The list has to be maintained by hand only until the API moves under a single
+// /api prefix (issue #85), at which point it collapses to that one entry plus
+// the auth routes.
+const apiPrefixes = [
+  "/shifts",
+  "/volunteers",
+  "/rotations",
+  "/preallocations",
+  "/alterations",
+  "/calendars",
+  "/health",
+  "/auth",
+];
 
 const server = Bun.serve({
   port: webPort,

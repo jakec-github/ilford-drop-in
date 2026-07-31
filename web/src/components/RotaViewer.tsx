@@ -352,9 +352,11 @@ function ChipMenu({
 function swapBlockedReason(
   assignee: Assignee,
   pending: Pending,
+  picked: boolean,
   isSource: boolean,
   canReceive: boolean,
 ): string {
+  if (picked) return `${assignee.name}, the person you are moving`;
   if (isSource) return `${assignee.name}, on the shift you are moving from`;
   if (!canReceive) return `${pending.name} is already on this shift`;
   return `${assignee.name} is already on ${formatShiftDateLong(pending.date)}`;
@@ -421,40 +423,48 @@ function ShiftRow({
               />
             );
           }
-          // Nothing is in flight: the chip is the way into this person's
-          // actions.
-          if (pending === null) {
-            return (
-              <Chip
-                key={key}
-                assignee={a}
-                selected={a.name === selectedName}
-                label={`${a.name}, change this shift`}
-                draggable
-                onClick={() =>
-                  edit.onOpenMenu(edit.openMenu === key ? null : key)
-                }
-                onDragStart={() => edit.onDragStart(a)}
-                onDragEnd={edit.onDragEnd}
-              />
-            );
-          }
-
-          const swappable = isDestination && edit.canSwapWith(a);
-          const picked = isSource && samePerson(pending.person, personRef(a));
+          // One chip either way, not one per state: `draggable` has to survive
+          // the re-render that starting a drag causes. onDragStart sets the
+          // pending pick, which re-renders this very chip, and React removing
+          // the attribute mid-drag cancels the drag in Chromium — the pick
+          // registers, the name never moves. So the drag props are
+          // unconditional and only what the chip *does* on click or drop
+          // changes: its own menu when nothing is in flight, a swap target
+          // when someone is being carried.
+          const swappable =
+            pending !== null && isDestination && edit.canSwapWith(a);
+          const picked =
+            pending !== null &&
+            isSource &&
+            samePerson(pending.person, personRef(a));
           return (
             <Chip
               key={key}
               assignee={a}
               selected={a.name === selectedName}
               className={picked ? "lifted" : ""}
-              disabled={!swappable}
+              draggable
+              disabled={pending !== null && !swappable}
               label={
-                swappable
-                  ? `Swap ${pending.name} with ${a.name}`
-                  : swapBlockedReason(a, pending, isSource, edit.canReceive)
+                pending === null
+                  ? `${a.name}, change this shift`
+                  : swappable
+                    ? `Swap ${pending.name} with ${a.name}`
+                    : swapBlockedReason(
+                        a,
+                        pending,
+                        picked,
+                        isSource,
+                        edit.canReceive,
+                      )
               }
-              onClick={() => edit.onSwapWith(a)}
+              onClick={
+                pending === null
+                  ? () => edit.onOpenMenu(edit.openMenu === key ? null : key)
+                  : () => edit.onSwapWith(a)
+              }
+              onDragStart={() => edit.onDragStart(a)}
+              onDragEnd={edit.onDragEnd}
               onDrop={swappable ? () => edit.onSwapWith(a) : undefined}
             />
           );
