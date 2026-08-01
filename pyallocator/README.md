@@ -108,7 +108,15 @@ decisions later. Modularity is the point of this package:
   deterministic solve (fixed seed, single worker, 30s limit), extraction.
 - `tests/` — one test file per constraint/preference, each solving with
   ONLY that module; `test_end_to_end.py` re-verifies every applied hard
-  rule independently of CP-SAT via `verify_solution`.
+  rule independently of CP-SAT via `verify_solution`, and pins the rota
+  it produces against `tests/testdata/e2e_rota.json`. Legality and
+  sameness are different questions: plenty of rotas are legal, so only
+  the golden catches a refactor that quietly reshuffles who works when.
+  A golden diff is a behaviour change — read it, then regenerate with
+  `UPDATE_GOLDEN=1 pytest pyallocator/tests` once you mean it. The rota
+  half is checked only on the CP-SAT build it was recorded against, since
+  equally-optimal rotas differ between builds; the objective value is
+  checked everywhere, CI included.
 
 To add a rule: create a module in `constraints/` or `preferences/`
 following `base.py`'s protocol, register it in the package's

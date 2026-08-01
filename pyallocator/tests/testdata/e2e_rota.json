@@ -1,0 +1,64 @@
+{
+  "environment": {
+    "ortools": "9.15.6755",
+    "platform": "darwin-x86_64"
+  },
+  "objective_value": 997,
+  "shifts": {
+    "0": {
+      "customs": [],
+      "team_lead": "karen",
+      "volunteers": [
+        "larry",
+        "oliver",
+        "steve"
+      ]
+    },
+    "1": {
+      "customs": [],
+      "team_lead": "george",
+      "volunteers": [
+        "helen",
+        "quinn"
+      ]
+    },
+    "2": {
+      "customs": [],
+      "team_lead": "alice",
+      "volunteers": [
+        "bob",
+        "victor"
+      ]
+    },
+    "3": {
+      "customs": [],
+      "team_lead": "wendy",
+      "volunteers": [
+        "ivan",
+        "xavier"
+      ]
+    },
+    "4": {
+      "customs": [],
+      "team_lead": "alice",
+      "volunteers": [
+        "bob",
+        "charlie"
+      ]
+    },
+    "5": {
+      "customs": [],
+      "team_lead": "",
+      "volunteers": []
+    },
+    "6": {
+      "customs": [
+        "external_john"
+      ],
+      "team_lead": "",
+      "volunteers": [
+        "quinn"
+      ]
+    }
+  }
+}

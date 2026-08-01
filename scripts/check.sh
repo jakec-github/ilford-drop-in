@@ -75,8 +75,11 @@ fi
 # That venv installs pyallocator editable, so in a worktree it resolves to the
 # primary checkout's source. PYTHONPATH puts this checkout's source first, so a
 # worktree tests the code it is about to push rather than main's.
+# -rs prints why anything skipped, in the same spirit as DBTEST_REQUIRED: the
+# e2e golden stands down when the CP-SAT build is not the one it was recorded
+# against, and that should be visible rather than a bare 's'.
 run env PYTHONPATH="$REPO_ROOT/pyallocator/src" \
-    "$PYALLOCATOR_PYTHON" -m pytest "$REPO_ROOT/pyallocator/tests"
+    "$PYALLOCATOR_PYTHON" -m pytest -rs "$REPO_ROOT/pyallocator/tests"
 
 # bun run build runs tsc -b first (web/build.ts), so this is the typecheck.
 (cd "$REPO_ROOT/web" && run bun run build)

@@ -39,8 +39,8 @@ jobs:
           cache-dependency-path: go.sum
 
       # check.sh builds pyallocator/.venv on top of this to run the solver
-      # tests. Taking the version from requires-python keeps one place saying
-      # which Python the allocator needs.
+      # tests. requires-python is a floor, so this tracks the newest Python the
+      # allocator claims to support rather than pinning a second version here.
       - uses: actions/setup-python@v5
         with:
           python-version-file: pyallocator/pyproject.toml
