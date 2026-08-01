@@ -16,6 +16,10 @@ pyallocator/.venv/bin/pytest pyallocator/tests
 The Go side looks for `pyallocator/.venv/bin/python` by default
 (overridable with `--python` or `ILFORD_CPSAT_PYTHON`).
 
+`scripts/check.sh` runs this suite too, and does the setup above itself when
+the venv is missing — so the solver is covered by the one pre-push command and
+by CI, not only by whoever remembers to run pytest.
+
 ## Usage
 
 ```sh
@@ -82,6 +86,9 @@ decisions later. Modularity is the point of this package:
   male_required (a shift without a male keeps a slot open — the TL slot
   or an ordinary seat — so one can be added manually), no_back_to_back,
   closed_shifts, preallocations, no_duplicate_allocation.
+  `one_shift_per_month` also exists but sits in `STRICT_CONSTRAINTS`, out of
+  the production set: it is regularly unsatisfiable at real volunteer numbers.
+  Rules that are off must not be asserted in tests.
 - `preferences/` — one file per **soft goal**, contributing weighted
   terms to a single maximised objective. Production set:
   `DEFAULT_PREFERENCES` in `preferences/__init__.py`. The shaping
@@ -100,8 +107,8 @@ decisions later. Modularity is the point of this package:
 - `model_builder.py` / `solver.py` / `solution.py` — model assembly,
   deterministic solve (fixed seed, single worker, 30s limit), extraction.
 - `tests/` — one test file per constraint/preference, each solving with
-  ONLY that module; `test_end_to_end.py` re-verifies every hard rule
-  independently of CP-SAT via `verify_solution`.
+  ONLY that module; `test_end_to_end.py` re-verifies every applied hard
+  rule independently of CP-SAT via `verify_solution`.
 
 To add a rule: create a module in `constraints/` or `preferences/`
 following `base.py`'s protocol, register it in the package's

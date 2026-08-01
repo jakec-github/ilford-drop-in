@@ -228,7 +228,7 @@ frontend itself, started in the background — see
 ## 8. Run the tests
 
 ```bash
-scripts/check.sh                     # build, vet, tests, frontend typecheck + lint
+scripts/check.sh                     # build, vet, tests, solver tests, frontend typecheck + lint
 go test ./...                        # everything
 go test ./pkg/core/services/...      # one package
 go test -cover ./...                 # with coverage
@@ -244,7 +244,9 @@ Start the DB (`scripts/test-db.sh start`) to exercise them, or run
 `scripts/check.sh`, which starts it for you and fails rather than skips if it
 cannot be reached.
 
-The Python allocator has its own tests — see [`pyallocator/README.md`](../pyallocator/README.md).
+The Python allocator has its own tests — see
+[`pyallocator/README.md`](../pyallocator/README.md). `check.sh` runs them too,
+building `pyallocator/.venv` first if it is not there yet.
 
 ## Troubleshooting
 

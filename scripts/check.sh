@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Everything a change has to pass, in one command with one exit code: Go build,
-# vet and tests, then the frontend typecheck (tsc, via the build) and lint.
+# vet and tests, the pyallocator suite, then the frontend typecheck (tsc, via
+# the build) and lint.
 #
 # Usage: scripts/check.sh
 #
@@ -57,6 +58,25 @@ cd "$REPO_ROOT"
 run go build ./...
 run go vet ./...
 run env DBTEST_REQUIRED=1 go test ./...
+
+# The solver lives in Python, so go test alone leaves it unguarded. Its tests
+# need ortools and pytest: worktrees share the primary checkout's venv through
+# ILFORD_CPSAT_PYTHON (docs/agents/worktrees.md), CI and a fresh clone have
+# neither and get one built here.
+PYALLOCATOR_VENV="$REPO_ROOT/pyallocator/.venv"
+PYALLOCATOR_PYTHON="${ILFORD_CPSAT_PYTHON:-$PYALLOCATOR_VENV/bin/python}"
+if ! "$PYALLOCATOR_PYTHON" -c "import ortools, pytest" >/dev/null 2>&1; then
+    run python3 -m venv "$PYALLOCATOR_VENV"
+    run "$PYALLOCATOR_VENV/bin/pip" install --quiet --disable-pip-version-check \
+        --editable "$REPO_ROOT/pyallocator[dev]"
+    PYALLOCATOR_PYTHON="$PYALLOCATOR_VENV/bin/python"
+fi
+
+# That venv installs pyallocator editable, so in a worktree it resolves to the
+# primary checkout's source. PYTHONPATH puts this checkout's source first, so a
+# worktree tests the code it is about to push rather than main's.
+run env PYTHONPATH="$REPO_ROOT/pyallocator/src" \
+    "$PYALLOCATOR_PYTHON" -m pytest "$REPO_ROOT/pyallocator/tests"
 
 # bun run build runs tsc -b first (web/build.ts), so this is the typecheck.
 (cd "$REPO_ROOT/web" && run bun run build)

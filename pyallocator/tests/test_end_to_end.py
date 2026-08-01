@@ -5,7 +5,10 @@ preallocation that overrides availability, a preallocated team lead and
 a custom (free-text) preallocation.
 
 verify_solution re-checks every hard rule directly against the input,
-independently of CP-SAT — a regression oracle for future changes.
+independently of CP-SAT — a regression oracle for future changes. It
+covers DEFAULT_CONSTRAINTS only: one_shift_per_month is a STRICT
+constraint the solver does not apply, so verifying it here would assert a
+rule the rota is not built to keep.
 """
 
 from __future__ import annotations
@@ -110,11 +113,6 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     last_historical = (
         set(inp.historical_shifts[-1].group_keys) if inp.historical_shifts else set()
     )
-    index_to_month = {spec.index: spec.date[:7] for spec in inp.shifts}
-    historical_months: dict[str, set[str]] = {}
-    for hs in inp.historical_shifts:
-        for gk in hs.group_keys:
-            historical_months.setdefault(gk, set()).add(hs.date[:7])
     for key, indices in allocated.items():
         if len(indices) > inp.max_allocation_count:
             problems.append(f"{key}: exceeds max allocation count")
@@ -124,15 +122,6 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
                 problems.append(f"{key}: back-to-back shifts {a},{b}")
         if 0 in indices and key in last_historical:
             problems.append(f"{key}: on last historical shift AND shift 0")
-        months = [index_to_month[i] for i in indices]
-        if len(set(months)) != len(months):
-            problems.append(f"{key}: more than one shift in a calendar month")
-        prior_months = historical_months.get(key, set())
-        for month in months:
-            if month in prior_months:
-                problems.append(
-                    f"{key}: shift in {month} already worked in history"
-                )
 
     return problems
 
@@ -234,7 +223,6 @@ def test_end_to_end_scenario():
         "at_most_one_team_lead",
         "male_required",
         "no_back_to_back",
-        "one_shift_per_month",
         "closed_shifts",
         "preallocations",
     }
