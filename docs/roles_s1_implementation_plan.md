@@ -1,4 +1,4 @@
-# Issue #89 — Roles S1: Roles and Tracks as data
+# Issue #89 — Roles S1: Roles as data
 
 ## Context
 
@@ -11,15 +11,17 @@ the solver, an `at_most_one_team_lead` constraint, a single-valued
 the frontend. Adding Assistant TL, Food collector or Hot food (#91) is
 impossible until that is data.
 
-S1 de-hardcodes without changing what the system does. Config gains `tracks` and
-`roles`; the roster moves to `Role - <name>` tick columns; the solver assigns
-Roles instead of designating a lead after the fact. Configured with one Track
-and the two existing Roles, output matches today — which makes the existing test
-suite the oracle for the solver rewrite, the genuinely risky part.
+S1 de-hardcodes without changing what the system does. Config gains `roles`; the
+roster moves to `Role - <name>` tick columns; the solver assigns Roles instead of
+designating a lead after the fact. Configured with the two existing Roles, output
+matches today — which makes the existing test suite the oracle for the solver
+rewrite, the genuinely risky part.
 
 Design: [`configurable_roles_plan.md`](configurable_roles_plan.md),
 [ADR 0005](adr/0005-roles-as-jobs-volunteers-hold.md).
-Language already agreed in `CONTEXT.md` (Role, Track, Seat, Shape).
+Language already agreed in `CONTEXT.md` (Role, Seat, Shape). Tracks were part of
+the design and were dropped before implementation: a person fills one Seat per
+Shift, full stop, and male cover is a Shift-level rule.
 
 ### Three decisions taken up front
 
@@ -88,7 +90,7 @@ that `Diagnostics.num_variables` counts every var in the model.
 Files: `pyallocator/tests/test_end_to_end.py`, new
 `pyallocator/tests/testdata/e2e_rota.json`, `tests/constraints/test_structural.py`.
 
-### 3. Roles and Tracks in the domain model and config
+### 3. Roles in the domain model and config
 
 Domain types in `pkg/core/model/models.go` — role *names* stay plain `string`
 on the wire, in the DB and on allocations, so no migration is needed
@@ -96,21 +98,19 @@ on the wire, in the DB and on allocations, so no migration is needed
 untyped `TEXT`):
 
 ```go
-type Track struct { Name string; RequiresMale bool }
-type Role  struct { Name, Track string; Max *int; Priority int }  // Max nil = uncapped
+type Role  struct { Name string; Max *int; Priority int }  // Max nil = uncapped
 type Roles struct { /* ordered by priority, indexed by name */ }
 func (r Roles) ByName(string) (Role, bool)
 func (r Roles) ByPriority() []Role
 func (r Roles) Uncapped() (Role, bool)
-func (r Roles) TrackOf(string) (Track, bool)
 ```
 
-`internal/config/config.go` gains `tracks` and `roles` and unmarshals into
-those. `validator.v10` tags cannot express the cross-field rules, so they go in
-the manual loop in `Validate()` (`config.go:167`) next to the existing
-`ParseRRule` check: names unique and non-empty, every Role's track exists,
-priorities unique, `max >= 1`, and **exactly one uncapped Role** — with a
-comment naming S2 as what lifts that restriction.
+`internal/config/config.go` gains `roles` and a Shift-level `requiresMale`, and
+unmarshals into those. `validator.v10` tags cannot express the cross-field
+rules, so they go in the manual loop in `Validate()` (`config.go:167`) next to
+the existing `ParseRRule` check: names unique and non-empty, priorities unique,
+`max >= 1`, and **exactly one uncapped Role** — with a comment naming S2 as
+what lifts that restriction.
 
 Same commit, the `RotaOverride` preallocation keys collapse into one role-named
 list, since every preallocation must name a Role and the solver contract needs
@@ -128,6 +128,10 @@ replacing `customPreallocations`, `preallocatedVolunteerIDs` and
 `preallocatedTeamLeadID`. **Deploy note for the PR body: the live config on the
 droplet needs the same edit.** `DefaultShiftSize` and `RotaOverride.ShiftSize`
 stay untouched (S2 retires them).
+
+`requiresMale: true` in every config preserves today's behaviour, which is
+unconditional; the flag exists so it can be turned off rather than because
+anyone will.
 
 Nothing consumes the new fields yet. Update `drop_in_config.dev.yaml`,
 `drop_in_config.test.yaml`, `deploy/drop_in_config.dev.yaml`, and
@@ -175,7 +179,7 @@ inline JSON goldens for exactly this reason.
 | `CpsatMember.IsTeamLead bool` | `Roles []string` (`"roles"`) |
 | `CpsatShift.Size int` | `Shape []{Role, Count}` (`"shape"`) |
 | `PreallocatedVolunteerIDs`, `PreallocatedTeamLeadID`, `CustomPreallocations` | `Preallocations []{VolunteerID, Custom, Role}` |
-| — | top-level `Roles []{Name, Track, Max, Priority}`, `Tracks []{Name, RequiresMale}` |
+| — | top-level `Roles []{Name, Max, Priority}`, `RequiresMale bool` |
 
 Go side: `BuildCpsatInput` (`cpsat_contract.go:96`) computes the Shape per shift
 from `shiftSize` + role maxes; `allocator.ShiftOverride` and `InitShifts`
@@ -196,10 +200,12 @@ The refactor that makes the rest safe. `model_builder.py:build` creates:
 
 ```python
 role_var[(v.id, s.index, role)]  # for each role v holds that s's shape asks for
-attend[(v.id, s.index)]          # AddMaxEquality(attend, role_vars) — the OR
+attend[(v.id, s.index)]          # sum(role_vars) == attend — one Seat at most
 ```
 
-plus, per Track, `sum(role_var over that track's roles) <= 1`.
+Equating the sum with a boolean `attend`, rather than `AddMaxEquality`, is what
+enforces one Role per person per Shift: no separate exclusion constraint exists
+or is needed.
 
 `constraints/base.py`'s `AssignmentVars = dict[tuple[str, int], IntVar]` becomes
 a `Vars` dataclass with `.attend` and `.role`; both the `Constraint` and
@@ -240,21 +246,21 @@ golden to change for shifts where two team-lead holders can now share; inspect
 every diff line by hand before re-recording it, and put the before/after in the
 PR body.
 
-### 8. Male cover moves to the Track
+### 8. Male cover generalises over Seats
 
 `constraints/male_required.py` today builds three reified BoolVars per shift —
 `has_male`, `tl_slot_open`, `seat_open` — the last two being hardcoded escapes.
-Rewrite as: for each Track marked `requiresMale`, every open shift must have a
-male somewhere in that Track *or* leave a Seat in that Track open. With one
-Track configured, the two escapes collapse into one and behaviour is preserved
-(a Team lead Seat and an ordinary Seat are both Seats in `serving`).
+Rewrite as: when `requiresMale` is set, every open shift must have a male
+allocated *or* leave some Seat in its Shape open, whichever Role that Seat
+belongs to. The two escapes collapse into one — a Team lead Seat and an
+ordinary Seat are both just Seats — and behaviour is preserved. Skip the
+constraint entirely when the flag is off.
 
-`preferences/spread_males.py` counts males per shift via `attend` — check
-whether it should become per-Track; with one Track it is identical either way,
-so prefer the smaller change and note it.
+`preferences/spread_males.py` counts males per shift via `attend` and needs no
+change.
 
 Rewrite `tests/constraints/test_male_required.py` (6 tests over the three
-escapes) as per-Track cases.
+escapes) around the single open-Seat escape, plus a case for the flag off.
 
 ### 9. Role-tagged output; the designation logic dies
 
@@ -370,5 +376,5 @@ divergences.
 Branch `issue-89-roles-as-data` off up-to-date main; `Closes #89`. The body must
 carry: the two accepted divergences from byte-identity, the before/after golden
 diff, and the deploy note that the droplet's config needs the new `roles`,
-`tracks` and `preallocations` keys. Request review from `jakec-github` via the
-REST endpoint; block on `gh pr checks --watch --fail-fast`.
+`requiresMale` and `preallocations` keys. Request review from `jakec-github`
+via the REST endpoint; block on `gh pr checks --watch --fail-fast`.

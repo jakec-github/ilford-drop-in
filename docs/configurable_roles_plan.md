@@ -5,8 +5,11 @@ mapped the blast radius across the Go allocator — deleted since (#34) — and 
 no longer a useful guide.
 
 Decision record: [ADR 0005](adr/0005-roles-as-jobs-volunteers-hold.md).
-Language: `CONTEXT.md` (Role, Track, Seat, Shape). Note that `CONTEXT.md` now
+Language: `CONTEXT.md` (Role, Seat, Shape). Note that `CONTEXT.md` now
 carries the agreed language ahead of the code; none of it is implemented yet.
+
+Tracks were part of this design and have been dropped — see the ADR for why.
+A person simply fills one Seat per Shift.
 
 ## The model
 
@@ -14,10 +17,9 @@ A **Role** is a job on a Shift. A volunteer **holds** the Roles they will do,
 and only a holder may be allocated to one — eligibility is exact match, with no
 mapping layer and no open-to-all shortcut.
 
-A **Track** is a line-up of mutually exclusive Roles: a person fills at most one
-Role per Track on a Shift, and Tracks are independent. Emma can be Team lead on
-the serving track and Food collector on the collection track; she can never be
-both Team lead and Assistant TL.
+A person fills **at most one Role on a Shift**, however many they hold. Emma
+may hold Team lead, Service volunteer and Food collector; on any given Shift
+she does exactly one of them.
 
 A **Shape** is which Roles a Shift needs and how many **Seats** of each. The
 Shift owns it from mint. It is editable while the Rotation is unallocated and
@@ -26,18 +28,14 @@ fixed once the allocator has run — the manual-preallocation rule (ADR 0003).
 ### Config
 
 ```yaml
-tracks:
-  - name: serving
-    requiresMale: true
-  - name: collection
-  - name: catering
+requiresMale: true
 
 roles:
-  - name: Team lead          track: serving     max: 1  priority: 1
-  - name: Assistant TL       track: serving     max: 1  priority: 2
-  - name: Food collector     track: collection  max: 1  priority: 3
-  - name: Service volunteer  track: serving             priority: 4
-  - name: Hot food           track: catering    max: 1  priority: 5
+  - name: Team lead          max: 1  priority: 1
+  - name: Assistant TL       max: 1  priority: 2
+  - name: Food collector     max: 1  priority: 3
+  - name: Service volunteer          priority: 4
+  - name: Hot food           max: 1  priority: 5
 
 defaultShape:
   - role: Team lead          count: 1
@@ -50,6 +48,9 @@ defaultShape:
 is edited. Omitted means no ceiling. `priority` orders the filling of Seats
 when people are scarce. Both are role-level so that a per-date Shape override
 cannot forget to cap team leads.
+
+`requiresMale` is Shift-level: every open Shift must have a male allocated
+somewhere or leave a Seat open, whichever Role it belongs to.
 
 ### Roster
 
@@ -73,9 +74,9 @@ too, since nobody can hold it.
 **Allocating.** The solver fills Seats up to each Shape count, in Role priority
 order, never exceeding a count. Counts are targets, not minimums: a Shift with
 no available team lead still allocates with that Seat empty, exactly as today.
-A person may hold at most one Role per Track. For each Track marked
-`requiresMale`, every open Shift must either have a male somewhere in that
-Track or leave a Seat in it open, so one can be added by hand afterwards.
+A person takes at most one Seat on a Shift. With `requiresMale` set, every open
+Shift must either have a male allocated or leave some Seat open, so one can be
+added by hand afterwards.
 
 **Editing an allocated rota.** The Role is named explicitly on every add —
 `inferRole()` goes. Ceilings alone govern edits, not the frozen Shape: adding a
@@ -101,7 +102,7 @@ flag.
 | `x[(volunteer, shift)]` | `x[(volunteer, shift, role)]` + attendance var |
 | `at_most_one_team_lead` constraint | Per-Role ceilings |
 | `shift_capacity` counting ordinary seats | Per-Role Seat counts |
-| `male_required`'s two hardcoded escapes | Per-Track `requiresMale` |
+| `male_required`'s two hardcoded escapes | Any open Seat, under `requiresMale` |
 | `OutputShift.team_lead_id` + `volunteer_ids` | Role-tagged assignments |
 | `inferRole()` in `changeRota` | An explicit Role on every add |
 | `PublishedRotaRow.TeamLead`, hand-typed `HotFood` / `Collection` | A column per capped Role, list cell for uncapped |
@@ -134,12 +135,12 @@ name, so historical rows remain readable when a Role is retired.
 
 ## Slices
 
-**S1 — Roles and Tracks as data, behaviour unchanged.** Config gains tracks and
-roles; the roster moves to `Role - ` columns; the solver assigns Roles;
-services, CLI and published output stop special-casing team leads. Configured
-with one Track and the two existing Roles, output is identical to today, so the
-existing test suite is the oracle for the solver rewrite — the genuinely risky
-part. No user-visible change.
+**S1 — Roles as data, behaviour unchanged.** Config gains roles; the roster
+moves to `Role - ` columns; the solver assigns Roles; services, CLI and
+published output stop special-casing team leads. Configured with the two
+existing Roles, output is identical to today, so the existing test suite is the
+oracle for the solver rewrite — the genuinely risky part. No user-visible
+change.
 
 **S2 — Shifts own their Shape.** `shift_requirement` table written at
 define-rota, editable over HTTP and in the admin UI while the Rotation is
@@ -148,7 +149,9 @@ unallocated, frozen at allocation. `defaultShiftSize` and
 
 **S3 — The new Roles.** Assistant TL, Food collector and Hot food turned on:
 config entries, roster columns, published columns, and the rota editor's Role
-picker. Mostly configuration by this point.
+picker. Mostly configuration by this point. Note that each new Seat costs a
+distinct person — a collector cannot also serve — so the default Shape's
+`Service volunteer` count is a decision to take here, not an afterthought.
 
 ## Migration
 
@@ -168,9 +171,13 @@ once the tick columns are populated.
 - **Multi-tenancy.** Roles becoming rows is what a second organisation would
   need; scoping them to one is a separate axis, cheap to add later and
   expensive to speculate on now.
-- **Generalised volunteer attributes.** `requiresMale` stays a named flag on a
-  Track rather than becoming a configurable cover requirement over arbitrary
-  attributes.
+- **Generalised volunteer attributes.** `requiresMale` stays a named
+  Shift-level flag rather than becoming a configurable cover requirement over
+  arbitrary attributes.
+- **Tracks.** Groups of mutually exclusive Roles, so one person could lead the
+  serving line-up and collect the food on the same Shift. Designed, then
+  dropped as not worth its cost (ADR 0005). Anyone needing two jobs at once
+  gets a Role naming the combination.
 - **Collection as its own activity.** Food collection is a Role on the drop-in
   Shift, not a separate scheduling stream with its own dates and its own
   availability round. That reading was considered and rejected as a much larger

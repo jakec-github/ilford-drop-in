@@ -1,13 +1,13 @@
-# Roles are jobs volunteers hold, grouped into Tracks
+# Roles are jobs volunteers hold
 
-Status: accepted
+Status: accepted. Amended 2026-08-02: Tracks removed before implementation —
+see "Tracks, considered and dropped".
 
 Two hardcoded roles (`RoleTeamLead`, `RoleVolunteer`) are being replaced by
 configured **Roles**. A Role is a job on a Shift; a volunteer **holds** the
-Roles they will do; only a holder may be allocated to one. Roles belong to
-**Tracks** — line-ups within which a person fills at most one Role, and which
-carry the male-cover requirement. A Shift owns its **Shape**: which Roles it
-needs and how many Seats of each.
+Roles they will do; only a holder may be allocated to one. A person fills at
+most one Role on a Shift, however many they hold. A Shift owns its **Shape**:
+which Roles it needs and how many Seats of each.
 
 The word "role" previously spanned two things — what a volunteer *is* (the
 roster's Role column) and what someone *does on a shift*
@@ -31,13 +31,24 @@ ADR exists.
   true that anyone on the roster may deputise, because the roster includes
   people who only ever collect food. Breadth costs ticks.
 
-- **Tracks, not per-Role exclusion lists.** A person holds at most one Role per
-  Track. This is what permits the same person to lead *and* collect while never
-  being both Team lead and Assistant TL. Symmetric per-Role conflict lists were
-  rejected as hand-maintained and silently breakable; a boolean
-  primary-or-additional was rejected as permanently two-tiered. Tracks also own
-  the male-cover requirement, which makes them a real concept rather than
-  bookkeeping.
+- **One Role per person per Shift.** A person fills exactly one Seat, whichever
+  Roles they hold. This is what stops the same person being both Team lead and
+  Assistant TL, and it is what the system already does: today a volunteer is on
+  a shift once, as lead or as ordinary. No exclusion structure has to be
+  configured or maintained for it to hold.
+
+- **Tracks, considered and dropped.** This ADR originally grouped Roles into
+  **Tracks** — line-ups within which a person fills at most one Role, with
+  independent Tracks letting Emma lead the serving line-up *and* collect the
+  food on the same Shift. Tracks also carried the male-cover requirement.
+  Dropped before implementation: the only thing they bought was that one
+  person-two-jobs case, which the drop-in does not actually need, and they cost
+  a config concept, a validation rule, a per-Track solver constraint and a
+  per-Track rewrite of male cover. Symmetric per-Role conflict lists and a
+  boolean primary-or-additional Role were rejected earlier for the same reason
+  Tracks now are: structure maintained by hand to express an exclusion rule
+  that "one Seat per person" already gives for free. If somebody must hold two
+  jobs on one Shift, the answer is a Role that names the combination.
 
 - **Counts are targets; ceilings are limits.** A Shape's count is what the
   allocator fills up to in Role priority order, leaving Seats empty when people
@@ -69,15 +80,23 @@ ADR exists.
   `Role - ` column config does not name warns and does nothing, and a configured
   Role no column supplies warns too.
 
-- **`requiresMale` stays a named flag on a Track, not a general attribute
-  system.** Generalising volunteer attributes into configurable cover
-  requirements is a larger surface for no present gain.
+- **Male cover stays a Shift-level rule, not a general attribute system.** A
+  `requiresMale` flag in config; every open Shift must have a male allocated or
+  leave some Seat open, so one can be added by hand. That is exactly today's
+  rule with its two hardcoded escapes (no lead allocated / an ordinary seat
+  free) generalised over Roles. Generalising volunteer attributes into
+  configurable cover requirements is a larger surface for no present gain.
 
 ## Consequences
 
 - **Headcount becomes distinct people**, so the "does this Role count toward
   shift size" flag never needs inventing. `seat_cost` and the rule that team
   leads do not count both disappear.
+
+- **Every Seat costs a person.** A Shift wanting a Food collector and six
+  servers needs seven people, because the collector cannot also take a serving
+  Seat. That is the accepted price of dropping Tracks; if a week is short, the
+  Shape is what gets adjusted.
 
 - **The solver assigns Roles.** `x[(volunteer, shift)]` becomes
   `x[(volunteer, shift, role)]`, with an attendance variable ORed over Roles

@@ -24,15 +24,9 @@ acceptable alias.
 A job on a Shift — Team lead, Service volunteer, Food collector. A volunteer
 holds the Roles they will do, and only a holder may be allocated to one. The
 job and the holding of it share one name; there is no separate notion of being
-qualified for a job you do not hold.
+qualified for a job you do not hold. A person fills at most one Role on a
+Shift, however many they hold.
 _Avoid_: position, qualification, badge
-
-**Track**:
-A line-up of mutually exclusive Roles. A person fills at most one Role per
-Track on a Shift, and Tracks are independent — the same person can lead the
-serving line-up and collect the food. A Track may require a male among its
-people.
-_Avoid_: group (which means couples and families), category, stream
 
 **Seat**:
 One place on a Shift: one Role, at most one person.
