@@ -176,6 +176,18 @@ The `test` suffix in the filename matches the `-e test` / `-env test` flag you
 pass at runtime. Config files are also searched for in your home directory if
 not found in the repo root.
 
+Keys are matched strictly: anything the app does not recognise — a typo, or an
+option that has since been renamed — fails the load and names the key, rather
+than being quietly ignored. To check a file without starting anything:
+
+```bash
+go run ./cmd/cli -e test validate-config drop_in_config.test.yaml
+```
+
+That reads the file and nothing else — no database, no Google — and prints what
+the config configures, which is worth a glance: a config can be perfectly valid
+and still not say what you meant.
+
 ## 5. Local database
 
 The `test` environment uses a Postgres container managed by a helper script:

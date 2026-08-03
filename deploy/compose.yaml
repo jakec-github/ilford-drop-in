@@ -19,9 +19,17 @@ services:
     image: ghcr.io/jakec-github/ilford-drop-in:${IMAGE_TAG:-latest}
     restart: unless-stopped
     volumes:
-      - ./drop_in_config.prod.yaml:/app/drop_in_config.prod.yaml:ro
-      - ./oauthClientWeb.prod.json:/app/oauthClientWeb.prod.json:ro
-      - ./serviceAccount.prod.json:/app/serviceAccount.prod.json:ro
+      # The config directory, not the three files individually. A single-file
+      # bind mount pins the inode it resolved at container start, so replacing
+      # the file on the host leaves the container serving the previous revision —
+      # which is how a config fix took four rounds to land (issue #100). A
+      # directory mount is resolved by path on every start, so a recreate always
+      # picks up whatever is in the directory now.
+      #
+      # /app is the image's working directory, where the server looks for its
+      # config first; the binary itself lives at /server, so mounting over /app
+      # covers nothing. Populate it with scripts/deploy-config.sh.
+      - ./config:/app:ro
     logging:
       driver: json-file
       options:
