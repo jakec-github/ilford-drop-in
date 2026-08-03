@@ -38,7 +38,8 @@ class EvenFillPreference:
         for shift in problem.shifts:
             if shift.closed:
                 continue
-            budget = max(0, shift.size - len(shift.custom_preallocations))
+            customs = len(problem.shift_customs(shift))
+            budget = max(0, problem.shift_size(shift) - customs)
             if budget == 0:
                 continue
             fill = sum(
@@ -46,7 +47,7 @@ class EvenFillPreference:
             )
             levels = []
             for k in range(1, budget + 1):
-                seat_number = len(shift.custom_preallocations) + k
+                seat_number = customs + k
                 weight = EVEN_FILL_WEIGHT // seat_number
                 if weight == 0:
                     break

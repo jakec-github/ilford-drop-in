@@ -15,12 +15,12 @@ import (
 
 // CpsatMember is one volunteer inside a group.
 type CpsatMember struct {
-	ID          string `json:"id"`
-	FirstName   string `json:"first_name"`
-	LastName    string `json:"last_name"`
-	DisplayName string `json:"display_name"`
-	Gender      string `json:"gender"`
-	IsTeamLead  bool   `json:"is_team_lead"`
+	ID          string   `json:"id"`
+	FirstName   string   `json:"first_name"`
+	LastName    string   `json:"last_name"`
+	DisplayName string   `json:"display_name"`
+	Gender      string   `json:"gender"`
+	Roles       []string `json:"roles"`
 }
 
 // CpsatGroup is an allocation unit (couples/families allocated together)
@@ -32,15 +32,35 @@ type CpsatGroup struct {
 	HistoricalAllocationCount int           `json:"historical_allocation_count"`
 }
 
-// CpsatShift is an override-resolved shift specification.
+// CpsatRole is one configured Role. Max is omitted for an uncapped Role.
+type CpsatRole struct {
+	Name     string `json:"name"`
+	Max      *int   `json:"max"`
+	Priority int    `json:"priority"`
+}
+
+// CpsatSeat is one entry in a Shift's Shape: Count Seats for this Role.
+type CpsatSeat struct {
+	Role  string `json:"role"`
+	Count int    `json:"count"`
+}
+
+// CpsatPreallocation pins a volunteer or a custom entry to a Role on a shift.
+type CpsatPreallocation struct {
+	VolunteerID string `json:"volunteer_id"`
+	Custom      string `json:"custom"`
+	Role        string `json:"role"`
+}
+
+// CpsatShift is an override-resolved shift specification. Shape is the Seats
+// the shift asks for; it replaces a bare size, which could only ever describe a
+// rota with one Role.
 type CpsatShift struct {
-	Index                    int      `json:"index"`
-	Date                     string   `json:"date"`
-	Size                     int      `json:"size"`
-	Closed                   bool     `json:"closed"`
-	CustomPreallocations     []string `json:"custom_preallocations"`
-	PreallocatedVolunteerIDs []string `json:"preallocated_volunteer_ids"`
-	PreallocatedTeamLeadID   string   `json:"preallocated_team_lead_id"`
+	Index          int                  `json:"index"`
+	Date           string               `json:"date"`
+	Shape          []CpsatSeat          `json:"shape"`
+	Closed         bool                 `json:"closed"`
+	Preallocations []CpsatPreallocation `json:"preallocations"`
 }
 
 // CpsatHistoricalShift is a past shift with Go-derived group keys.
@@ -52,6 +72,8 @@ type CpsatHistoricalShift struct {
 // CpsatInput is the full problem sent to Python on stdin.
 type CpsatInput struct {
 	MaxAllocationCount int                    `json:"max_allocation_count"`
+	Roles              []CpsatRole            `json:"roles"`
+	RequiresMale       bool                   `json:"requires_male"`
 	Shifts             []CpsatShift           `json:"shifts"`
 	Groups             []CpsatGroup           `json:"groups"`
 	HistoricalShifts   []CpsatHistoricalShift `json:"historical_shifts"`
@@ -101,7 +123,13 @@ func BuildCpsatInput(
 	overrides []ShiftOverride,
 	historicalShifts []*Shift,
 	maxAllocationFrequency float64,
+	roles []Role,
+	requiresMale bool,
 ) (*CpsatInput, error) {
+	if _, ok := uncappedRole(roles); !ok {
+		return nil, fmt.Errorf("no uncapped role configured: a shift's size has no Seats to be spent on")
+	}
+
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:       volunteers,
 		Availability:     availability,
@@ -127,6 +155,8 @@ func BuildCpsatInput(
 
 	input := &CpsatInput{
 		MaxAllocationCount: int(float64(len(shiftDateStrings)) * maxAllocationFrequency),
+		Roles:              contractRoles(roles),
+		RequiresMale:       requiresMale,
 		Shifts:             make([]CpsatShift, len(shiftSpecs)),
 		Groups:             make([]CpsatGroup, len(volunteerState.VolunteerGroups)),
 		HistoricalShifts:   make([]CpsatHistoricalShift, len(historicalShifts)),
@@ -134,13 +164,11 @@ func BuildCpsatInput(
 
 	for i, shift := range shiftSpecs {
 		input.Shifts[i] = CpsatShift{
-			Index:                    shift.Index,
-			Date:                     shift.Date,
-			Size:                     shift.Size,
-			Closed:                   shift.Closed,
-			CustomPreallocations:     emptyIfNil(shift.CustomPreallocations),
-			PreallocatedVolunteerIDs: emptyIfNil(shift.PreallocatedVolunteerIDs),
-			PreallocatedTeamLeadID:   shift.PreallocatedTeamLeadID,
+			Index:          shift.Index,
+			Date:           shift.Date,
+			Shape:          shiftShape(shift.Size, roles),
+			Closed:         shift.Closed,
+			Preallocations: contractPreallocations(shift.Preallocations),
 		}
 	}
 
@@ -153,7 +181,7 @@ func BuildCpsatInput(
 				LastName:    member.LastName,
 				DisplayName: member.DisplayName,
 				Gender:      member.Gender,
-				IsTeamLead:  member.IsTeamLead,
+				Roles:       emptyIfNil(member.Roles),
 			}
 		}
 		input.Groups[i] = CpsatGroup{
@@ -255,4 +283,62 @@ func emptyIfNil(values []string) []string {
 		return []string{}
 	}
 	return values
+}
+
+// uncappedRole finds the single Role with no ceiling — the one a shift's size
+// buys Seats in. Config validation guarantees exactly one.
+func uncappedRole(roles []Role) (Role, bool) {
+	for _, role := range roles {
+		if role.Max == nil {
+			return role, true
+		}
+	}
+	return Role{}, false
+}
+
+// shiftShape turns a shift size into Seats. Each capped Role asks for its
+// ceiling and the uncapped Role takes the size, which is what the size has
+// always meant: leads sat outside it, everyone else inside.
+//
+// S2 gives shifts their own editable Shape and this derivation goes; the
+// contract does not change again when it does.
+func shiftShape(size int, roles []Role) []CpsatSeat {
+	shape := make([]CpsatSeat, 0, len(roles))
+	for _, role := range sortedByPriority(roles) {
+		count := size
+		if role.Max != nil {
+			count = *role.Max
+		}
+		shape = append(shape, CpsatSeat{Role: role.Name, Count: count})
+	}
+	return shape
+}
+
+// contractRoles renders the configured Roles in priority order.
+func contractRoles(roles []Role) []CpsatRole {
+	out := make([]CpsatRole, 0, len(roles))
+	for _, role := range sortedByPriority(roles) {
+		out = append(out, CpsatRole{Name: role.Name, Max: role.Max, Priority: role.Priority})
+	}
+	return out
+}
+
+// contractPreallocations renders a shift's pins, keeping [] rather than null.
+func contractPreallocations(pins []Preallocation) []CpsatPreallocation {
+	out := make([]CpsatPreallocation, 0, len(pins))
+	for _, pin := range pins {
+		out = append(out, CpsatPreallocation{
+			VolunteerID: pin.VolunteerID,
+			Custom:      pin.Custom,
+			Role:        pin.Role,
+		})
+	}
+	return out
+}
+
+func sortedByPriority(roles []Role) []Role {
+	ordered := make([]Role, len(roles))
+	copy(ordered, roles)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Priority < ordered[j].Priority })
+	return ordered
 }

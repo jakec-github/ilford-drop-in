@@ -45,7 +45,9 @@ class MaleRequiredConstraint:
             fill = sum(
                 v.seat_cost * x[(v.id, shift.index)] for v in problem.volunteers
             )
-            budget = max(0, shift.size - len(shift.custom_preallocations))
+            budget = max(
+                0, problem.shift_size(shift) - len(problem.shift_customs(shift))
+            )
 
             has_male = model.NewBoolVar(f"male_present_{shift.index}")
             tl_slot_open = model.NewBoolVar(f"tl_slot_open_{shift.index}")

@@ -28,7 +28,9 @@ class ShiftCapacityConstraint:
         for shift in problem.shifts:
             if shift.closed:
                 continue
-            budget = max(0, shift.size - len(shift.custom_preallocations))
+            budget = max(
+                0, problem.shift_size(shift) - len(problem.shift_customs(shift))
+            )
             model.Add(
                 sum(
                     v.seat_cost * x[(v.id, shift.index)]

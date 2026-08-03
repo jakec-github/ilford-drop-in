@@ -67,10 +67,10 @@ def _extract_shift(
     return OutputShift(
         index=spec.index,
         date=spec.date,
-        size=spec.size,
+        size=problem.shift_size(spec),
         closed=spec.closed,
         team_lead_id=team_lead_id,
         volunteer_ids=tuple(volunteer_ids),
-        custom_preallocations=spec.custom_preallocations,
+        custom_preallocations=problem.shift_customs(spec),
         allocated_group_keys=tuple(group_keys),
     )
