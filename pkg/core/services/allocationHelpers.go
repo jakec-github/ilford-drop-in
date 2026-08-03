@@ -87,7 +87,7 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 			LastName:    vol.LastName,
 			DisplayName: vol.DisplayName,
 			Gender:      vol.Gender,
-			IsTeamLead:  vol.Role == model.RoleTeamLead,
+			IsTeamLead:  vol.Holds(string(model.RoleTeamLead)),
 			GroupKey:    vol.GroupKey,
 		}
 	}

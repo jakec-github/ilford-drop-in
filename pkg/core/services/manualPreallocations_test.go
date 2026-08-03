@@ -173,7 +173,7 @@ func TestAllocateRotaFailsOnStaleManualPin(t *testing.T) {
 
 	volClient := &mockVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "vol-1", FirstName: "Ada", LastName: "Active", Role: model.RoleVolunteer, Status: "Active"},
+			{ID: "vol-1", FirstName: "Ada", LastName: "Active", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
 			// "gone" is deliberately absent / inactive — it is not in the active set.
 		},
 	}

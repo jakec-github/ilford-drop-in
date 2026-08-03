@@ -22,11 +22,26 @@ type Volunteer struct {
 	FirstName   string
 	LastName    string
 	DisplayName string // Computed by ComputeDisplayNames based on uniqueness
-	Role        LegacyRole
-	Status      string
-	Gender      string
-	Email       string
-	GroupKey    string // Empty string if no group
+	// Roles are the jobs this volunteer will do, in priority order. Holding a
+	// Role is what makes someone eligible for its Seats — there is no
+	// open-to-all Role and no mapping from one Role to another.
+	Roles    []string
+	Status   string
+	Gender   string
+	Email    string
+	GroupKey string // Empty string if no group
+}
+
+// Holds reports whether the volunteer may be allocated to the named Role.
+// Matching is exact: the roster, the config and the solver speak one set of
+// strings.
+func (v Volunteer) Holds(role string) bool {
+	for _, held := range v.Roles {
+		if held == role {
+			return true
+		}
+	}
+	return false
 }
 
 // Rotation represents a rota rotation

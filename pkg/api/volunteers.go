@@ -35,6 +35,15 @@ type listVolunteersResponse struct {
 	Volunteers []volunteerResponse `json:"volunteers"`
 }
 
+// firstRole returns the highest-priority Role held, or "" for a volunteer who
+// holds none.
+func firstRole(roles []string) string {
+	if len(roles) == 0 {
+		return ""
+	}
+	return roles[0]
+}
+
 // handleListVolunteers returns the synced volunteer roster, sorted by name. It
 // is admin-gated: unlike the assignee names on GET /shifts, this exposes
 // volunteer ids, groups, and everyone not currently on a shift.
@@ -58,10 +67,15 @@ func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
 			// sheet would otherwise get a trailing space.
 			Name:     v.DisplayName,
 			FullName: strings.TrimSpace(v.FirstName + " " + v.LastName),
-			Role:     string(v.Role),
-			Group:    v.GroupKey,
-			Gender:   v.Gender,
-			Active:   strings.EqualFold(v.Status, "Active"),
+			// The wire still carries one Role while the frontend expects one.
+			// Roles arrive in priority order, so the first is the Role a
+			// volunteer is known by — the same value this field held when the
+			// roster had a single Role column. Commit 12 of #89 widens it to
+			// the full set.
+			Role:   firstRole(v.Roles),
+			Group:  v.GroupKey,
+			Gender: v.Gender,
+			Active: strings.EqualFold(v.Status, "Active"),
 		})
 	}
 

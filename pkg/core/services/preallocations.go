@@ -121,7 +121,7 @@ func AddPreallocation(
 		if len(utils.FilterActiveVolunteers([]model.Volunteer{*vol})) == 0 {
 			return nil, wrapf(ErrInvalidInput, "volunteer %s is not active", params.VolunteerID)
 		}
-		if params.TeamLead && vol.Role != model.RoleTeamLead {
+		if params.TeamLead && !vol.Holds(string(model.RoleTeamLead)) {
 			return nil, wrapf(ErrInvalidInput, "volunteer %s is not a team lead", params.VolunteerID)
 		}
 		name = vol.DisplayName

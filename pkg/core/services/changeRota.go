@@ -458,9 +458,12 @@ func inferRole(inVol, outVol string, volunteersByID map[string]model.Volunteer, 
 		}
 	}
 
+	// The highest-priority Role held is the one this guess is about: a team lead
+	// also holds Service volunteer, and it is the lead Seat we mean to fill.
+	// Commit 10 of #89 replaces the whole guess with an explicit role.
 	role := string(model.RoleVolunteer)
-	if v, ok := volunteersByID[inVol]; ok {
-		role = string(v.Role)
+	if v, ok := volunteersByID[inVol]; ok && len(v.Roles) > 0 {
+		role = v.Roles[0]
 	}
 
 	if role == string(model.RoleTeamLead) {

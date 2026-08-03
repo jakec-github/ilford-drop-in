@@ -207,7 +207,7 @@ func buildCoverage(
 				if !known || !utils.IsActive(volunteer) {
 					continue
 				}
-				if volunteer.Role == model.RoleTeamLead {
+				if volunteer.Holds(string(model.RoleTeamLead)) {
 					hasTeamLead = true
 					continue
 				}

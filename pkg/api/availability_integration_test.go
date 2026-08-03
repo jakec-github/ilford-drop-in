@@ -94,7 +94,6 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 		assert.False(t, s.HasTeamLead)
 	}
 
-
 	// Submitting nothing is an answer, and reads differently from silence.
 	aliceToken := tokenFromLink(entryFor(t, current, "alice").Link)
 	empty := formOverHTTP(t, handler, http.MethodPost, aliceToken, `{"shiftIds":[]}`)

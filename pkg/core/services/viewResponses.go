@@ -482,10 +482,10 @@ func calculateShiftAvailability(
 				}
 
 				// Check role and count appropriately
-				if volunteer.Role == model.RoleTeamLead {
+				if volunteer.Holds(string(model.RoleTeamLead)) {
 					// Available team lead found
 					hasTeamLead = true
-				} else if volunteer.Role == model.RoleVolunteer {
+				} else if volunteer.Holds(string(model.RoleVolunteer)) {
 					// Available volunteer - count them
 					availableCount++
 				}
