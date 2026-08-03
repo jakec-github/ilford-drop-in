@@ -23,7 +23,22 @@ type mockAvailabilityStore struct {
 	shifts      []db.Shift
 	requests    []db.AvailabilityRequestV2
 	generations []db.AvailabilityGeneration
+	manualPins  []db.ManualPreallocation
 	nextID      int
+}
+
+func (m *mockAvailabilityStore) GetManualPreallocationsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.ManualPreallocation, error) {
+	want := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		want[id] = true
+	}
+	var out []db.ManualPreallocation
+	for _, p := range m.manualPins {
+		if want[p.ShiftID] {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 func (m *mockAvailabilityStore) GetRotations(context.Context) ([]db.Rotation, error) {
@@ -156,9 +171,19 @@ func mintRound(t *testing.T, store *mockAvailabilityStore, volunteers *mockVolun
 	return round
 }
 
+// roundEntries flattens a round back to the per-volunteer grain, which is what
+// most of these tests are asserting about.
+func roundEntries(round *AvailabilityRound) []AvailabilityEntry {
+	entries := make([]AvailabilityEntry, 0)
+	for _, g := range round.Groups {
+		entries = append(entries, g.Members...)
+	}
+	return entries
+}
+
 func tokenFor(t *testing.T, round *AvailabilityRound, volunteerID string) string {
 	t.Helper()
-	for _, e := range round.Entries {
+	for _, e := range roundEntries(round) {
 		if e.VolunteerID == volunteerID {
 			require.NotEmpty(t, e.Token)
 			return e.Token
@@ -175,20 +200,22 @@ func TestMintAvailabilityRoundAsksEveryActiveVolunteer(t *testing.T) {
 	store, cfg := availabilityFixture()
 	round := mintRound(t, store, availabilityVolunteers(), cfg)
 
-	require.Len(t, round.Entries, 3)
+	entries := roundEntries(round)
+	require.Len(t, entries, 3)
 	assert.Equal(t, "rota-1", round.RotaID)
 
 	tokens := map[string]bool{}
-	for _, e := range round.Entries {
+	for _, e := range entries {
 		assert.False(t, e.Replied)
 		assert.False(t, tokens[e.Token], "every volunteer gets their own link")
 		tokens[e.Token] = true
 	}
 
 	names := []string{}
-	for _, e := range round.Entries {
+	for _, e := range entries {
 		names = append(names, e.VolunteerName)
 	}
+	sort.Strings(names)
 	assert.Equal(t, []string{"Aaliyah Khan", "Emma Williams", "Michael Smith"}, names)
 }
 
@@ -208,7 +235,7 @@ func TestMintAvailabilityRoundTwiceIsANoOp(t *testing.T) {
 	})
 
 	second := mintRound(t, store, volunteers, cfg)
-	require.Len(t, second.Entries, 4)
+	require.Len(t, roundEntries(second), 4)
 	assert.Equal(t, michaelToken, tokenFor(t, second, "michael"), "an existing link must survive a re-mint")
 	assert.NotEmpty(t, tokenFor(t, second, "nina"))
 }
@@ -287,7 +314,7 @@ func TestSubmitNothingIsAnAnswer(t *testing.T) {
 
 	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
 	require.NoError(t, err)
-	for _, e := range updated.Entries {
+	for _, e := range roundEntries(updated) {
 		if e.VolunteerID == "michael" {
 			assert.True(t, e.Replied, "an empty answer is still an answer")
 			assert.Empty(t, e.AvailableShiftIDs)
@@ -351,7 +378,7 @@ func TestRoundReportsGroupCover(t *testing.T) {
 	require.NoError(t, err)
 
 	byVolunteer := map[string]AvailabilityEntry{}
-	for _, e := range updated.Entries {
+	for _, e := range roundEntries(updated) {
 		byVolunteer[e.VolunteerID] = e
 	}
 
