@@ -1,4 +1,5 @@
 import type {
+  AvailabilityEntry,
   AvailabilityFormState,
   AvailabilityLinkFailure,
   AvailabilityRound,
@@ -294,20 +295,37 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   }
 }
 
+interface ApiAvailabilityEntry {
+  volunteerId: string;
+  volunteerName: string;
+  link: string;
+  replied: boolean;
+  submittedAt?: string;
+  availableShiftIds: string[] | null;
+  coveredBy?: string[];
+}
+
 interface ApiAvailabilityRound {
   rotaId: string;
   start: string;
   end: string;
   allocated: boolean;
-  shifts: { id: string; date: string; closed: boolean }[];
-  entries: {
-    volunteerId: string;
-    volunteerName: string;
-    link: string;
+  shifts: {
+    id: string;
+    date: string;
+    closed: boolean;
+    needed: number;
+    pinned: number;
+    available: number;
+    delta: number;
+    hasTeamLead: boolean;
+  }[];
+  groups: {
+    key: string;
+    name: string;
     replied: boolean;
-    submittedAt?: string;
     availableShiftIds: string[] | null;
-    coveredBy?: string[];
+    members: ApiAvailabilityEntry[] | null;
   }[];
 }
 
@@ -320,6 +338,18 @@ interface ApiAvailabilityForm {
   submittedAt?: string;
 }
 
+function toEntry(e: ApiAvailabilityEntry): AvailabilityEntry {
+  return {
+    volunteerId: e.volunteerId,
+    volunteerName: e.volunteerName,
+    link: e.link,
+    replied: e.replied,
+    submittedAt: e.submittedAt ?? null,
+    availableShiftIds: e.availableShiftIds ?? [],
+    coveredBy: e.coveredBy ?? [],
+  };
+}
+
 function toRound(data: ApiAvailabilityRound): AvailabilityRound {
   return {
     rotaId: data.rotaId,
@@ -327,14 +357,12 @@ function toRound(data: ApiAvailabilityRound): AvailabilityRound {
     end: data.end,
     allocated: data.allocated,
     shifts: data.shifts,
-    entries: data.entries.map((e) => ({
-      volunteerId: e.volunteerId,
-      volunteerName: e.volunteerName,
-      link: e.link,
-      replied: e.replied,
-      submittedAt: e.submittedAt ?? null,
-      availableShiftIds: e.availableShiftIds ?? [],
-      coveredBy: e.coveredBy ?? [],
+    groups: data.groups.map((g) => ({
+      key: g.key,
+      name: g.name,
+      replied: g.replied,
+      availableShiftIds: g.availableShiftIds ?? [],
+      members: (g.members ?? []).map(toEntry),
     })),
   };
 }

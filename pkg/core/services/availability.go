@@ -25,6 +25,9 @@ type AvailabilityStore interface {
 	GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequestV2, error)
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	InsertAvailabilityResponse(ctx context.Context, requestID string, answers []db.ShiftAnswer) (*db.AvailabilityGeneration, error)
+	// Pins hold seats the answers coming in do not have to fill, so the round's
+	// coverage cannot be read without them.
+	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
 }
 
 // AvailabilityShift is one of a rota's shifts as both the volunteer's form and
@@ -54,16 +57,21 @@ type AvailabilityEntry struct {
 	CoveredBy         []string
 }
 
-// AvailabilityRound is a rota's round: its shifts, and where every volunteer in
-// it has got to. Allocated marks the round closed — links stop working then, so
-// an admin looking at an allocated round is reading history.
+// AvailabilityRound is a rota's round: how each of its shifts is looking, and
+// where everyone asked has got to. Allocated marks the round closed — links stop
+// working then, so an admin looking at an allocated round is reading history.
+//
+// Groups, not volunteers, are the top level: a group is allocated as a unit and
+// answers as a unit, so it is the grain an admin reads a round at. Each group
+// carries its members, whose links are the per-volunteer grain a request is
+// actually minted at.
 type AvailabilityRound struct {
 	RotaID    string
 	RotaStart string
 	RotaEnd   string
 	Allocated bool
-	Shifts    []AvailabilityShift
-	Entries   []AvailabilityEntry
+	Shifts    []ShiftCoverage
+	Groups    []AvailabilityGroup
 }
 
 // AvailabilityForm is what a volunteer sees behind their link.
@@ -436,21 +444,29 @@ func buildRound(
 		entries = append(entries, entry)
 	}
 
-	// Ordered by name so the roster reads like the volunteer list beside it.
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].VolunteerName != entries[j].VolunteerName {
-			return entries[i].VolunteerName < entries[j].VolunteerName
-		}
-		return entries[i].VolunteerID < entries[j].VolunteerID
-	})
+	volunteersByID := make(map[string]model.Volunteer, len(volunteers))
+	for _, v := range volunteers {
+		volunteersByID[v.ID] = v
+	}
+
+	shiftIDs := make([]string, 0, len(shifts))
+	for _, s := range shifts {
+		shiftIDs = append(shiftIDs, s.ID)
+	}
+	pins, err := database.GetManualPreallocationsByShiftIDs(ctx, shiftIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manual preallocations: %w", err)
+	}
+
+	groups := buildAvailabilityGroups(entries, volunteersByID, shifts)
 
 	return &AvailabilityRound{
 		RotaID:    rota.ID,
 		RotaStart: rota.Start,
 		RotaEnd:   rota.End,
 		Allocated: rota.AllocatedDatetime != "",
-		Shifts:    shifts,
-		Entries:   entries,
+		Shifts:    buildCoverage(shifts, groups, buildShiftSeats(cfg, shifts, pins, logger), volunteersByID),
+		Groups:    groups,
 	}, nil
 }
 

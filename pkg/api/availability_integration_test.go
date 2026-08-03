@@ -28,19 +28,25 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 
 	// Minting a round asks every active volunteer, each with their own link.
 	round := mintRoundOverHTTP(t, handler)
-	require.Len(t, round.Entries, 3)
+	require.Len(t, roundMembers(round), 3)
 	require.Len(t, round.Shifts, 3)
-	for _, e := range round.Entries {
+	for _, e := range roundMembers(round) {
 		assert.False(t, e.Replied)
 		assert.Contains(t, e.Link, "/availability/", "the link is the page a volunteer opens, not the endpoint behind it")
+	}
+
+	// Nobody has answered, so nothing is available for anything yet.
+	for _, s := range round.Shifts {
+		assert.Equal(t, 0, s.Available)
+		assert.False(t, s.HasTeamLead)
 	}
 
 	// Minting again is a no-op: the same three volunteers, holding the same
 	// links, so anything already distributed still works.
 	second := mintRoundOverHTTP(t, handler)
-	require.Len(t, second.Entries, 3)
-	for i, e := range second.Entries {
-		assert.Equal(t, round.Entries[i].Link, e.Link)
+	require.Len(t, roundMembers(second), 3)
+	for i, e := range roundMembers(second) {
+		assert.Equal(t, roundMembers(round)[i].Link, e.Link)
 	}
 
 	bob := entryFor(t, round, "bob")
@@ -76,6 +82,19 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	assert.Equal(t, narrowed, entryFor(t, current, "bob").AvailableShiftIDs)
 	assert.False(t, entryFor(t, current, "alice").Replied)
 
+	// And the shift bob is available for now counts him, while the two he
+	// dropped count nobody. Alice is a team lead, so her silence leaves every
+	// date without cover.
+	for _, s := range current.Shifts {
+		if s.ID == narrowed[0] {
+			assert.Equal(t, 1, s.Available, "bob is available for this one")
+		} else {
+			assert.Equal(t, 0, s.Available)
+		}
+		assert.False(t, s.HasTeamLead)
+	}
+
+
 	// Submitting nothing is an answer, and reads differently from silence.
 	aliceToken := tokenFromLink(entryFor(t, current, "alice").Link)
 	empty := formOverHTTP(t, handler, http.MethodPost, aliceToken, `{"shiftIds":[]}`)
@@ -87,6 +106,20 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	assert.True(t, alice.Replied, "\"none of these\" is a reply")
 	assert.Empty(t, alice.AvailableShiftIDs)
 	assert.False(t, entryFor(t, current, "charlie").Replied, "nobody submitted for charlie")
+
+	// Alice is the only team lead, so her answer is what decides whether a date
+	// has cover — and it does so without filling an ordinary seat.
+	formOverHTTP(t, handler, http.MethodPost, aliceToken, body(t, narrowed))
+	current = roundOverHTTP(t, handler)
+	for _, s := range current.Shifts {
+		if s.ID == narrowed[0] {
+			assert.True(t, s.HasTeamLead)
+			assert.Equal(t, 1, s.Available, "a team lead does not fill an ordinary seat")
+		} else {
+			assert.False(t, s.HasTeamLead)
+			assert.Equal(t, 0, s.Available)
+		}
+	}
 }
 
 // TestAvailabilityLinkOpensThePage proves the two halves of a volunteer's link
@@ -101,7 +134,7 @@ func TestAvailabilityLinkOpensThePage(t *testing.T) {
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	round := mintRoundOverHTTP(t, handler)
-	token := tokenFromLink(round.Entries[0].Link)
+	token := tokenFromLink(roundMembers(round)[0].Link)
 
 	rec = doRequest(t, handler, http.MethodGet, "/availability/"+token, "")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -146,9 +179,19 @@ func formOverHTTP(t *testing.T, handler http.Handler, method, token, payload str
 	return form
 }
 
+// roundMembers flattens a round back to the per-volunteer grain the links live
+// at, which is what most of these assertions are about.
+func roundMembers(round availabilityRoundResponse) []availabilityEntryResponse {
+	members := make([]availabilityEntryResponse, 0)
+	for _, g := range round.Groups {
+		members = append(members, g.Members...)
+	}
+	return members
+}
+
 func entryFor(t *testing.T, round availabilityRoundResponse, volunteerID string) availabilityEntryResponse {
 	t.Helper()
-	for _, e := range round.Entries {
+	for _, e := range roundMembers(round) {
 		if e.VolunteerID == volunteerID {
 			return e
 		}

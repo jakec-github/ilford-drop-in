@@ -30,13 +30,38 @@ type availabilityEntryResponse struct {
 	CoveredBy         []string `json:"coveredBy,omitempty"`
 }
 
+// availabilityGroupResponse is a round at the grain allocation happens at. The
+// group's availability is the group rule already applied, so no client has to
+// re-derive it — the logic lives in one place (ADR 0004).
+type availabilityGroupResponse struct {
+	Key               string                      `json:"key"`
+	Name              string                      `json:"name"`
+	Replied           bool                        `json:"replied"`
+	AvailableShiftIDs []string                    `json:"availableShiftIds"`
+	Members           []availabilityEntryResponse `json:"members"`
+}
+
+// availabilityCoverageResponse is one shift's staffing picture: what it still
+// needs, who is available for it, and whether it has a lead. A closed shift
+// carries zeroes — it is not a shift that is short of people.
+type availabilityCoverageResponse struct {
+	ID          string `json:"id"`
+	Date        string `json:"date"`
+	Closed      bool   `json:"closed"`
+	Needed      int    `json:"needed"`
+	Pinned      int    `json:"pinned"`
+	Available   int    `json:"available"`
+	Delta       int    `json:"delta"`
+	HasTeamLead bool   `json:"hasTeamLead"`
+}
+
 type availabilityRoundResponse struct {
-	RotaID    string                      `json:"rotaId"`
-	Start     string                      `json:"start"`
-	End       string                      `json:"end"`
-	Allocated bool                        `json:"allocated"`
-	Shifts    []availabilityShiftResponse `json:"shifts"`
-	Entries   []availabilityEntryResponse `json:"entries"`
+	RotaID    string                         `json:"rotaId"`
+	Start     string                         `json:"start"`
+	End       string                         `json:"end"`
+	Allocated bool                           `json:"allocated"`
+	Shifts    []availabilityCoverageResponse `json:"shifts"`
+	Groups    []availabilityGroupResponse    `json:"groups"`
 }
 
 // availabilityFormResponse is the volunteer's own view. It carries no ids that
@@ -158,22 +183,44 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 		Start:     round.RotaStart,
 		End:       round.RotaEnd,
 		Allocated: round.Allocated,
-		Shifts:    toShiftResponses(round.Shifts),
-		Entries:   make([]availabilityEntryResponse, 0, len(round.Entries)),
+		Shifts:    make([]availabilityCoverageResponse, 0, len(round.Shifts)),
+		Groups:    make([]availabilityGroupResponse, 0, len(round.Groups)),
 	}
-	for _, e := range round.Entries {
-		entry := availabilityEntryResponse{
-			VolunteerID:       e.VolunteerID,
-			VolunteerName:     e.VolunteerName,
-			Link:              availabilityLink(r, e.Token),
-			Replied:           e.Replied,
-			AvailableShiftIDs: e.AvailableShiftIDs,
-			CoveredBy:         e.CoveredBy,
+	for _, s := range round.Shifts {
+		resp.Shifts = append(resp.Shifts, availabilityCoverageResponse{
+			ID:          s.ShiftID,
+			Date:        s.Date,
+			Closed:      s.Closed,
+			Needed:      s.Needed,
+			Pinned:      s.Pinned,
+			Available:   s.Available,
+			Delta:       s.Delta,
+			HasTeamLead: s.HasTeamLead,
+		})
+	}
+	for _, g := range round.Groups {
+		group := availabilityGroupResponse{
+			Key:               g.Key,
+			Name:              g.Name,
+			Replied:           g.Replied,
+			AvailableShiftIDs: g.AvailableShiftIDs,
+			Members:           make([]availabilityEntryResponse, 0, len(g.Members)),
 		}
-		if !e.SubmittedAt.IsZero() {
-			entry.SubmittedAt = e.SubmittedAt.UTC().Format(time.RFC3339)
+		for _, e := range g.Members {
+			member := availabilityEntryResponse{
+				VolunteerID:       e.VolunteerID,
+				VolunteerName:     e.VolunteerName,
+				Link:              availabilityLink(r, e.Token),
+				Replied:           e.Replied,
+				AvailableShiftIDs: e.AvailableShiftIDs,
+				CoveredBy:         e.CoveredBy,
+			}
+			if !e.SubmittedAt.IsZero() {
+				member.SubmittedAt = e.SubmittedAt.UTC().Format(time.RFC3339)
+			}
+			group.Members = append(group.Members, member)
 		}
-		resp.Entries = append(resp.Entries, entry)
+		resp.Groups = append(resp.Groups, group)
 	}
 	return resp
 }

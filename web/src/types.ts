@@ -103,16 +103,49 @@ export interface AvailabilityEntry {
   coveredBy: string[];
 }
 
-// AvailabilityRound is a rota's round: its shifts, and where everyone asked has
-// got to. allocated means the round is closed — the links have stopped working,
-// so an admin looking at it is reading history.
+// AvailabilityGroup is a round at the grain allocation happens at: the people
+// placed together, and the one answer that speaks for them.
+//
+// availableShiftIds is the group rule already applied by the server — the
+// intersection over whoever answered — so nothing here re-derives it. Empty for
+// a group nobody has answered for, which replied is what tells apart from a
+// group that answered "none of these".
+export interface AvailabilityGroup {
+  key: string;
+  name: string;
+  replied: boolean;
+  availableShiftIds: string[];
+  members: AvailabilityEntry[];
+}
+
+// ShiftCoverage is one shift's staffing picture before the rota is run: what it
+// still needs once already-pinned seats are taken out, how many people are
+// available to fill them, and whether it has a team lead. delta is the number an
+// admin is really after — negative is short.
+//
+// A closed shift carries zeroes: the drop-in is not running that day, so it is
+// not a shift that is short of people.
+export interface ShiftCoverage {
+  id: string;
+  date: string;
+  closed: boolean;
+  needed: number;
+  pinned: number;
+  available: number;
+  delta: number;
+  hasTeamLead: boolean;
+}
+
+// AvailabilityRound is a rota's round: how each of its shifts is looking, and
+// where everyone asked has got to. allocated means the round is closed — the
+// links have stopped working, so an admin looking at it is reading history.
 export interface AvailabilityRound {
   rotaId: string;
   start: string;
   end: string;
   allocated: boolean;
-  shifts: AvailabilityShift[];
-  entries: AvailabilityEntry[];
+  shifts: ShiftCoverage[];
+  groups: AvailabilityGroup[];
 }
 
 // AvailabilityFormState is what a volunteer sees behind their link.
