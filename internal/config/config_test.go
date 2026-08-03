@@ -14,6 +14,27 @@ import (
 
 func intPtr(i int) *int { return &i }
 
+// minimalConfigYAML is every required field and nothing else — the smallest
+// file LoadFromPath accepts. Tests that care about one addition append it.
+const minimalConfigYAML = `
+volunteerSheetID: "sheet123"
+serviceVolunteersTab: "Volunteers"
+rotaSheetID: "rota456"
+databaseURL: "postgres://localhost:5432/test"
+gmailUserID: "user@example.com"
+maxAllocationFrequency: 0.25
+defaultShiftSize: 2
+shiftStartTime: "19:30"
+shiftEndTime: "21:30"
+requiresMale: true
+roles:
+  - name: "Team lead"
+    max: 1
+    priority: 1
+  - name: "Service volunteer"
+    priority: 2
+`
+
 // validRoles is the pair of Roles S1 configures — one capped, one uncapped,
 // which is the shape every valid config has to have.
 func validRoles() []model.Role {
@@ -497,26 +518,7 @@ func TestLoadFromPath_MinimalConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "minimal_config.yaml")
 
-	minimalConfig := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
-maxAllocationFrequency: 0.25
-defaultShiftSize: 2
-shiftStartTime: "19:30"
-shiftEndTime: "21:30"
-requiresMale: true
-roles:
-  - name: "Team lead"
-    max: 1
-    priority: 1
-  - name: "Service volunteer"
-    priority: 2
-`
-
-	err := os.WriteFile(configPath, []byte(minimalConfig), 0644)
+	err := os.WriteFile(configPath, []byte(minimalConfigYAML), 0644)
 	require.NoError(t, err)
 
 	cfg, err := LoadFromPath(configPath)
@@ -569,6 +571,50 @@ func TestLoadFromPath_FileNotFound(t *testing.T) {
 	_, err := LoadFromPath("/nonexistent/path/config.yaml")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+func TestLoadFromPath_EmptyFile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, nil, 0644))
+
+	_, err := LoadFromPath(configPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is empty")
+}
+
+// A key the struct does not know is nearly always a key that used to mean
+// something: the preallocation format changed under a live prod config, and
+// non-strict parsing let it boot with every pin silently dropped. Rejecting it
+// by name is the difference between a startup error and a wrong rota.
+func TestLoadFromPath_UnknownKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		extra   string
+		wantKey string
+	}{
+		{
+			name:    "top level",
+			extra:   "customPreallocations:\n  - 'OC Church'\n",
+			wantKey: "customPreallocations",
+		},
+		{
+			name:    "inside a rota override",
+			extra:   "rotaOverrides:\n  - rrule: 'FREQ=WEEKLY'\n    preallocatedTeamLeadID: 'V1'\n",
+			wantKey: "preallocatedTeamLeadID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+tt.extra), 0644))
+
+			_, err := LoadFromPath(configPath)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "failed to parse config file")
+			assert.Contains(t, err.Error(), tt.wantKey)
+		})
+	}
 }
 func TestLoadFromPath_RotaOverrideWithoutRRule(t *testing.T) {
 	tmpDir := t.TempDir()

@@ -31,9 +31,11 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
-# Deploy directory: compose files arrive via the deploy workflow, the three
+# Deploy directory: compose files arrive via the deploy workflow. The three
 # config files (drop_in_config.prod.yaml, oauthClientWeb.prod.json,
-# serviceAccount.prod.json) are scp'd manually — see docs/deployment.md.
-mkdir -p /opt/dropin
+# serviceAccount.prod.json) go in config/, which compose mounts into the
+# container whole — scripts/deploy-config.sh ships the first, the other two are
+# scp'd by hand. See docs/deployment.md.
+mkdir -p /opt/dropin/config
 
 echo "Provisioning complete."

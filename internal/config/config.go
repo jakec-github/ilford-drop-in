@@ -1,7 +1,10 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -148,7 +151,18 @@ func LoadWithEnv(env string) (*Config, error) {
 		return nil, fmt.Errorf("failed to find config file: %w", err)
 	}
 
-	cfg, err := LoadFromPath(configPath)
+	return LoadPathWithEnv(configPath, env)
+}
+
+// LoadPathWithEnv loads and validates the configuration at an explicit path,
+// applying the environment-dependent rules that LoadFromPath cannot.
+//
+// It is the whole of what loading a config means, minus finding the file — so
+// a config can be vetted before it is anywhere it would be found, which is what
+// scripts/deploy-config.sh does before it ships one to the droplet. It opens
+// nothing but the file: no database, no Google client.
+func LoadPathWithEnv(path, env string) (*Config, error) {
+	cfg, err := LoadFromPath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +188,13 @@ func checkDevMode(cfg *Config, env string) error {
 	return fmt.Errorf("devMode is only permitted in the %q environment, not %q: remove the devMode block from the config or run with -env %s", DevEnv, env, DevEnv)
 }
 
-// LoadFromPath loads and validates the configuration from a specific path
+// LoadFromPath loads and validates the configuration from a specific path.
+//
+// Decoding is strict: a key the struct does not know fails the load, naming it.
+// A config almost never gains a stray key by accident — it gains one because a
+// key that used to mean something no longer does, and ignoring it silently
+// drops whatever it configured. That happened with the preallocation format,
+// and the server booted happily having thrown every pin away.
 func LoadFromPath(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -182,7 +202,15 @@ func LoadFromPath(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
+		// A Decoder reports an empty document as io.EOF, where Unmarshal used to
+		// return a zero Config. Say what it is: a truncated copy is the likeliest
+		// way to get here, and "EOF" does not suggest looking at the file's size.
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("config file %s is empty", path)
+		}
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 

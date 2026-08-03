@@ -62,6 +62,11 @@ func main() {
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
 
+	// Not lazy, and deliberately not initialised: validate-config reads a file
+	// and nothing else, so it can vet a prod config from a laptop. It shadows
+	// PersistentPreRunE itself — see the command.
+	rootCmd.AddCommand(commands.ValidateConfigCmd())
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
