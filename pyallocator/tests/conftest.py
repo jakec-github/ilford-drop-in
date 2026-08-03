@@ -5,6 +5,11 @@ solves with an explicit constraint/preference subset so each test file
 exercises exactly one module (plus the grouping constraint, which
 replaces the old structural group-atomicity, and the placeholder
 objective so solutions are non-empty).
+
+The builders take sizes, team-lead flags and pins the way the contract used
+to express them, and translate to Roles, Seats and role-named pins here. That
+keeps every test stating what it is actually about, and means the translation
+is written once rather than in forty places.
 """
 
 from __future__ import annotations
@@ -18,10 +23,22 @@ from pyallocator.domain import (
     Group,
     HistoricalShift,
     Member,
+    Preallocation,
+    Role,
+    Seat,
     ShiftSpec,
 )
 from pyallocator.constraints import grouping
 from pyallocator.preferences import maximize_allocations
+
+# The two Roles the system had before they were configurable. Tests that do
+# not care about Roles get these.
+TEAM_LEAD = "Team lead"
+SERVICE_VOLUNTEER = "Service volunteer"
+DEFAULT_ROLES = (
+    Role(name=TEAM_LEAD, max=1, priority=1),
+    Role(name=SERVICE_VOLUNTEER, max=None, priority=2),
+)
 
 
 def make_member(
@@ -29,14 +46,19 @@ def make_member(
     *,
     gender: str = "Female",
     is_team_lead: bool = False,
+    roles: Sequence[str] | None = None,
 ) -> Member:
+    # A team lead holds Service volunteer too — the roster's migration note,
+    # and what keeps leads eligible for ordinary Seats.
+    if roles is None:
+        roles = (TEAM_LEAD, SERVICE_VOLUNTEER) if is_team_lead else (SERVICE_VOLUNTEER,)
     return Member(
         id=member_id,
         first_name=member_id.capitalize(),
         last_name="Test",
         display_name=member_id.capitalize(),
         gender=gender,
-        is_team_lead=is_team_lead,
+        roles=tuple(roles),
     )
 
 
@@ -67,16 +89,34 @@ def make_shift(
     custom_preallocations: Sequence[str] = (),
     preallocated_volunteer_ids: Sequence[str] = (),
     preallocated_team_lead_id: str = "",
+    roles: Sequence[Role] = DEFAULT_ROLES,
 ) -> ShiftSpec:
+    # size buys Seats in the uncapped Role; each capped Role asks for its
+    # ceiling. This is what Go computes from a shift's size.
+    shape = tuple(
+        Seat(role=r.name, count=r.max if r.capped else size) for r in roles
+    )
+    pins = [
+        Preallocation(volunteer_id="", custom=c, role=SERVICE_VOLUNTEER)
+        for c in custom_preallocations
+    ]
+    pins += [
+        Preallocation(volunteer_id=v, custom="", role=SERVICE_VOLUNTEER)
+        for v in preallocated_volunteer_ids
+    ]
+    if preallocated_team_lead_id:
+        pins.append(
+            Preallocation(
+                volunteer_id=preallocated_team_lead_id, custom="", role=TEAM_LEAD
+            )
+        )
     # Default dates are weekly in July; pass date= to cross a month boundary.
     return ShiftSpec(
         index=index,
         date=date if date is not None else f"2026-07-{13 + 7 * index:02d}",
-        size=size,
         closed=closed,
-        custom_preallocations=tuple(custom_preallocations),
-        preallocated_volunteer_ids=tuple(preallocated_volunteer_ids),
-        preallocated_team_lead_id=preallocated_team_lead_id,
+        shape=shape,
+        preallocations=tuple(pins),
     )
 
 
@@ -86,11 +126,15 @@ def make_input(
     *,
     max_allocation_count: int = 99,
     historical_shifts: Sequence[HistoricalShift] = (),
+    roles: Sequence[Role] = DEFAULT_ROLES,
+    requires_male: bool = True,
 ) -> AllocationInput:
     return AllocationInput(
         max_allocation_count=max_allocation_count,
         shifts=tuple(shifts),
         groups=tuple(groups),
+        roles=tuple(roles),
+        requires_male=requires_male,
         historical_shifts=tuple(historical_shifts),
     )
 

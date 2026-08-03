@@ -17,6 +17,9 @@ from .domain import (
     HistoricalShift,
     Member,
     OutputShift,
+    Preallocation,
+    Role,
+    Seat,
     ShiftSpec,
 )
 
@@ -71,7 +74,7 @@ def _parse_member(d: dict[str, Any], where: str) -> Member:
         last_name=_require(d, "last_name", str, where),
         display_name=_optional(d, "display_name", str, "", where),
         gender=_optional(d, "gender", str, "", where),
-        is_team_lead=_optional(d, "is_team_lead", bool, False, where),
+        roles=_str_tuple(d, "roles", where),
     )
 
 
@@ -94,18 +97,59 @@ def _parse_group(d: dict[str, Any], where: str) -> Group:
     )
 
 
+def _parse_role(d: dict[str, Any], where: str) -> Role:
+    if not isinstance(d, dict):
+        raise InputError(f"{where}: expected object, got {type(d).__name__}")
+    max_ = _optional(d, "max", int, None, where)
+    if max_ is not None and max_ < 1:
+        raise InputError(f"{where}.max: expected at least 1, got {max_}")
+    return Role(
+        name=_require(d, "name", str, where),
+        max=max_,
+        priority=_optional(d, "priority", int, 0, where),
+    )
+
+
+def _parse_seat(d: dict[str, Any], where: str) -> Seat:
+    if not isinstance(d, dict):
+        raise InputError(f"{where}: expected object, got {type(d).__name__}")
+    count = _require(d, "count", int, where)
+    if count < 0:
+        raise InputError(f"{where}.count: expected at least 0, got {count}")
+    return Seat(role=_require(d, "role", str, where), count=count)
+
+
+def _parse_preallocation(d: dict[str, Any], where: str) -> Preallocation:
+    if not isinstance(d, dict):
+        raise InputError(f"{where}: expected object, got {type(d).__name__}")
+    volunteer_id = _optional(d, "volunteer_id", str, "", where)
+    custom = _optional(d, "custom", str, "", where)
+    if bool(volunteer_id) == bool(custom):
+        raise InputError(
+            f"{where}: expected exactly one of 'volunteer_id' and 'custom'"
+        )
+    return Preallocation(
+        volunteer_id=volunteer_id,
+        custom=custom,
+        role=_require(d, "role", str, where),
+    )
+
+
 def _parse_shift(d: dict[str, Any], where: str) -> ShiftSpec:
     if not isinstance(d, dict):
         raise InputError(f"{where}: expected object, got {type(d).__name__}")
+    shape_raw = _optional(d, "shape", list, [], where)
+    pins_raw = _optional(d, "preallocations", list, [], where)
     return ShiftSpec(
         index=_require(d, "index", int, where),
         date=_require(d, "date", str, where),
-        size=_require(d, "size", int, where),
         closed=_optional(d, "closed", bool, False, where),
-        custom_preallocations=_str_tuple(d, "custom_preallocations", where),
-        preallocated_volunteer_ids=_str_tuple(d, "preallocated_volunteer_ids", where),
-        preallocated_team_lead_id=_optional(
-            d, "preallocated_team_lead_id", str, "", where
+        shape=tuple(
+            _parse_seat(s, f"{where}.shape[{i}]") for i, s in enumerate(shape_raw)
+        ),
+        preallocations=tuple(
+            _parse_preallocation(p, f"{where}.preallocations[{i}]")
+            for i, p in enumerate(pins_raw)
         ),
     )
 
@@ -126,7 +170,18 @@ def parse_input(data: Any) -> AllocationInput:
 
     shifts_raw = _require(data, "shifts", list, "input")
     groups_raw = _require(data, "groups", list, "input")
+    roles_raw = _require(data, "roles", list, "input")
     historical_raw = _optional(data, "historical_shifts", list, [], "input")
+
+    roles = tuple(_parse_role(r, f"input.roles[{i}]") for i, r in enumerate(roles_raw))
+    role_names = {r.name for r in roles}
+    if len(role_names) != len(roles):
+        raise InputError("input.roles: role names must be unique")
+    uncapped = [r for r in roles if not r.capped]
+    if len(uncapped) != 1:
+        raise InputError(
+            f"input.roles: expected exactly one uncapped role, got {len(uncapped)}"
+        )
 
     shifts = tuple(
         _parse_shift(s, f"input.shifts[{i}]") for i, s in enumerate(shifts_raw)
@@ -137,6 +192,20 @@ def parse_input(data: Any) -> AllocationInput:
                 f"input.shifts[{i}]: index {shift.index} out of order "
                 "(shifts must be sorted with contiguous indices from 0)"
             )
+        # Seats and pins may only name Roles that exist: an unknown name here
+        # is a Seat nobody can fill or a pin nobody can honour, and both would
+        # otherwise surface as an unexplained INFEASIBLE.
+        for seat in shift.shape:
+            if seat.role not in role_names:
+                raise InputError(
+                    f"input.shifts[{i}]: shape names unknown role '{seat.role}'"
+                )
+        for pin in shift.preallocations:
+            if pin.role not in role_names:
+                raise InputError(
+                    f"input.shifts[{i}]: preallocation names unknown role "
+                    f"'{pin.role}'"
+                )
 
     groups = tuple(
         _parse_group(g, f"input.groups[{i}]") for i, g in enumerate(groups_raw)
@@ -156,6 +225,8 @@ def parse_input(data: Any) -> AllocationInput:
         max_allocation_count=_require(data, "max_allocation_count", int, "input"),
         shifts=shifts,
         groups=groups,
+        roles=roles,
+        requires_male=_optional(data, "requires_male", bool, False, "input"),
         historical_shifts=tuple(
             _parse_historical_shift(h, f"input.historical_shifts[{i}]")
             for i, h in enumerate(historical_raw)

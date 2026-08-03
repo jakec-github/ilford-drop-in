@@ -77,7 +77,7 @@ func run(env string, portOverride int) error {
 			zap.String("adminEmail", cfg.DevMode.AdminEmail))
 
 		syncVolunteers = func(context.Context) error {
-			fetched, err := devmode.LoadVolunteers(cfg.DevMode.VolunteersCSV)
+			fetched, err := devmode.LoadVolunteers(cfg.DevMode.VolunteersCSV, cfg.RoleTable())
 			if err != nil {
 				return err
 			}

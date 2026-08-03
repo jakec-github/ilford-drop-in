@@ -10,9 +10,24 @@ import pytest
 
 from pyallocator.cli import main
 
+ROLES = [
+    {"name": "Team lead", "max": 1, "priority": 1},
+    {"name": "Service volunteer", "max": None, "priority": 2},
+]
+
+
+def shape(size: int) -> list[dict]:
+    return [
+        {"role": "Team lead", "count": 1},
+        {"role": "Service volunteer", "count": size},
+    ]
+
+
 VALID_INPUT = {
     "max_allocation_count": 1,
-    "shifts": [{"index": 0, "date": "2026-07-13", "size": 2}],
+    "roles": ROLES,
+    "requires_male": True,
+    "shifts": [{"index": 0, "date": "2026-07-13", "shape": shape(2)}],
     "groups": [
         {
             "group_key": "Solo Volunteer",
@@ -25,7 +40,7 @@ VALID_INPUT = {
                     # Male so the default male_required constraint lets a
                     # one-volunteer shift fill in this contract test.
                     "gender": "Male",
-                    "is_team_lead": False,
+                    "roles": ["Service volunteer"],
                 }
             ],
             "available_shift_indices": [0],
@@ -57,8 +72,11 @@ def test_valid_input_exit_zero(tmp_path):
 def test_infeasible_exit_zero(tmp_path):
     payload = json.loads(json.dumps(VALID_INPUT))
     # Two singles preallocated onto a size-1 shift -> INFEASIBLE.
-    payload["shifts"][0]["size"] = 1
-    payload["shifts"][0]["preallocated_volunteer_ids"] = ["v1", "v2"]
+    payload["shifts"][0]["shape"] = shape(1)
+    payload["shifts"][0]["preallocations"] = [
+        {"volunteer_id": "v1", "custom": "", "role": "Service volunteer"},
+        {"volunteer_id": "v2", "custom": "", "role": "Service volunteer"},
+    ]
     payload["groups"].append(
         {
             "group_key": "Other Volunteer",
@@ -69,7 +87,7 @@ def test_infeasible_exit_zero(tmp_path):
                     "last_name": "Volunteer",
                     "display_name": "Other",
                     "gender": "Male",
-                    "is_team_lead": False,
+                    "roles": ["Service volunteer"],
                 }
             ],
             "available_shift_indices": [0],
@@ -100,7 +118,9 @@ def test_contract_violation_exit_one(tmp_path):
 
 def test_unknown_preallocated_id_exit_one(tmp_path):
     payload = json.loads(json.dumps(VALID_INPUT))
-    payload["shifts"][0]["preallocated_volunteer_ids"] = ["nobody"]
+    payload["shifts"][0]["preallocations"] = [
+        {"volunteer_id": "nobody", "custom": "", "role": "Service volunteer"}
+    ]
     code, out = run_cli(tmp_path, payload)
     assert code == 1
     assert "nobody" in out["error"]

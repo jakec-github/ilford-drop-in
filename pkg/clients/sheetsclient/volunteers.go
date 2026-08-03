@@ -2,22 +2,38 @@ package sheetsclient
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// Expected column names in volunteers sheet
+// Expected column names in volunteers sheet. Roles are not among them: they
+// arrive as `<name> - Role` tick columns discovered from the header, so that
+// configuring a new Role needs a new column and no code change.
 var volunteerFields = []string{
 	"Unique ID",
 	"First name",
 	"Last name",
-	"Role",
 	"Status",
 	"Sex/Gender",
 	"Email",
 	"Group key",
+}
+
+// roleColumnSuffix marks a header cell as a Role tick-box column. The legacy
+// `Role` dropdown does not carry it, so the two can sit side by side while the
+// sheet is migrated.
+const roleColumnSuffix = " - Role"
+
+// tickValues are the cell contents that count as a ticked box, compared
+// lower-cased and trimmed. A Sheets tick-box writes TRUE; the rest are what
+// people type by hand.
+var tickValues = map[string]bool{
+	"true": true,
+	"yes":  true,
+	"✓":    true,
 }
 
 // ListVolunteers retrieves and parses volunteers from the configured spreadsheet
@@ -33,7 +49,7 @@ func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
 	}
 
 	// Parse volunteers
-	volunteers, err := ParseVolunteers(values)
+	volunteers, err := ParseVolunteers(values, cfg.RoleTable())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse volunteers: %w", err)
 	}
@@ -92,7 +108,13 @@ func ComputeDisplayNames(volunteers []model.Volunteer) {
 // exported because the same tabular shape arrives from more than one place: the
 // Sheets API here, and a CSV export in dev mode (internal/devmode). Both go
 // through this parser so the column contract is defined once.
-func ParseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
+//
+// The Roles a volunteer holds come from `<name> - Role` tick columns matched
+// against the configured Roles, so the sheet and the config can drift without
+// the roster failing to load: a column naming a Role config does not have is
+// ignored, and a configured Role with no column is simply held by nobody. Both
+// are warned about, because both are usually a half-finished edit.
+func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer, error) {
 	if len(raw) < 1 {
 		return nil, fmt.Errorf("no header row found")
 	}
@@ -114,6 +136,8 @@ func ParseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 		}
 		fieldIndexes[field] = index
 	}
+
+	roleIndexes := findRoleColumns(headerRow, roles)
 
 	// Helper to get field value from row
 	getField := func(field string, row []interface{}) string {
@@ -141,16 +165,11 @@ func ParseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 			continue
 		}
 
-		role := model.LegacyRole(getField("Role", row))
-		if !role.IsValid() {
-			return nil, fmt.Errorf("invalid role for volunteer in row %d", i)
-		}
-
 		volunteer := model.Volunteer{
 			ID:        getField("Unique ID", row),
 			FirstName: firstName,
 			LastName:  getField("Last name", row),
-			Role:      role,
+			Roles:     heldRoles(row, roles, roleIndexes),
 			Status:    getField("Status", row),
 			Gender:    getField("Sex/Gender", row),
 			Email:     getField("Email", row),
@@ -161,4 +180,60 @@ func ParseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 	}
 
 	return volunteers, nil
+}
+
+// findRoleColumns maps each configured Role to the column holding its ticks,
+// warning about either side of a mismatch between the sheet and the config.
+func findRoleColumns(headerRow []interface{}, roles model.Roles) map[string]int {
+	indexes := make(map[string]int)
+
+	for i, cell := range headerRow {
+		header, ok := cell.(string)
+		if !ok {
+			continue
+		}
+		header = strings.TrimSpace(header)
+		if !strings.HasSuffix(header, roleColumnSuffix) {
+			continue
+		}
+
+		name := strings.TrimSpace(strings.TrimSuffix(header, roleColumnSuffix))
+		if _, known := roles.ByName(name); !known {
+			slog.Warn("volunteer sheet has a Role column no configured Role matches; ignoring it",
+				"column", header, "role", name)
+			continue
+		}
+		indexes[name] = i
+	}
+
+	for _, role := range roles.ByPriority() {
+		if _, found := indexes[role.Name]; !found {
+			slog.Warn("configured Role has no column in the volunteer sheet; nobody holds it",
+				"role", role.Name, "expectedColumn", role.Name+roleColumnSuffix)
+		}
+	}
+
+	return indexes
+}
+
+// heldRoles reads one volunteer's ticks, returning the Roles they hold in
+// priority order.
+func heldRoles(row []interface{}, roles model.Roles, roleIndexes map[string]int) []string {
+	var held []string
+
+	for _, role := range roles.ByPriority() {
+		index, found := roleIndexes[role.Name]
+		if !found || index >= len(row) {
+			continue
+		}
+		cell, ok := row[index].(string)
+		if !ok {
+			continue
+		}
+		if tickValues[strings.ToLower(strings.TrimSpace(cell))] {
+			held = append(held, role.Name)
+		}
+	}
+
+	return held
 }

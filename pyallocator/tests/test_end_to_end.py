@@ -28,7 +28,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 import pytest
-from conftest import make_member, make_shift
+from conftest import DEFAULT_ROLES, SERVICE_VOLUNTEER, TEAM_LEAD, make_member, make_shift
 from pyallocator.api import solve
 from pyallocator.domain import (
     AllocationInput,
@@ -41,6 +41,36 @@ from pyallocator.domain import (
 GOLDEN_PATH = Path(__file__).parent / "testdata" / "e2e_rota.json"
 
 
+# The spec no longer carries a size or three preallocation lists; it carries a
+# Shape and one role-named pin list. These read the same facts back out, so
+# verify_solution keeps checking exactly the rules it checked before.
+def spec_size(spec) -> int:
+    return sum(s.count for s in spec.shape if s.role == SERVICE_VOLUNTEER)
+
+
+def spec_customs(spec) -> list[str]:
+    return [p.custom for p in spec.preallocations if p.custom]
+
+
+def spec_team_lead_id(spec) -> str:
+    for pin in spec.preallocations:
+        if pin.role == TEAM_LEAD and pin.volunteer_id:
+            return pin.volunteer_id
+    return ""
+
+
+def spec_volunteer_ids(spec) -> list[str]:
+    return [
+        p.volunteer_id
+        for p in spec.preallocations
+        if p.volunteer_id and p.role != TEAM_LEAD
+    ]
+
+
+def is_lead(member) -> bool:
+    return TEAM_LEAD in member.roles
+
+
 def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     """Return a list of hard-rule violations (empty = valid rota)."""
     problems: list[str] = []
@@ -48,23 +78,23 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     preallocated_pairs = set()
     member_to_group = {m.id: g.group_key for g in inp.groups for m in g.members}
     for spec in inp.shifts:
-        if spec.preallocated_team_lead_id:
+        if spec_team_lead_id(spec):
             preallocated_pairs.add(
-                (member_to_group[spec.preallocated_team_lead_id], spec.index)
+                (member_to_group[spec_team_lead_id(spec)], spec.index)
             )
-        for vid in spec.preallocated_volunteer_ids:
+        for vid in spec_volunteer_ids(spec):
             preallocated_pairs.add((member_to_group[vid], spec.index))
 
     allocated: dict[str, list[int]] = {key: [] for key in groups}
     for spec, shift in zip(inp.shifts, out.shifts):
-        if (spec.index, spec.date, spec.size, spec.closed) != (
+        if (spec.index, spec.date, spec_size(spec), spec.closed) != (
             shift.index,
             shift.date,
             shift.size,
             shift.closed,
         ):
             problems.append(f"shift {spec.index}: spec fields not echoed faithfully")
-        if list(spec.custom_preallocations) != list(shift.custom_preallocations):
+        if spec_customs(spec) != list(shift.custom_preallocations):
             problems.append(f"shift {spec.index}: custom preallocations not echoed")
 
         keys = shift.allocated_group_keys
@@ -81,8 +111,8 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             group = groups[key]
             allocated[key].append(shift.index)
             expected_ids.update(m.id for m in group.members)
-            ordinary += sum(1 for m in group.members if not m.is_team_lead)
-            team_lead_groups += any(m.is_team_lead for m in group.members)
+            ordinary += sum(1 for m in group.members if not is_lead(m))
+            team_lead_groups += any(is_lead(m) for m in group.members)
             males += sum(1 for m in group.members if m.gender == "Male")
             if (
                 shift.index not in group.available_shift_indices
@@ -95,13 +125,15 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         # No male => a slot must stay open (TL slot or an ordinary seat)
         # so the rota creator can add one manually.
         if not spec.closed and males == 0 and team_lead_groups > 0:
-            budget = max(0, spec.size - len(spec.custom_preallocations))
+            budget = max(0, spec_size(spec) - len(spec_customs(spec)))
             if ordinary >= budget:
                 problems.append(
                     f"shift {shift.index}: no male and no open slot to add one"
                 )
 
-        if not spec.closed and ordinary > max(0, spec.size - len(spec.custom_preallocations)):
+        if not spec.closed and ordinary > max(
+            0, spec_size(spec) - len(spec_customs(spec))
+        ):
             problems.append(f"shift {shift.index}: over capacity ({ordinary})")
 
         # volunteer_ids + team_lead_id must be exactly the allocated members.
@@ -114,13 +146,13 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         if shift.team_lead_id:
             tl_group = member_to_group.get(shift.team_lead_id)
             is_tl = any(
-                m.id == shift.team_lead_id and m.is_team_lead
+                m.id == shift.team_lead_id and is_lead(m)
                 for g in inp.groups
                 for m in g.members
             )
             if tl_group not in keys or not is_tl:
                 problems.append(f"shift {shift.index}: bad team lead designation")
-        if spec.preallocated_team_lead_id and shift.team_lead_id != spec.preallocated_team_lead_id:
+        if spec_team_lead_id(spec) and shift.team_lead_id != spec_team_lead_id(spec):
             problems.append(f"shift {shift.index}: preallocated TL not designated")
 
     for group_key, shift_index in preallocated_pairs:
@@ -145,8 +177,22 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
 
 def _couple(key: str, lead_id: str, partner_id: str, *, lead_gender="Female", partner_gender="Male", available=()) -> Group:
     members = (
-        Member(lead_id, lead_id.capitalize(), "Test", lead_id.capitalize(), lead_gender, True),
-        Member(partner_id, partner_id.capitalize(), "Test", partner_id.capitalize(), partner_gender, False),
+        Member(
+            lead_id,
+            lead_id.capitalize(),
+            "Test",
+            lead_id.capitalize(),
+            lead_gender,
+            (TEAM_LEAD, SERVICE_VOLUNTEER),
+        ),
+        Member(
+            partner_id,
+            partner_id.capitalize(),
+            "Test",
+            partner_id.capitalize(),
+            partner_gender,
+            (SERVICE_VOLUNTEER,),
+        ),
     )
     return Group(key, members, tuple(available), 0)
 
@@ -158,7 +204,7 @@ def _plain_couple(key: str, a: str, b: str, *, available=()) -> Group:
 
 def _individual(name_id: str, *, available=(), gender="Female") -> Group:
     first = name_id.capitalize()
-    member = Member(name_id, first, "Green", first, gender, False)
+    member = Member(name_id, first, "Green", first, gender, (SERVICE_VOLUNTEER,))
     return Group(f"{first} Green", (member,), tuple(available), 0)
 
 
@@ -202,6 +248,8 @@ def make_e2e_input() -> AllocationInput:
         max_allocation_count=2,  # 33% of 7 shifts, as computed in Go
         shifts=shifts,
         groups=groups,
+        roles=DEFAULT_ROLES,
+        requires_male=True,
         historical_shifts=historical,
     )
 
@@ -344,6 +392,8 @@ def test_infeasible_reported_not_crashed():
             _individual("a", available=[0]),
             _individual("b", available=[0]),
         ),
+        roles=DEFAULT_ROLES,
+        requires_male=True,
         historical_shifts=(),
     )
     out = solve(inp)

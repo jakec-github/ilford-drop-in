@@ -80,28 +80,30 @@ func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 	}
 }
 
-func TestInitVolunteerGroups_ErrorOnGroupWithTwoTeamLeads(t *testing.T) {
+// A couple who both lead used to be rejected outright, because the ceiling on
+// leads was counted per group. Seats carry that ceiling now, and the second
+// lead is simply someone who can also take an ordinary Seat, so the group is
+// ordinary too (#89).
+func TestInitVolunteerGroups_GroupWithTwoTeamLeadsIsAllowed(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: "invalid_group"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: true, GroupKey: "invalid_group"},
-			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: "valid_group"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: "lead_couple"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: true, GroupKey: "lead_couple"},
 		},
 		Availability: []VolunteerAvailability{
 			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
 			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v3", HasResponded: true, UnavailableShiftIndices: []int{}},
 		},
 		TotalShifts:      3,
 		HistoricalShifts: []*Shift{},
 	}
 
-	_, err := InitVolunteerGroups(input)
+	volunteerState, err := InitVolunteerGroups(input)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid_group")
-	assert.Contains(t, err.Error(), "2 team leads")
-	assert.Contains(t, err.Error(), "max 1 allowed")
+	require.NoError(t, err)
+	require.Len(t, volunteerState.VolunteerGroups, 1)
+	assert.Len(t, volunteerState.VolunteerGroups[0].Members, 2)
+	assert.True(t, volunteerState.VolunteerGroups[0].HasTeamLead)
 }
 
 func TestInitVolunteerGroups_DiscardGroupWithNoResponses(t *testing.T) {
@@ -357,9 +359,12 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 			AppliesTo: func(date string) bool {
 				return date == "2025-01-05"
 			},
-			ShiftSize:            nil,
-			CustomPreallocations: []string{"John", "Jane"}, // Should be ignored
-			Closed:               true,
+			ShiftSize: nil,
+			Preallocations: []Preallocation{ // Should be ignored
+				{Custom: "John", Role: "Service volunteer"},
+				{Custom: "Jane", Role: "Service volunteer"},
+			},
+			Closed: true,
 		},
 	}
 
@@ -376,9 +381,9 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 
 	// Closed shift should ignore preallocations
 	assert.True(t, shifts[0].Closed)
-	assert.Empty(t, shifts[0].CustomPreallocations, "Closed shift should ignore preallocations")
+	assert.Empty(t, shifts[0].Preallocations, "Closed shift should ignore preallocations")
 
 	// Non-closed shift should be normal
 	assert.False(t, shifts[1].Closed)
-	assert.Empty(t, shifts[1].CustomPreallocations)
+	assert.Empty(t, shifts[1].Preallocations)
 }

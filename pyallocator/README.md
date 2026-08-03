@@ -38,19 +38,31 @@ in Go — Python enforces and counts):
 ```json
 {
   "max_allocation_count": 4,
-  "shifts": [{"index": 0, "date": "2026-07-13", "size": 4, "closed": false,
-              "custom_preallocations": ["St John's team"],
-              "preallocated_volunteer_ids": ["vol-1"],
-              "preallocated_team_lead_id": "vol-9"}],
+  "roles": [{"name": "Team lead", "max": 1, "priority": 1},
+            {"name": "Service volunteer", "max": null, "priority": 2}],
+  "requires_male": true,
+  "shifts": [{"index": 0, "date": "2026-07-13", "closed": false,
+              "shape": [{"role": "Team lead", "count": 1},
+                        {"role": "Service volunteer", "count": 4}],
+              "preallocations": [
+                {"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"},
+                {"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
+                {"volunteer_id": "vol-9", "custom": "", "role": "Team lead"}]}],
   "groups": [{"group_key": "couple_alice_bob",
               "members": [{"id": "vol-1", "first_name": "Alice", "last_name": "Smith",
                            "display_name": "Alice S", "gender": "Female",
-                           "is_team_lead": false}],
+                           "roles": ["Service volunteer"]}],
               "available_shift_indices": [0, 2, 4],
               "historical_allocation_count": 3}],
   "historical_shifts": [{"date": "2026-06-29", "group_keys": ["couple_x"]}]
 }
 ```
+
+A **Role** is a job on a shift; volunteers hold the Roles they will do, and
+only a holder may fill a Seat asking for that Role. `max` is the ceiling on a
+Role's Seats per shift — `null` means uncapped, and exactly one Role is
+uncapped. `shape` is the shift's Seats, resolved in Go. Every preallocation
+names the Role it fills and sets exactly one of `volunteer_id` and `custom`.
 
 Output:
 
@@ -71,11 +83,14 @@ common; missing team leads are filled in manually later.
 
 ## How the code is organised
 
-The assignment unit is the **individual volunteer**: the model has one
-BoolVar per (volunteer, shift) pair, and group atomicity
-(couples/families move as one) is the `grouping` constraint rather
-than the variable structure — so per-person roles can become solver
-decisions later. Modularity is the point of this package:
+The assignment unit is the **individual volunteer in a Role**: the model has
+a BoolVar per (volunteer, shift, Role) the volunteer could fill, plus an
+attendance BoolVar per (volunteer, shift) equal to their sum. That equality
+is what holds a person to one Seat per shift — there is no separate
+exclusion constraint. Group atomicity (couples/families move as one) is the
+`grouping` constraint rather than the variable structure. Constraints about
+*whether* someone works read `x.attend`; constraints about *what they do*
+read `x.role`. Modularity is the point of this package:
 
 - `constraints/` — one file per **hard rule** (something that can never
   be violated). Each module's docstring and `description` state exactly

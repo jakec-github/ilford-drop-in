@@ -18,7 +18,7 @@ var calendarTestCfg = &config.Config{
 }
 
 func calendarTestVolunteer() model.Volunteer {
-	return model.Volunteer{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead}
+	return model.Volunteer{ID: "alice", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}}
 }
 
 func TestBuildVolunteerCalendar_Basic(t *testing.T) {
@@ -87,7 +87,7 @@ func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
 	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (team lead)")
 
 	// The same shift from Bob's perspective is not a team-lead event
-	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer}
+	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}}
 	out, err = BuildVolunteerCalendar(shifts, bob, calendarTestCfg)
 	require.NoError(t, err)
 	assert.NotContains(t, out, "(team lead)")

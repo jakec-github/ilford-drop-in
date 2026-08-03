@@ -88,12 +88,12 @@ def test_unknown_preallocated_team_lead_errors():
         Problem(inp)
 
 
-def test_non_team_lead_designated_as_team_lead_errors():
+def test_pinning_someone_to_a_role_they_do_not_hold_errors():
     inp = make_input(
-        groups=[make_group("g1", available=[0])],  # g1 is not a team lead
+        groups=[make_group("g1", available=[0])],  # g1 does not hold Team lead
         shifts=[make_shift(0, preallocated_team_lead_id="g1")],
     )
-    with pytest.raises(ProblemError, match="is not a team lead"):
+    with pytest.raises(ProblemError, match="does not hold role 'Team lead'"):
         Problem(inp)
 
 

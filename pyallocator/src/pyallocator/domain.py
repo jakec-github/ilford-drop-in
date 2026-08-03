@@ -15,15 +15,53 @@ GENDER_MALE = "Male"
 
 
 @dataclass(frozen=True)
+class Role:
+    """A job on a Shift. Volunteers hold Roles; Seats ask for them.
+
+    max is the ceiling on this Role's Seats per Shift — None means uncapped,
+    and there is exactly one uncapped Role. priority orders Seat filling,
+    lowest first.
+    """
+
+    name: str
+    max: int | None
+    priority: int
+
+    @property
+    def capped(self) -> bool:
+        return self.max is not None
+
+
+@dataclass(frozen=True)
+class Seat:
+    """One entry in a Shift's Shape: count Seats asking for this Role."""
+
+    role: str
+    count: int
+
+
+@dataclass(frozen=True)
+class Preallocation:
+    """A volunteer, or a custom entry, pinned to a Role on a Shift.
+
+    Exactly one of volunteer_id and custom is non-empty.
+    """
+
+    volunteer_id: str
+    custom: str
+    role: str
+
+
+@dataclass(frozen=True)
 class Member:
-    """One volunteer inside a group."""
+    """One volunteer inside a group, with the Roles they hold."""
 
     id: str
     first_name: str
     last_name: str
     display_name: str
     gender: str
-    is_team_lead: bool
+    roles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,15 +80,17 @@ class Group:
 
 @dataclass(frozen=True)
 class ShiftSpec:
-    """One shift in the rota being allocated. Size is override-resolved."""
+    """One shift in the rota being allocated.
+
+    shape is the Shift's Seats, override-resolved in Go. It replaces a bare
+    size, which could only describe a rota with one Role.
+    """
 
     index: int
     date: str
-    size: int
     closed: bool
-    custom_preallocations: tuple[str, ...] = ()
-    preallocated_volunteer_ids: tuple[str, ...] = ()
-    preallocated_team_lead_id: str = ""
+    shape: tuple[Seat, ...] = ()
+    preallocations: tuple[Preallocation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,11 +103,18 @@ class HistoricalShift:
 
 @dataclass(frozen=True)
 class AllocationInput:
-    """The full problem sent by Go on stdin."""
+    """The full problem sent by Go on stdin.
+
+    roles is the configured Role set every Seat, tick and pin is matched
+    against. requires_male turns the male-cover rule on; it is a property of
+    the Shift, so it arrives with the problem rather than being assumed.
+    """
 
     max_allocation_count: int
     shifts: tuple[ShiftSpec, ...]
     groups: tuple[Group, ...]
+    roles: tuple[Role, ...] = ()
+    requires_male: bool = False
     historical_shifts: tuple[HistoricalShift, ...] = ()
 
 

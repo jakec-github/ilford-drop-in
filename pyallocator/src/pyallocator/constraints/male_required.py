@@ -18,7 +18,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class MaleRequiredConstraint:
@@ -29,23 +29,25 @@ class MaleRequiredConstraint:
     )
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         for shift in problem.shifts:
             if shift.closed:
                 continue
             male_sum = sum(
-                x[(v.id, shift.index)] for v in problem.volunteers if v.is_male
+                x.attend[(v.id, shift.index)] for v in problem.volunteers if v.is_male
             )
             team_lead_sum = sum(
-                x[(v.id, shift.index)]
+                x.attend[(v.id, shift.index)]
                 for v in problem.volunteers
                 if v.is_team_lead
             )
             fill = sum(
-                v.seat_cost * x[(v.id, shift.index)] for v in problem.volunteers
+                v.seat_cost * x.attend[(v.id, shift.index)] for v in problem.volunteers
             )
-            budget = max(0, shift.size - len(shift.custom_preallocations))
+            budget = max(
+                0, problem.shift_size(shift) - len(problem.shift_customs(shift))
+            )
 
             has_male = model.NewBoolVar(f"male_present_{shift.index}")
             tl_slot_open = model.NewBoolVar(f"tl_slot_open_{shift.index}")

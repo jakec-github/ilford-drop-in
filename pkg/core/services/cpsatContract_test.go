@@ -14,22 +14,34 @@ import (
 // contract. If this test breaks, pyallocator's serialization must change in
 // lockstep (see pyallocator/README.md).
 func TestCpsatInputContractGolden(t *testing.T) {
+	leadMax := 1
 	input := &allocator.CpsatInput{
 		MaxAllocationCount: 2,
+		Roles: []allocator.CpsatRole{
+			{Name: "Team lead", Max: &leadMax, Priority: 1},
+			{Name: "Service volunteer", Max: nil, Priority: 2},
+		},
+		RequiresMale: true,
 		Shifts: []allocator.CpsatShift{{
-			Index:                    0,
-			Date:                     "2026-07-13",
-			Size:                     3,
-			Closed:                   false,
-			CustomPreallocations:     []string{"St John's team"},
-			PreallocatedVolunteerIDs: []string{"vol-1"},
-			PreallocatedTeamLeadID:   "vol-9",
+			Index:  0,
+			Date:   "2026-07-13",
+			Closed: false,
+			Shape: []allocator.CpsatSeat{
+				{Role: "Team lead", Count: 1},
+				{Role: "Service volunteer", Count: 3},
+			},
+			Preallocations: []allocator.CpsatPreallocation{
+				{Custom: "St John's team", Role: "Service volunteer"},
+				{VolunteerID: "vol-1", Role: "Service volunteer"},
+				{VolunteerID: "vol-9", Role: "Team lead"},
+			},
 		}},
 		Groups: []allocator.CpsatGroup{{
 			GroupKey: "couple_alice_bob",
 			Members: []allocator.CpsatMember{{
 				ID: "vol-1", FirstName: "Alice", LastName: "Smith",
-				DisplayName: "Alice S", Gender: "Female", IsTeamLead: false,
+				DisplayName: "Alice S", Gender: "Female",
+				Roles: []string{"Service volunteer"},
 			}},
 			AvailableShiftIndices:     []int{0, 2},
 			HistoricalAllocationCount: 3,
@@ -41,17 +53,29 @@ func TestCpsatInputContractGolden(t *testing.T) {
 
 	golden := `{
 		"max_allocation_count": 2,
+		"roles": [
+			{"name": "Team lead", "max": 1, "priority": 1},
+			{"name": "Service volunteer", "max": null, "priority": 2}
+		],
+		"requires_male": true,
 		"shifts": [{
-			"index": 0, "date": "2026-07-13", "size": 3, "closed": false,
-			"custom_preallocations": ["St John's team"],
-			"preallocated_volunteer_ids": ["vol-1"],
-			"preallocated_team_lead_id": "vol-9"
+			"index": 0, "date": "2026-07-13", "closed": false,
+			"shape": [
+				{"role": "Team lead", "count": 1},
+				{"role": "Service volunteer", "count": 3}
+			],
+			"preallocations": [
+				{"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"},
+				{"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
+				{"volunteer_id": "vol-9", "custom": "", "role": "Team lead"}
+			]
 		}],
 		"groups": [{
 			"group_key": "couple_alice_bob",
 			"members": [{
 				"id": "vol-1", "first_name": "Alice", "last_name": "Smith",
-				"display_name": "Alice S", "gender": "Female", "is_team_lead": false
+				"display_name": "Alice S", "gender": "Female",
+				"roles": ["Service volunteer"]
 			}],
 			"available_shift_indices": [0, 2],
 			"historical_allocation_count": 3
@@ -106,9 +130,11 @@ func TestBuildCpsatInput(t *testing.T) {
 	size := 5
 	overrides := []allocator.ShiftOverride{
 		{
-			AppliesTo:            func(date string) bool { return date == "2026-07-20" },
-			ShiftSize:            &size,
-			CustomPreallocations: []string{"external_john"},
+			AppliesTo: func(date string) bool { return date == "2026-07-20" },
+			ShiftSize: &size,
+			Preallocations: []allocator.Preallocation{
+				{Custom: "external_john", Role: "Service volunteer"},
+			},
 		},
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-27" },
@@ -124,7 +150,13 @@ func TestBuildCpsatInput(t *testing.T) {
 		}},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, availability, shiftDates, 2, overrides, historical, 0.5)
+	leadMax := 1
+	roles := []allocator.Role{
+		{Name: "Team lead", Max: &leadMax, Priority: 1},
+		{Name: "Service volunteer", Max: nil, Priority: 2},
+	}
+
+	input, err := allocator.BuildCpsatInput(volunteers, availability, shiftDates, 2, overrides, historical, 0.5, roles, true)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
@@ -141,13 +173,29 @@ func TestBuildCpsatInput(t *testing.T) {
 	// Group availability = union of responding members' unavailability.
 	assert.Equal(t, []int{0, 2, 3}, input.Groups[1].AvailableShiftIndices)
 
-	// Shift overrides applied via InitShifts.
+	// Shift overrides applied via InitShifts. The Shape spends the shift's size
+	// on the uncapped Role and gives each capped Role its ceiling.
 	require.Len(t, input.Shifts, 4)
-	assert.Equal(t, 2, input.Shifts[0].Size)
-	assert.Equal(t, 5, input.Shifts[1].Size)
-	assert.Equal(t, []string{"external_john"}, input.Shifts[1].CustomPreallocations)
+	assert.Equal(t, []allocator.CpsatSeat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 2},
+	}, input.Shifts[0].Shape)
+	assert.Equal(t, []allocator.CpsatSeat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 5},
+	}, input.Shifts[1].Shape)
+	assert.Equal(t, []allocator.CpsatPreallocation{
+		{Custom: "external_john", Role: "Service volunteer"},
+	}, input.Shifts[1].Preallocations)
 	assert.True(t, input.Shifts[2].Closed)
-	assert.Empty(t, input.Shifts[2].CustomPreallocations)
+	assert.Empty(t, input.Shifts[2].Preallocations)
+
+	// Roles travel with the problem, in priority order.
+	assert.Equal(t, []allocator.CpsatRole{
+		{Name: "Team lead", Max: &leadMax, Priority: 1},
+		{Name: "Service volunteer", Max: nil, Priority: 2},
+	}, input.Roles)
+	assert.True(t, input.RequiresMale)
 
 	// Historical shifts sorted ascending by date with derived group keys.
 	require.Len(t, input.HistoricalShifts, 2)

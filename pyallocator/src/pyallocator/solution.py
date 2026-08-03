@@ -10,7 +10,7 @@ Role: Volunteer rows.
 
 from __future__ import annotations
 
-from .constraints.base import AssignmentVars
+from .constraints.base import Vars
 from .domain import AllocationOutput, Diagnostics, OutputShift
 from .problem import Problem
 from .solver import SolveResult
@@ -18,7 +18,7 @@ from .solver import SolveResult
 
 def extract_solution(
     problem: Problem,
-    x: AssignmentVars,
+    x: Vars,
     result: SolveResult,
     constraints_applied: tuple[str, ...],
 ) -> AllocationOutput:
@@ -42,13 +42,13 @@ def extract_solution(
 
 
 def _extract_shift(
-    problem: Problem, x: AssignmentVars, result: SolveResult, shift_index: int
+    problem: Problem, x: Vars, result: SolveResult, shift_index: int
 ) -> OutputShift:
     spec = problem.shifts[shift_index]
     allocated = [
         v
         for v in problem.volunteers
-        if result.solver.Value(x[(v.id, shift_index)]) == 1
+        if result.solver.Value(x.attend[(v.id, shift_index)]) == 1
     ]
 
     team_lead_id = problem.preallocated_team_lead.get(shift_index, "")
@@ -67,10 +67,10 @@ def _extract_shift(
     return OutputShift(
         index=spec.index,
         date=spec.date,
-        size=spec.size,
+        size=problem.shift_size(spec),
         closed=spec.closed,
         team_lead_id=team_lead_id,
         volunteer_ids=tuple(volunteer_ids),
-        custom_preallocations=spec.custom_preallocations,
+        custom_preallocations=problem.shift_customs(spec),
         allocated_group_keys=tuple(group_keys),
     )

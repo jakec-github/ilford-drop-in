@@ -1,7 +1,11 @@
-"""Builds the CP-SAT model: one BoolVar per (volunteer, shift) pair,
-then applies the constraint list and sums the preference terms into a
-single Maximize objective. Group atomicity is not structural — the
-grouping constraint ties members of a group together.
+"""Builds the CP-SAT model: a BoolVar per (volunteer, shift, Role) the
+volunteer could actually fill, plus an attendance BoolVar per (volunteer,
+shift) equal to their sum. It then applies the constraint list and sums the
+preference terms into a single Maximize objective.
+
+Equating the role vars with attendance is the model's one structural rule:
+a person fills at most one Seat per shift. Group atomicity is not
+structural — the grouping constraint ties members of a group together.
 
 Constraint and preference lists are parameters so tests can solve with
 exactly one module active.
@@ -14,7 +18,7 @@ from typing import Sequence
 
 from ortools.sat.python import cp_model
 
-from .constraints.base import AssignmentVars, Constraint
+from .constraints.base import Constraint, Vars
 from .preferences.base import Preference
 from .problem import Problem
 
@@ -22,7 +26,7 @@ from .problem import Problem
 @dataclass(frozen=True)
 class BuiltModel:
     model: cp_model.CpModel
-    x: AssignmentVars
+    x: Vars
     constraints_applied: tuple[str, ...]
 
 
@@ -32,12 +36,30 @@ def build(
     preferences: Sequence[Preference],
 ) -> BuiltModel:
     model = cp_model.CpModel()
-    x: AssignmentVars = {}
+    attend: dict[tuple[str, int], cp_model.IntVar] = {}
+    role: dict[tuple[str, int, str], cp_model.IntVar] = {}
+
     for v in problem.volunteers:
         for shift in problem.shifts:
-            x[(v.id, shift.index)] = model.NewBoolVar(
-                f"x[{v.id},{shift.index}]"
-            )
+            attendance = model.NewBoolVar(f"attend[{v.id},{shift.index}]")
+            attend[(v.id, shift.index)] = attendance
+
+            # Only Roles this volunteer holds and this shift's Shape asks for:
+            # any other variable would be a Seat nobody could fill.
+            role_vars = []
+            for seat in shift.shape:
+                if seat.count <= 0 or not v.holds(seat.role):
+                    continue
+                role_var = model.NewBoolVar(f"role[{v.id},{shift.index},{seat.role}]")
+                role[(v.id, shift.index, seat.role)] = role_var
+                role_vars.append(role_var)
+
+            # One Seat per person per shift, stated once. With no eligible
+            # Seat this forces attendance to zero, which is right: there is
+            # nothing on this shift for them to do.
+            model.Add(sum(role_vars) == attendance)
+
+    x = Vars(attend=attend, role=role)
 
     for constraint in constraints:
         constraint.apply(model, x, problem)

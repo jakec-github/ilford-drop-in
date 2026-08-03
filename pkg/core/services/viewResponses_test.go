@@ -364,9 +364,9 @@ func TestCalculateShiftAvailability_DefaultShiftSize(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {ID: "v1", FirstName: "Alice", LastName: "Smith", Status: "Active", Role: model.RoleVolunteer},
-		"v2": {ID: "v2", FirstName: "Bob", LastName: "Jones", Status: "Active", Role: model.RoleVolunteer},
-		"v3": {ID: "v3", FirstName: "Charlie", LastName: "Brown", Status: "Active", Role: model.RoleVolunteer},
+		"v1": {ID: "v1", FirstName: "Alice", LastName: "Smith", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v2": {ID: "v2", FirstName: "Bob", LastName: "Jones", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v3": {ID: "v3", FirstName: "Charlie", LastName: "Brown", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
 	}
 
 	responses := []VolunteerResponse{
@@ -429,10 +429,10 @@ func TestCalculateShiftAvailability_WithRRuleOverrides(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {ID: "v1", Status: "Active", Role: model.RoleVolunteer},
-		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
-		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
-		"v4": {ID: "v4", Status: "Active", Role: model.RoleVolunteer},
+		"v1": {ID: "v1", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v2": {ID: "v2", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v3": {ID: "v3", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v4": {ID: "v4", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
 	}
 
 	responses := []VolunteerResponse{
@@ -479,9 +479,9 @@ func TestCalculateShiftAvailability_ExcludesTeamLeadsFromCount(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {ID: "v1", Status: "Active", Role: model.RoleTeamLead}, // Team lead - should not be counted but HasTeamLead should be true
-		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
-		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+		"v1": {ID: "v1", Status: "Active", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}}, // Team lead - should not be counted but HasTeamLead should be true
+		"v2": {ID: "v2", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v3": {ID: "v3", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
 	}
 
 	responses := []VolunteerResponse{
@@ -513,9 +513,9 @@ func TestCalculateShiftAvailability_ExcludesInactive(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {ID: "v1", Status: "Inactive", Role: model.RoleVolunteer}, // Inactive
-		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
-		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+		"v1": {ID: "v1", Status: "Inactive", Roles: []string{string(model.RoleVolunteer)}}, // Inactive
+		"v2": {ID: "v2", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v3": {ID: "v3", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
 	}
 
 	responses := []VolunteerResponse{
@@ -546,9 +546,9 @@ func TestCalculateShiftAvailability_ExcludesNonResponders(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {ID: "v1", Status: "Active", Role: model.RoleVolunteer},
-		"v2": {ID: "v2", Status: "Active", Role: model.RoleVolunteer},
-		"v3": {ID: "v3", Status: "Active", Role: model.RoleVolunteer},
+		"v1": {ID: "v1", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v2": {ID: "v2", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
+		"v3": {ID: "v3", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
 	}
 
 	responses := []VolunteerResponse{
@@ -581,12 +581,12 @@ func TestCalculateShiftAvailability_TeamLeadAvailability(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"tl1": {ID: "tl1", Role: model.RoleTeamLead, Status: "Active"},
-		"tl2": {ID: "tl2", Role: model.RoleTeamLead, Status: "Active"},
-		"v1":  {ID: "v1", Role: model.RoleVolunteer, Status: "Active"},
-		"v2":  {ID: "v2", Role: model.RoleVolunteer, Status: "Active"},
-		"v3":  {ID: "v3", Role: model.RoleVolunteer, Status: "Active"},
-		"v4":  {ID: "v4", Role: model.RoleVolunteer, Status: "Active"},
+		"tl1": {ID: "tl1", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
+		"tl2": {ID: "tl2", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
+		"v1":  {ID: "v1", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+		"v2":  {ID: "v2", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+		"v3":  {ID: "v3", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+		"v4":  {ID: "v4", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
 	}
 
 	responses := []VolunteerResponse{
@@ -643,10 +643,10 @@ func TestCalculateShiftAvailability_GroupBasedCounting(t *testing.T) {
 
 	volunteersByID := map[string]model.Volunteer{
 		// Group "couple1" - Alice and Bob
-		"alice": {ID: "alice", Role: model.RoleVolunteer, Status: "Active", GroupKey: "couple1"},
-		"bob":   {ID: "bob", Role: model.RoleVolunteer, Status: "Active", GroupKey: "couple1"},
+		"alice": {ID: "alice", Roles: []string{string(model.RoleVolunteer)}, Status: "Active", GroupKey: "couple1"},
+		"bob":   {ID: "bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active", GroupKey: "couple1"},
 		// Individual volunteer
-		"charlie": {ID: "charlie", Role: model.RoleVolunteer, Status: "Active", GroupKey: ""},
+		"charlie": {ID: "charlie", Roles: []string{string(model.RoleVolunteer)}, Status: "Active", GroupKey: ""},
 	}
 
 	responses := []VolunteerResponse{
@@ -718,10 +718,10 @@ func TestCalculateShiftAvailability_WithPreallocations(t *testing.T) {
 	}
 
 	volunteersByID := map[string]model.Volunteer{
-		"v1": {ID: "v1", Role: model.RoleVolunteer, Status: "Active"},
-		"v2": {ID: "v2", Role: model.RoleVolunteer, Status: "Active"},
-		"v3": {ID: "v3", Role: model.RoleVolunteer, Status: "Active"},
-		"v4": {ID: "v4", Role: model.RoleVolunteer, Status: "Active"},
+		"v1": {ID: "v1", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+		"v2": {ID: "v2", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+		"v3": {ID: "v3", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+		"v4": {ID: "v4", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
 	}
 
 	responses := []VolunteerResponse{
@@ -779,7 +779,7 @@ func TestViewResponses_ReadsShiftDatesFromTable(t *testing.T) {
 
 	volunteerClient := &mockVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith", Status: "Active", Role: model.RoleVolunteer},
+			{ID: "alice", FirstName: "Alice", LastName: "Smith", Status: "Active", Roles: []string{string(model.RoleVolunteer)}},
 		},
 	}
 
