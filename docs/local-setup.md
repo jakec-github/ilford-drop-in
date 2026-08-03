@@ -176,9 +176,10 @@ The `test` suffix in the filename matches the `-e test` / `-env test` flag you
 pass at runtime. Config files are also searched for in your home directory if
 not found in the repo root.
 
-Keys are matched strictly: anything the app does not recognise — a typo, or an
-option that has since been renamed — fails the load and names the key, rather
-than being quietly ignored. To check a file without starting anything:
+A key the app does not recognise — a typo, or an option since renamed — is
+warned about by name and then ignored. It does not fail the load: the same file
+gets read by whatever build is running, so a key that only some versions know
+must not stop the app starting. To check a file without starting anything:
 
 ```bash
 go run ./cmd/cli -e test validate-config drop_in_config.test.yaml

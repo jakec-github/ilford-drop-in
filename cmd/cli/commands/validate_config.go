@@ -68,6 +68,14 @@ devMode block is only permitted under "dev".`,
 				fmt.Fprintf(out, "  devMode:    ON — roster from %s, login as %s\n",
 					cfg.DevMode.VolunteersCSV, cfg.DevMode.AdminEmail)
 			}
+			// Ignored keys do not stop the server starting, so this line is the only
+			// place an operator finds out that a section of their file configures
+			// nothing — which is either a key kept on purpose for another build, or
+			// the silent drop this command exists to catch.
+			if unknown := config.UnknownKeys(path); len(unknown) > 0 {
+				fmt.Fprintf(out, "  ignored:    %s — %s\n",
+					plural(len(unknown), "unknown key"), strings.Join(unknown, ", "))
+			}
 
 			return nil
 		},

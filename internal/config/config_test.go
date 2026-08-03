@@ -1,8 +1,12 @@
 package config
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -582,10 +586,11 @@ func TestLoadFromPath_EmptyFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "is empty")
 }
 
-// A key the struct does not know is nearly always a key that used to mean
-// something: the preallocation format changed under a live prod config, and
-// non-strict parsing let it boot with every pin silently dropped. Rejecting it
-// by name is the difference between a startup error and a wrong rota.
+// A key the struct does not know must not stop the app starting: the same file
+// is read by whatever build is deployed, so a key one version lacks — during a
+// rollback, or on a branch cut either side of a rename — would otherwise be an
+// outage. It is warned about by name, because the other way to get one is a key
+// that used to configure something and now configures nothing.
 func TestLoadFromPath_UnknownKey(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -609,12 +614,61 @@ func TestLoadFromPath_UnknownKey(t *testing.T) {
 			configPath := filepath.Join(t.TempDir(), "config.yaml")
 			require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+tt.extra), 0644))
 
-			_, err := LoadFromPath(configPath)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "failed to parse config file")
-			assert.Contains(t, err.Error(), tt.wantKey)
+			logged := captureWarnings(t)
+
+			cfg, err := LoadFromPath(configPath)
+			require.NoError(t, err)
+			// The keys either side of the unknown one still configure what they say.
+			assert.Equal(t, 2, cfg.DefaultShiftSize)
+
+			assert.Contains(t, logged.String(), tt.wantKey)
 		})
 	}
+}
+
+// The known keys of a valid config are warned about by nobody — a warning that
+// fires on every start is a warning nobody reads.
+func TestLoadFromPath_NoWarningsForAKnownConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML), 0644))
+
+	logged := captureWarnings(t)
+
+	_, err := LoadFromPath(configPath)
+	require.NoError(t, err)
+	assert.Empty(t, logged.String())
+}
+
+// The line number is the useful half of an unknown key in a long file, so it
+// survives being lifted out of yaml's message.
+func TestUnknownKeys_NamesTheKeyAndItsLine(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	body := minimalConfigYAML + "databaseSheetID: 'legacy'\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(body), 0644))
+
+	line := strings.Count(body[:strings.Index(body, "databaseSheetID")], "\n") + 1
+	assert.Equal(t, []string{fmt.Sprintf("databaseSheetID (line %d)", line)}, UnknownKeys(configPath))
+}
+
+func TestUnknownKeys_NoneForAKnownConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML), 0644))
+
+	assert.Empty(t, UnknownKeys(configPath))
+}
+
+// captureWarnings redirects the default slog logger into a buffer for the
+// duration of one test, since the unknown-key warning is the whole diagnostic
+// left once the load no longer fails.
+func captureWarnings(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return &buf
 }
 func TestLoadFromPath_RotaOverrideWithoutRRule(t *testing.T) {
 	tmpDir := t.TempDir()
