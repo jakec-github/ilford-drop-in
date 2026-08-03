@@ -74,11 +74,14 @@ ADR exists.
   recomputed from config on every read, so editing config silently rewrites what
   a *past* shift asked for; enumerated Seats make that visible and wrong.
 
-- **The roster holds Roles in `Role - <name>` tick-box columns.** Discovered by
-  prefix, so the sheet's many unread columns stay invisible and a data-validated
-  tick cannot be mistyped. Config remains authoritative for which Roles exist: a
-  `Role - ` column config does not name warns and does nothing, and a configured
-  Role no column supplies warns too.
+- **The roster holds Roles in `<name> - Role` tick-box columns.** Discovered by
+  suffix, so the sheet's many unread columns stay invisible and a data-validated
+  tick cannot be mistyped. The name leads rather than trails because that is
+  what a human scanning the header row is looking for — narrow tick columns
+  truncate, and `Team lead - Role` truncates to something still readable where
+  `Role - Team lead` does not. Config remains authoritative for which Roles
+  exist: a ` - Role` column config does not name warns and does nothing, and a
+  configured Role no column supplies warns too.
 
 - **Male cover stays a Shift-level rule, not a general attribute system.** A
   `requiresMale` flag in config; every open Shift must have a male allocated or

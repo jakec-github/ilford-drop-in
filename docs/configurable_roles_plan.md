@@ -54,18 +54,19 @@ somewhere or leave a Seat open, whichever Role it belongs to.
 
 ### Roster
 
-Roles are held in tick-box columns found by the `Role - ` prefix, so the
+Roles are held in tick-box columns found by the ` - Role` suffix, so the
 sheet's many unread columns stay invisible and the data-validated tick cannot
-be mistyped:
+be mistyped. The Role name comes first because that is what someone scanning
+the header row reads:
 
-| Unique ID | First name | … | Role - Team lead | Role - Assistant TL | Role - Service volunteer | Role - Food collector |
+| Unique ID | First name | … | Team lead - Role | Assistant TL - Role | Service volunteer - Role | Food collector - Role |
 |---|---|---|---|---|---|---|
 | XYZ | Emma | | ✓ | ✓ | ✓ | |
 | ABC | Michael | | | ✓ | ✓ | |
 | DEF | Priya | | | | ✓ | ✓ |
 | GHI | Sam | | | | | ✓ |
 
-Config stays authoritative for which Roles exist. A `Role - ` column config
+Config stays authoritative for which Roles exist. A ` - Role` column config
 does not name warns and does nothing; a configured Role with no column warns
 too, since nobody can hold it.
 
@@ -136,7 +137,7 @@ name, so historical rows remain readable when a Role is retired.
 ## Slices
 
 **S1 — Roles as data, behaviour unchanged.** Config gains roles; the roster
-moves to `Role - ` columns; the solver assigns Roles; services, CLI and
+moves to ` - Role` columns; the solver assigns Roles; services, CLI and
 published output stop special-casing team leads. Configured with the two
 existing Roles, output is identical to today, so the existing test suite is the
 oracle for the solver rewrite — the genuinely risky part. No user-visible
@@ -159,7 +160,7 @@ distinct person — a collector cannot also serve — so the default Shape's
 team lead is only a team lead on the roster, yet the allocator routinely places
 non-designated leads in ordinary seats (`solution.py` extracts one designated
 lead per shift and reports the rest as ordinary volunteers). Ticking only
-`Role - Team lead` would remove them from ordinary Seats and S1 would not be
+`Team lead - Role` would remove them from ordinary Seats and S1 would not be
 behaviour-preserving on its first solve.
 
 `Service volunteer` keeps its name, so existing `allocation.role` values need

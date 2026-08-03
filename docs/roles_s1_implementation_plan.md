@@ -12,7 +12,7 @@ the frontend. Adding Assistant TL, Food collector or Hot food (#91) is
 impossible until that is data.
 
 S1 de-hardcodes without changing what the system does. Config gains `roles`; the
-roster moves to `Role - <name>` tick columns; the solver assigns Roles instead of
+roster moves to `<name> - Role` tick columns; the solver assigns Roles instead of
 designating a lead after the fact. Configured with the two existing Roles, output
 matches today — which makes the existing test suite the oracle for the solver
 rewrite, the genuinely risky part.
@@ -140,15 +140,16 @@ Nothing consumes the new fields yet. Update `drop_in_config.dev.yaml`,
 Keep `RoleTeamLead` / `RoleVolunteer` / `IsValid()` alive for now — commit 13
 deletes them, so the intermediate commits still build.
 
-### 4. Roster: `Role - <name>` tick columns
+### 4. Roster: `<name> - Role` tick columns
 
 `pkg/clients/sheetsclient/volunteers.go:95` discovers columns by exact header
 match from a fixed `volunteerFields` list and hard-errors on any Role value that
-is not one of the two constants (`:144-147`). Replace with prefix discovery:
+is not one of the two constants (`:144-147`). Replace with suffix discovery:
 
-- Scan the header for `Role - ` prefixed columns; a column config does not name
+- Scan the header for ` - Role` suffixed columns; a column config does not name
   logs a warning and is ignored; a configured Role with no column logs a
-  warning too.
+  warning too. The legacy `Role` dropdown column does not match the suffix, so
+  the two can sit side by side while the ticks are being filled in.
 - A truthy tick (`TRUE`/`✓`/`yes`, trimmed, case-insensitive) means held.
 - `model.Volunteer.Role Role` → `Roles []string`, plus
   `func (v Volunteer) Holds(role string) bool`.
@@ -158,14 +159,14 @@ is not one of the two constants (`:144-147`). Replace with prefix discovery:
   `devmode.LoadVolunteers`.
 
 `test_data/volunteers.csv`: replace the `Role` column with
-`Role - Team lead` and `Role - Service volunteer`. **Every one of the 6 team
+`Team lead - Role` and `Service volunteer - Role`. **Every one of the 6 team
 leads gets both ticks** — the acceptance criterion, and without it they vanish
 from ordinary Seats on the first solve.
 
 Downstream sites keep compiling by swapping `vol.Role == model.RoleTeamLead` for
 `vol.Holds(string(model.RoleTeamLead))`; behaviour is unchanged in this commit.
 
-There is no `volunteers_test.go` today — add one covering prefix discovery, both
+There is no `volunteers_test.go` today — add one covering suffix discovery, both
 warning cases, and truthiness. Update `internal/devmode/roster_test.go`.
 
 ### 5. Contract input carries Roles, Shape and role-named pins
