@@ -38,6 +38,13 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      # check.sh builds pyallocator/.venv on top of this to run the solver
+      # tests. requires-python is a floor, so this tracks the newest Python the
+      # allocator claims to support rather than pinning a second version here.
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: pyallocator/pyproject.toml
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

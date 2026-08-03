@@ -87,6 +87,13 @@ class OutputShift:
 
 @dataclass(frozen=True)
 class Diagnostics:
+    """Solve statistics, for logs and sanity checks — never for control flow.
+
+    num_variables counts every decision variable in the model, whatever
+    the model is made of. It is a size indicator, so callers should treat
+    an exact count as an implementation detail and assert lower bounds.
+    """
+
     solve_time_seconds: float
     num_groups: int
     num_variables: int

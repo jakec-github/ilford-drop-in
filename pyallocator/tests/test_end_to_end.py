@@ -4,12 +4,30 @@ e2e scenario (pkg/core/allocator/e2e/allocator_test.go): ~24 volunteers,
 preallocation that overrides availability, a preallocated team lead and
 a custom (free-text) preallocation.
 
+Two oracles here, answering different questions.
+
 verify_solution re-checks every hard rule directly against the input,
-independently of CP-SAT — a regression oracle for future changes.
+independently of CP-SAT — "is this rota legal?". It covers
+DEFAULT_CONSTRAINTS only: one_shift_per_month is a STRICT constraint the
+solver does not apply, so verifying it here would assert a rule the rota
+is not built to keep.
+
+The golden in testdata/e2e_rota.json answers "is this the same rota as
+before?". Many rotas are legal, so verify_solution alone would not notice
+a refactor quietly reshuffling who works when. See rota_content for why
+it is stored as content rather than as the JSON contract, and
+solver_environment for why the rota half of it is machine-specific.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import platform
+from importlib.metadata import version
+from pathlib import Path
+
+import pytest
 from conftest import make_member, make_shift
 from pyallocator.api import solve
 from pyallocator.domain import (
@@ -19,6 +37,8 @@ from pyallocator.domain import (
     HistoricalShift,
     Member,
 )
+
+GOLDEN_PATH = Path(__file__).parent / "testdata" / "e2e_rota.json"
 
 
 def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
@@ -110,11 +130,6 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     last_historical = (
         set(inp.historical_shifts[-1].group_keys) if inp.historical_shifts else set()
     )
-    index_to_month = {spec.index: spec.date[:7] for spec in inp.shifts}
-    historical_months: dict[str, set[str]] = {}
-    for hs in inp.historical_shifts:
-        for gk in hs.group_keys:
-            historical_months.setdefault(gk, set()).add(hs.date[:7])
     for key, indices in allocated.items():
         if len(indices) > inp.max_allocation_count:
             problems.append(f"{key}: exceeds max allocation count")
@@ -124,15 +139,6 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
                 problems.append(f"{key}: back-to-back shifts {a},{b}")
         if 0 in indices and key in last_historical:
             problems.append(f"{key}: on last historical shift AND shift 0")
-        months = [index_to_month[i] for i in indices]
-        if len(set(months)) != len(months):
-            problems.append(f"{key}: more than one shift in a calendar month")
-        prior_months = historical_months.get(key, set())
-        for month in months:
-            if month in prior_months:
-                problems.append(
-                    f"{key}: shift in {month} already worked in history"
-                )
 
     return problems
 
@@ -223,8 +229,11 @@ def test_end_to_end_scenario():
 
     assert out.diagnostics is not None
     assert out.diagnostics.num_groups == len(inp.groups)
+    # A lower bound, not an equality: num_variables counts whatever the
+    # model is made of, and every (volunteer, shift) pair needs at least
+    # one variable to decide it.
     num_volunteers = sum(len(g.members) for g in inp.groups)
-    assert out.diagnostics.num_variables == num_volunteers * len(inp.shifts)
+    assert out.diagnostics.num_variables >= num_volunteers * len(inp.shifts)
     assert set(out.diagnostics.constraints_applied) == {
         "no_duplicate_allocation",
         "grouping",
@@ -234,10 +243,86 @@ def test_end_to_end_scenario():
         "at_most_one_team_lead",
         "male_required",
         "no_back_to_back",
-        "one_shift_per_month",
         "closed_shifts",
         "preallocations",
     }
+
+
+def rota_content(out: AllocationOutput) -> dict:
+    """The solved rota as *content* — who works when, in what job.
+
+    Deliberately not the JSON contract. The contract is about to be
+    reshaped (team_lead_id and volunteer_ids give way to role-tagged
+    assignments in #89), and a golden written in contract shape would
+    have to be regenerated for every rename, which is exactly when it
+    stops being able to tell a rename from a behaviour change. Read this
+    function as the mapping from whatever the contract currently says to
+    the rota a volunteer would recognise; rewrite it when the contract
+    moves, and the golden file should not move with it.
+    """
+    return {
+        str(shift.index): {
+            "team_lead": shift.team_lead_id,
+            "volunteers": sorted(shift.volunteer_ids),
+            "customs": list(shift.custom_preallocations),
+        }
+        for shift in out.shifts
+    }
+
+
+def solver_environment() -> dict:
+    """What a recorded rota is, and is not, reproducible against.
+
+    solver.py pins the seed and a single worker, so CP-SAT is
+    deterministic — on one build of it. Across builds it is not: the
+    e2e scenario has many equally-optimal rotas, and a Mac and a Linux
+    runner agree on the objective value while returning different ones.
+    So the rota is pinned per environment and the objective everywhere.
+    """
+    return {
+        "ortools": version("ortools"),
+        "platform": f"{platform.system()}-{platform.machine()}".lower(),
+    }
+
+
+def test_end_to_end_matches_golden_rota():
+    """The behaviour-preservation oracle for the Roles rewrite (#89).
+
+    Many rotas satisfy every hard rule, so verify_solution cannot tell a
+    refactor that preserves behaviour from one that quietly reshuffles
+    the rota. This can. A diff here means the allocator now produces a
+    different rota from the same input: inspect it by hand and either fix
+    the change or accept it explicitly, never regenerate reflexively.
+
+    Regenerate with UPDATE_GOLDEN=1 once the change is understood. That
+    also re-records the environment, so regenerate where you develop.
+    """
+    inp = make_e2e_input()
+    out = solve(inp)
+    assert out.success, out.solver_status
+
+    environment = solver_environment()
+    actual = {
+        "environment": environment,
+        "objective_value": out.objective_value,
+        "shifts": rota_content(out),
+    }
+    if os.environ.get("UPDATE_GOLDEN"):
+        GOLDEN_PATH.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
+    golden = json.loads(GOLDEN_PATH.read_text())
+
+    # The optimum is a property of the model, not of the solver build, so
+    # this holds everywhere — including CI, which cannot check the rota.
+    # A change here is a behaviour change wherever it is seen.
+    assert out.objective_value == golden["objective_value"]
+
+    if environment != golden["environment"]:
+        pytest.skip(
+            f"rota recorded on {golden['environment']}, running on {environment}"
+            " — equally-optimal rotas differ between CP-SAT builds, so only the"
+            " objective value is comparable here"
+        )
+    assert actual["shifts"] == golden["shifts"]
 
 
 def test_end_to_end_is_deterministic():

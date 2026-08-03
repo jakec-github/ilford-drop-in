@@ -46,16 +46,21 @@ terms (Shift, Rotation, Allocation, Alteration, …) in code and PRs.
 scripts/check.sh                 # everything, one exit code
 ```
 
-That is Go build, vet and tests, then the frontend typecheck (`tsc`, via the
-build) and lint. It takes seconds, and the same script runs in CI on every pull
-request. The individual commands, if you want to run one on its own:
+That is Go build, vet and tests, the Python allocator's suite, then the frontend
+typecheck (`tsc`, via the build) and lint. It takes seconds, and the same script
+runs in CI on every pull request. The individual commands, if you want to run
+one on its own:
 
 ```bash
 go test ./...                    # Go
 scripts/test-db.sh start         # enable Postgres integration tests
+pyallocator/.venv/bin/pytest pyallocator/tests   # the solver
 cd web && bun run build          # frontend: typecheck (tsc) and build
 cd web && bun run lint           # frontend lint
 ```
+
+`check.sh` builds `pyallocator/.venv` the first time it needs it, so the solver
+tests need no setup of their own.
 
 Please add tests for new behaviour. Integration tests that touch the database
 use the throwaway-DB harness in `pkg/db/dbtest`. They **skip silently** when the
