@@ -95,10 +95,10 @@ func (m *mockChangeRotaVolClient) ListVolunteers(cfg *config.Config) ([]model.Vo
 func defaultVolunteers() *mockChangeRotaVolClient {
 	return &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", DisplayName: "Alice", Role: model.RoleVolunteer},
-			{ID: "bob", FirstName: "Bob", LastName: "B", DisplayName: "Bob", Role: model.RoleVolunteer},
-			{ID: "charlie", FirstName: "Charlie", LastName: "C", DisplayName: "Charlie", Role: model.RoleVolunteer},
-			{ID: "dave", FirstName: "Dave", LastName: "D", DisplayName: "Dave", Role: model.RoleVolunteer},
+			{ID: "alice", FirstName: "Alice", LastName: "A", DisplayName: "Alice", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "bob", FirstName: "Bob", LastName: "B", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "charlie", FirstName: "Charlie", LastName: "C", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "dave", FirstName: "Dave", LastName: "D", DisplayName: "Dave", Roles: []string{string(model.RoleVolunteer)}},
 		},
 	}
 }
@@ -626,8 +626,8 @@ func TestChangeRota_TeamLeadGetsCorrectRole(t *testing.T) {
 	// bob is a team lead in the volunteer list
 	volClient := &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleVolunteer},
-			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleTeamLead},
+			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
 		},
 	}
 
@@ -707,9 +707,9 @@ func TestChangeRota_TeamLeadReplacesVolunteer_InheritsRole(t *testing.T) {
 	// eve is a team lead replacing bob (volunteer)
 	volClient := &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleTeamLead},
-			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleVolunteer},
-			{ID: "eve", FirstName: "Eve", LastName: "E", Role: model.RoleTeamLead},
+			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "eve", FirstName: "Eve", LastName: "E", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
 		},
 	}
 
@@ -752,9 +752,9 @@ func TestChangeRota_TeamLeadAddedToShiftWithExistingTeamLead_Downgraded(t *testi
 	// eve is a team lead being added (no --out) to a shift that already has alice as team lead
 	volClient := &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", Role: model.RoleTeamLead},
-			{ID: "bob", FirstName: "Bob", LastName: "B", Role: model.RoleVolunteer},
-			{ID: "eve", FirstName: "Eve", LastName: "E", Role: model.RoleTeamLead},
+			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "eve", FirstName: "Eve", LastName: "E", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
 		},
 	}
 

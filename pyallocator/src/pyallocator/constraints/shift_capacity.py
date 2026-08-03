@@ -12,7 +12,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class ShiftCapacityConstraint:
@@ -23,15 +23,17 @@ class ShiftCapacityConstraint:
     )
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         for shift in problem.shifts:
             if shift.closed:
                 continue
-            budget = max(0, shift.size - len(shift.custom_preallocations))
+            budget = max(
+                0, problem.shift_size(shift) - len(problem.shift_customs(shift))
+            )
             model.Add(
                 sum(
-                    v.seat_cost * x[(v.id, shift.index)]
+                    v.seat_cost * x.attend[(v.id, shift.index)]
                     for v in problem.volunteers
                 )
                 <= budget

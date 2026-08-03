@@ -338,9 +338,9 @@ var apiTestCfg = &config.Config{
 func testVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "Active"},
-			{ID: "bob", FirstName: "Bob", LastName: "Barnes", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Role: model.RoleVolunteer, Status: "Active"},
+			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "bob", FirstName: "Bob", LastName: "Barnes", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
 		},
 	}
 }

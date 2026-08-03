@@ -38,9 +38,9 @@ func TestBuildManualPreallocationOverrides_VolunteerUnion(t *testing.T) {
 	require.Len(t, overrides, 1)
 
 	got := overrides[0]
-	assert.Equal(t, []string{"vol-1"}, got.PreallocatedVolunteerIDs)
-	assert.Empty(t, got.CustomPreallocations)
-	assert.Empty(t, got.PreallocatedTeamLeadID)
+	assert.Equal(t, []allocator.Preallocation{
+		{VolunteerID: "vol-1", Role: string(model.RoleVolunteer)},
+	}, got.Preallocations)
 	// Exact-date matcher only matches its own date.
 	assert.True(t, got.AppliesTo("2026-08-02"))
 	assert.False(t, got.AppliesTo("2026-08-09"))
@@ -53,9 +53,11 @@ func TestBuildManualPreallocationOverrides_DedupesAgainstConfig(t *testing.T) {
 	}
 	configOverrides := []allocator.ShiftOverride{
 		configOverride([]string{"2026-08-02"}, allocator.ShiftOverride{
-			PreallocatedVolunteerIDs: []string{"vol-1"},
-			CustomPreallocations:     []string{"Cover Team"},
-			PreallocatedTeamLeadID:   "tl-config",
+			Preallocations: []allocator.Preallocation{
+				{VolunteerID: "vol-1", Role: string(model.RoleVolunteer)},
+				{Custom: "Cover Team", Role: string(model.RoleVolunteer)},
+				{VolunteerID: "tl-config", Role: string(model.RoleTeamLead)},
+			},
 		}),
 	}
 	pins := []db.ManualPreallocation{
@@ -72,7 +74,9 @@ func TestBuildManualPreallocationOverrides_DedupesAgainstConfig(t *testing.T) {
 	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, configOverrides)
 	require.NoError(t, err)
 	require.Len(t, overrides, 1, "only the pin on a date config does not already cover survives")
-	assert.Equal(t, []string{"vol-1"}, overrides[0].PreallocatedVolunteerIDs)
+	assert.Equal(t, []allocator.Preallocation{
+		{VolunteerID: "vol-1", Role: string(model.RoleVolunteer)},
+	}, overrides[0].Preallocations)
 	assert.True(t, overrides[0].AppliesTo("2026-08-09"))
 }
 
@@ -86,8 +90,12 @@ func TestBuildManualPreallocationOverrides_TeamLeadAndCustom(t *testing.T) {
 	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, nil)
 	require.NoError(t, err)
 	require.Len(t, overrides, 2)
-	assert.Equal(t, "tl-1", overrides[0].PreallocatedTeamLeadID)
-	assert.Equal(t, []string{"External Helper"}, overrides[1].CustomPreallocations)
+	assert.Equal(t, []allocator.Preallocation{
+		{VolunteerID: "tl-1", Role: string(model.RoleTeamLead)},
+	}, overrides[0].Preallocations)
+	assert.Equal(t, []allocator.Preallocation{
+		{Custom: "External Helper", Role: string(model.RoleVolunteer)},
+	}, overrides[1].Preallocations)
 }
 
 func TestBuildManualPreallocationOverrides_ClosedByConfigDropsPin(t *testing.T) {
@@ -143,7 +151,9 @@ func TestCheckPreallocationsResolve_InactiveConfigPin(t *testing.T) {
 	shiftDates := []time.Time{time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)}
 	configOverrides := []allocator.ShiftOverride{
 		configOverride([]string{"2026-08-02"}, allocator.ShiftOverride{
-			PreallocatedVolunteerIDs: []string{"stale"},
+			Preallocations: []allocator.Preallocation{
+				{VolunteerID: "stale", Role: string(model.RoleVolunteer)},
+			},
 		}),
 	}
 	activeIDs := map[string]bool{"vol-1": true}
@@ -173,7 +183,7 @@ func TestAllocateRotaFailsOnStaleManualPin(t *testing.T) {
 
 	volClient := &mockVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "vol-1", FirstName: "Ada", LastName: "Active", Role: model.RoleVolunteer, Status: "Active"},
+			{ID: "vol-1", FirstName: "Ada", LastName: "Active", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
 			// "gone" is deliberately absent / inactive — it is not in the active set.
 		},
 	}

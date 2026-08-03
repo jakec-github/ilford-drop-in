@@ -114,10 +114,10 @@ func (c *preallocVolClient) ListVolunteers(cfg *config.Config) ([]model.Voluntee
 func preallocVolunteers() *preallocVolClient {
 	return &preallocVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "Active"},
-			{ID: "bob", FirstName: "Bob", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active"},
-			{ID: "carol", FirstName: "Carol", DisplayName: "Carol", Role: model.RoleVolunteer, Status: "Inactive"},
-			{ID: "dan", FirstName: "Dan", DisplayName: "Dan", Role: model.RoleTeamLead, Status: "Active"},
+			{ID: "alice", FirstName: "Alice", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "bob", FirstName: "Bob", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "carol", FirstName: "Carol", DisplayName: "Carol", Roles: []string{string(model.RoleVolunteer)}, Status: "Inactive"},
+			{ID: "dan", FirstName: "Dan", DisplayName: "Dan", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
 		},
 	}
 }

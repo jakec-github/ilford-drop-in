@@ -38,6 +38,32 @@ type VolunteerGroup struct {
 	MaleCount int
 }
 
+// Role is a job on a Shift, mirroring model.Role. The allocator keeps its own
+// copy of the domain types it needs (as it does for Volunteer) so the solver
+// contract does not drag the whole domain package along.
+type Role struct {
+	// Name is what the roster, the pins and the solver all match on.
+	Name string
+	// Max is the ceiling on this Role's Seats per Shift. Nil means uncapped.
+	Max *int
+	// Priority orders Seat filling, lowest first.
+	Priority int
+}
+
+// Seat is one place in a Shift's Shape: Count Seats for this Role.
+type Seat struct {
+	Role  string
+	Count int
+}
+
+// Preallocation pins one volunteer, or one custom entry, to a Role on a Shift
+// before the solve. Exactly one of VolunteerID and Custom is set.
+type Preallocation struct {
+	VolunteerID string
+	Custom      string
+	Role        string
+}
+
 // Volunteer represents an individual volunteer
 type Volunteer struct {
 	ID          string
@@ -45,8 +71,13 @@ type Volunteer struct {
 	LastName    string
 	DisplayName string
 	Gender      string
-	IsTeamLead  bool
-	GroupKey    string
+	// Roles are the jobs this volunteer holds, in priority order. Eligibility
+	// for a Seat is holding its Role.
+	Roles []string
+	// IsTeamLead is the pre-Roles shorthand, kept while the solver still
+	// designates a lead after the fact (#89 commit 9 removes it).
+	IsTeamLead bool
+	GroupKey   string
 }
 
 // Shift represents a single shift that needs to be filled
@@ -63,8 +94,9 @@ type Shift struct {
 	// AllocatedGroups tracks which volunteer groups have been assigned
 	AllocatedGroups []*VolunteerGroup
 
-	// CustomPreallocations are volunteer IDs manually assigned before generation
-	// These count toward Size but don't affect TeamLead or MaleCount
+	// CustomPreallocations are the custom entries on a *solved* shift, set by
+	// CpsatOutputToShifts. Pins going into a solve travel in Preallocations
+	// instead. (#89 commit 9 replaces this with role-tagged assignments.)
 	CustomPreallocations []string
 
 	// TeamLead is the team lead assigned to this shift (nil if none assigned)
@@ -83,13 +115,10 @@ type Shift struct {
 	// Closed shifts appear in the rota but remain empty
 	Closed bool
 
-	// PreallocatedVolunteerIDs are volunteer IDs to preallocate (as ordinary volunteers)
-	// These are processed during initialization and then allocated as proper groups
-	PreallocatedVolunteerIDs []string
-
-	// PreallocatedTeamLeadID is the volunteer ID to preallocate as team lead
-	// This is processed during initialization and then allocated as a proper group
-	PreallocatedTeamLeadID string
+	// Preallocations are the pins this shift starts with, each naming the Role
+	// it fills. Volunteers, custom entries and leads all travel together: they
+	// are the same thing, a Seat spoken for before the solve.
+	Preallocations []Preallocation
 }
 
 // CurrentSize returns the current number of ordinary volunteers allocated to this shift

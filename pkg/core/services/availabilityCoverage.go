@@ -114,16 +114,11 @@ func buildShiftSeats(
 				zap.Error(err))
 			continue
 		}
-		// Through the same split allocation applies, so a role-named config pin
-		// lands in the slot InitShifts will read it from.
-		customs, volunteerIDs, teamLeadID := splitPreallocationsByRole(override.Preallocations)
 		overrides = append(overrides, allocator.ShiftOverride{
-			AppliesTo:                appliesTo,
-			ShiftSize:                override.ShiftSize,
-			CustomPreallocations:     customs,
-			Closed:                   override.Closed,
-			PreallocatedVolunteerIDs: volunteerIDs,
-			PreallocatedTeamLeadID:   teamLeadID,
+			AppliesTo:      appliesTo,
+			ShiftSize:      override.ShiftSize,
+			Closed:         override.Closed,
+			Preallocations: convertConfigPreallocations(override.Preallocations),
 		})
 	}
 
@@ -207,7 +202,7 @@ func buildCoverage(
 				if !known || !utils.IsActive(volunteer) {
 					continue
 				}
-				if volunteer.Role == model.RoleTeamLead {
+				if volunteer.Holds(string(model.RoleTeamLead)) {
 					hasTeamLead = true
 					continue
 				}

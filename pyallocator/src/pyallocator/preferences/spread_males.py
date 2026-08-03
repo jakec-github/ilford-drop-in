@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
-from ..constraints.base import AssignmentVars
+from ..constraints.base import Vars
 from ..problem import Problem
 from .base import ObjectiveTerm
 
@@ -27,7 +27,7 @@ class SpreadMalesPreference:
     description = "male volunteers are spread evenly across shifts"
 
     def objective_terms(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> list[ObjectiveTerm]:
         males = [v for v in problem.volunteers if v.is_male]
         if not males:
@@ -36,7 +36,7 @@ class SpreadMalesPreference:
         for shift in problem.shifts:
             if shift.closed:
                 continue
-            male_sum = sum(x[(v.id, shift.index)] for v in males)
+            male_sum = sum(x.attend[(v.id, shift.index)] for v in males)
             levels = []
             for k in range(1, len(males) + 1):
                 weight = SPREAD_MALES_WEIGHT // k

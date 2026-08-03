@@ -10,7 +10,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class MaxFrequencyConstraint:
@@ -18,11 +18,11 @@ class MaxFrequencyConstraint:
     description = "no volunteer exceeds the allocation cap for the rota"
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         for v in problem.volunteers:
             model.Add(
-                sum(x[(v.id, shift.index)] for shift in problem.shifts)
+                sum(x.attend[(v.id, shift.index)] for shift in problem.shifts)
                 <= problem.max_allocation_count
             )
 

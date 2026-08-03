@@ -182,6 +182,8 @@ func AllocateRota(
 		allocatorOverrides,
 		historicalShifts,
 		cfg.MaxAllocationFrequency,
+		convertConfigRoles(cfg.Roles),
+		cfg.RequiresMale,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build cpsat input: %w", err)

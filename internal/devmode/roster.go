@@ -18,7 +18,10 @@ import (
 // service account. The file's header row and columns are the sheet's — the same
 // parser reads both, so a CSV that loads here is one the real sheet would
 // accept, and display names are disambiguated across the roster identically.
-func LoadVolunteers(path string) ([]model.Volunteer, error) {
+//
+// The Roles table arrives as a parameter rather than off a config, because this
+// package deliberately sees no config beyond the dev-mode block.
+func LoadVolunteers(path string, roles model.Roles) ([]model.Volunteer, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open volunteer CSV: %w", err)
@@ -49,7 +52,7 @@ func LoadVolunteers(path string) ([]model.Volunteer, error) {
 		raw[i] = row
 	}
 
-	volunteers, err := sheetsclient.ParseVolunteers(raw)
+	volunteers, err := sheetsclient.ParseVolunteers(raw, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse volunteer CSV %s: %w", path, err)
 	}

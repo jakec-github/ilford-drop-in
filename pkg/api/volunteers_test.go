@@ -17,9 +17,9 @@ import (
 func rosterVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active", Gender: "Male", GroupKey: "smith-family"},
-			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "active", Gender: "Female"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Role: model.RoleVolunteer, Status: "Left"},
+			{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active", Gender: "Male", GroupKey: "smith-family"},
+			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "active", Gender: "Female"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}, Status: "Left"},
 		},
 	}
 }
