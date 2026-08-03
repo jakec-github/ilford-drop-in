@@ -83,11 +83,14 @@ common; missing team leads are filled in manually later.
 
 ## How the code is organised
 
-The assignment unit is the **individual volunteer**: the model has one
-BoolVar per (volunteer, shift) pair, and group atomicity
-(couples/families move as one) is the `grouping` constraint rather
-than the variable structure — so per-person roles can become solver
-decisions later. Modularity is the point of this package:
+The assignment unit is the **individual volunteer in a Role**: the model has
+a BoolVar per (volunteer, shift, Role) the volunteer could fill, plus an
+attendance BoolVar per (volunteer, shift) equal to their sum. That equality
+is what holds a person to one Seat per shift — there is no separate
+exclusion constraint. Group atomicity (couples/families move as one) is the
+`grouping` constraint rather than the variable structure. Constraints about
+*whether* someone works read `x.attend`; constraints about *what they do*
+read `x.role`. Modularity is the point of this package:
 
 - `constraints/` — one file per **hard rule** (something that can never
   be violated). Each module's docstring and `description` state exactly

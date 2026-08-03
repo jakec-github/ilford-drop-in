@@ -76,6 +76,9 @@ class Problem:
         max_allocation_count: Go-computed cap on allocations per volunteer.
         preallocated_pairs: {(group_key, shift_index)} that MUST be
             allocated — from both volunteer and team-lead preallocations.
+        preallocated_roles: {(volunteer_id, shift_index): role} the pinned
+            person must fill. Their group-mates are in preallocated_pairs
+            but not here: they attend, and the solver picks their Seat.
         preallocated_team_lead: {shift_index: volunteer_id} designated TL.
         last_historical_group_keys: group keys present on the most recent
             historical shift (back-to-back boundary with the previous rota).
@@ -131,6 +134,7 @@ class Problem:
         self.volunteers: tuple[VolunteerView, ...] = tuple(volunteers)
 
         self.preallocated_pairs: set[tuple[str, int]] = set()
+        self.preallocated_roles: dict[tuple[str, int], str] = {}
         self.preallocated_team_lead: dict[int, str] = {}
         self._resolve_preallocations()
 
@@ -198,6 +202,13 @@ class Problem:
                         f"preallocated volunteer '{pin.volunteer_id}' on shift "
                         f"{shift.index} does not hold role '{pin.role}'"
                     )
+                if self.seats_for(shift, pin.role) < 1:
+                    raise ProblemError(
+                        f"preallocated volunteer '{pin.volunteer_id}' on shift "
+                        f"{shift.index} is pinned to role '{pin.role}', which "
+                        "that shift has no Seat for"
+                    )
+                self.preallocated_roles[(pin.volunteer_id, shift.index)] = pin.role
 
                 # Temporary: the lead is still designated after the solve, so
                 # a pin on the capped Role has to be remembered separately.

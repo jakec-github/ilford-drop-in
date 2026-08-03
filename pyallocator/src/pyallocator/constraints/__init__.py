@@ -22,7 +22,7 @@ from . import (
     preallocations,
     shift_capacity,
 )
-from .base import AssignmentVars, Constraint
+from .base import Constraint, Vars
 
 FUNDAMENTAL_CONSTRAINTS: list[Constraint] = [
     no_duplicate_allocation.CONSTRAINT,
@@ -46,4 +46,4 @@ STRICT_CONSTRAINTS: list[Constraint] = [
 
 DEFAULT_CONSTRAINTS = FUNDAMENTAL_CONSTRAINTS + ADDITIONAL_CONSTRAINTS # + STRICT_CONSTRAINTS
 
-__all__ = ["AssignmentVars", "Constraint", "DEFAULT_CONSTRAINTS"]
+__all__ = ["Constraint", "DEFAULT_CONSTRAINTS", "Vars"]

@@ -12,7 +12,7 @@ from typing import Protocol
 
 from ortools.sat.python import cp_model
 
-from ..constraints.base import AssignmentVars
+from ..constraints.base import Vars
 from ..problem import Problem
 
 # (linear expression, integer weight): the objective gains expr * weight.
@@ -24,5 +24,5 @@ class Preference(Protocol):
     description: str  # human sentence: what rota feature this encourages
 
     def objective_terms(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> list[ObjectiveTerm]: ...

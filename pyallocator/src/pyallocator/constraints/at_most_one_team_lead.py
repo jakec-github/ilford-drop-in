@@ -19,7 +19,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class AtMostOneTeamLeadConstraint:
@@ -27,7 +27,7 @@ class AtMostOneTeamLeadConstraint:
     description = "shifts never have more than one team lead"
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         lead_role = problem.lead_role
         if lead_role is None:
@@ -42,7 +42,7 @@ class AtMostOneTeamLeadConstraint:
             return
         for shift in problem.shifts:
             model.Add(
-                sum(x[(vol_id, shift.index)] for vol_id in tl_indicators) <= 1
+                sum(x.attend[(vol_id, shift.index)] for vol_id in tl_indicators) <= 1
             )
 
 

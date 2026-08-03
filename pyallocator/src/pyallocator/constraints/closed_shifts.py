@@ -10,7 +10,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class ClosedShiftsConstraint:
@@ -18,13 +18,13 @@ class ClosedShiftsConstraint:
     description = "closed shifts get no allocations"
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         for shift in problem.shifts:
             if not shift.closed:
                 continue
             for v in problem.volunteers:
-                model.Add(x[(v.id, shift.index)] == 0)
+                model.Add(x.attend[(v.id, shift.index)] == 0)
 
 
 CONSTRAINT = ClosedShiftsConstraint()

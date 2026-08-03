@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
-from ..constraints.base import AssignmentVars
+from ..constraints.base import Vars
 from ..problem import Problem
 from .base import ObjectiveTerm
 
@@ -29,10 +29,10 @@ class MaximizeAllocationsPreference:
     description = "as many group-shift allocations as possible"
 
     def objective_terms(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> list[ObjectiveTerm]:
         total = sum(
-            x[(group.members[0].id, shift.index)]
+            x.attend[(group.members[0].id, shift.index)]
             for group in problem.groups
             for shift in problem.shifts
         )
