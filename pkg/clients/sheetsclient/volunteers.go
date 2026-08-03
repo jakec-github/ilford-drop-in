@@ -141,7 +141,7 @@ func ParseVolunteers(raw [][]interface{}) ([]model.Volunteer, error) {
 			continue
 		}
 
-		role := model.Role(getField("Role", row))
+		role := model.LegacyRole(getField("Role", row))
 		if !role.IsValid() {
 			return nil, fmt.Errorf("invalid role for volunteer in row %d", i)
 		}

@@ -1,13 +1,18 @@
 package model
 
-type Role string
+// LegacyRole is the hardcoded pair of Roles the system had before they became
+// configuration. It is scaffolding: the sites still reading it are rewritten to
+// resolve Roles from config over the course of #89, and the last commit of that
+// ticket deletes this type along with its constants. New code wants
+// [Role]/[Roles] and a role name string.
+type LegacyRole string
 
 const (
-	RoleTeamLead  Role = "Team lead"
-	RoleVolunteer Role = "Service volunteer"
+	RoleTeamLead  LegacyRole = "Team lead"
+	RoleVolunteer LegacyRole = "Service volunteer"
 )
 
-func (r Role) IsValid() bool {
+func (r LegacyRole) IsValid() bool {
 	return r == RoleTeamLead || r == RoleVolunteer
 }
 
@@ -17,7 +22,7 @@ type Volunteer struct {
 	FirstName   string
 	LastName    string
 	DisplayName string // Computed by ComputeDisplayNames based on uniqueness
-	Role        Role
+	Role        LegacyRole
 	Status      string
 	Gender      string
 	Email       string

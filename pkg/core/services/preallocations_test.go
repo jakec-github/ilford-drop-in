@@ -234,7 +234,7 @@ func TestAddPreallocation_ClosedShift(t *testing.T) {
 func TestAddPreallocation_ConfigPinsTeamLead(t *testing.T) {
 	store := oneShiftStore()
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedTeamLeadID: "someone"},
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: string(model.RoleTeamLead)}}},
 	}}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", TeamLead: true}, zap.NewNop())
@@ -246,7 +246,7 @@ func TestAddPreallocation_ConfigPinsTeamLead(t *testing.T) {
 func TestAddPreallocation_ConfigTeamLeadDoesNotBlockVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedTeamLeadID: "someone"},
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: string(model.RoleTeamLead)}}},
 	}}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
@@ -394,10 +394,12 @@ func listPreallocs(t *testing.T, store *mockPreallocationStore, cfg *config.Conf
 // rota overrides against the shifts in range, in all three flavours.
 func TestListPreallocations_IncludesConfigPins(t *testing.T) {
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{{
-		RRule:                    "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
-		PreallocatedTeamLeadID:   "alice",
-		PreallocatedVolunteerIDs: []string{"bob"},
-		CustomPreallocations:     []string{"Scouts"},
+		RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
+		Preallocations: []config.Preallocation{
+			{VolunteerID: "alice", Role: string(model.RoleTeamLead)},
+			{VolunteerID: "bob", Role: string(model.RoleVolunteer)},
+			{Custom: "Scouts", Role: string(model.RoleVolunteer)},
+		},
 	}}}
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
@@ -426,7 +428,7 @@ func TestListPreallocations_IncludesConfigPins(t *testing.T) {
 // must not show any either.
 func TestListPreallocations_ConfigPinsSkipClosedDates(t *testing.T) {
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedVolunteerIDs: []string{"bob"}},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}}},
 		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Closed: true},
 	}}
 
@@ -437,8 +439,8 @@ func TestListPreallocations_ConfigPinsSkipClosedDates(t *testing.T) {
 // allocation time, so they are one entry here.
 func TestListPreallocations_ConfigPinsDedupe(t *testing.T) {
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedVolunteerIDs: []string{"bob"}, CustomPreallocations: []string{"Scouts"}},
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedVolunteerIDs: []string{"bob"}, CustomPreallocations: []string{"Scouts"}},
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}, {Custom: "Scouts", Role: string(model.RoleVolunteer)}}},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}, {Custom: "Scouts", Role: string(model.RoleVolunteer)}}},
 	}}
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
@@ -452,8 +454,8 @@ func TestListPreallocations_ConfigPinsDedupe(t *testing.T) {
 // matching override wins, exactly as InitShifts resolves it.
 func TestListPreallocations_ConfigTeamLeadLastOverrideWins(t *testing.T) {
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedTeamLeadID: "alice"},
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedTeamLeadID: "dan"},
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "alice", Role: string(model.RoleTeamLead)}}},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: string(model.RoleTeamLead)}}},
 	}}
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
@@ -468,7 +470,7 @@ func TestListPreallocations_ConfigTeamLeadLastOverrideWins(t *testing.T) {
 // visible — it is the reason allocation will fail, and hiding it hides the fix.
 func TestListPreallocations_UnknownConfigVolunteerShowsID(t *testing.T) {
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", PreallocatedVolunteerIDs: []string{"ghost"}},
+		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "ghost", Role: string(model.RoleVolunteer)}}},
 	}}
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
@@ -487,7 +489,7 @@ func TestListPreallocations_MergesSourcesInDateOrder(t *testing.T) {
 		{ID: "p2", ShiftID: "shift-1", Role: string(model.RoleVolunteer), CustomValue: "Aardvark Group"},
 	}
 	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", PreallocatedTeamLeadID: "dan"},
+		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: string(model.RoleTeamLead)}}},
 	}}
 
 	views := listPreallocs(t, store, cfg)

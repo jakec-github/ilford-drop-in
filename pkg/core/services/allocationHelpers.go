@@ -166,26 +166,55 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 			return nil, fmt.Errorf("failed to parse rrule for override %d: %w", i, err)
 		}
 
+		customs, volunteerIDs, teamLeadID := splitPreallocationsByRole(override.Preallocations)
+
 		result = append(result, allocator.ShiftOverride{
 			AppliesTo:                appliesTo,
 			ShiftSize:                override.ShiftSize,
-			CustomPreallocations:     override.CustomPreallocations,
+			CustomPreallocations:     customs,
 			Closed:                   override.Closed,
-			PreallocatedVolunteerIDs: override.PreallocatedVolunteerIDs,
-			PreallocatedTeamLeadID:   override.PreallocatedTeamLeadID,
+			PreallocatedVolunteerIDs: volunteerIDs,
+			PreallocatedTeamLeadID:   teamLeadID,
 		})
 
 		logger.Debug("Converted override",
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
 			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("custom_preallocated_count", len(override.CustomPreallocations)),
-			zap.Int("preallocated_volunteer_count", len(override.PreallocatedVolunteerIDs)),
-			zap.Bool("has_preallocated_team_lead", override.PreallocatedTeamLeadID != ""),
+			zap.Int("custom_preallocated_count", len(customs)),
+			zap.Int("preallocated_volunteer_count", len(volunteerIDs)),
+			zap.Bool("has_preallocated_team_lead", teamLeadID != ""),
 			zap.Bool("closed", override.Closed))
 	}
 
 	return result, nil
+}
+
+// splitPreallocationsByRole fans one role-named list back out into the three
+// slots allocator.ShiftOverride still has: custom entries, ordinary volunteers,
+// and the single-valued team lead (last one named wins, as it does across
+// overrides). It mirrors the switch buildManualPreallocationOverrides applies to
+// manual pins, so both sources reach the solver by the same route.
+//
+// Only a volunteer can be pinned as team lead here: a custom entry named
+// against a capped Role has nowhere to go in this shape and lands as an
+// ordinary custom preallocation, which is what it would have been before Roles
+// were configurable.
+//
+// Temporary. The contract grows role-named pins of its own next, and this
+// function goes with the three fields it is feeding (#89).
+func splitPreallocationsByRole(pins []config.Preallocation) (customs, volunteerIDs []string, teamLeadID string) {
+	for _, pin := range pins {
+		switch {
+		case pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "":
+			teamLeadID = pin.VolunteerID
+		case pin.VolunteerID != "":
+			volunteerIDs = append(volunteerIDs, pin.VolunteerID)
+		case pin.Custom != "":
+			customs = append(customs, pin.Custom)
+		}
+	}
+	return customs, volunteerIDs, teamLeadID
 }
 
 // buildHistoricalShifts fetches allocations from the previous rota, applies that

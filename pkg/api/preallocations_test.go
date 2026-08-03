@@ -251,9 +251,11 @@ func TestListPreallocationsEndpoint_ConfigPins(t *testing.T) {
 		ShiftStartTime: "19:30",
 		ShiftEndTime:   "21:30",
 		RotaOverrides: []config.RotaOverride{{
-			RRule:                  "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=11",
-			PreallocatedTeamLeadID: "alice",
-			CustomPreallocations:   []string{"Scouts"},
+			RRule: "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=11",
+			Preallocations: []config.Preallocation{
+				{VolunteerID: "alice", Role: string(model.RoleTeamLead)},
+				{Custom: "Scouts", Role: string(model.RoleVolunteer)},
+			},
 		}},
 	}
 
