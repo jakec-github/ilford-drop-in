@@ -9,17 +9,31 @@ import (
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
 
+// Preallocation pins one volunteer, or one custom entry, to a Role on every
+// date its override matches. Every preallocation names a Role — that is what
+// lets a custom entry such as "St John's team" hold something other than an
+// ordinary Seat.
+type Preallocation struct {
+	// VolunteerID pins a volunteer from the roster. Exactly one of VolunteerID
+	// and Custom is set.
+	VolunteerID string `yaml:"volunteerID,omitempty"`
+	// Custom pins a free-text entry — a group or an outside body, with no roster
+	// record and no availability.
+	Custom string `yaml:"custom,omitempty"`
+	// Role is the name of the Role the pin fills. It must be one config names.
+	Role string `yaml:"role"`
+}
+
 // RotaOverride defines overrides to apply when generating rotas
 type RotaOverride struct {
-	RRule                    string   `yaml:"rrule" validate:"required"`
-	CustomPreallocations     []string `yaml:"customPreallocations,omitempty"`
-	ShiftSize                *int     `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
-	Closed                   bool     `yaml:"closed,omitempty"`
-	PreallocatedVolunteerIDs []string `yaml:"preallocatedVolunteerIDs,omitempty"`
-	PreallocatedTeamLeadID   string   `yaml:"preallocatedTeamLeadID,omitempty"`
+	RRule          string          `yaml:"rrule" validate:"required"`
+	ShiftSize      *int            `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
+	Closed         bool            `yaml:"closed,omitempty"`
+	Preallocations []Preallocation `yaml:"preallocations,omitempty"`
 }
 
 // ServerConfig holds settings for the HTTP server
@@ -68,16 +82,32 @@ type Config struct {
 	GmailUserID            string         `yaml:"gmailUserID" validate:"required"`
 	GmailSender            string         `yaml:"gmailSender,omitempty"`
 	MaxAllocationFrequency float64        `yaml:"maxAllocationFrequency" validate:"required,gt=0,lte=1"`
-	DefaultShiftSize       int            `yaml:"defaultShiftSize" validate:"required,min=1"`
-	ShiftStartTime         string         `yaml:"shiftStartTime" validate:"required,datetime=15:04"`
-	ShiftEndTime           string         `yaml:"shiftEndTime" validate:"required,datetime=15:04"`
-	ShiftTimezone          string         `yaml:"shiftTimezone,omitempty" validate:"omitempty,timezone"`
-	Server                 *ServerConfig  `yaml:"server,omitempty"`
-	DevMode                *DevModeConfig `yaml:"devMode,omitempty"`
+	// Roles are the jobs volunteers hold. Config is authoritative for which
+	// Roles exist: the roster, pins and the solver all resolve against this
+	// list. Validated in Validate, not by tags — the rules are cross-field.
+	Roles []model.Role `yaml:"roles"`
+	// RequiresMale demands that every open Shift either has a male allocated or
+	// leaves a Seat open, so one can be added by hand afterwards. Today's
+	// behaviour is unconditional; the flag exists so it can be turned off rather
+	// than because anyone will.
+	RequiresMale     bool           `yaml:"requiresMale"`
+	DefaultShiftSize int            `yaml:"defaultShiftSize" validate:"required,min=1"`
+	ShiftStartTime   string         `yaml:"shiftStartTime" validate:"required,datetime=15:04"`
+	ShiftEndTime     string         `yaml:"shiftEndTime" validate:"required,datetime=15:04"`
+	ShiftTimezone    string         `yaml:"shiftTimezone,omitempty" validate:"omitempty,timezone"`
+	Server           *ServerConfig  `yaml:"server,omitempty"`
+	DevMode          *DevModeConfig `yaml:"devMode,omitempty"`
 }
 
 // DefaultShiftTimezone is used when shiftTimezone is not set in the config
 const DefaultShiftTimezone = "Europe/London"
+
+// RoleTable indexes the configured Roles for lookup by name and by priority.
+// Everything that has to resolve a Role name — the roster, pins, the solver
+// contract — goes through this rather than reading the slice.
+func (c *Config) RoleTable() model.Roles {
+	return model.NewRoles(c.Roles)
+}
 
 // ShiftTimes returns the absolute start and end times of the shift on the
 // given date ("2006-01-02"), interpreted in the configured timezone.
@@ -170,14 +200,90 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
+	// The rules below are cross-field — uniqueness across a slice, a Role name
+	// resolving against another part of the config — which validator.v10 tags
+	// cannot express, so they run here.
+	if err := validateRoles(cfg.Roles); err != nil {
+		return fmt.Errorf("config validation failed: %w", err)
+	}
+
+	roles := cfg.RoleTable()
+
 	// Validate rrule syntax for each override, reusing the shared parser so
 	// rrule parsing lives in exactly one place.
 	for i, override := range cfg.RotaOverrides {
 		if _, err := utils.ParseRRule(override.RRule); err != nil {
 			return fmt.Errorf("invalid rrule in rotaOverrides[%d]: %w", i, err)
 		}
+		for j, pin := range override.Preallocations {
+			if err := validatePreallocation(pin, roles); err != nil {
+				return fmt.Errorf("invalid preallocation in rotaOverrides[%d].preallocations[%d]: %w", i, j, err)
+			}
+		}
 	}
 
+	return nil
+}
+
+// validateRoles enforces the rules that make the configured Roles usable as a
+// lookup table: names and priorities identify a Role, so they must be unique,
+// and a ceiling of zero would configure a Role nobody can ever fill.
+//
+// Exactly one Role may be uncapped, because a Shift's size is spent on that
+// Role's Seats — with two, `shiftSize` would not say how many of each. Slice 2
+// replaces `shiftSize` with a per-Shift Shape naming its own counts, and lifts
+// this restriction with it.
+func validateRoles(roles []model.Role) error {
+	if len(roles) == 0 {
+		return fmt.Errorf("at least one role must be configured")
+	}
+
+	seenNames := make(map[string]bool, len(roles))
+	seenPriorities := make(map[int]bool, len(roles))
+	var uncapped []string
+
+	for i, role := range roles {
+		if role.Name == "" {
+			return fmt.Errorf("roles[%d] has no name", i)
+		}
+		if seenNames[role.Name] {
+			return fmt.Errorf("roles[%d] repeats the name %q", i, role.Name)
+		}
+		seenNames[role.Name] = true
+
+		if seenPriorities[role.Priority] {
+			return fmt.Errorf("roles[%d] (%s) repeats priority %d", i, role.Name, role.Priority)
+		}
+		seenPriorities[role.Priority] = true
+
+		if role.Capped() && *role.Max < 1 {
+			return fmt.Errorf("roles[%d] (%s) has max %d; omit max for no ceiling", i, role.Name, *role.Max)
+		}
+		if !role.Capped() {
+			uncapped = append(uncapped, role.Name)
+		}
+	}
+
+	if len(uncapped) != 1 {
+		return fmt.Errorf("exactly one role must be uncapped (no max), found %d: %v", len(uncapped), uncapped)
+	}
+
+	return nil
+}
+
+// validatePreallocation checks a config pin names one subject and a Role that
+// exists. Whether the volunteer holds that Role is a roster question, checked
+// where the roster is in scope.
+func validatePreallocation(pin Preallocation, roles model.Roles) error {
+	if (pin.VolunteerID == "") == (pin.Custom == "") {
+		return fmt.Errorf("set exactly one of volunteerID and custom")
+	}
+	if pin.Role == "" {
+		return fmt.Errorf("role is required")
+	}
+	if _, ok := roles.ByName(pin.Role); !ok {
+		return fmt.Errorf("role %q is not a configured role", pin.Role)
+	}
 	return nil
 }
 

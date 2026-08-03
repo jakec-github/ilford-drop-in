@@ -533,7 +533,14 @@ func buildShiftSizeCalculator(cfg *config.Config, shiftDates []time.Time, logger
 			continue
 		}
 
-		preallocationCount := len(override.CustomPreallocations)
+		// Custom entries are the ones that eat into the seats availability is
+		// counted against; a preallocated volunteer is counted as themselves.
+		preallocationCount := 0
+		for _, pin := range override.Preallocations {
+			if pin.Custom != "" {
+				preallocationCount++
+			}
+		}
 
 		var shiftSizePtr *int
 		if override.ShiftSize != nil {
