@@ -46,6 +46,22 @@ type Authenticator struct {
 	// session for this address directly. Set only by NewStubAuthenticator, which
 	// the dev environment alone can reach (see authstub.go).
 	stubEmail string
+	// completeSend finishes an incremental gmail.send grant arriving at the
+	// shared callback. Set by NewHandler, because the send needs the store and
+	// the roster and this type has neither; nil means no sending is wired up.
+	completeSend http.HandlerFunc
+}
+
+// isStubbed reports whether the Google round-trip has been replaced, which is
+// dev mode and nothing else.
+func (a *Authenticator) isStubbed() bool {
+	return a.stubEmail != ""
+}
+
+// sameAdmin reports whether two addresses name the same admin, folded the way
+// the allowlist folds them so an equivalent form still matches.
+func (a *Authenticator) sameAdmin(x, y string) bool {
+	return normaliseEmail(x) == normaliseEmail(y)
 }
 
 // NewAuthenticator builds an Authenticator. It performs OIDC provider discovery
@@ -135,7 +151,22 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 // handleCallback completes the flow: verify state, exchange the code, verify the
 // ID token, check the allowlist, and set the session cookie. Non-admins are
 // rejected here with no cookie set.
+//
+// A send comes back through this same URI, because it is the one registered with
+// Google and adding a second is a manual step in the console for every
+// environment. Its state is signed rather than random, which is what tells the
+// two flows apart before any of the login handling below runs — a send carries
+// no state cookie to check against.
 func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
+	if isGmailState(r.URL.Query().Get("state")) {
+		if a.completeSend == nil {
+			http.Error(w, "sending is not available on this server", http.StatusNotFound)
+			return
+		}
+		a.completeSend(w, r)
+		return
+	}
+
 	if a.stubEmail != "" {
 		// No OAuth client exists to exchange a code with; say so rather than
 		// reach for the verifier the stub was never given.

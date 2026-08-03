@@ -259,3 +259,94 @@
   font-size: 0.6875rem;
   overflow-wrap: anywhere;
 }
+
+/* The two round-level sends, under the caption rather than up in the header
+   beside the mint button. Minting and sending are different operations on
+   different things — one writes links, the other mails links that already
+   exist — and a row of three buttons in one corner would read as three ways of
+   doing the same job. */
+.round-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+/* The deadline form. One field, so it can be a plain column; the field is
+   full-width because a date is written out in words ("Friday 7 August"). */
+.send-field {
+  display: block;
+  font-size: 0.875rem;
+}
+
+.send-field input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  /* 16px keeps iOS Safari from zooming the page on focus. */
+  font: 16px/1.4 var(--sans);
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.send-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.send-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.send-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+/* The running or finished send, above the round it changed. It is bordered
+   rather than tinted, because a send with no failures is neither good news nor
+   bad — it is just what happened. */
+.send-report {
+  margin-top: 1rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+}
+
+.send-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-h);
+}
+
+.send-report-error,
+.send-failures {
+  margin: 0.5rem 0 0;
+  color: #b91c1c;
+}
+
+.send-failures {
+  padding-left: 1.25rem;
+}
+
+.send-failures li + li {
+  margin-top: 0.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .send-report-error,
+  .send-failures {
+    color: #f87171;
+  }
+}

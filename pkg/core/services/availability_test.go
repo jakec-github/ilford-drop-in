@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -85,6 +86,16 @@ func (m *mockAvailabilityStore) GetAvailabilityRequestsV2ByRotaID(_ context.Cont
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].VolunteerID < out[j].VolunteerID })
 	return out, nil
+}
+
+func (m *mockAvailabilityStore) MarkAvailabilityRequestSent(_ context.Context, id string) error {
+	for i := range m.requests {
+		if m.requests[i].ID == id {
+			m.requests[i].SentAt = time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+			return nil
+		}
+	}
+	return fmt.Errorf("no availability request %s", id)
 }
 
 func (m *mockAvailabilityStore) GetAvailabilityRequestByToken(_ context.Context, token string) (*db.AvailabilityRequestV2, error) {

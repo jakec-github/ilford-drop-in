@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/internal/devmode"
 	"github.com/jakechorley/ilford-drop-in/pkg/api"
+	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
 	"github.com/jakechorley/ilford-drop-in/web"
@@ -65,12 +68,13 @@ func run(env string, portOverride int) error {
 
 	volunteers := api.NewVolunteerStore()
 
-	// Dev mode replaces both halves of the Google dependency — the roster fetch
-	// and the identity provider — so the server runs on a checkout with no
-	// credentials at all. Config keeps it to the dev environment; this branch is
-	// the only place it changes what gets built.
+	// Dev mode replaces every part of the Google dependency — the roster fetch,
+	// the identity provider and outbound mail — so the server runs on a checkout
+	// with no credentials at all. Config keeps it to the dev environment; this
+	// branch is the only place it changes what gets built.
 	var syncVolunteers api.VolunteerSyncFunc
 	var authenticator *api.Authenticator
+	var newMailer api.MailerFunc
 	if cfg.DevMode != nil {
 		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues an admin session without verifying identity",
 			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
@@ -97,6 +101,7 @@ func run(env string, portOverride int) error {
 		if err != nil {
 			return fmt.Errorf("failed to create stub authenticator: %w", err)
 		}
+		newMailer = api.NewStubMailer(logger)
 	} else {
 		webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
 		if err != nil {
@@ -137,6 +142,14 @@ func run(env string, portOverride int) error {
 		if err != nil {
 			return fmt.Errorf("failed to create authenticator: %w", err)
 		}
+
+		// Availability emails go out as the signed-in admin, through a
+		// gmail.send token they grant per send and the server never stores.
+		// There is nothing to build here beyond the token itself — the client
+		// is constructed inside the send and discarded with it.
+		newMailer = func(ctx context.Context, token *oauth2.Token) (services.GmailClient, error) {
+			return gmailclient.NewClientFromToken(ctx, token)
+		}
 	}
 
 	database, err := db.NewDB(ctx, cfg.DatabaseURL)
@@ -148,7 +161,7 @@ func run(env string, portOverride int) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), logger)
+	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, logger)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

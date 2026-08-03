@@ -104,6 +104,43 @@ and 410 once the rota has been allocated.
 `shiftIds` is the volunteer's whole answer, never a delta — an absent shift is a
 no. Submitting again appends a generation and the latest wins.
 
+## Send the round
+
+Minting writes the links; sending emails them. In production that is an OAuth
+redirect out to Google for a short-lived `gmail.send` grant, and the mail goes
+out as the signed-in admin. Dev mode stubs the grant and the mailbox, so the
+whole flow works with no credentials — **the emails are written to the log
+instead of being sent**.
+
+```bash
+curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=round&deadline=Friday+28+August'
+curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=reminder&deadline=Friday+28+August'
+curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=resend&volunteerId=<id>&deadline=Friday+28+August'
+```
+
+Each redirects to `/admin/availability?send=<job id>` and the emails go out
+behind it — a send is a background job, not the body of the request, because
+thirty of them at Gmail's three-second throttle takes about ninety seconds.
+`GET /api/availability-sends/<job id>` reports how far it has got and, once it
+has finished, who it reached and which addresses it failed on.
+
+To read what would have been sent, including each volunteer's link:
+
+```bash
+scripts/dev-stack.sh logs | grep "pretending to send"
+```
+
+Only the *delivery* is stubbed. Who gets an email, what it says, and the
+`sent_at` stamp that stops the next send asking them again are all the real
+thing. The three modes differ in who they select: `round` takes everyone not yet
+sent, `reminder` takes everyone who was sent and has not answered — skipping a
+volunteer whose group partner answered for them — and `resend` takes one named
+volunteer whether or not they have been sent already.
+
+The deadline is quoted in the email and stored nowhere. Allocation is the real
+cutoff, and a send is refused once the rota has been allocated: the links stopped
+working then, so every email would carry a dead one.
+
 ## Drive it with a browser
 
 `.mcp.json` in the repo root configures `playwright-mcp` — headless, isolated

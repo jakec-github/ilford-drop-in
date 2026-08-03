@@ -102,6 +102,30 @@ func (d *DB) GetAvailabilityRequestByToken(ctx context.Context, token string) (*
 	return &req, nil
 }
 
+// MarkAvailabilityRequestSent stamps sent_at on one request, recording that its
+// volunteer has been emailed their link.
+//
+// One row at a time, because that is the grain the fact arrives at: a round send
+// emails volunteers one by one over about a minute and a half, and a batch
+// stamped at the end would lose every send that had already happened if the
+// process stopped partway. Re-stamping an already-sent request is allowed — only
+// a resend does it, and it is telling the truth about when the link last went
+// out.
+func (d *DB) MarkAvailabilityRequestSent(ctx context.Context, id string) error {
+	tag, err := d.pool.Exec(ctx, `
+		UPDATE availability_request_v2
+		SET sent_at = NOW()
+		WHERE id = $1
+	`, id)
+	if err != nil {
+		return fmt.Errorf("failed to mark availability request %s as sent: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("no availability request with id %s", id)
+	}
+	return nil
+}
+
 // rowScanner is the shared shape of pgx.Row and pgx.Rows, so one scan serves
 // both the single-token lookup and the per-rota listing.
 type rowScanner interface {

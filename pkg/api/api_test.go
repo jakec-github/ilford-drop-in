@@ -267,6 +267,16 @@ func (m *mockStore) GetAvailabilityRequestByToken(ctx context.Context, token str
 	return nil, nil
 }
 
+func (m *mockStore) MarkAvailabilityRequestSent(ctx context.Context, id string) error {
+	for i := range m.availabilityRequests {
+		if m.availabilityRequests[i].ID == id {
+			m.availabilityRequests[i].SentAt = "2026-08-01T09:00:00Z"
+			return nil
+		}
+	}
+	return errors.New("no availability request " + id)
+}
+
 func (m *mockStore) GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error) {
 	return map[string]db.AvailabilityGeneration{}, nil
 }
@@ -367,7 +377,7 @@ func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Hand
 // depends on the config — chiefly the rota overrides, which are where config
 // preallocations and closed dates come from.
 func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient, cfg *config.Config) http.Handler {
-	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, zap.NewNop()).Routes()
+	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 }
 
 // adminCookie is a valid admin session cookie for testAdminEmail, signed with
@@ -704,7 +714,7 @@ func TestMethodNotAllowed(t *testing.T) {
 // newFullStackHandler is the handler as it is deployed: API and frontend in one
 // process, which is the only configuration where the two namespaces can collide.
 func newFullStackHandler(store *mockStore) http.Handler {
-	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, zap.NewNop()).Routes()
+	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
 }
 
 // TestUnknownAPIPathIsAJSONNotFound: an endpoint that does not exist has to fail

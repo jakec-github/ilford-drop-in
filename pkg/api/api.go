@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
@@ -25,6 +26,15 @@ type Store interface {
 	Ping(ctx context.Context) error
 }
 
+// MailerFunc builds a mail client from an admin's freshly-granted Gmail access
+// token. It is injected rather than constructed here so the server's Google
+// dependencies stay in the composition root, and so dev mode can hand over a
+// client that writes emails to the log instead of sending them.
+//
+// The token is short-lived and carries no refresh token: it is used for one send
+// and discarded. It is nil in dev mode, where nothing granted anything.
+type MailerFunc func(ctx context.Context, token *oauth2.Token) (services.GmailClient, error)
+
 // Handler serves the HTTP API
 type Handler struct {
 	store      Store
@@ -33,20 +43,44 @@ type Handler struct {
 	auth       *Authenticator
 	frontend   fs.FS
 	logger     *zap.Logger
+	// newMailer builds the client a send mails through. Never nil: NewHandler
+	// substitutes one that refuses, so a server wired without mail says so on
+	// the first send rather than panicking.
+	newMailer MailerFunc
+	// sends holds the availability sends in flight. They are jobs rather than
+	// requests because a round takes about ninety seconds — see sendjobs.go.
+	sends *sendJobs
 }
 
 // NewHandler creates an API handler with its dependencies. frontend is the
 // embedded frontend build; pass nil (or a build-less placeholder) to serve the
-// API only.
-func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, logger *zap.Logger) *Handler {
-	return &Handler{
+// API only. newMailer is how availability sends reach Gmail; nil disables
+// sending rather than failing at startup, because everything else works without
+// it.
+func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, logger *zap.Logger) *Handler {
+	if newMailer == nil {
+		newMailer = func(context.Context, *oauth2.Token) (services.GmailClient, error) {
+			return nil, errors.New("this server is not configured to send mail")
+		}
+	}
+
+	h := &Handler{
 		store:      store,
 		volunteers: volunteers,
 		cfg:        cfg,
 		auth:       auth,
 		frontend:   frontend,
 		logger:     logger,
+		newMailer:  newMailer,
+		sends:      newSendJobs(),
 	}
+
+	// The gmail.send grant comes back through the login callback, which the
+	// Authenticator owns, but completing it needs the store and the roster,
+	// which only the Handler has. This is the join between the two.
+	auth.completeSend = h.completeGmailSend
+
+	return h
 }
 
 // apiPrefix is the namespace the JSON API owns. Everything outside it belongs to
@@ -81,6 +115,10 @@ func (h *Handler) Routes() http.Handler {
 	// is a bearer credential for their availability.
 	api.Handle("POST /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleMintAvailabilityRound)))
 	api.Handle("GET /availability-rounds", h.auth.requireAdmin(http.HandlerFunc(h.handleGetAvailabilityRound)))
+	// A send is watched, never started, from under /api: starting one is a
+	// browser redirect to Google for the gmail.send grant, which lives at
+	// /auth/gmail alongside the rest of the OAuth flow.
+	api.Handle("GET /availability-sends/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleGetSend)))
 	// The volunteer's own link, public by design — the link is the identity and
 	// volunteers never log in. Registered under a separate prefix from the
 	// admin rounds above so neither path can shadow the other.
@@ -92,6 +130,10 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /health", h.handleHealth)
 	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	h.auth.registerRoutes(mux)
+	// Sits under /auth rather than /api because it is the same browser redirect
+	// dance as login and shares its registered callback URI — it is an OAuth
+	// endpoint that happens to start a send, not a data endpoint.
+	mux.Handle("GET /auth/gmail", h.auth.requireAdmin(http.HandlerFunc(h.handleGmailConsent)))
 	if hasFrontend(h.frontend) {
 		// Registered without a method: a pattern matching fewer methods than
 		// /api/ but more paths conflicts with it. frontendHandler turns away

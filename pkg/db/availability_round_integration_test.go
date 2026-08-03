@@ -244,3 +244,51 @@ func TestGetLatestAvailabilityHandlesNoRequests(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, latest)
 }
+
+// TestMarkAvailabilityRequestSentStampsOneRequest pins what sending records: a
+// stamp on the volunteer who was emailed and on nobody else. It is the whole
+// basis of a round send being repeatable — an unstamped request is one still to
+// email, so a stamp landing on the wrong row silently drops a volunteer from the
+// round.
+func TestMarkAvailabilityRequestSentStampsOneRequest(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, _ := roundFixture(t, database)
+
+	requests := []db.AvailabilityRequestV2{
+		request(rotaID, "alice", "token-alice"),
+		request(rotaID, "bob", "token-bob"),
+	}
+	_, err := database.MintAvailabilityRequests(ctx, requests)
+	require.NoError(t, err)
+
+	before := time.Now().Add(-time.Second)
+	require.NoError(t, database.MarkAvailabilityRequestSent(ctx, requests[0].ID))
+
+	stored, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rotaID)
+	require.NoError(t, err)
+	require.Len(t, stored, 2)
+
+	byVolunteer := make(map[string]db.AvailabilityRequestV2, len(stored))
+	for _, r := range stored {
+		byVolunteer[r.VolunteerID] = r
+	}
+
+	require.NotEmpty(t, byVolunteer["alice"].SentAt)
+	sentAt, err := time.Parse(time.RFC3339, byVolunteer["alice"].SentAt)
+	require.NoError(t, err, "sent_at must come back as a timestamp the API can serialise")
+	assert.True(t, sentAt.After(before))
+
+	assert.Empty(t, byVolunteer["bob"].SentAt, "bob was not emailed, so he is still to send")
+}
+
+// TestMarkAvailabilityRequestSentRejectsAnUnknownID: the stamp is the record
+// that an email went out, so silently stamping nothing would leave a send
+// reporting success over a row that does not exist.
+func TestMarkAvailabilityRequestSentRejectsAnUnknownID(t *testing.T) {
+	database, _ := dbtest.New(t)
+
+	err := database.MarkAvailabilityRequestSent(context.Background(), uuid.New().String())
+
+	assert.Error(t, err)
+}
