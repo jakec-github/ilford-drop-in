@@ -15,8 +15,17 @@ import (
 // points at, so it is the fixture worth testing against.
 const repoCSV = "../../test_data/volunteers.csv"
 
+// twoRoles is the pair of Roles the sample roster ticks.
+func twoRoles() model.Roles {
+	max := 1
+	return model.NewRoles([]model.Role{
+		{Name: string(model.RoleTeamLead), Max: &max, Priority: 1},
+		{Name: string(model.RoleVolunteer), Priority: 2},
+	})
+}
+
 func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
-	volunteers, err := LoadVolunteers(repoCSV)
+	volunteers, err := LoadVolunteers(repoCSV, twoRoles())
 	require.NoError(t, err)
 	require.NotEmpty(t, volunteers)
 
@@ -29,7 +38,7 @@ func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
 	require.True(t, ok, "expected the first data row to be loaded")
 	assert.Equal(t, "Emma", lead.FirstName)
 	assert.Equal(t, "Welder", lead.LastName)
-	assert.Equal(t, model.RoleTeamLead, lead.Role)
+	assert.Equal(t, []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, lead.Roles)
 	assert.Equal(t, "Active", lead.Status)
 	assert.Equal(t, "Female", lead.Gender)
 	assert.Equal(t, "youremail+sarah.johnson@gmail.com", lead.Email)
@@ -50,7 +59,7 @@ func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
 }
 
 func TestLoadVolunteers_MissingFile(t *testing.T) {
-	_, err := LoadVolunteers(filepath.Join(t.TempDir(), "nope.csv"))
+	_, err := LoadVolunteers(filepath.Join(t.TempDir(), "nope.csv"), twoRoles())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nope.csv")
 }
@@ -61,7 +70,7 @@ func TestLoadVolunteers_MissingColumn(t *testing.T) {
 		"Unique ID,First name,Last name,Role,Status,Sex/Gender,Email\nABC,Michael,Smith,Service volunteer,Active,Male,m@example.com\n",
 	), 0644))
 
-	_, err := LoadVolunteers(path)
+	_, err := LoadVolunteers(path, twoRoles())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Group key")
 }
@@ -74,7 +83,7 @@ func TestLoadVolunteers_RaggedRows(t *testing.T) {
 		"Unique ID,First name,Last name,Role,Status,Sex/Gender,Email,Group key\nABC,Michael,Smith,Service volunteer,Active\n",
 	), 0644))
 
-	volunteers, err := LoadVolunteers(path)
+	volunteers, err := LoadVolunteers(path, twoRoles())
 	require.NoError(t, err)
 	require.Len(t, volunteers, 1)
 	assert.Equal(t, "Michael", volunteers[0].DisplayName)
@@ -85,6 +94,6 @@ func TestLoadVolunteers_EmptyFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "roster.csv")
 	require.NoError(t, os.WriteFile(path, nil, 0644))
 
-	_, err := LoadVolunteers(path)
+	_, err := LoadVolunteers(path, twoRoles())
 	require.Error(t, err)
 }

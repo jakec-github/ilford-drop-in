@@ -19,9 +19,9 @@ import (
 func activeVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", DisplayName: "Alice", Role: model.RoleTeamLead, Status: "Active"},
-			{ID: "bob", DisplayName: "Bob", Role: model.RoleVolunteer, Status: "Active"},
-			{ID: "charlie", DisplayName: "Charlie", Role: model.RoleVolunteer, Status: "Active"},
+			{ID: "alice", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "bob", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "charlie", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
 		},
 	}
 }

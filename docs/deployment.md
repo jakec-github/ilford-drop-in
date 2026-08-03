@@ -11,6 +11,17 @@ the git SHA and `latest`, and — if the `DEPLOY_ENABLED` repository variable is
 `"true"` — deploys it to the droplet. **Rollback**: re-run the workflow on a
 previous commit (Actions → the old run → "Re-run all jobs").
 
+**Config is not part of this.** `drop_in_config.prod.yaml` and the two
+credential files live on the droplet by hand and are never shipped by a deploy —
+deliberately, since they hold secrets the repo must not. Roll them out with
+[`scripts/deploy-config.sh`](#config-rollout), on their own schedule.
+
+A consequence worth knowing: a deploy can ship a binary that rejects the config
+already on the box. That is what happened when `roles` became required — the
+deploy was green, the app crash-looped, and no check anywhere failed. Whenever a
+change makes a config key required, removed or renamed, run the config rollout
+alongside the merge.
+
 ## One-time setup
 
 ### 1. Droplet and DNS
@@ -29,20 +40,28 @@ ssh root@<ip> ./provision.sh
 ```
 
 Idempotent: installs Docker, enables ufw (22/80/443), creates a 2G swap file
-and `/opt/dropin`.
+and `/opt/dropin/config`.
 
 ### 3. Config files
 
-scp the three files the server needs to `/opt/dropin/`:
+The server reads three files, and they all live in **`/opt/dropin/config/`** —
+the directory `deploy/compose.yaml` mounts into the container as `/app`. They
+are the one thing the repo cannot regenerate; keep copies with other personal
+secrets.
+
+The two credentials change about once a year, so they go up by hand:
 
 ```sh
-scp drop_in_config.prod.yaml oauthClientWeb.prod.json serviceAccount.prod.json root@<ip>:/opt/dropin/
+scp oauthClientWeb.prod.json serviceAccount.prod.json root@<ip>:/opt/dropin/config/
 ```
 
-These are the one thing the repo cannot regenerate — keep copies with other
-personal secrets. Check that `oauthClientWeb.prod.json` lists the production
-redirect URI (`https://<domain>/auth/callback`) and that it is also registered
-on the Google web client.
+Check that `oauthClientWeb.prod.json` lists the production redirect URI
+(`https://<domain>/auth/callback`) and that it is also registered on the Google
+web client.
+
+`drop_in_config.prod.yaml` changes often, so it gets a script — see
+[Config rollout](#config-rollout) below. Run it once here too; it puts the file
+in place and brings the app up.
 
 ### 4. GitHub Actions secrets and variables
 
@@ -67,10 +86,58 @@ Set `DEPLOY_ENABLED=true`, then run the workflow (Actions → Build and deploy �
 `deploy/compose.yaml` and `deploy/Caddyfile` to `/opt/dropin` and starts the
 stack; Caddy obtains its certificate on first boot.
 
+## Config rollout
+
+Editing `drop_in_config.prod.yaml` and reaching the running server is one
+command, from the repo root:
+
+```sh
+scripts/deploy-config.sh <ip>          # or set DEPLOY_HOST, or put it in .deploy.env
+```
+
+It validates the local file, shows what it configures, asks, copies it to
+`/opt/dropin/config/`, recreates the app container, and waits for
+`https://<domain>/health` to answer — exiting non-zero with the app's logs if it
+does not. There is no `docker compose` step to run afterwards.
+
+Three things it is doing on purpose:
+
+- **Validation happens before the file leaves the machine.** Under the hood it
+  is `go run ./cmd/cli -e prod validate-config <path>`, which reads the file and
+  nothing else: no database, no Google. Run it on its own any time.
+- **The summary is the point.** "Valid" is not the same as "right" — a config
+  can parse and validate with every preallocation missing. The preallocation and
+  role counts are what to check against the change you meant to make.
+- **It recreates rather than restarts.** A restarted container keeps the mounts
+  it already resolved, and a bare `docker compose up -d` is a no-op when the
+  compose file has not changed, so neither reliably picks up a new config.
+
+A key the running build does not know is warned about by name and ignored,
+rather than failing the load. That is deliberate, and was learned the hard way:
+rejecting them meant a config carrying one key from either side of a rename
+could not start the server at all, which is an outage over a file the operator
+had not touched. The warning appears in the app's logs and in this command's
+output — it is worth reading, because the other kind of unknown key is one that
+used to configure something and now configures nothing.
+
 ## Operations
 
 - **Logs**: `ssh root@<ip> 'cd /opt/dropin && docker compose logs -f app'`
 - **Status**: `docker compose ps` in `/opt/dropin`
-- **Restart**: `docker compose restart app`
+- **Restart**: `docker compose restart app` — note this does *not* pick up a
+  changed config; use the config rollout above for that.
 - The box holds no unregenerable state: rebuilding it is droplet + provision +
   scp + deploy, per the ADR.
+
+### One-time: moving config into `config/`
+
+Droplets provisioned before the mount changed hold the three files directly in
+`/opt/dropin`. Move them down a level once, then deploy normally:
+
+```sh
+ssh root@<ip> 'mkdir -p /opt/dropin/config && mv /opt/dropin/*.prod.yaml /opt/dropin/*.prod.json /opt/dropin/config/'
+```
+
+`scripts/deploy-config.sh` refuses to recreate the container while the
+credentials are missing from `config/`, so a half-done move cannot take the site
+down.

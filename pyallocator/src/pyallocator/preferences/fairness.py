@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
-from ..constraints.base import AssignmentVars
+from ..constraints.base import Vars
 from ..problem import Problem
 from .base import ObjectiveTerm
 
@@ -33,13 +33,13 @@ class FairnessPreference:
     description = "shifts are distributed fairly between volunteer groups over time"
 
     def objective_terms(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> list[ObjectiveTerm]:
         terms: list[ObjectiveTerm] = []
         for group in problem.groups:
             rep = group.members[0]
             allocations = sum(
-                x[(rep.id, shift.index)] for shift in problem.shifts
+                x.attend[(rep.id, shift.index)] for shift in problem.shifts
             )
             history = group.historical_allocation_count
             levels = []

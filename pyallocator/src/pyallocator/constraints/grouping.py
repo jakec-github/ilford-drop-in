@@ -11,7 +11,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class GroupingConstraint:
@@ -19,14 +19,14 @@ class GroupingConstraint:
     description = "members of a group work each shift together or not at all"
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         for group in problem.groups:
             first, *rest = group.members
             for member in rest:
                 for shift in problem.shifts:
                     model.Add(
-                        x[(member.id, shift.index)] == x[(first.id, shift.index)]
+                        x.attend[(member.id, shift.index)] == x.attend[(first.id, shift.index)]
                     )
 
 

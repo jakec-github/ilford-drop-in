@@ -87,7 +87,8 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 			LastName:    vol.LastName,
 			DisplayName: vol.DisplayName,
 			Gender:      vol.Gender,
-			IsTeamLead:  vol.Role == model.RoleTeamLead,
+			Roles:       vol.Roles,
+			IsTeamLead:  vol.Holds(string(model.RoleTeamLead)),
 			GroupKey:    vol.GroupKey,
 		}
 	}
@@ -166,55 +167,24 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 			return nil, fmt.Errorf("failed to parse rrule for override %d: %w", i, err)
 		}
 
-		customs, volunteerIDs, teamLeadID := splitPreallocationsByRole(override.Preallocations)
+		pins := convertConfigPreallocations(override.Preallocations)
 
 		result = append(result, allocator.ShiftOverride{
-			AppliesTo:                appliesTo,
-			ShiftSize:                override.ShiftSize,
-			CustomPreallocations:     customs,
-			Closed:                   override.Closed,
-			PreallocatedVolunteerIDs: volunteerIDs,
-			PreallocatedTeamLeadID:   teamLeadID,
+			AppliesTo:      appliesTo,
+			ShiftSize:      override.ShiftSize,
+			Closed:         override.Closed,
+			Preallocations: pins,
 		})
 
 		logger.Debug("Converted override",
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
 			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("custom_preallocated_count", len(customs)),
-			zap.Int("preallocated_volunteer_count", len(volunteerIDs)),
-			zap.Bool("has_preallocated_team_lead", teamLeadID != ""),
+			zap.Int("preallocation_count", len(pins)),
 			zap.Bool("closed", override.Closed))
 	}
 
 	return result, nil
-}
-
-// splitPreallocationsByRole fans one role-named list back out into the three
-// slots allocator.ShiftOverride still has: custom entries, ordinary volunteers,
-// and the single-valued team lead (last one named wins, as it does across
-// overrides). It mirrors the switch buildManualPreallocationOverrides applies to
-// manual pins, so both sources reach the solver by the same route.
-//
-// Only a volunteer can be pinned as team lead here: a custom entry named
-// against a capped Role has nowhere to go in this shape and lands as an
-// ordinary custom preallocation, which is what it would have been before Roles
-// were configurable.
-//
-// Temporary. The contract grows role-named pins of its own next, and this
-// function goes with the three fields it is feeding (#89).
-func splitPreallocationsByRole(pins []config.Preallocation) (customs, volunteerIDs []string, teamLeadID string) {
-	for _, pin := range pins {
-		switch {
-		case pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "":
-			teamLeadID = pin.VolunteerID
-		case pin.VolunteerID != "":
-			volunteerIDs = append(volunteerIDs, pin.VolunteerID)
-		case pin.Custom != "":
-			customs = append(customs, pin.Custom)
-		}
-	}
-	return customs, volunteerIDs, teamLeadID
 }
 
 // buildHistoricalShifts fetches allocations from the previous rota, applies that
@@ -333,6 +303,36 @@ func buildHistoricalShifts(
 	return historicalShifts, nil
 }
 
+// convertConfigRoles lifts the configured Roles into the allocator's own type,
+// the same way volunteers and pins are lifted: the allocator keeps its own
+// vocabulary and does not import the domain package.
+func convertConfigRoles(roles []model.Role) []allocator.Role {
+	converted := make([]allocator.Role, 0, len(roles))
+	for _, role := range roles {
+		converted = append(converted, allocator.Role{
+			Name:     role.Name,
+			Max:      role.Max,
+			Priority: role.Priority,
+		})
+	}
+	return converted
+}
+
+// convertConfigPreallocations lifts config pins into the allocator's own type.
+// Both allocation and the availability view build overrides from the same
+// config, so the mapping lives once.
+func convertConfigPreallocations(pins []config.Preallocation) []allocator.Preallocation {
+	converted := make([]allocator.Preallocation, 0, len(pins))
+	for _, pin := range pins {
+		converted = append(converted, allocator.Preallocation{
+			VolunteerID: pin.VolunteerID,
+			Custom:      pin.Custom,
+			Role:        pin.Role,
+		})
+	}
+	return converted
+}
+
 // configPreallocationsForDate collects the config-derived preallocations that
 // apply to a single date, mirroring InitShifts' per-date append semantics: the
 // set of preallocated volunteer ids, the (last) team-lead id, the set of custom
@@ -349,14 +349,15 @@ func configPreallocationsForDate(date string, overrides []allocator.ShiftOverrid
 			closed = true
 			continue
 		}
-		for _, id := range o.PreallocatedVolunteerIDs {
-			volIDs[id] = true
-		}
-		for _, c := range o.CustomPreallocations {
-			customs[c] = true
-		}
-		if o.PreallocatedTeamLeadID != "" {
-			teamLead = o.PreallocatedTeamLeadID
+		for _, pin := range o.Preallocations {
+			switch {
+			case pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "":
+				teamLead = pin.VolunteerID
+			case pin.VolunteerID != "":
+				volIDs[pin.VolunteerID] = true
+			case pin.Custom != "":
+				customs[pin.Custom] = true
+			}
 		}
 	}
 	return volIDs, teamLead, customs, closed
@@ -395,28 +396,31 @@ func buildManualPreallocationOverrides(
 			continue
 		}
 
-		override := allocator.ShiftOverride{AppliesTo: exactDateMatcher(date)}
 		switch {
 		case pin.Role == string(model.RoleTeamLead):
 			if configTL != "" {
 				continue // config is authoritative for the team-lead slot
 			}
-			override.PreallocatedTeamLeadID = pin.VolunteerID
 		case pin.VolunteerID != "":
 			if configVolIDs[pin.VolunteerID] {
 				continue // already preallocated by config
 			}
-			override.PreallocatedVolunteerIDs = []string{pin.VolunteerID}
 		case pin.CustomValue != "":
 			if configCustoms[pin.CustomValue] {
 				continue // identical custom entry already preallocated by config
 			}
-			override.CustomPreallocations = []string{pin.CustomValue}
 		default:
 			return nil, fmt.Errorf("manual preallocation %s has neither a volunteer nor a custom value", pin.ID)
 		}
 
-		overrides = append(overrides, override)
+		overrides = append(overrides, allocator.ShiftOverride{
+			AppliesTo: exactDateMatcher(date),
+			Preallocations: []allocator.Preallocation{{
+				VolunteerID: pin.VolunteerID,
+				Custom:      pin.CustomValue,
+				Role:        pin.Role,
+			}},
+		})
 	}
 
 	return overrides, nil
@@ -453,13 +457,10 @@ func checkPreallocationsResolve(
 			if !o.AppliesTo(dateStr) || o.Closed {
 				continue
 			}
-			for _, id := range o.PreallocatedVolunteerIDs {
-				if !activeIDs[id] {
-					offenders = append(offenders, fmt.Sprintf("config pin for %s: volunteer %s is not active", dateStr, id))
+			for _, pin := range o.Preallocations {
+				if pin.VolunteerID != "" && !activeIDs[pin.VolunteerID] {
+					offenders = append(offenders, fmt.Sprintf("config pin for %s: %s %s is not active", dateStr, strings.ToLower(pin.Role), pin.VolunteerID))
 				}
-			}
-			if o.PreallocatedTeamLeadID != "" && !activeIDs[o.PreallocatedTeamLeadID] {
-				offenders = append(offenders, fmt.Sprintf("config pin for %s: team lead %s is not active", dateStr, o.PreallocatedTeamLeadID))
 			}
 		}
 	}

@@ -10,7 +10,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class AvailabilityConstraint:
@@ -21,7 +21,7 @@ class AvailabilityConstraint:
     )
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         for v in problem.volunteers:
             for shift in problem.shifts:
@@ -29,7 +29,7 @@ class AvailabilityConstraint:
                     continue
                 if (v.group_key, shift.index) in problem.preallocated_pairs:
                     continue
-                model.Add(x[(v.id, shift.index)] == 0)
+                model.Add(x.attend[(v.id, shift.index)] == 0)
 
 
 CONSTRAINT = AvailabilityConstraint()

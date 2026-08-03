@@ -41,8 +41,9 @@ type InitVolunteerGroupsInput struct {
 //   - A VolunteerState with initialized groups and empty exhaustion map
 //   - Error if initialization fails
 //
-// Invalid groups (errors returned):
-//   - Groups with more than one team lead
+// A group used to be rejected for holding two team leads, because the solver
+// then capped leads per group rather than per Seat. Seats do that capping now,
+// and a second lead is free to take an ordinary Seat, so the rule is gone (#89).
 //
 // Invalid groups (discarded):
 //   - Groups where no members have responded
@@ -70,24 +71,6 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 	groups := make([]*VolunteerGroup, 0, len(groupMap))
 
 	for groupKey, members := range groupMap {
-		// Validate: No group can have more than 1 team lead
-		teamLeadCount := 0
-		for _, member := range members {
-			if member.IsTeamLead {
-				teamLeadCount++
-			}
-		}
-
-		if teamLeadCount > 1 {
-			// Invalid group - return error with details
-			memberNames := make([]string, len(members))
-			for i, member := range members {
-				memberNames[i] = member.DisplayName
-			}
-			return nil, fmt.Errorf("group '%s' has %d team leads (max 1 allowed): %v",
-				groupKey, teamLeadCount, memberNames)
-		}
-
 		// Calculate availability for the group
 		// Group has responded if ANY member responded
 		groupHasResponded := false
@@ -222,17 +205,11 @@ type ShiftOverride struct {
 	// ShiftSize overrides the default shift size (if set)
 	ShiftSize *int
 
-	// CustomPreallocations are volunteers manually assigned to this shift.
-	CustomPreallocations []string
-
 	// Closed indicates whether this shift should be marked as closed (no allocations)
 	Closed bool
 
-	// PreallocatedVolunteerIDs are volunteer IDs to preallocate to this shift (as ordinary volunteers)
-	PreallocatedVolunteerIDs []string
-
-	// PreallocatedTeamLeadID is the volunteer ID to preallocate as team lead for this shift
-	PreallocatedTeamLeadID string
+	// Preallocations are the pins this override contributes, each naming a Role.
+	Preallocations []Preallocation
 }
 
 // InitShiftsInput contains the data needed to initialize shifts
@@ -256,8 +233,15 @@ type InitShiftsInput struct {
 // Returns a slice of initialized Shift objects with:
 //   - Sequential indices
 //   - Applied size overrides
-//   - Pre-allocated volunteer IDs (metadata flags start at false/0)
+//   - Preallocations unioned from every override applying to the date
 //   - AvailableGroups populated based on volunteer group availability
+//
+// Every override applying to a date contributes its pins; a closing override
+// wipes the lot. Pins used to be three separate fields with three merge rules —
+// the single team lead was last-one-wins where the two lists appended. They are
+// one list now, so appending is the only rule, and two overrides pinning the
+// same capped Role for one date are both kept rather than one silently
+// disappearing. The Role's ceiling is what catches that, in the solver.
 func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	shifts := make([]*Shift, len(input.ShiftDates))
 
@@ -265,10 +249,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		// Start with default shift size
 		shiftSize := input.DefaultShiftSize
 
-		// Track pre-allocated volunteers
-		var customPreallocations []string
-		var preallocatedVolunteerIDs []string
-		var preallocatedTeamLeadID string
+		var preallocations []Preallocation
 
 		// Track if shift is closed
 		isClosed := false
@@ -283,19 +264,13 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 
 				// Add pre-allocated volunteers (only if not closed)
 				if !override.Closed {
-					customPreallocations = append(customPreallocations, override.CustomPreallocations...)
-					preallocatedVolunteerIDs = append(preallocatedVolunteerIDs, override.PreallocatedVolunteerIDs...)
-					if override.PreallocatedTeamLeadID != "" {
-						preallocatedTeamLeadID = override.PreallocatedTeamLeadID
-					}
+					preallocations = append(preallocations, override.Preallocations...)
 				}
 
 				// Mark as closed if any override marks it closed
 				if override.Closed {
 					isClosed = true
-					customPreallocations = []string{}
-					preallocatedVolunteerIDs = []string{}
-					preallocatedTeamLeadID = ""
+					preallocations = nil
 				}
 			}
 		}
@@ -311,17 +286,15 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		}
 
 		shifts[i] = &Shift{
-			Date:                     date,
-			Index:                    i,
-			Size:                     shiftSize,
-			AllocatedGroups:          []*VolunteerGroup{},
-			CustomPreallocations:     customPreallocations,
-			TeamLead:                 nil, // Will be set when a team lead is allocated
-			MaleCount:                0,   // Will be updated when groups are allocated
-			AvailableGroups:          availableGroups,
-			Closed:                   isClosed,
-			PreallocatedVolunteerIDs: preallocatedVolunteerIDs,
-			PreallocatedTeamLeadID:   preallocatedTeamLeadID,
+			Date:            date,
+			Index:           i,
+			Size:            shiftSize,
+			AllocatedGroups: []*VolunteerGroup{},
+			TeamLead:        nil, // Will be set when a team lead is allocated
+			MaleCount:       0,   // Will be updated when groups are allocated
+			AvailableGroups: availableGroups,
+			Closed:          isClosed,
+			Preallocations:  preallocations,
 		}
 	}
 

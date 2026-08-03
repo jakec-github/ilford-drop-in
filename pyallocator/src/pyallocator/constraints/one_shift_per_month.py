@@ -15,7 +15,7 @@ from collections import defaultdict
 from ortools.sat.python import cp_model
 
 from ..problem import Problem
-from .base import AssignmentVars
+from .base import Vars
 
 
 class OneShiftPerMonthConstraint:
@@ -26,7 +26,7 @@ class OneShiftPerMonthConstraint:
     )
 
     def apply(
-        self, model: cp_model.CpModel, x: AssignmentVars, problem: Problem
+        self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> None:
         months_to_indices: dict[str, list[int]] = defaultdict(list)
         for shift in problem.shifts:
@@ -37,7 +37,7 @@ class OneShiftPerMonthConstraint:
             for month, indices in months_to_indices.items():
                 # A month already worked in history leaves no room for another.
                 cap = 0 if month in worked else 1
-                model.Add(sum(x[(v.id, i)] for i in indices) <= cap)
+                model.Add(sum(x.attend[(v.id, i)] for i in indices) <= cap)
 
 
 CONSTRAINT = OneShiftPerMonthConstraint()
