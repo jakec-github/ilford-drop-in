@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -190,11 +194,8 @@ func checkDevMode(cfg *Config, env string) error {
 
 // LoadFromPath loads and validates the configuration from a specific path.
 //
-// Decoding is strict: a key the struct does not know fails the load, naming it.
-// A config almost never gains a stray key by accident — it gains one because a
-// key that used to mean something no longer does, and ignoring it silently
-// drops whatever it configured. That happened with the preallocation format,
-// and the server booted happily having thrown every pin away.
+// A key the struct does not know is a warning, not an error — see unknownKeys
+// for why the file is allowed to carry keys this build has never heard of.
 func LoadFromPath(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -203,7 +204,6 @@ func LoadFromPath(path string) (*Config, error) {
 
 	var cfg Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
 		// A Decoder reports an empty document as io.EOF, where Unmarshal used to
 		// return a zero Config. Say what it is: a truncated copy is the likeliest
@@ -214,11 +214,113 @@ func LoadFromPath(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	for _, unknown := range unknownKeys(data) {
+		slog.Warn("config key is not one this version of the app knows; ignoring it",
+			"path", path, "key", unknown.Key, "line", unknown.Line)
+	}
+
 	if err := Validate(&cfg); err != nil {
 		return nil, err
 	}
 
 	return &cfg, nil
+}
+
+// UnknownKey is a key in a config file that this build does not know, and the
+// line it sits on. Line is 0 when yaml worded its message in a way this cannot
+// read, in which case Key holds that message whole rather than losing it.
+type UnknownKey struct {
+	Key  string
+	Line int
+}
+
+// String renders a key the way an operator reads it, not the way yaml phrases
+// it: "databaseSheetID (line 59)".
+func (u UnknownKey) String() string {
+	if u.Line == 0 {
+		return u.Key
+	}
+	return fmt.Sprintf("%s (line %d)", u.Key, u.Line)
+}
+
+// UnknownKeys reports the keys in the config file at path that this build does
+// not know. Loading warns about them; this is for callers that want to show
+// them, chiefly `cli validate-config`.
+//
+// A file that cannot be read has no keys to report and no error to raise here —
+// loading it is what says so.
+func UnknownKeys(path string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	keys := unknownKeys(data)
+	described := make([]string, 0, len(keys))
+	for _, key := range keys {
+		described = append(described, key.String())
+	}
+	return described
+}
+
+// yamlUnknownKey matches the message yaml composes for a key the struct does
+// not have — "line 58: field customPreallocations not found in type
+// config.Config" — which is the only place the key and its line are exposed.
+var yamlUnknownKey = regexp.MustCompile(`^line (\d+): field (\S+) not found in type`)
+
+// unknownKeys reports the keys in a config document that the Config struct does
+// not know, each carrying the line number yaml puts in its message.
+//
+// They are warned about rather than rejected, because a config file outlives any
+// one build of the server. The same file is read by whatever version is
+// deployed — including the previous one during a rollback, and a branch cut
+// before a key existed or after it was removed — so failing the load on a key
+// mismatch turns an ordinary version skew into an outage. That is not
+// hypothetical: strict decoding took the site down the day it shipped.
+//
+// The warning is still worth printing, because the other way to get here is a
+// key that used to configure something and now configures nothing — which is
+// how a live config lost every preallocation to a format change in silence
+// (issue #100). A warning names it; only the operator can tell the two apart.
+func unknownKeys(data []byte) []UnknownKey {
+	var probe Config
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	err := decoder.Decode(&probe)
+	if err == nil {
+		return nil
+	}
+
+	// Anything that is not a TypeError already failed the real decode above, so
+	// there is nothing here to report on top of it.
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		return nil
+	}
+
+	var unknown []UnknownKey
+	for _, message := range typeErr.Errors {
+		// A TypeError also carries mismatches such as "cannot unmarshal !!str into
+		// int". Those failed the real decode, so only the unknown-key messages are
+		// this function's business.
+		if !strings.Contains(message, "not found in type") {
+			continue
+		}
+
+		match := yamlUnknownKey.FindStringSubmatch(message)
+		if match == nil {
+			unknown = append(unknown, UnknownKey{Key: message})
+			continue
+		}
+		line, err := strconv.Atoi(match[1])
+		if err != nil {
+			unknown = append(unknown, UnknownKey{Key: message})
+			continue
+		}
+		unknown = append(unknown, UnknownKey{Key: match[2], Line: line})
+	}
+
+	return unknown
 }
 
 // Validate validates the configuration struct and checks rrule syntax

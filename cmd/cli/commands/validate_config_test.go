@@ -78,12 +78,18 @@ func TestValidateConfigCmd_ValidConfig(t *testing.T) {
 	assert.Contains(t, out, "Team lead")
 }
 
+// An unknown key is reported, not rejected — it may be one another build knows.
+// The summary is where the operator sees it, since nothing else will now stop.
 func TestValidateConfigCmd_UnknownKey(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+"preallocatedTeamLeadID: 'V1'\n")
 
-	_, err := runValidateConfig(t, "-e", "prod", path)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "preallocatedTeamLeadID")
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "1 unknown key")
+	assert.Contains(t, out, "preallocatedTeamLeadID")
+	// The rest of the file still configured what it says.
+	assert.Contains(t, out, "1 preallocation")
 }
 
 func TestValidateConfigCmd_UnknownRole(t *testing.T) {

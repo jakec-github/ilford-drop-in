@@ -112,9 +112,13 @@ Three things it is doing on purpose:
   it already resolved, and a bare `docker compose up -d` is a no-op when the
   compose file has not changed, so neither reliably picks up a new config.
 
-Unknown keys are a startup error naming the key, so a config still carrying
-options that were renamed or removed fails loudly here instead of booting with
-that section silently dropped.
+A key the running build does not know is warned about by name and ignored,
+rather than failing the load. That is deliberate, and was learned the hard way:
+rejecting them meant a config carrying one key from either side of a rename
+could not start the server at all, which is an outage over a file the operator
+had not touched. The warning appears in the app's logs and in this command's
+output — it is worth reading, because the other kind of unknown key is one that
+used to configure something and now configures nothing.
 
 ## Operations
 
