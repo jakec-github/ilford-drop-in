@@ -397,7 +397,7 @@ func validateRoleOverride(params ChangeRotaParams) error {
 	if params.Role == "" {
 		return nil
 	}
-	if !model.Role(params.Role).IsValid() {
+	if !model.LegacyRole(params.Role).IsValid() {
 		return wrapf(ErrInvalidInput, "invalid role %q: expected %q or %q", params.Role, model.RoleTeamLead, model.RoleVolunteer)
 	}
 	if params.In == "" {

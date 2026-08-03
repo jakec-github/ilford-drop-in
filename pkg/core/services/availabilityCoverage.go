@@ -114,13 +114,16 @@ func buildShiftSeats(
 				zap.Error(err))
 			continue
 		}
+		// Through the same split allocation applies, so a role-named config pin
+		// lands in the slot InitShifts will read it from.
+		customs, volunteerIDs, teamLeadID := splitPreallocationsByRole(override.Preallocations)
 		overrides = append(overrides, allocator.ShiftOverride{
 			AppliesTo:                appliesTo,
 			ShiftSize:                override.ShiftSize,
-			CustomPreallocations:     override.CustomPreallocations,
+			CustomPreallocations:     customs,
 			Closed:                   override.Closed,
-			PreallocatedVolunteerIDs: override.PreallocatedVolunteerIDs,
-			PreallocatedTeamLeadID:   override.PreallocatedTeamLeadID,
+			PreallocatedVolunteerIDs: volunteerIDs,
+			PreallocatedTeamLeadID:   teamLeadID,
 		})
 	}
 

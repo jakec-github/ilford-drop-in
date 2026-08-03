@@ -135,6 +135,19 @@ gmailSender: 'your-email@gmail.com'          # optional
 # Allocation settings
 maxAllocationFrequency: 0.34                  # >0 and ≤1: max share of shifts per volunteer
 defaultShiftSize: 4                           # volunteers per shift (excluding team lead)
+requiresMale: true                            # every open shift needs a male allocated, or a seat left open
+
+# The jobs volunteers hold. Config is authoritative: these names are what the
+# roster's ' - Role' tick columns and every preallocation are matched against.
+# max is the ceiling — how many of that role a shift may ever hold; omit it for
+# no ceiling. Exactly one role must be uncapped, and it is that role's seats
+# defaultShiftSize buys. priority orders the filling of seats.
+roles:
+  - name: 'Team lead'
+    max: 1
+    priority: 1
+  - name: 'Service volunteer'
+    priority: 2
 
 # Shift times (24h HH:MM)
 shiftStartTime: '19:30'
@@ -151,8 +164,11 @@ server:
 # Optional: overrides for specific recurring shifts
 rotaOverrides:
   - rrule: 'FREQ=MONTHLY;BYDAY=3SU'            # third Sunday monthly
-    customPreallocations:
-      - 'Custom allocation'
+    # Each preallocation pins one volunteer (volunteerID) or one custom entry
+    # (custom) to a role named above.
+    preallocations:
+      - custom: 'Custom allocation'
+        role: 'Service volunteer'
     shiftSize: 5
 ```
 

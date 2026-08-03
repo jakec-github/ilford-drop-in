@@ -166,8 +166,8 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 	store, cfg := availabilityFixture()
 	cfg.DefaultShiftSize = 4
 	cfg.RotaOverrides = append(cfg.RotaOverrides, config.RotaOverride{
-		RRule:                "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
-		CustomPreallocations: []string{"St John's team"},
+		RRule:          "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
+		Preallocations: []config.Preallocation{{Custom: "St John's team", Role: string(model.RoleVolunteer)}},
 	})
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)

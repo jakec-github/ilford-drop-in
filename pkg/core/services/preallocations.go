@@ -367,7 +367,7 @@ func configPreallocationViews(
 			continue
 		}
 
-		configView := func(role model.Role, volunteerID, custom string) PreallocationView {
+		configView := func(role model.LegacyRole, volunteerID, custom string) PreallocationView {
 			return PreallocationView{
 				Date:        date,
 				Role:        string(role),
@@ -459,8 +459,10 @@ func configPreallocationState(cfg *config.Config, date time.Time) (closed, pinsT
 		if o.Closed {
 			closed = true
 		}
-		if o.PreallocatedTeamLeadID != "" {
-			pinsTeamLead = true
+		for _, pin := range o.Preallocations {
+			if pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "" {
+				pinsTeamLead = true
+			}
 		}
 	}
 	return closed, pinsTeamLead, nil

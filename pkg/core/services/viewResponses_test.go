@@ -703,13 +703,16 @@ func TestCalculateShiftAvailability_WithPreallocations(t *testing.T) {
 			},
 			{
 				// All Sundays: preallocate John and Jane
-				RRule:                "DTSTART:20250105T000000Z\nRRULE:FREQ=WEEKLY;BYDAY=SU",
-				CustomPreallocations: []string{"External John", "External Jane"},
+				RRule: "DTSTART:20250105T000000Z\nRRULE:FREQ=WEEKLY;BYDAY=SU",
+				Preallocations: []config.Preallocation{
+					{Custom: "External John", Role: string(model.RoleVolunteer)},
+					{Custom: "External Jane", Role: string(model.RoleVolunteer)},
+				},
 			},
 			{
 				// First Sunday of month: additional preallocation Bob
-				RRule:                "DTSTART:20250105T000000Z\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
-				CustomPreallocations: []string{"External Bob"},
+				RRule:          "DTSTART:20250105T000000Z\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
+				Preallocations: []config.Preallocation{{Custom: "External Bob", Role: string(model.RoleVolunteer)}},
 			},
 		},
 	}
