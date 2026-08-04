@@ -37,17 +37,6 @@ func FindLatestRotation(rotations []db.Rotation) *db.Rotation {
 	return latest
 }
 
-// FilterSentRequests filters availability requests to only those that were sent
-func FilterSentRequests(requests []db.AvailabilityRequest) []db.AvailabilityRequest {
-	filtered := []db.AvailabilityRequest{}
-	for _, req := range requests {
-		if req.FormSent {
-			filtered = append(filtered, req)
-		}
-	}
-	return filtered
-}
-
 // IsActive reports whether a volunteer is still volunteering. Status is free
 // text from the sheet, so it is matched case-insensitively and anything other
 // than "Active" is not.

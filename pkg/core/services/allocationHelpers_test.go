@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
@@ -50,8 +49,7 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 type mockAllocateRotaStore struct {
 	rotations                  []db.Rotation
 	shifts                     []db.Shift
-	availabilityRequests       []db.AvailabilityRequest
-	availabilityRequestsV2     []db.AvailabilityRequestV2
+	availabilityRequests     []db.AvailabilityRequest
 	generations                map[string]db.AvailabilityGeneration // keyed by request id
 	allocations                []db.Allocation
 	alterations                []db.Alteration
@@ -89,19 +87,6 @@ func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Cont
 	}
 	var filtered []db.AvailabilityRequest
 	for _, r := range m.availabilityRequests {
-		if r.RotaID == rotaID {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered, nil
-}
-
-func (m *mockAllocateRotaStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
-	if m.getAvailabilityErr != nil {
-		return nil, m.getAvailabilityErr
-	}
-	var filtered []db.AvailabilityRequestV2
-	for _, r := range m.availabilityRequestsV2 {
 		if r.RotaID == rotaID {
 			filtered = append(filtered, r)
 		}
@@ -190,30 +175,6 @@ func (m *mockVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, e
 	// Compute display names like the real client does
 	sheetsclient.ComputeDisplayNames(m.volunteers)
 	return m.volunteers, nil
-}
-
-// mockFormsClientWithResponses implements FormsClientWithResponses for testing
-type mockFormsClientWithResponses struct {
-	responses map[string]*formsclient.FormResponse // Map of volunteer name to response
-	getErr    error
-}
-
-func (m *mockFormsClientWithResponses) GetFormResponse(formID string, volunteerName string, shiftDates []time.Time) (*formsclient.FormResponse, error) {
-	if m.getErr != nil {
-		return nil, m.getErr
-	}
-	if resp, ok := m.responses[volunteerName]; ok {
-		return resp, nil
-	}
-	// Default: not responded
-	return &formsclient.FormResponse{
-		HasResponded:     false,
-		UnavailableDates: []string{},
-	}, nil
-}
-
-func (m *mockFormsClientWithResponses) HasResponse(formID string) (bool, error) {
-	return false, nil
 }
 
 func TestConvertToDBAllocations(t *testing.T) {
@@ -560,7 +521,7 @@ func availabilityRound(generations map[string][]string) *mockAllocateRotaStore {
 	}
 	for volunteerID, shiftIDs := range generations {
 		requestID := "req-" + volunteerID
-		store.availabilityRequestsV2 = append(store.availabilityRequestsV2, db.AvailabilityRequestV2{
+		store.availabilityRequests = append(store.availabilityRequests, db.AvailabilityRequest{
 			ID: requestID, RotaID: "rota-1", VolunteerID: volunteerID, Token: "tok-" + volunteerID,
 		})
 		if shiftIDs == nil {

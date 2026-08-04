@@ -28,7 +28,7 @@ type mockStore struct {
 	allocations          []db.Allocation
 	alterations          []db.Alteration
 	manualPreallocations []db.ManualPreallocation
-	availabilityRequests []db.AvailabilityRequestV2
+	availabilityRequests []db.AvailabilityRequest
 	allocatedRotas       map[string]bool
 
 	insertedCover           *db.Cover
@@ -240,7 +240,7 @@ func (m *mockStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.
 // against real Postgres (availability_integration_test.go) and by the service's
 // own in-memory store. Only the token lookup carries state, because the 404 for
 // an unknown link is decided here.
-func (m *mockStore) MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequestV2) (int, error) {
+func (m *mockStore) MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) (int, error) {
 	if m.insertErr != nil {
 		return 0, m.insertErr
 	}
@@ -248,8 +248,8 @@ func (m *mockStore) MintAvailabilityRequests(ctx context.Context, requests []db.
 	return len(requests), nil
 }
 
-func (m *mockStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
-	var out []db.AvailabilityRequestV2
+func (m *mockStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
+	var out []db.AvailabilityRequest
 	for _, r := range m.availabilityRequests {
 		if r.RotaID == rotaID {
 			out = append(out, r)
@@ -258,7 +258,7 @@ func (m *mockStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaI
 	return out, nil
 }
 
-func (m *mockStore) GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequestV2, error) {
+func (m *mockStore) GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequest, error) {
 	for i := range m.availabilityRequests {
 		if m.availabilityRequests[i].Token == token {
 			return &m.availabilityRequests[i], nil

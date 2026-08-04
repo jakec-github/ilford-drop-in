@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const availabilityRequestV2Columns = `id, rota_id, volunteer_id, token, sent_at`
+const availabilityRequestColumns = `id, rota_id, volunteer_id, token, sent_at`
 
 // MintAvailabilityRequests inserts one request per volunteer, skipping any
 // volunteer who already holds a request for that rota, and reports how many rows
@@ -21,7 +21,7 @@ const availabilityRequestV2Columns = `id, rota_id, volunteer_id, token, sent_at`
 // roster gains a volunteer must add that one link without re-tokening anyone.
 // Re-tokening would silently break links already distributed, so an existing
 // row always wins over the one offered here.
-func (d *DB) MintAvailabilityRequests(ctx context.Context, requests []AvailabilityRequestV2) (int, error) {
+func (d *DB) MintAvailabilityRequests(ctx context.Context, requests []AvailabilityRequest) (int, error) {
 	if len(requests) == 0 {
 		return 0, nil
 	}
@@ -35,9 +35,9 @@ func (d *DB) MintAvailabilityRequests(ctx context.Context, requests []Availabili
 	inserted := 0
 	for _, req := range requests {
 		tag, err := tx.Exec(ctx, `
-			INSERT INTO availability_request_v2 (id, rota_id, volunteer_id, token)
+			INSERT INTO availability_request (id, rota_id, volunteer_id, token)
 			VALUES ($1, $2, $3, $4)
-			ON CONFLICT ON CONSTRAINT availability_request_v2_rota_volunteer_key DO NOTHING
+			ON CONFLICT ON CONSTRAINT availability_request_rota_volunteer_key DO NOTHING
 		`, req.ID, req.RotaID, req.VolunteerID, req.Token)
 		if err != nil {
 			return 0, fmt.Errorf("failed to mint availability request for volunteer %s: %w", req.VolunteerID, err)
@@ -52,12 +52,12 @@ func (d *DB) MintAvailabilityRequests(ctx context.Context, requests []Availabili
 	return inserted, nil
 }
 
-// GetAvailabilityRequestsV2ByRotaID retrieves a rota's tokenised availability
+// GetAvailabilityRequestsByRotaID retrieves a rota's tokenised availability
 // requests, ordered by volunteer id so the round reads the same way twice.
-func (d *DB) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]AvailabilityRequestV2, error) {
+func (d *DB) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]AvailabilityRequest, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT `+availabilityRequestV2Columns+`
-		FROM availability_request_v2
+		SELECT `+availabilityRequestColumns+`
+		FROM availability_request
 		WHERE rota_id = $1
 		ORDER BY volunteer_id
 	`, rotaID)
@@ -66,9 +66,9 @@ func (d *DB) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID strin
 	}
 	defer rows.Close()
 
-	var requests []AvailabilityRequestV2
+	var requests []AvailabilityRequest
 	for rows.Next() {
-		req, err := scanAvailabilityRequestV2(rows)
+		req, err := scanAvailabilityRequest(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -85,14 +85,14 @@ func (d *DB) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID strin
 // GetAvailabilityRequestByToken resolves a link's token to its request, or nil
 // when no request carries it. An unknown token is a miss, not an error: it is
 // the ordinary case of a mistyped or retired link, and the caller answers 404.
-func (d *DB) GetAvailabilityRequestByToken(ctx context.Context, token string) (*AvailabilityRequestV2, error) {
+func (d *DB) GetAvailabilityRequestByToken(ctx context.Context, token string) (*AvailabilityRequest, error) {
 	row := d.pool.QueryRow(ctx, `
-		SELECT `+availabilityRequestV2Columns+`
-		FROM availability_request_v2
+		SELECT `+availabilityRequestColumns+`
+		FROM availability_request
 		WHERE token = $1
 	`, token)
 
-	req, err := scanAvailabilityRequestV2(row)
+	req, err := scanAvailabilityRequest(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -113,7 +113,7 @@ func (d *DB) GetAvailabilityRequestByToken(ctx context.Context, token string) (*
 // out.
 func (d *DB) MarkAvailabilityRequestSent(ctx context.Context, id string) error {
 	tag, err := d.pool.Exec(ctx, `
-		UPDATE availability_request_v2
+		UPDATE availability_request
 		SET sent_at = NOW()
 		WHERE id = $1
 	`, id)
@@ -132,8 +132,8 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanAvailabilityRequestV2(row rowScanner) (AvailabilityRequestV2, error) {
-	var req AvailabilityRequestV2
+func scanAvailabilityRequest(row rowScanner) (AvailabilityRequest, error) {
+	var req AvailabilityRequest
 	var sentAt *time.Time
 	if err := row.Scan(&req.ID, &req.RotaID, &req.VolunteerID, &req.Token, &sentAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -221,6 +221,54 @@ func (d *DB) GetLatestAvailability(ctx context.Context, requestIDs []string, cut
 	return generations, nil
 }
 
+// InsertBackfilledAvailabilityResponse writes one generation for a request at a
+// timestamp the caller supplies rather than now, and reports whether it wrote
+// anything. It is the backfill's only writer (issue #80): answers that were
+// given in Google Forms are only meaningful at the moment they were given, since
+// every read of them is bounded by the rota's allocated_datetime.
+//
+// The (request, submitted_at) pair is the idempotency key. Forms is the source
+// of truth and stamps each response once, so a second run over the same form
+// offers the same pairs and inserts nothing — which is what makes a backfill
+// that dies halfway safe to simply run again. submittedAt is truncated to the
+// microsecond Postgres stores, so the second run's comparison sees the same
+// value it wrote rather than a Go timestamp with nanoseconds the column dropped.
+func (d *DB) InsertBackfilledAvailabilityResponse(ctx context.Context, requestID string, submittedAt time.Time, answers []ShiftAnswer) (bool, error) {
+	submittedAt = submittedAt.Truncate(time.Microsecond)
+
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	responseID := uuid.New().String()
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO availability_response (id, availability_request_id, submitted_at)
+		SELECT $1, $2, $3
+		WHERE NOT EXISTS (
+			SELECT 1 FROM availability_response
+			WHERE availability_request_id = $2 AND submitted_at = $3
+		)
+	`, responseID, requestID, submittedAt)
+	if err != nil {
+		return false, fmt.Errorf("failed to insert backfilled availability response: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+
+	if err := insertShiftAvailability(ctx, tx, responseID, answers); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return true, nil
+}
+
 // InsertAvailabilityResponse writes one complete generation for a request and
 // returns it as stored, including the timestamp the database stamped.
 //
@@ -247,22 +295,8 @@ func (d *DB) InsertAvailabilityResponse(ctx context.Context, requestID string, a
 		return nil, fmt.Errorf("failed to insert availability response: %w", err)
 	}
 
-	batch := &pgx.Batch{}
-	for _, a := range answers {
-		batch.Queue(`
-			INSERT INTO shift_availability (id, response_id, shift_id, answer)
-			VALUES ($1, $2, $3, $4)
-		`, uuid.New().String(), responseID, a.ShiftID, a.Answer)
-	}
-	results := tx.SendBatch(ctx, batch)
-	for range answers {
-		if _, err := results.Exec(); err != nil {
-			results.Close()
-			return nil, fmt.Errorf("failed to insert shift availability: %w", err)
-		}
-	}
-	if err := results.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close shift availability batch: %w", err)
+	if err := insertShiftAvailability(ctx, tx, responseID, answers); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -275,4 +309,27 @@ func (d *DB) InsertAvailabilityResponse(ctx context.Context, requestID string, a
 		SubmittedAt: submittedAt,
 		Answers:     answers,
 	}, nil
+}
+
+// insertShiftAvailability writes a generation's positive rows inside the
+// caller's transaction, so both writers put a generation in whole or not at all.
+func insertShiftAvailability(ctx context.Context, tx pgx.Tx, responseID string, answers []ShiftAnswer) error {
+	batch := &pgx.Batch{}
+	for _, a := range answers {
+		batch.Queue(`
+			INSERT INTO shift_availability (id, response_id, shift_id, answer)
+			VALUES ($1, $2, $3, $4)
+		`, uuid.New().String(), responseID, a.ShiftID, a.Answer)
+	}
+	results := tx.SendBatch(ctx, batch)
+	for range answers {
+		if _, err := results.Exec(); err != nil {
+			results.Close()
+			return fmt.Errorf("failed to insert shift availability: %w", err)
+		}
+	}
+	if err := results.Close(); err != nil {
+		return fmt.Errorf("failed to close shift availability batch: %w", err)
+	}
+	return nil
 }

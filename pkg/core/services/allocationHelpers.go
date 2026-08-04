@@ -21,7 +21,7 @@ import (
 type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
-	GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
@@ -51,7 +51,7 @@ func fetchGroupAvailability(
 	orderedShiftIDs []string,
 	logger *zap.Logger,
 ) (map[string][]int, error) {
-	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rotaID)
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rotaID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}

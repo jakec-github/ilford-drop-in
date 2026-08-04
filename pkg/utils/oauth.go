@@ -36,26 +36,33 @@ var (
 
 // OAuth scopes for Google APIs
 const (
-	ScopeSheets                 = "https://www.googleapis.com/auth/spreadsheets"
-	ScopeFormsBody              = "https://www.googleapis.com/auth/forms.body"
-	ScopeFormsResponsesReadonly = "https://www.googleapis.com/auth/forms.responses.readonly"
-	ScopeGmailSend              = "https://www.googleapis.com/auth/gmail.send"
-	ScopeEmail                  = "https://www.googleapis.com/auth/userinfo.email"
+	ScopeSheets = "https://www.googleapis.com/auth/spreadsheets"
+	// ScopeGmailSend is not in requiredScopes: the server asks for it by
+	// incremental consent at send time and discards the token afterwards, so it
+	// is never part of a standing grant (ADR 0004).
+	ScopeGmailSend = "https://www.googleapis.com/auth/gmail.send"
+	ScopeEmail     = "https://www.googleapis.com/auth/userinfo.email"
 )
 
-// requiredScopes returns all scopes required by the application
+// requiredScopes returns the scopes the CLI's stored token must carry.
+//
+// Two: the volunteer roster in Sheets, and the address of whoever is signed in,
+// for the audit trail. It was five until the Google Forms availability flow was
+// removed (issue #80) — both forms scopes lost their last caller, and gmail.send
+// moved to the server's incremental grant, where it lives only for the seconds a
+// send takes rather than in a refresh token on someone's laptop.
+//
+// This list is the credential surface of the whole CLI. Adding to it means a
+// fresh consent for every operator, so it is a decision, not a detail.
 func requiredScopes() []string {
 	return []string{
 		ScopeSheets,
-		ScopeFormsBody,
-		ScopeFormsResponsesReadonly,
-		ScopeGmailSend,
 		ScopeEmail,
 	}
 }
 
-// GetOAuthConfig creates an OAuth2 config from the OAuth client configuration
-// Requests all necessary scopes for the application upfront (sheets, forms, gmail)
+// GetOAuthConfig creates an OAuth2 config from the OAuth client configuration,
+// requesting the scopes the CLI needs upfront (sheets and the signed-in email)
 func GetOAuthConfig(oauthCfg *config.OAuthClientConfig) (*oauth2.Config, error) {
 	oauthConfigJSON, err := json.Marshal(oauthCfg)
 	if err != nil {

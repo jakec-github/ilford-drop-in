@@ -20,26 +20,19 @@ type Shift struct {
 	Date   string // DATE
 }
 
-// AvailabilityRequest represents a database availability request record.
-// A request is rota-scoped (one per volunteer per rota); it has no shift date.
-type AvailabilityRequest struct {
-	ID          string
-	RotaID      string
-	VolunteerID string
-	FormID      string
-	FormURL     string
-	FormSent    bool
-}
-
-// AvailabilityRequestV2 is a tokenised availability request: one volunteer's
+// AvailabilityRequest is a tokenised availability request: one volunteer's
 // invitation to answer for one rota, addressed by an unguessable link rather
-// than a login. It is the replacement for AvailabilityRequest, running alongside
-// it through the expand phase (migration 011); the contract migration drops the
-// Forms table and this type takes the plain name.
+// than a login. It is rota-scoped — one per volunteer per rota — and carries no
+// shift date.
 //
-// SentAt is empty until a send stamps it, which nothing does before slice 3 —
-// minting and sending are separate operations.
-type AvailabilityRequestV2 struct {
+// It ran as availability_request_v2 alongside the Google Forms table through the
+// expand phase (migration 011) and took the plain name back when the contract
+// migration dropped it (012).
+//
+// SentAt is empty until a send stamps it: minting and sending are separate
+// operations, so a volunteer holding a link nobody has sent them is an ordinary
+// state.
+type AvailabilityRequest struct {
 	ID          string // UUID
 	RotaID      string // UUID
 	VolunteerID string
@@ -67,7 +60,7 @@ type ShiftAnswer struct {
 // nothing — a state the Forms encoding could not express, and which reads
 // differently from never having replied (no generation at all).
 type AvailabilityGeneration struct {
-	RequestID   string // UUID of the availability_request_v2 row
+	RequestID   string // UUID of the availability_request row
 	ResponseID  string // UUID
 	SubmittedAt time.Time
 	Answers     []ShiftAnswer
