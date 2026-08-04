@@ -9,6 +9,8 @@ from conftest import (
     make_member,
     make_shift,
     solve_with,
+    team_lead_id,
+    volunteer_ids,
 )
 from pyallocator.constraints import max_frequency, seat_capacity
 from pyallocator.preferences import even_fill
@@ -57,8 +59,8 @@ def test_capped_role_seat_fills_before_an_ordinary_one():
     inp = make_input(groups=[lead], shifts=[make_shift(0, size=4)])
     out = solve_with(inp, [seat_capacity.CONSTRAINT], preferences=PREFS)
     assert out.success
-    assert out.shifts[0].team_lead_id == "lead"
-    assert out.shifts[0].volunteer_ids == ()
+    assert team_lead_id(out.shifts[0]) == "lead"
+    assert volunteer_ids(out.shifts[0]) == ()
 
 
 def test_no_reward_beyond_capacity():

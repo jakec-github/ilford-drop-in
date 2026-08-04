@@ -93,8 +93,11 @@ func TestCpsatOutputContractGolden(t *testing.T) {
 		"solver_status": "OPTIMAL", "success": true, "error": "", "objective_value": 23,
 		"shifts": [{
 			"index": 0, "date": "2026-07-13", "size": 4, "closed": false,
-			"team_lead_id": "vol-9", "volunteer_ids": ["vol-1", "vol-2"],
-			"custom_preallocations": ["St John's team"],
+			"assignments": [
+				{"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},
+				{"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
+				{"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"}
+			],
 			"allocated_group_keys": ["couple_alice_bob", "Diana Green"]
 		}],
 		"diagnostics": {"solve_time_seconds": 0.12, "num_groups": 18,
@@ -107,19 +110,21 @@ func TestCpsatOutputContractGolden(t *testing.T) {
 	assert.True(t, output.Success)
 	assert.Equal(t, 23, output.ObjectiveValue)
 	require.Len(t, output.Shifts, 1)
-	assert.Equal(t, "vol-9", output.Shifts[0].TeamLeadID)
-	assert.Equal(t, []string{"vol-1", "vol-2"}, output.Shifts[0].VolunteerIDs)
-	assert.Equal(t, []string{"St John's team"}, output.Shifts[0].CustomPreallocations)
+	assert.Equal(t, []allocator.CpsatAssignment{
+		{VolunteerID: "vol-9", Role: "Team lead"},
+		{VolunteerID: "vol-1", Role: "Service volunteer"},
+		{Custom: "St John's team", Role: "Service volunteer"},
+	}, output.Shifts[0].Assignments)
 	assert.Equal(t, 0.12, output.Diagnostics.SolveTimeSeconds)
 	assert.Equal(t, []string{"availability"}, output.Diagnostics.ConstraintsApplied)
 }
 
 func TestBuildCpsatInput(t *testing.T) {
 	volunteers := []allocator.Volunteer{
-		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", IsTeamLead: true, GroupKey: "couple_ab"},
-		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", IsTeamLead: false, GroupKey: "couple_ab"},
-		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female", IsTeamLead: false, GroupKey: ""},
-		{ID: "silent", FirstName: "Silent", LastName: "Bob", DisplayName: "Silent", Gender: "Male", IsTeamLead: false, GroupKey: ""},
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},
+		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", GroupKey: "couple_ab"},
+		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female", GroupKey: ""},
+		{ID: "silent", FirstName: "Silent", LastName: "Bob", DisplayName: "Silent", Gender: "Male", GroupKey: ""},
 	}
 	groupAvailability := map[string][]int{
 		"couple_ab":   {0, 2, 3},
@@ -208,21 +213,24 @@ func TestBuildCpsatInput(t *testing.T) {
 
 func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 	volunteers := []allocator.Volunteer{
-		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", IsTeamLead: true, GroupKey: "couple_ab"},
-		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", IsTeamLead: false, GroupKey: "couple_ab"},
-		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female", IsTeamLead: false, GroupKey: ""},
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},
+		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", GroupKey: "couple_ab"},
+		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female", GroupKey: ""},
 	}
 	output := &allocator.CpsatOutput{
 		SolverStatus: "OPTIMAL",
 		Success:      true,
 		Shifts: []allocator.CpsatOutputShift{{
-			Index:                0,
-			Date:                 "2026-07-13",
-			Size:                 3,
-			TeamLeadID:           "alice",
-			VolunteerIDs:         []string{"bob", "diana"},
-			CustomPreallocations: []string{"external_john"},
-			AllocatedGroupKeys:   []string{"couple_ab", "Diana Green"},
+			Index: 0,
+			Date:  "2026-07-13",
+			Size:  3,
+			Assignments: []allocator.CpsatAssignment{
+				{VolunteerID: "alice", Role: "Team lead"},
+				{VolunteerID: "bob", Role: "Service volunteer"},
+				{VolunteerID: "diana", Role: "Service volunteer"},
+				{Custom: "external_john", Role: "Service volunteer"},
+			},
+			AllocatedGroupKeys: []string{"couple_ab", "Diana Green"},
 		}},
 	}
 
@@ -231,25 +239,36 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 	require.Len(t, shifts, 1)
 	shift := shifts[0]
 
-	require.NotNil(t, shift.TeamLead)
-	assert.Equal(t, "alice", shift.TeamLead.ID)
-	assert.Equal(t, []string{"external_john"}, shift.CustomPreallocations)
-	// Couple regrouped (alice+bob), individual keyed by name.
-	require.Len(t, shift.AllocatedGroups, 2)
-	// Ordinary size: bob + diana + external_john custom entry.
-	assert.Equal(t, 3, shift.CurrentSize())
+	// Each filled Seat keeps the Role the solver gave it; volunteers are
+	// resolved, custom entries carry their free text.
+	require.Len(t, shift.Assignments, 4)
+	require.NotNil(t, shift.Assignments[0].Volunteer)
+	assert.Equal(t, "alice", shift.Assignments[0].Volunteer.ID)
+	assert.Equal(t, "Team lead", shift.Assignments[0].Role)
+	assert.Nil(t, shift.Assignments[3].Volunteer)
+	assert.Equal(t, "external_john", shift.Assignments[3].Custom)
+	assert.Equal(t, "Service volunteer", shift.Assignments[3].Role)
 
-	// convertToDBAllocations reuses the rebuilt shifts: 2 volunteer rows
-	// (bob, diana) + 1 team lead row (alice) + 1 custom entry row.
+	// Couple regrouped (alice+bob), individual keyed by name; the custom
+	// entry belongs to nobody and so joins no group.
+	require.Len(t, shift.AllocatedGroups, 2)
+
+	// convertToDBAllocations reuses the rebuilt shifts: one row per filled
+	// Seat, each carrying its own Role.
 	dbAllocations, err := convertToDBAllocations(map[string]string{"2026-07-13": "shift-1"}, shifts)
 	require.NoError(t, err)
-	assert.Len(t, dbAllocations, 4)
+	require.Len(t, dbAllocations, 4)
+	roles := map[string]int{}
 	for _, a := range dbAllocations {
 		assert.Equal(t, "shift-1", a.ShiftID)
+		roles[a.Role]++
 	}
+	assert.Equal(t, map[string]int{"Team lead": 1, "Service volunteer": 3}, roles)
 
 	// Unknown IDs from the solver are rejected.
-	output.Shifts[0].VolunteerIDs = []string{"nobody"}
+	output.Shifts[0].Assignments = []allocator.CpsatAssignment{
+		{VolunteerID: "nobody", Role: "Service volunteer"},
+	}
 	_, err = allocator.CpsatOutputToShifts(output, volunteers)
 	assert.ErrorContains(t, err, "nobody")
 }

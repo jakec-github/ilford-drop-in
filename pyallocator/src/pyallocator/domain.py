@@ -119,16 +119,34 @@ class AllocationInput:
 
 
 @dataclass(frozen=True)
+class Assignment:
+    """One filled Seat: who is in it, and what Role it is.
+
+    Exactly one of volunteer_id and custom is set, as on Preallocation
+    coming the other way — a custom entry is free text the rota creator
+    typed ("St John's team"), not a volunteer the system knows.
+    """
+
+    volunteer_id: str
+    custom: str
+    role: str
+
+
+@dataclass(frozen=True)
 class OutputShift:
-    """One solved shift. team_lead_id is "" when no team lead (common)."""
+    """One solved shift.
+
+    assignments are the Seats that ended up filled: the solver's own, in
+    canonical volunteer order, then the custom preallocations echoed back
+    in input order. A Seat nobody filled is simply absent — which is how
+    "this shift has no team lead" is said, and it is common.
+    """
 
     index: int
     date: str
     size: int
     closed: bool
-    team_lead_id: str
-    volunteer_ids: tuple[str, ...]
-    custom_preallocations: tuple[str, ...]
+    assignments: tuple[Assignment, ...]
     allocated_group_keys: tuple[str, ...]
 
 

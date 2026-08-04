@@ -70,16 +70,21 @@ Output:
 {
   "solver_status": "OPTIMAL", "success": true, "error": "", "objective_value": 23,
   "shifts": [{"index": 0, "date": "2026-07-13", "size": 4, "closed": false,
-              "team_lead_id": "vol-9", "volunteer_ids": ["vol-1", "vol-2"],
-              "custom_preallocations": ["St John's team"],
+              "assignments": [
+                {"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},
+                {"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
+                {"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"}],
               "allocated_group_keys": ["couple_alice_bob", "Diana Green"]}],
   "diagnostics": {"solve_time_seconds": 0.12, "num_groups": 18,
                   "num_variables": 126, "constraints_applied": ["availability"]}
 }
 ```
 
-`team_lead_id` is `""` when a shift has no team lead — expected and
-common; missing team leads are filled in manually later.
+`assignments` are the Seats that ended up filled, mirroring the
+preallocations going in: exactly one of `volunteer_id` and `custom` is
+set. A Seat nobody filled is simply absent, which is how "this shift has
+no team lead" is said — expected and common, and filled in manually
+later.
 
 ## How the code is organised
 

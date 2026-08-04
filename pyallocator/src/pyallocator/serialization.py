@@ -247,9 +247,14 @@ def output_to_dict(output: AllocationOutput) -> dict[str, Any]:
                 "date": s.date,
                 "size": s.size,
                 "closed": s.closed,
-                "team_lead_id": s.team_lead_id,
-                "volunteer_ids": list(s.volunteer_ids),
-                "custom_preallocations": list(s.custom_preallocations),
+                "assignments": [
+                    {
+                        "volunteer_id": a.volunteer_id,
+                        "custom": a.custom,
+                        "role": a.role,
+                    }
+                    for a in s.assignments
+                ],
                 "allocated_group_keys": list(s.allocated_group_keys),
             }
             for s in output.shifts

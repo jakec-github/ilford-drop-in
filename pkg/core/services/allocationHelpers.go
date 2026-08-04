@@ -143,7 +143,6 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 			DisplayName: vol.DisplayName,
 			Gender:      vol.Gender,
 			Roles:       vol.Roles,
-			IsTeamLead:  vol.Holds(string(model.RoleTeamLead)),
 			GroupKey:    vol.GroupKey,
 		}
 	}
@@ -155,6 +154,9 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 // shiftIDByDate. A date with no minted shift is a broken invariant (the solver
 // only ever sees minted dates); it fails loudly here rather than tripping the
 // shift_id FK on insert (ADR 0001).
+//
+// One filled Seat is one row, whatever Role it is: the solver decided the
+// Role, so there is nothing to work out here.
 func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator.Shift) ([]db.Allocation, error) {
 	allocations := make([]db.Allocation, 0)
 
@@ -164,43 +166,17 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 			return nil, fmt.Errorf("solver produced an allocation for date %s with no minted shift", shift.Date)
 		}
 
-		// Add allocations for regular volunteers in groups
-		for _, group := range shift.AllocatedGroups {
-			for _, member := range group.Members {
-				// Skip team lead if they're also the designated team lead for the shift
-				if shift.TeamLead != nil && member.ID == shift.TeamLead.ID {
-					continue
-				}
-
-				allocations = append(allocations, db.Allocation{
-					ID:          uuid.New().String(),
-					ShiftID:     shiftID,
-					Role:        string(model.RoleVolunteer),
-					VolunteerID: member.ID,
-					CustomEntry: "",
-				})
+		for _, assignment := range shift.Assignments {
+			volunteerID := ""
+			if assignment.Volunteer != nil {
+				volunteerID = assignment.Volunteer.ID
 			}
-		}
-
-		// Add team lead allocation
-		if shift.TeamLead != nil {
 			allocations = append(allocations, db.Allocation{
 				ID:          uuid.New().String(),
 				ShiftID:     shiftID,
-				Role:        string(model.RoleTeamLead),
-				VolunteerID: shift.TeamLead.ID,
-				CustomEntry: "",
-			})
-		}
-
-		// Add pre-allocated volunteers
-		for _, preAllocatedID := range shift.CustomPreallocations {
-			allocations = append(allocations, db.Allocation{
-				ID:          uuid.New().String(),
-				ShiftID:     shiftID,
-				Role:        string(model.RoleVolunteer),
-				VolunteerID: "",
-				CustomEntry: preAllocatedID,
+				Role:        assignment.Role,
+				VolunteerID: volunteerID,
+				CustomEntry: assignment.Custom,
 			})
 		}
 	}

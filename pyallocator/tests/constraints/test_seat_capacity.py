@@ -19,6 +19,7 @@ from conftest import (
     make_member,
     make_shift,
     solve_with,
+    team_lead_id,
 )
 from pyallocator.constraints import preallocations, seat_capacity
 from pyallocator.domain import Preallocation, Seat, ShiftSpec
@@ -73,7 +74,7 @@ def test_team_lead_seat_is_not_an_ordinary_seat():
     # Three people, two ordinary Seats: both groups only fit if the lead
     # takes the Team lead Seat. That used to be seat_cost = 0.
     assert set(allocations_by_shift(out)[0]) == {"single", "tl_couple"}
-    assert out.shifts[0].team_lead_id == "lead"
+    assert team_lead_id(out.shifts[0]) == "lead"
 
 
 def test_second_team_lead_takes_an_ordinary_seat():

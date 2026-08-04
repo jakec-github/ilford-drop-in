@@ -10,9 +10,9 @@ import (
 func TestInitVolunteerGroups_BasicGrouping(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Female", IsTeamLead: true, GroupKey: "group_b"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Male", GroupKey: "group_a"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: "group_a"},
+			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Female", GroupKey: "group_b"},
 		},
 		GroupAvailability: map[string][]int{
 			"group_a": {2},
@@ -42,14 +42,12 @@ func TestInitVolunteerGroups_BasicGrouping(t *testing.T) {
 	// Verify group_a
 	assert.Len(t, groupA.Members, 2)
 	assert.Equal(t, 2, groupA.MaleCount)
-	assert.False(t, groupA.HasTeamLead)
 	// Available on shifts where NO member is unavailable: shift 2 only (v1 unavailable on 0, v2 on 1)
 	assert.Equal(t, []int{2}, groupA.AvailableShiftIndices)
 
 	// Verify group_b
 	assert.Len(t, groupB.Members, 1)
 	assert.Equal(t, 0, groupB.MaleCount)
-	assert.True(t, groupB.HasTeamLead)
 	// Available on all shifts (no unavailability)
 	assert.ElementsMatch(t, []int{0, 1, 2}, groupB.AvailableShiftIndices)
 }
@@ -57,8 +55,8 @@ func TestInitVolunteerGroups_BasicGrouping(t *testing.T) {
 func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: ""},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: true, GroupKey: ""},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: ""},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: ""},
 		},
 		GroupAvailability: map[string][]int{
 			"Alice Smith": {1, 2},
@@ -84,8 +82,8 @@ func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 func TestInitVolunteerGroups_GroupWithTwoTeamLeadsIsAllowed(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: "lead_couple"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: true, GroupKey: "lead_couple"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "lead_couple"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: "lead_couple"},
 		},
 		GroupAvailability: map[string][]int{"lead_couple": {0, 1, 2}},
 		HistoricalShifts:  []*Shift{},
@@ -96,15 +94,14 @@ func TestInitVolunteerGroups_GroupWithTwoTeamLeadsIsAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, volunteerState.VolunteerGroups, 1)
 	assert.Len(t, volunteerState.VolunteerGroups[0].Members, 2)
-	assert.True(t, volunteerState.VolunteerGroups[0].HasTeamLead)
 }
 
 func TestInitVolunteerGroups_DiscardGroupWithNoResponses(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "no_response_group"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "no_response_group"},
-			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: "has_response_group"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "no_response_group"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: "no_response_group"},
+			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", GroupKey: "has_response_group"},
 		},
 		// no_response_group is simply absent from the map.
 		GroupAvailability: map[string][]int{"has_response_group": {0, 1, 2}},
@@ -122,7 +119,7 @@ func TestInitVolunteerGroups_DiscardGroupWithNoResponses(t *testing.T) {
 func TestInitVolunteerGroups_DiscardGroupWithNoAvailability(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "unavailable_group"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "unavailable_group"},
 		},
 		// Answered, but for nothing: present in the map with no shifts.
 		GroupAvailability: map[string][]int{"unavailable_group": {}},
@@ -169,8 +166,8 @@ func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {
 
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_b"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: "group_b"},
 		},
 		GroupAvailability: map[string][]int{
 			"group_a": {0, 1, 2},
@@ -204,9 +201,9 @@ func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {
 func TestInitVolunteerGroups_MaleCountAccuracy(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: "group_a"},
+			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", GroupKey: "group_a"},
 		},
 		GroupAvailability: map[string][]int{"group_a": {0, 1, 2}},
 		HistoricalShifts:  []*Shift{},
@@ -241,7 +238,7 @@ func TestInitVolunteerGroups_AppliesGroupAvailabilityVerbatim(t *testing.T) {
 
 func TestInitShifts_ClosedShifts(t *testing.T) {
 	volunteers := []Volunteer{
-		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
+		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
 	}
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,
@@ -289,7 +286,7 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 
 func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 	volunteers := []Volunteer{
-		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
+		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
 	}
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,

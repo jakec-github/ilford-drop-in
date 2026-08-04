@@ -64,8 +64,9 @@ def test_valid_input_exit_zero(tmp_path):
     assert code == 0
     assert out["success"] is True
     assert out["solver_status"] == "OPTIMAL"
-    assert out["shifts"][0]["volunteer_ids"] == ["v1"]
-    assert out["shifts"][0]["team_lead_id"] == ""
+    assert out["shifts"][0]["assignments"] == [
+        {"volunteer_id": "v1", "custom": "", "role": "Service volunteer"}
+    ]
     assert out["error"] == ""
 
 

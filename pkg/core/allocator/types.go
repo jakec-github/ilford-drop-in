@@ -31,9 +31,6 @@ type VolunteerGroup struct {
 	// Used for fairness calculations and allocation balancing
 	HistoricalAllocationCount int
 
-	// HasTeamLead indicates if any member of this group is a team lead
-	HasTeamLead bool
-
 	// MaleCount is the number of male volunteers in this group
 	MaleCount int
 }
@@ -64,6 +61,18 @@ type Preallocation struct {
 	Role        string
 }
 
+// Assignment is one filled Seat on a solved Shift. It is what a
+// Preallocation becomes once the solve is done, alongside the Seats the
+// solver filled itself: exactly one of Volunteer and Custom is set.
+type Assignment struct {
+	// Volunteer in the Seat, nil for a custom (free-text) entry.
+	Volunteer *Volunteer
+	// Custom is the free-text entry in the Seat, empty for a volunteer.
+	Custom string
+	// Role of the Seat. Never empty — a Seat is always some Role's.
+	Role string
+}
+
 // Volunteer represents an individual volunteer
 type Volunteer struct {
 	ID          string
@@ -73,11 +82,8 @@ type Volunteer struct {
 	Gender      string
 	// Roles are the jobs this volunteer holds, in priority order. Eligibility
 	// for a Seat is holding its Role.
-	Roles []string
-	// IsTeamLead is the pre-Roles shorthand, kept while the solver still
-	// designates a lead after the fact (#89 commit 9 removes it).
-	IsTeamLead bool
-	GroupKey   string
+	Roles    []string
+	GroupKey string
 }
 
 // Shift represents a single shift that needs to be filled
@@ -94,17 +100,13 @@ type Shift struct {
 	// AllocatedGroups tracks which volunteer groups have been assigned
 	AllocatedGroups []*VolunteerGroup
 
-	// CustomPreallocations are the custom entries on a *solved* shift, set by
+	// Assignments are the filled Seats on a *solved* shift, set by
 	// CpsatOutputToShifts. Pins going into a solve travel in Preallocations
-	// instead. (#89 commit 9 replaces this with role-tagged assignments.)
-	CustomPreallocations []string
-
-	// TeamLead is the team lead assigned to this shift (nil if none assigned)
-	// Does not count toward Size
-	TeamLead *Volunteer
+	// instead.
+	Assignments []Assignment
 
 	// MaleCount is the number of male volunteers allocated to this shift via AllocatedGroups
-	// Does not include TeamLead or pre-allocated volunteers
+	// Does not include pre-allocated volunteers
 	MaleCount int
 
 	// AvailableGroups contains volunteer groups that expressed availability for this shift
@@ -119,20 +121,6 @@ type Shift struct {
 	// it fills. Volunteers, custom entries and leads all travel together: they
 	// are the same thing, a Seat spoken for before the solve.
 	Preallocations []Preallocation
-}
-
-// CurrentSize returns the current number of ordinary volunteers allocated to this shift
-// (team leads excluded, custom preallocations counted).
-func (s *Shift) CurrentSize() int {
-	size := len(s.CustomPreallocations)
-	for _, group := range s.AllocatedGroups {
-		for _, member := range group.Members {
-			if !member.IsTeamLead {
-				size++
-			}
-		}
-	}
-	return size
 }
 
 // IsAvailable returns true if the group is available for the given shift

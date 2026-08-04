@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from pyallocator.domain import AllocationOutput, Diagnostics, OutputShift
+from pyallocator.domain import (
+    AllocationOutput,
+    Assignment,
+    Diagnostics,
+    OutputShift,
+)
 from pyallocator.serialization import InputError, output_to_dict, parse_input
 
 VALID_INPUT = {
@@ -171,9 +176,12 @@ def test_output_to_dict_shape():
                 date="2026-07-13",
                 size=4,
                 closed=False,
-                team_lead_id="vol-9",
-                volunteer_ids=("vol-1", "vol-2"),
-                custom_preallocations=("St John's team",),
+                assignments=(
+                    Assignment("vol-9", "", "Team lead"),
+                    Assignment("vol-1", "", "Service volunteer"),
+                    Assignment("vol-2", "", "Service volunteer"),
+                    Assignment("", "St John's team", "Service volunteer"),
+                ),
                 allocated_group_keys=("couple_alice_bob", "Diana Green"),
             ),
         ),
@@ -196,9 +204,24 @@ def test_output_to_dict_shape():
                 "date": "2026-07-13",
                 "size": 4,
                 "closed": False,
-                "team_lead_id": "vol-9",
-                "volunteer_ids": ["vol-1", "vol-2"],
-                "custom_preallocations": ["St John's team"],
+                "assignments": [
+                    {"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},
+                    {
+                        "volunteer_id": "vol-1",
+                        "custom": "",
+                        "role": "Service volunteer",
+                    },
+                    {
+                        "volunteer_id": "vol-2",
+                        "custom": "",
+                        "role": "Service volunteer",
+                    },
+                    {
+                        "volunteer_id": "",
+                        "custom": "St John's team",
+                        "role": "Service volunteer",
+                    },
+                ],
                 "allocated_group_keys": ["couple_alice_bob", "Diana Green"],
             }
         ],

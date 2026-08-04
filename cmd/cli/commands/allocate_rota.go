@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -86,24 +87,29 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				colorBold   = "\033[1m"
 			)
 
+			// The Team Lead column is the highest-priority capped Role, which
+			// is what the pre-Roles "team lead" meant. #89 commit 11 gives
+			// every capped Role a column of its own.
+			leadRole := ""
+			for _, role := range app.Cfg.RoleTable().ByPriority() {
+				if role.Capped() {
+					leadRole = role.Name
+					break
+				}
+			}
+
 			// Calculate column widths
 			maxTeamLeadLen := 15
 			maxVolunteersLen := 40
 			for _, shift := range result.AllocatedShifts {
-				if shift.TeamLead != nil {
-					nameLen := len(shift.TeamLead.DisplayName)
-					if nameLen > maxTeamLeadLen {
-						maxTeamLeadLen = nameLen
-					}
+				lead, ordinary := splitByRole(shift.Assignments, leadRole)
+				if lead != nil && len(assignmentName(*lead)) > maxTeamLeadLen {
+					maxTeamLeadLen = len(assignmentName(*lead))
 				}
 
 				totalLen := 0
-				for _, group := range shift.AllocatedGroups {
-					for _, member := range group.Members {
-						if shift.TeamLead == nil || member.ID != shift.TeamLead.ID {
-							totalLen += len(member.DisplayName) + 2
-						}
-					}
+				for _, assignment := range ordinary {
+					totalLen += len(assignmentName(assignment)) + 2
 				}
 				if totalLen > maxVolunteersLen {
 					maxVolunteersLen = totalLen
@@ -133,25 +139,22 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			for _, shift := range result.AllocatedShifts {
 				fmt.Printf("%-*s  ", dateColWidth, shift.Date)
 
+				lead, ordinary := splitByRole(shift.Assignments, leadRole)
 				teamLeadStr := "—"
 				teamLeadDisplayWidth := 1
-				if shift.TeamLead != nil {
-					teamLeadStr = fmt.Sprintf("%s%s%s", colorGreen, shift.TeamLead.DisplayName, colorReset)
-					teamLeadDisplayWidth = len(shift.TeamLead.DisplayName)
+				if lead != nil {
+					teamLeadDisplayWidth = len(assignmentName(*lead))
+					teamLeadStr = fmt.Sprintf("%s%s%s", colorGreen, assignmentName(*lead), colorReset)
 				}
 				fmt.Printf("%s%s  ", teamLeadStr, strings.Repeat(" ", teamLeadColWidth-teamLeadDisplayWidth))
 
-				volunteers := []string{}
-				for _, group := range shift.AllocatedGroups {
-					for _, member := range group.Members {
-						if shift.TeamLead != nil && member.ID == shift.TeamLead.ID {
-							continue
-						}
-						volunteers = append(volunteers, member.DisplayName)
+				volunteers := make([]string, 0, len(ordinary))
+				for _, assignment := range ordinary {
+					name := assignmentName(assignment)
+					if assignment.Custom != "" {
+						name = fmt.Sprintf("%s[%s]%s", colorYellow, name, colorReset)
 					}
-				}
-				for _, preAlloc := range shift.CustomPreallocations {
-					volunteers = append(volunteers, fmt.Sprintf("%s[%s]%s", colorYellow, preAlloc, colorReset))
+					volunteers = append(volunteers, name)
 				}
 
 				volunteersStr := "—"
@@ -162,8 +165,8 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				}
 				fmt.Printf("%-*s  ", volunteersColWidth, volunteersStr)
 
-				sizeStr := fmt.Sprintf("%d/%d", shift.CurrentSize(), shift.Size)
-				if shift.CurrentSize() == shift.Size {
+				sizeStr := fmt.Sprintf("%d/%d", len(ordinary), shift.Size)
+				if len(ordinary) == shift.Size {
 					sizeStr = fmt.Sprintf("%s%s%s", colorGreen, sizeStr, colorReset)
 				}
 				fmt.Printf("%s\n", sizeStr)
@@ -185,4 +188,29 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 	cmd.Flags().String("python", "", "Python interpreter to run pyallocator with (default: $ILFORD_CPSAT_PYTHON, then pyallocator/.venv/bin/python, then python3)")
 
 	return cmd
+}
+
+// splitByRole separates a solved shift's filled Seats into the first one in
+// leadRole, which the table gives its own column, and everything else in
+// assignment order.
+func splitByRole(assignments []allocator.Assignment, leadRole string) (*allocator.Assignment, []allocator.Assignment) {
+	var lead *allocator.Assignment
+	ordinary := make([]allocator.Assignment, 0, len(assignments))
+	for i, assignment := range assignments {
+		if lead == nil && leadRole != "" && assignment.Role == leadRole {
+			lead = &assignments[i]
+			continue
+		}
+		ordinary = append(ordinary, assignment)
+	}
+	return lead, ordinary
+}
+
+// assignmentName is what to print for a filled Seat: the volunteer in it,
+// or the free text a custom entry holds.
+func assignmentName(assignment allocator.Assignment) string {
+	if assignment.Volunteer != nil {
+		return assignment.Volunteer.DisplayName
+	}
+	return assignment.Custom
 }

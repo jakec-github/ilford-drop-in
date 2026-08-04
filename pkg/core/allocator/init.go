@@ -107,7 +107,7 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 //   - groupKey: The group key (empty string for individual volunteers)
 //   - members: The volunteers in this group
 //
-// Returns a VolunteerGroup with calculated metadata (HasTeamLead, MaleCount)
+// Returns a VolunteerGroup with calculated metadata (MaleCount)
 // Note: AvailableShiftIndices, AllocatedShiftIndices, and HistoricalAllocationCount
 // must be set by the caller as they depend on context.
 func BuildVolunteerGroup(groupKey string, members []Volunteer) *VolunteerGroup {
@@ -118,23 +118,18 @@ func BuildVolunteerGroup(groupKey string, members []Volunteer) *VolunteerGroup {
 	}
 
 	// Calculate group metadata
-	hasTeamLead := false
 	maleCount := 0
 
 	for _, member := range members {
-		if member.IsTeamLead {
-			hasTeamLead = true
-		}
 		if member.Gender == GenderMale {
 			maleCount++
 		}
 	}
 
 	return &VolunteerGroup{
-		GroupKey:    effectiveGroupKey,
-		Members:     members,
-		HasTeamLead: hasTeamLead,
-		MaleCount:   maleCount,
+		GroupKey:  effectiveGroupKey,
+		Members:   members,
+		MaleCount: maleCount,
 		// Note: Caller must set AvailableShiftIndices, AllocatedShiftIndices,
 		// and HistoricalAllocationCount based on their context
 	}
@@ -249,8 +244,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			Index:           i,
 			Size:            shiftSize,
 			AllocatedGroups: []*VolunteerGroup{},
-			TeamLead:        nil, // Will be set when a team lead is allocated
-			MaleCount:       0,   // Will be updated when groups are allocated
+			MaleCount:       0, // Will be updated when groups are allocated
 			AvailableGroups: availableGroups,
 			Closed:          isClosed,
 			Preallocations:  preallocations,
