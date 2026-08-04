@@ -24,30 +24,58 @@ const DEAD_LINK_MESSAGE: Record<AvailabilityLinkFailure, string> = {
   gone: "The rota for these dates has already been worked out, so this link has closed. Get in touch if something has changed.",
 };
 
-// One shift, as a tick box. A closed date is shown and disabled rather than
-// hidden, so a volunteer can see the drop-in is not running that week instead of
-// wondering why a Sunday is missing.
+// One shift, as a no/yes pair. Radios rather than a tick box because no is an
+// answer someone gives, not the absence of one: on a tick box an empty row reads
+// the same whether the volunteer decided against that Sunday or never got to it,
+// and both of them look like "no" by the time the rota is worked out.
+//
+// Each radio carries the date in its own accessible name. The visible word is
+// only "No" or "Yes", which says nothing on its own to anyone who cannot see
+// which row it sits in.
+//
+// A closed date offers no answer at all — the drop-in is not running, so there
+// is nothing to say — but it is still listed, so a volunteer can see that
+// instead of wondering why a Sunday is missing.
 function ShiftChoice({
   shift,
-  checked,
-  onToggle,
+  available,
+  onAnswer,
 }: {
   shift: AvailabilityShift;
-  checked: boolean;
-  onToggle: () => void;
+  available: boolean;
+  onAnswer: (available: boolean) => void;
 }) {
+  const date = formatShiftDate(shift.date);
+
   return (
     <li className={`shift-choice${shift.closed ? " shift-choice--closed" : ""}`}>
-      <label>
-        <input
-          type="checkbox"
-          checked={checked}
-          disabled={shift.closed}
-          onChange={onToggle}
-        />
-        <span className="shift-choice-date">{formatShiftDate(shift.date)}</span>
-        {shift.closed && <span className="shift-choice-tag">Closed</span>}
-      </label>
+      <span className="shift-choice-date">{date}</span>
+      {shift.closed ? (
+        <span className="shift-choice-tag">Closed</span>
+      ) : (
+        <span className="shift-answer">
+          <label className="shift-option">
+            <input
+              type="radio"
+              name={`shift-${shift.id}`}
+              checked={!available}
+              onChange={() => onAnswer(false)}
+              aria-label={`No, I cannot do ${date}`}
+            />
+            No
+          </label>
+          <label className="shift-option">
+            <input
+              type="radio"
+              name={`shift-${shift.id}`}
+              checked={available}
+              onChange={() => onAnswer(true)}
+              aria-label={`Yes, I can do ${date}`}
+            />
+            Yes
+          </label>
+        </span>
+      )}
     </li>
   );
 }
@@ -55,13 +83,13 @@ function ShiftChoice({
 // AvailabilityForm is the volunteer's page: the one screen someone who is not an
 // admin ever sees. Mobile first — it is opened from a phone, from an email.
 //
-// It lands with every open date already ticked, matching the Google form it
+// It lands with every open date already on yes, matching the Google form it
 // replaces. That is deliberate and not just inherited: a mis-tap then records
-// full availability, which is harmless, where starting blank would let a mis-tap
+// full availability, which is harmless, where starting on no would let a mis-tap
 // record none at all — indistinguishable from a genuine "I can't do any of
-// these", and enough to drop someone from the rota silently.
+// these", and enough to drop someone from the rota silently (ADR 0004).
 export default function AvailabilityForm({ token }: { token: string }) {
-  const { form, deadLink, error, submitState, selected, toggle, submit } =
+  const { form, deadLink, error, submitState, selected, setAvailable, submit } =
     useAvailabilityForm(token);
 
   if (deadLink) {
@@ -104,9 +132,9 @@ export default function AvailabilityForm({ token }: { token: string }) {
       )}
 
       <p className="availability-intro">
-        Tick the dates you can do. Everything is ticked to start with, so untick
-        the ones you cannot. You can come back to this link and change your
-        answer any time before the rota is worked out.
+        Answer yes or no for each date. Every date starts on yes, so change the
+        ones you cannot do. You can come back to this link and change your answer
+        any time before the rota is worked out.
       </p>
 
       <form
@@ -120,14 +148,14 @@ export default function AvailabilityForm({ token }: { token: string }) {
             <ShiftChoice
               key={shift.id}
               shift={shift}
-              checked={selected.has(shift.id)}
-              onToggle={() => toggle(shift.id)}
+              available={selected.has(shift.id)}
+              onAnswer={(available) => setAvailable(shift.id, available)}
             />
           ))}
         </ul>
 
         <p className="availability-count">
-          {chosen} of {openShifts.length} dates ticked
+          Yes to {chosen} of {openShifts.length} dates
         </p>
 
         <Button type="submit" disabled={submitState === "sending"}>
