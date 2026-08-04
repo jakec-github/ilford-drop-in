@@ -25,13 +25,13 @@ func rosterVolunteers() *mockVolunteerClient {
 }
 
 type volunteerBody struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	FullName string `json:"fullName"`
-	Role     string `json:"role"`
-	Group    string `json:"group"`
-	Gender   string `json:"gender"`
-	Active   bool   `json:"active"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	FullName string   `json:"fullName"`
+	Roles    []string `json:"roles"`
+	Group    string   `json:"group"`
+	Gender   string   `json:"gender"`
+	Active   bool     `json:"active"`
 }
 
 func decodeVolunteers(t *testing.T, body []byte) []volunteerBody {
@@ -55,11 +55,12 @@ func TestListVolunteersEndpoint(t *testing.T) {
 
 	assert.Equal(t, volunteerBody{
 		ID: "alice", Name: "Alice", FullName: "Alice Adams",
-		Role: string(model.RoleTeamLead), Gender: "Female", Active: true,
-	}, volunteers[0])
+		Roles:  []string{string(model.RoleTeamLead), string(model.RoleVolunteer)},
+		Gender: "Female", Active: true,
+	}, volunteers[0], "every Role held comes back, in priority order")
 	assert.Equal(t, volunteerBody{
 		ID: "bob", Name: "Bob", FullName: "Bob Smith",
-		Role: string(model.RoleVolunteer), Group: "smith-family", Gender: "Male", Active: true,
+		Roles: []string{string(model.RoleVolunteer)}, Group: "smith-family", Gender: "Male", Active: true,
 	}, volunteers[1])
 }
 

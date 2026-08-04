@@ -122,6 +122,14 @@ func preallocVolunteers() *preallocVolClient {
 	}
 }
 
+// cfgWithOverrides is testCfg plus rota overrides — the Roles have to come
+// along, since every pin now resolves its Role against them.
+func cfgWithOverrides(overrides ...config.RotaOverride) *config.Config {
+	cfg := *testCfg
+	cfg.RotaOverrides = overrides
+	return &cfg
+}
+
 func oneShiftStore() *mockPreallocationStore {
 	return &mockPreallocationStore{
 		shifts:    []db.Shift{{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
@@ -132,7 +140,7 @@ func oneShiftStore() *mockPreallocationStore {
 func TestAddPreallocation_VolunteerHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, view)
 
@@ -149,7 +157,7 @@ func TestAddPreallocation_VolunteerHappyPath(t *testing.T) {
 func TestAddPreallocation_TeamLeadHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", TeamLead: true}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", Role: string(model.RoleTeamLead)}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, string(model.RoleTeamLead), store.inserted[0].Role)
@@ -159,7 +167,7 @@ func TestAddPreallocation_TeamLeadHappyPath(t *testing.T) {
 func TestAddPreallocation_CustomHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, string(model.RoleVolunteer), store.inserted[0].Role)
@@ -170,7 +178,7 @@ func TestAddPreallocation_CustomHappyPath(t *testing.T) {
 func TestAddPreallocation_RejectsBothVolunteerAndCustom(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Custom: "X"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Custom: "X", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Empty(t, store.inserted)
 }
@@ -178,78 +186,99 @@ func TestAddPreallocation_RejectsBothVolunteerAndCustom(t *testing.T) {
 func TestAddPreallocation_RejectsNeitherVolunteerNorCustom(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
-func TestAddPreallocation_RejectsTeamLeadWithCustom(t *testing.T) {
+func TestAddPreallocation_RejectsMissingRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Custom: "X", TeamLead: true}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "role is required")
+}
+
+func TestAddPreallocation_RejectsUnconfiguredRole(t *testing.T) {
+	store := oneShiftStore()
+	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Food collector"}, zap.NewNop())
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "not a configured role")
+	assert.Empty(t, store.inserted)
+}
+
+// A custom entry holds no roster record, so nothing can say which Roles it
+// holds — only that the Role exists. Pinning one into a capped Seat is allowed.
+func TestAddPreallocation_CustomInACappedRole(t *testing.T) {
+	store := oneShiftStore()
+	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
+		AddPreallocationParams{Date: "2026-08-02", Custom: "Visiting lead", Role: string(model.RoleTeamLead)}, zap.NewNop())
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, string(model.RoleTeamLead), store.inserted[0].Role)
 }
 
 func TestAddPreallocation_UnknownVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "nobody"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "nobody", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestAddPreallocation_InactiveVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "carol"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "carol", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "not active")
 }
 
-func TestAddPreallocation_NonTeamLeadAsTeamLead(t *testing.T) {
+func TestAddPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", TeamLead: true}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleTeamLead)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "not a team lead")
+	assert.Contains(t, err.Error(), "does not hold the role")
 }
 
 func TestAddPreallocation_UnknownDate(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-09-09", VolunteerID: "bob"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-09-09", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrNotFound)
 	assert.Contains(t, err.Error(), "not in any rota")
 }
 
 func TestAddPreallocation_ClosedShift(t *testing.T) {
 	store := oneShiftStore()
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", Closed: true},
-	}}
+	cfg := cfgWithOverrides(config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Closed: true})
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "closed")
 }
 
-func TestAddPreallocation_ConfigPinsTeamLead(t *testing.T) {
+func TestAddPreallocation_ConfigFillsTheCappedRole(t *testing.T) {
 	store := oneShiftStore()
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: string(model.RoleTeamLead)}}},
-	}}
+	cfg := cfgWithOverrides(config.RotaOverride{
+		RRule:          "FREQ=WEEKLY;BYDAY=SU",
+		Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: string(model.RoleTeamLead)}},
+	})
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", TeamLead: true}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", Role: string(model.RoleTeamLead)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "config already pins a team lead")
+	assert.Contains(t, err.Error(), "config already fills every Team lead seat")
 }
 
 // A config team-lead pin must not block an ordinary volunteer pin on the same date.
 func TestAddPreallocation_ConfigTeamLeadDoesNotBlockVolunteer(t *testing.T) {
 	store := oneShiftStore()
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: string(model.RoleTeamLead)}}},
-	}}
+	cfg := cfgWithOverrides(config.RotaOverride{
+		RRule:          "FREQ=WEEKLY;BYDAY=SU",
+		Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: string(model.RoleTeamLead)}},
+	})
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	require.NoError(t, err)
 }
 
@@ -259,7 +288,7 @@ func TestAddPreallocation_DuplicateVolunteer(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "already pinned")
 }
@@ -270,26 +299,39 @@ func TestAddPreallocation_DuplicateCustom(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), CustomValue: "External Org"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 }
 
-func TestAddPreallocation_SecondTeamLead(t *testing.T) {
+func TestAddPreallocation_CappedRoleAlreadyFull(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.ManualPreallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", TeamLead: true}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", Role: string(model.RoleTeamLead)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "team lead is already pinned")
+	assert.Contains(t, err.Error(), "every Team lead seat for 2026-08-02 is already pinned")
+}
+
+// The uncapped Role has no ceiling to hit, however many are already pinned.
+func TestAddPreallocation_UncappedRoleHasNoCeiling(t *testing.T) {
+	store := oneShiftStore()
+	store.preallocs = []db.ManualPreallocation{
+		{ID: "p1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+		{ID: "p2", ShiftID: "shift-1", Role: string(model.RoleVolunteer), CustomValue: "Scouts"},
+	}
+	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
 }
 
 func TestAddPreallocation_AlreadyAllocated(t *testing.T) {
 	store := oneShiftStore()
 	store.allocated["rota-1"] = true
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: string(model.RoleVolunteer)}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "already allocated")
 	assert.Empty(t, store.inserted)
@@ -393,14 +435,14 @@ func listPreallocs(t *testing.T, store *mockPreallocationStore, cfg *config.Conf
 // Config preallocations are not stored anywhere: they are resolved from the
 // rota overrides against the shifts in range, in all three flavours.
 func TestListPreallocations_IncludesConfigPins(t *testing.T) {
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{{
+	cfg := cfgWithOverrides(config.RotaOverride{
 		RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
 		Preallocations: []config.Preallocation{
 			{VolunteerID: "alice", Role: string(model.RoleTeamLead)},
 			{VolunteerID: "bob", Role: string(model.RoleVolunteer)},
 			{Custom: "Scouts", Role: string(model.RoleVolunteer)},
 		},
-	}}}
+	})
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
 	require.Len(t, views, 3, "all three flavours land on 2 August only")
@@ -427,10 +469,10 @@ func TestListPreallocations_IncludesConfigPins(t *testing.T) {
 // A closed date carries no pins into allocation (InitShifts clears them), so it
 // must not show any either.
 func TestListPreallocations_ConfigPinsSkipClosedDates(t *testing.T) {
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}}},
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Closed: true},
-	}}
+	cfg := cfgWithOverrides(
+		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}}},
+		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Closed: true},
+	)
 
 	assert.Empty(t, listPreallocs(t, twoSundayStore(), cfg))
 }
@@ -438,10 +480,10 @@ func TestListPreallocations_ConfigPinsSkipClosedDates(t *testing.T) {
 // Two overrides pinning the same person to the same date are one seat at
 // allocation time, so they are one entry here.
 func TestListPreallocations_ConfigPinsDedupe(t *testing.T) {
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}, {Custom: "Scouts", Role: string(model.RoleVolunteer)}}},
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}, {Custom: "Scouts", Role: string(model.RoleVolunteer)}}},
-	}}
+	cfg := cfgWithOverrides(
+		config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}, {Custom: "Scouts", Role: string(model.RoleVolunteer)}}},
+		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: string(model.RoleVolunteer)}, {Custom: "Scouts", Role: string(model.RoleVolunteer)}}},
+	)
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
 	require.Len(t, views, 4, "two pins on each of the two Sundays, not three on the first")
@@ -450,28 +492,32 @@ func TestListPreallocations_ConfigPinsDedupe(t *testing.T) {
 	}
 }
 
-// Config is authoritative for the single-valued team-lead slot: the last
-// matching override wins, exactly as InitShifts resolves it.
-func TestListPreallocations_ConfigTeamLeadLastOverrideWins(t *testing.T) {
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "alice", Role: string(model.RoleTeamLead)}}},
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: string(model.RoleTeamLead)}}},
-	}}
+// Overrides accumulate rather than overwrite: two of them pinning the same
+// capped Role to one date are two pins, exactly as InitShifts resolves them.
+// The date is then over its ceiling, which is the solver's complaint to make —
+// the listing's job is to show what it will be handed.
+func TestListPreallocations_ConfigPinsAccumulatePerRole(t *testing.T) {
+	cfg := cfgWithOverrides(
+		config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "alice", Role: string(model.RoleTeamLead)}}},
+		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: string(model.RoleTeamLead)}}},
+	)
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
-	require.Len(t, views, 2)
+	require.Len(t, views, 3)
 	assert.Equal(t, "2026-08-02", views[0].Date)
-	assert.Equal(t, "dan", views[0].VolunteerID)
-	assert.Equal(t, "2026-08-09", views[1].Date)
-	assert.Equal(t, "alice", views[1].VolunteerID)
+	assert.Equal(t, "alice", views[0].VolunteerID)
+	assert.Equal(t, "2026-08-02", views[1].Date)
+	assert.Equal(t, "dan", views[1].VolunteerID)
+	assert.Equal(t, "2026-08-09", views[2].Date)
+	assert.Equal(t, "alice", views[2].VolunteerID)
 }
 
 // A config pin naming someone the roster no longer knows still has to be
 // visible — it is the reason allocation will fail, and hiding it hides the fix.
 func TestListPreallocations_UnknownConfigVolunteerShowsID(t *testing.T) {
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "ghost", Role: string(model.RoleVolunteer)}}},
-	}}
+	cfg := cfgWithOverrides(
+		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "ghost", Role: string(model.RoleVolunteer)}}},
+	)
 
 	views := listPreallocs(t, twoSundayStore(), cfg)
 	require.Len(t, views, 1)
@@ -488,9 +534,9 @@ func TestListPreallocations_MergesSourcesInDateOrder(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-2", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		{ID: "p2", ShiftID: "shift-1", Role: string(model.RoleVolunteer), CustomValue: "Aardvark Group"},
 	}
-	cfg := &config.Config{RotaOverrides: []config.RotaOverride{
-		{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: string(model.RoleTeamLead)}}},
-	}}
+	cfg := cfgWithOverrides(
+		config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: string(model.RoleTeamLead)}}},
+	)
 
 	views := listPreallocs(t, store, cfg)
 	require.Len(t, views, 4)

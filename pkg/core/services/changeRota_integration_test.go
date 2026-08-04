@@ -64,6 +64,7 @@ func TestChangeRotaConcurrentIdenticalAdds(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2026-08-02",
 		In:        "dave",
+		Role:      string(model.RoleVolunteer),
 		Reason:    "Extra cover",
 		UserEmail: "test@example.com",
 	}
@@ -140,6 +141,7 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 		_, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
 			Date:      "2026-08-02",
 			In:        "dave",
+			Role:      string(model.RoleVolunteer),
 			Reason:    "Extra cover",
 			UserEmail: "test@example.com",
 		}, zap.NewNop())

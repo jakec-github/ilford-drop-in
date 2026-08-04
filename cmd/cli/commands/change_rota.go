@@ -17,9 +17,13 @@ func ChangeRotaCmd(app *AppContext) *cobra.Command {
 		Long: `Record a cover or change for a published rota shift.
 Creates an audit trail (cover) and alterations that modify the effective rota.
 
+A volunteer coming in takes a named Role: --role is required alongside --in,
+except on a swap, where each date's incoming volunteer inherits the Role of the
+person they replace.
+
 Examples:
   # Replace one volunteer with another
-  cli -e prod changeRota 2025-03-02 --out vol-1 --in vol-2 --reason "Holiday cover"
+  cli -e prod changeRota 2025-03-02 --out vol-1 --in vol-2 --role "Service volunteer" --reason "Holiday cover"
 
   # Swap two volunteers between dates
   cli -e prod changeRota 2025-03-02 --out vol-1 --in vol-2 --swap-date 2025-03-09 --reason "Swap"
@@ -41,6 +45,7 @@ Examples:
 			outCustom, _ := cmd.Flags().GetString("out-custom")
 			swapDate, _ := cmd.Flags().GetString("swap-date")
 			reason, _ := cmd.Flags().GetString("reason")
+			role, _ := cmd.Flags().GetString("role")
 
 			params := services.ChangeRotaParams{
 				Date:      date,
@@ -50,6 +55,7 @@ Examples:
 				OutCustom: outCustom,
 				SwapDate:  swapDate,
 				Reason:    reason,
+				Role:      role,
 				UserEmail: app.UserEmail,
 			}
 
@@ -82,6 +88,7 @@ Examples:
 	cmd.Flags().String("out-custom", "", "Custom value for volunteer being removed")
 	cmd.Flags().String("swap-date", "", "Date for reverse operation (YYYY-MM-DD)")
 	cmd.Flags().String("reason", "", "Reason for the change (required)")
+	cmd.Flags().String("role", "", "Role the incoming volunteer takes (required with --in, refused with --swap-date)")
 
 	return cmd
 }

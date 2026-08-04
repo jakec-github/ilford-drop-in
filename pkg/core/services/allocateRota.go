@@ -128,6 +128,7 @@ func AllocateRota(
 		rotations,
 		targetRota,
 		convertToAllocatorVolunteers(allVolunteers),
+		cfg.RoleTable().UncappedName(),
 		logger,
 	)
 	if err != nil {
@@ -157,7 +158,7 @@ func AllocateRota(
 	if err := checkPreallocationsResolve(manualPins, dateByShiftID, allocatorOverrides, shiftDates, activeIDs); err != nil {
 		return nil, err
 	}
-	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides)
+	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides, cfg.RoleTable())
 	if err != nil {
 		return nil, err
 	}

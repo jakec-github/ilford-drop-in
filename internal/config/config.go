@@ -111,8 +111,13 @@ const DefaultShiftTimezone = "Europe/London"
 
 // RoleTable indexes the configured Roles for lookup by name and by priority.
 // Everything that has to resolve a Role name — the roster, pins, the solver
-// contract — goes through this rather than reading the slice.
+// contract — goes through this rather than reading the slice. A nil Config
+// yields the empty table, which answers every query with "no such Role" rather
+// than panicking on a caller that holds no config.
 func (c *Config) RoleTable() model.Roles {
+	if c == nil {
+		return model.Roles{}
+	}
 	return model.NewRoles(c.Roles)
 }
 

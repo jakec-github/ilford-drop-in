@@ -141,7 +141,23 @@ func buildShiftSeats(
 			}
 		}
 
-		volunteerIDs, teamLeadID, customs, _ := configPreallocationsForDate(shift.Date, overrides)
+		// Coverage still counts seats as "the lead's, and everyone else's", so
+		// the config pins are folded back into that shape here. Commit 11 of
+		// #89 replaces the whole tally with a per-Role one and this goes.
+		volunteerIDs := make(map[string]bool)
+		customs := make(map[string]bool)
+		teamLeadID := ""
+		configPins, _ := configPreallocationsForDate(shift.Date, overrides)
+		for _, pin := range configPins {
+			switch {
+			case pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "":
+				teamLeadID = pin.VolunteerID
+			case pin.VolunteerID != "":
+				volunteerIDs[pin.VolunteerID] = true
+			case pin.Custom != "":
+				customs[pin.Custom] = true
+			}
+		}
 		for _, pin := range pinsByShiftID[shift.ID] {
 			switch {
 			case pin.Role == string(model.RoleTeamLead):

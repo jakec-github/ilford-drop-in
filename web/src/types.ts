@@ -236,9 +236,8 @@ export interface Preallocation {
 // for. Always a manual pin — config pins are written into the server's own
 // config, never over the API.
 //
-// role is what they are pinned as. "lead" is accepted only for a volunteer the
-// roster records as a team lead, and never for a custom entry, which the API
-// gives no role to.
+// role is the Seat they are pinned into. Every pin names one, and the API
+// accepts it only for a volunteer the roster records as holding that role.
 export interface NewPreallocation {
   date: string;
   person: PersonRef;

@@ -37,7 +37,7 @@ func preallocationTestStore() *mockStore {
 
 func TestCreatePreallocationEndpoint(t *testing.T) {
 	store := preallocationTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"bob"}`
+	body := `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -62,7 +62,7 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 
 func TestCreatePreallocationEndpoint_TeamLead(t *testing.T) {
 	store := preallocationTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"alice","teamLead":true}`
+	body := `{"date":"2026-01-11","volunteerId":"alice","role":"Team lead"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -99,43 +99,55 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name:       "neither volunteer nor custom",
-			body:       `{"date":"2026-01-11"}`,
+			body:       `{"date":"2026-01-11","role":"Service volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "both volunteer and custom",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper","role":"Service volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "team lead on a non-team-lead volunteer",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","teamLead":true}`,
+			name:       "a role the volunteer does not hold",
+			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Team lead"}`,
+			store:      preallocationTestStore(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "no role at all",
+			body:       `{"date":"2026-01-11","volunteerId":"charlie"}`,
+			store:      preallocationTestStore(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "a role config does not name",
+			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Food collector"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","volunteerId":"nobody"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"nobody","role":"Service volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "unknown date",
-			body:       `{"date":"2026-02-01","volunteerId":"bob"}`,
+			body:       `{"date":"2026-02-01","volunteerId":"bob","role":"Service volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "duplicate assignee",
-			body:       `{"date":"2026-01-11","volunteerId":"bob"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
 			store:      seeded(),
 			wantStatus: http.StatusConflict,
 		},
 		{
 			name: "already allocated",
-			body: `{"date":"2026-01-11","volunteerId":"bob"}`,
+			body: `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
 			store: func() *mockStore {
 				s := preallocationTestStore()
 				s.allocatedRotas = map[string]bool{"rota-1": true}
@@ -145,7 +157,7 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name: "store insert failure",
-			body: `{"date":"2026-01-11","volunteerId":"bob"}`,
+			body: `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
 			store: func() *mockStore {
 				s := preallocationTestStore()
 				s.insertErr = errors.New("disk full")
@@ -250,6 +262,7 @@ func TestListPreallocationsEndpoint_ConfigPins(t *testing.T) {
 	cfg := &config.Config{
 		ShiftStartTime: "19:30",
 		ShiftEndTime:   "21:30",
+		Roles:          apiTestRoles,
 		RotaOverrides: []config.RotaOverride{{
 			RRule: "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=11",
 			Preallocations: []config.Preallocation{

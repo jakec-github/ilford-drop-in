@@ -33,10 +33,10 @@ type ChangeRotaParams struct {
 	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
 	Reason    string // Required reason for the change
 	UserEmail string // Email of the user making the change
-	// Role the incoming volunteer takes, overriding inferRole. Optional; when
-	// empty the role is inferred as before. Only meaningful alongside In and
-	// without SwapDate — see validateRoleOverride — and team lead is refused on
-	// a shift that already has one, see validateLeadNotTaken.
+	// Role the incoming volunteer takes. Required alongside In, and refused
+	// alongside SwapDate, where each leg inherits the Role of the person it
+	// replaces — see validateRole. A Role already at its ceiling on the shift
+	// is refused, see validateRoleHasSeat.
 	Role string
 }
 
@@ -78,7 +78,8 @@ func ChangeRota(
 		return nil, wrapf(ErrInvalidInput, "--reason is required")
 	}
 
-	if err := validateRoleOverride(params); err != nil {
+	roles := cfg.RoleTable()
+	if err := validateRole(params, roles); err != nil {
 		return nil, err
 	}
 
@@ -97,6 +98,7 @@ func ChangeRota(
 		if _, ok := volunteersByID[params.In]; !ok {
 			return nil, wrapf(ErrNotFound, "volunteer %s not found", params.In)
 		}
+		warnUnheldRole(params, volunteersByID, logger)
 	}
 
 	if params.Out != "" {
@@ -140,7 +142,7 @@ func ChangeRota(
 	var alterations []db.Alteration
 	err = database.WithRotaLock(ctx, lockRotaIDs, func(store db.RotaChangeStore) error {
 		// Build effective state for the primary shift and validate against it
-		effectiveState, err := buildEffectiveState(ctx, store, shift)
+		effectiveState, err := buildEffectiveState(ctx, store, shift, roles)
 		if err != nil {
 			return err
 		}
@@ -149,7 +151,7 @@ func ChangeRota(
 			return err
 		}
 
-		if err := validateLeadNotTaken(effectiveState, volunteersByID, params); err != nil {
+		if err := validateRoleHasSeat(effectiveState, volunteersByID, params, roles); err != nil {
 			return err
 		}
 
@@ -157,7 +159,7 @@ func ChangeRota(
 		swapEffectiveState := effectiveState
 		if params.SwapDate != "" {
 			if params.SwapDate != params.Date {
-				swapEffectiveState, err = buildEffectiveState(ctx, store, swapShift)
+				swapEffectiveState, err = buildEffectiveState(ctx, store, swapShift, roles)
 				if err != nil {
 					return err
 				}
@@ -177,25 +179,33 @@ func ChangeRota(
 
 		// Build alterations for the primary shift, then reverse alterations for
 		// the swap shift (which may belong to a different rota)
-		alterations = append(alterations, buildAlterationsForShift(shiftChange{
+		primary := shiftChange{
 			shiftID:   shift.ID,
 			out:       params.Out,
 			in:        params.In,
 			outCustom: params.OutCustom,
 			inCustom:  params.InCustom,
 			role:      params.Role,
-		}, coverID, volunteersByID, effectiveState)...)
+		}
+		if primary.in != "" && primary.role == "" {
+			primary.role = roleForIncoming(params.In, params.Out, effectiveState, swapEffectiveState, roles)
+		}
+		alterations = append(alterations, buildAlterationsForShift(primary, coverID)...)
 		if params.SwapDate != "" {
 			// In and out change places: whoever leaves the primary shift joins
-			// this one. No role override — it is rejected alongside a swap,
-			// having no unambiguous person to name.
-			alterations = append(alterations, buildAlterationsForShift(shiftChange{
+			// this one. A swap names no Role — there is no unambiguous person to
+			// apply one to — so both legs work theirs out from the shifts.
+			swapLeg := shiftChange{
 				shiftID:   swapShift.ID,
 				out:       params.In,
 				in:        params.Out,
 				outCustom: params.InCustom,
 				inCustom:  params.OutCustom,
-			}, coverID, volunteersByID, swapEffectiveState)...)
+			}
+			if swapLeg.in != "" {
+				swapLeg.role = roleForIncoming(params.Out, params.In, swapEffectiveState, effectiveState, roles)
+			}
+			alterations = append(alterations, buildAlterationsForShift(swapLeg, coverID)...)
 		}
 
 		if err := store.InsertCoverAndAlterations(ctx, cover, alterations); err != nil {
@@ -228,7 +238,7 @@ func ChangeRota(
 // It reads through the lock-holding transaction's store, so the state cannot
 // change between this read and the caller's insert. The shift is a single date,
 // so the result is a flat allocation slice rather than a per-shift map.
-func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, shift *db.Shift) ([]db.Allocation, error) {
+func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, shift *db.Shift, roles model.Roles) ([]db.Allocation, error) {
 	allocations, err := store.GetAllocationsByShiftIDs(ctx, []string{shift.ID})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
@@ -239,7 +249,7 @@ func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, shift *d
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 
-	byShiftID := utils.ApplyAlterations(map[string][]db.Allocation{shift.ID: allocations}, alterations)
+	byShiftID := utils.ApplyAlterations(map[string][]db.Allocation{shift.ID: allocations}, alterations, roles.UncappedName())
 	return byShiftID[shift.ID], nil
 }
 
@@ -322,7 +332,7 @@ func volunteerLabel(id string, volunteersByID map[string]model.Volunteer) string
 }
 
 // shiftChange is one shift's half of a rota change: who leaves it, who joins
-// it, and the role the joining volunteer takes when the admin named one. A swap
+// it, and the Role the joining volunteer takes when the admin named one. A swap
 // is two of these — the second with in and out exchanged.
 type shiftChange struct {
 	shiftID   string
@@ -330,13 +340,13 @@ type shiftChange struct {
 	in        string // Volunteer ID joining
 	outCustom string // Custom entry leaving
 	inCustom  string // Custom entry joining
-	role      string // Role for in, or empty to infer it
+	role      string // Role for in, or empty to inherit it
 }
 
-// buildAlterationsForShift creates alteration records for a single shift.
-// dateAllocations is the shift's effective state, used to infer the role for
-// "add" alterations. Each alteration references the shift by id (ADR 0001).
-func buildAlterationsForShift(change shiftChange, coverID string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) []db.Alteration {
+// buildAlterationsForShift creates alteration records for a single shift. The
+// Role is settled by the caller, which is the only place both shifts of a swap
+// are in scope. Each alteration references the shift by id (ADR 0001).
+func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteration {
 	var alterations []db.Alteration
 
 	if change.out != "" {
@@ -350,17 +360,13 @@ func buildAlterationsForShift(change shiftChange, coverID string, volunteersByID
 	}
 
 	if change.in != "" {
-		role := change.role
-		if role == "" {
-			role = inferRole(change.in, change.out, volunteersByID, dateAllocations)
-		}
 		alterations = append(alterations, db.Alteration{
 			ID:          uuid.New().String(),
 			ShiftID:     change.shiftID,
 			Direction:   "add",
 			VolunteerID: change.in,
 			CoverID:     coverID,
-			Role:        role,
+			Role:        change.role,
 		})
 	}
 
@@ -387,53 +393,91 @@ func buildAlterationsForShift(change shiftChange, coverID string, volunteersByID
 	return alterations
 }
 
-// validateRoleOverride checks a caller-supplied role. It names the volunteer
-// coming in on Date, so it needs one: a change with nobody coming in has no
-// role to set, and a swap has two incoming volunteers — one on each date — so
-// a single role would be applied to whichever the caller did not mean. Both are
-// rejected rather than silently ignored, since a role that vanishes is worse
-// than one that is refused.
-func validateRoleOverride(params ChangeRotaParams) error {
-	if params.Role == "" {
+// validateRole checks the caller-supplied Role. It names the volunteer coming
+// in on Date, so a volunteer coming in must have one: the Role is what the
+// Shape has a Seat for, and guessing it from the roster is exactly what #89
+// takes away. A change with nobody coming in has none to set, and a swap has
+// two incoming volunteers — one on each date — so a single Role would land on
+// whichever the caller did not mean; there, each leg inherits the Role of the
+// person it replaces instead.
+func validateRole(params ChangeRotaParams, roles model.Roles) error {
+	if params.Role != "" {
+		if _, ok := roles.ByName(params.Role); !ok {
+			return wrapf(ErrInvalidInput, "role %q is not a configured role", params.Role)
+		}
+		if params.In == "" {
+			return wrapf(ErrInvalidInput, "a role can only be set for a volunteer coming in")
+		}
+		if params.SwapDate != "" {
+			return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming volunteer")
+		}
 		return nil
 	}
-	if !model.LegacyRole(params.Role).IsValid() {
-		return wrapf(ErrInvalidInput, "invalid role %q: expected %q or %q", params.Role, model.RoleTeamLead, model.RoleVolunteer)
-	}
-	if params.In == "" {
-		return wrapf(ErrInvalidInput, "a role can only be set for a volunteer coming in")
-	}
-	if params.SwapDate != "" {
-		return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming volunteer")
+	if params.In != "" && params.SwapDate == "" {
+		return wrapf(ErrInvalidInput, "a role is required for a volunteer coming in")
 	}
 	return nil
 }
 
-// validateLeadNotTaken rejects an explicit team lead on a shift that already has
-// one. A shift has exactly one: inferRole enforces it by downgrading a second,
-// and the override must not be a way round it. Being told is better than being
-// silently downgraded, which is why this is a refusal rather than a demotion.
+// validateRoleHasSeat rejects an incoming volunteer whose Role is already at
+// its ceiling on the shift. A capped Role has only so many Seats — one Team
+// lead, today — and an alteration must not put someone in a Seat that does not
+// exist. Being told is better than being silently downgraded, which is why this
+// is a refusal.
 //
 // The volunteer coming out does not count towards it — replacing the team lead
-// hands the role over rather than adding to it, which is how an admin changes
+// hands the Role over rather than adding to it, which is how an admin changes
 // who leads a shift.
 //
-// It runs against the shift's effective state, so it sees leads arrived at by
+// It runs against the shift's effective state, so it sees Seats filled by
 // earlier alterations and not only by allocation.
-func validateLeadNotTaken(allocations []db.Allocation, volunteersByID map[string]model.Volunteer, params ChangeRotaParams) error {
-	if params.Role != string(model.RoleTeamLead) {
+func validateRoleHasSeat(allocations []db.Allocation, volunteersByID map[string]model.Volunteer, params ChangeRotaParams, roles model.Roles) error {
+	role, ok := roles.ByName(params.Role)
+	if !ok || !role.Capped() {
 		return nil
 	}
+	filled := make([]db.Allocation, 0, len(allocations))
 	for _, a := range allocations {
-		if a.Role != string(model.RoleTeamLead) {
+		if a.Role != params.Role {
 			continue
 		}
 		if params.Out != "" && a.VolunteerID == params.Out {
 			continue
 		}
-		return wrapf(ErrConflict, "the shift for %s already has a team lead (%s)", params.Date, allocationLabel(a, volunteersByID))
+		filled = append(filled, a)
 	}
-	return nil
+	if len(filled) < *role.Max {
+		return nil
+	}
+	return wrapf(ErrConflict, "the shift for %s already has %s (%s)",
+		params.Date, roleSeatsLabel(role, len(filled)), allocationLabel(filled[0], volunteersByID))
+}
+
+// roleSeatsLabel names a full Role for an error message: "a Team lead" when it
+// seats one, "2 Food collectors" when it seats more.
+func roleSeatsLabel(role model.Role, filled int) string {
+	if filled == 1 {
+		return "a " + role.Name
+	}
+	return fmt.Sprintf("%d in the role %s", filled, role.Name)
+}
+
+// warnUnheldRole notes an admin placing someone in a Role the roster does not
+// record them as holding. It proceeds: the structure (one Seat, one person) is
+// enforced, but who is up to the job on the day is the admin's call, and the
+// roster is standing advice rather than a gate on a cover (ADR 0005).
+func warnUnheldRole(params ChangeRotaParams, volunteersByID map[string]model.Volunteer, logger *zap.Logger) {
+	if params.Role == "" || params.In == "" {
+		return
+	}
+	volunteer, known := volunteersByID[params.In]
+	if !known || volunteer.Holds(params.Role) {
+		return
+	}
+	logger.Warn("Placing a volunteer in a role they do not hold",
+		zap.String("volunteer_id", params.In),
+		zap.String("role", params.Role),
+		zap.String("date", params.Date))
 }
 
 // allocationLabel names whoever holds an allocation for an error message a
@@ -445,34 +489,40 @@ func allocationLabel(a db.Allocation, volunteersByID map[string]model.Volunteer)
 	return volunteerLabel(a.VolunteerID, volunteersByID)
 }
 
-// inferRole determines the role for an incoming volunteer, where the caller has
-// not named one.
-// 1. Replacement: inherit the outgoing volunteer's role from the shift.
-// 2. Otherwise use the volunteer's own role, but downgrade team lead if one already exists.
-func inferRole(inVol, outVol string, volunteersByID map[string]model.Volunteer, dateAllocations []db.Allocation) string {
-	if outVol != "" {
-		for _, a := range dateAllocations {
-			if a.VolunteerID == outVol {
-				return a.Role
-			}
+// roleForIncoming settles the Role a volunteer joining a shift takes where the
+// caller named none — the swap path, which is the one path that cannot name
+// one. In order:
+//
+//  1. The Role of the person they replace on the shift they are joining. A
+//     swap hands each Seat over intact.
+//  2. The Role they held on the shift they are leaving in the same change, so
+//     a move carries someone's Role across rather than resetting it. A move is
+//     a swap with nobody coming back, and so has nobody to replace.
+//  3. The uncapped Role, the Seat every shift has spare.
+//
+// All three are rules about the shifts, not guesses about the person, which is
+// what makes them survivable after inferRole's deletion.
+func roleForIncoming(in, out string, joining, leaving []db.Allocation, roles model.Roles) string {
+	if role, ok := roleOnShift(out, joining); ok {
+		return role
+	}
+	if role, ok := roleOnShift(in, leaving); ok {
+		return role
+	}
+	return roles.UncappedName()
+}
+
+// roleOnShift is the Role a volunteer currently holds among these allocations.
+// An allocation with no Role — written before alterations had a column for one
+// — names nothing to inherit, so it reports none rather than an empty Role.
+func roleOnShift(volunteerID string, allocations []db.Allocation) (string, bool) {
+	if volunteerID == "" {
+		return "", false
+	}
+	for _, a := range allocations {
+		if a.VolunteerID == volunteerID && a.Role != "" {
+			return a.Role, true
 		}
 	}
-
-	// The highest-priority Role held is the one this guess is about: a team lead
-	// also holds Service volunteer, and it is the lead Seat we mean to fill.
-	// Commit 10 of #89 replaces the whole guess with an explicit role.
-	role := string(model.RoleVolunteer)
-	if v, ok := volunteersByID[inVol]; ok && len(v.Roles) > 0 {
-		role = v.Roles[0]
-	}
-
-	if role == string(model.RoleTeamLead) {
-		for _, a := range dateAllocations {
-			if a.Role == string(model.RoleTeamLead) {
-				return string(model.RoleVolunteer)
-			}
-		}
-	}
-
-	return role
+	return "", false
 }
