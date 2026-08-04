@@ -61,6 +61,7 @@ func main() {
 	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
+	rootCmd.AddCommand(newLazyCommand(commands.BackfillAvailabilityCmd))
 
 	// Not lazy, and deliberately not initialised: validate-config reads a file
 	// and nothing else, so it can vet a prod config from a laptop. It shadows

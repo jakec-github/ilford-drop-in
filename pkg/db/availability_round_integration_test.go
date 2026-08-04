@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -291,4 +292,73 @@ func TestMarkAvailabilityRequestSentRejectsAnUnknownID(t *testing.T) {
 	err := database.MarkAvailabilityRequestSent(context.Background(), uuid.New().String())
 
 	assert.Error(t, err)
+}
+
+// TestBackfilledResponseKeepsItsOriginalTimestamp: the whole point of the
+// backfill's own writer is that a Forms answer lands at the moment it was given,
+// not the moment it was imported. Reading it back at a cut-off just after that
+// moment must find it — with NOW() it would sit years in the future and every
+// historical read would miss it.
+func TestBackfilledResponseKeepsItsOriginalTimestamp(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, shiftIDs := roundFixture(t, database)
+
+	req := request(rotaID, "alice", "token-alice")
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	require.NoError(t, err)
+
+	answered := time.Date(2025, 3, 4, 9, 30, 0, 0, time.UTC)
+	inserted, err := database.InsertBackfilledAvailabilityResponse(ctx, req.ID, answered, []db.ShiftAnswer{
+		{ShiftID: shiftIDs[0], Answer: db.AnswerYes},
+	})
+	require.NoError(t, err)
+	assert.True(t, inserted)
+
+	cutoff := answered.Add(time.Second)
+	latest, err := database.GetLatestAvailability(ctx, []string{req.ID}, &cutoff)
+	require.NoError(t, err)
+	require.Contains(t, latest, req.ID)
+	assert.True(t, answered.Equal(latest[req.ID].SubmittedAt))
+	require.Len(t, latest[req.ID].Answers, 1)
+	assert.Equal(t, shiftIDs[0], latest[req.ID].Answers[0].ShiftID)
+}
+
+// TestBackfilledResponseIsIdempotent is the ticket's acceptance criterion:
+// running the backfill twice must not double the generations. The second offer
+// of the same (request, submitted_at) writes nothing at all — not the response
+// row, and not its shift rows.
+func TestBackfilledResponseIsIdempotent(t *testing.T) {
+	database, dbURL := dbtest.New(t)
+	ctx := context.Background()
+	rotaID, shiftIDs := roundFixture(t, database)
+
+	req := request(rotaID, "alice", "token-alice")
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	require.NoError(t, err)
+
+	// Nanoseconds Postgres cannot store: the second run must still recognise the
+	// row it wrote, so the comparison has to happen at the stored precision.
+	answered := time.Date(2025, 3, 4, 9, 30, 0, 123456789, time.UTC)
+	answers := []db.ShiftAnswer{{ShiftID: shiftIDs[0], Answer: db.AnswerYes}}
+
+	inserted, err := database.InsertBackfilledAvailabilityResponse(ctx, req.ID, answered, answers)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	inserted, err = database.InsertBackfilledAvailabilityResponse(ctx, req.ID, answered, answers)
+	require.NoError(t, err)
+	assert.False(t, inserted, "the same Forms response must not be imported twice")
+
+	conn, err := pgx.Connect(ctx, dbURL)
+	require.NoError(t, err)
+	defer conn.Close(ctx)
+
+	var responses, shiftRows int
+	require.NoError(t, conn.QueryRow(ctx,
+		`SELECT COUNT(*) FROM availability_response WHERE availability_request_id = $1`, req.ID).Scan(&responses))
+	require.NoError(t, conn.QueryRow(ctx,
+		`SELECT COUNT(*) FROM shift_availability`).Scan(&shiftRows))
+	assert.Equal(t, 1, responses)
+	assert.Equal(t, 1, shiftRows)
 }

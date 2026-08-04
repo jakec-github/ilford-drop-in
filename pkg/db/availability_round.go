@@ -221,6 +221,54 @@ func (d *DB) GetLatestAvailability(ctx context.Context, requestIDs []string, cut
 	return generations, nil
 }
 
+// InsertBackfilledAvailabilityResponse writes one generation for a request at a
+// timestamp the caller supplies rather than now, and reports whether it wrote
+// anything. It is the backfill's only writer (issue #80): answers that were
+// given in Google Forms are only meaningful at the moment they were given, since
+// every read of them is bounded by the rota's allocated_datetime.
+//
+// The (request, submitted_at) pair is the idempotency key. Forms is the source
+// of truth and stamps each response once, so a second run over the same form
+// offers the same pairs and inserts nothing — which is what makes a backfill
+// that dies halfway safe to simply run again. submittedAt is truncated to the
+// microsecond Postgres stores, so the second run's comparison sees the same
+// value it wrote rather than a Go timestamp with nanoseconds the column dropped.
+func (d *DB) InsertBackfilledAvailabilityResponse(ctx context.Context, requestID string, submittedAt time.Time, answers []ShiftAnswer) (bool, error) {
+	submittedAt = submittedAt.Truncate(time.Microsecond)
+
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	responseID := uuid.New().String()
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO availability_response (id, availability_request_id, submitted_at)
+		SELECT $1, $2, $3
+		WHERE NOT EXISTS (
+			SELECT 1 FROM availability_response
+			WHERE availability_request_id = $2 AND submitted_at = $3
+		)
+	`, responseID, requestID, submittedAt)
+	if err != nil {
+		return false, fmt.Errorf("failed to insert backfilled availability response: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+
+	if err := insertShiftAvailability(ctx, tx, responseID, answers); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return true, nil
+}
+
 // InsertAvailabilityResponse writes one complete generation for a request and
 // returns it as stored, including the timestamp the database stamped.
 //
@@ -247,22 +295,8 @@ func (d *DB) InsertAvailabilityResponse(ctx context.Context, requestID string, a
 		return nil, fmt.Errorf("failed to insert availability response: %w", err)
 	}
 
-	batch := &pgx.Batch{}
-	for _, a := range answers {
-		batch.Queue(`
-			INSERT INTO shift_availability (id, response_id, shift_id, answer)
-			VALUES ($1, $2, $3, $4)
-		`, uuid.New().String(), responseID, a.ShiftID, a.Answer)
-	}
-	results := tx.SendBatch(ctx, batch)
-	for range answers {
-		if _, err := results.Exec(); err != nil {
-			results.Close()
-			return nil, fmt.Errorf("failed to insert shift availability: %w", err)
-		}
-	}
-	if err := results.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close shift availability batch: %w", err)
+	if err := insertShiftAvailability(ctx, tx, responseID, answers); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -275,4 +309,27 @@ func (d *DB) InsertAvailabilityResponse(ctx context.Context, requestID string, a
 		SubmittedAt: submittedAt,
 		Answers:     answers,
 	}, nil
+}
+
+// insertShiftAvailability writes a generation's positive rows inside the
+// caller's transaction, so both writers put a generation in whole or not at all.
+func insertShiftAvailability(ctx context.Context, tx pgx.Tx, responseID string, answers []ShiftAnswer) error {
+	batch := &pgx.Batch{}
+	for _, a := range answers {
+		batch.Queue(`
+			INSERT INTO shift_availability (id, response_id, shift_id, answer)
+			VALUES ($1, $2, $3, $4)
+		`, uuid.New().String(), responseID, a.ShiftID, a.Answer)
+	}
+	results := tx.SendBatch(ctx, batch)
+	for range answers {
+		if _, err := results.Exec(); err != nil {
+			results.Close()
+			return fmt.Errorf("failed to insert shift availability: %w", err)
+		}
+	}
+	if err := results.Close(); err != nil {
+		return fmt.Errorf("failed to close shift availability batch: %w", err)
+	}
+	return nil
 }
