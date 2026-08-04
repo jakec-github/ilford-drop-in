@@ -86,7 +86,9 @@ never is. Placing someone in a Role they do not hold warns and proceeds.
 
 **Pinning.** Every preallocation names a Role, custom entries included — which
 is what lets `"St John's team"` hold Hot food. Pinning someone to a Role they
-do not hold is an error, as the team-lead equivalent is today.
+do not hold was to be an error, as the team-lead equivalent was then; #109
+reversed that, and the pin now grants the Role for that one shift (ADR 0005,
+amended). Pinning to a Role the shift has no Seat for is still an error.
 
 Headcount is distinct people, so no Role needs a "counts toward shift size"
 flag.

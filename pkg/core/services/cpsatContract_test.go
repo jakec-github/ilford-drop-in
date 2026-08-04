@@ -211,6 +211,104 @@ func TestBuildCpsatInput(t *testing.T) {
 	assert.Equal(t, []string{"couple_ab"}, input.HistoricalShifts[1].GroupKeys)
 }
 
+// A pin is a decision already taken, so it settles the availability question
+// for the shift it names rather than waiting on an answer that may never come.
+// Without this a pinned volunteer who had not replied was discarded with the
+// rest of the unanswered groups, and the solver then failed on a pin naming
+// somebody who was not in the problem at all.
+func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},
+		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", GroupKey: "couple_ab"},
+		{ID: "silent", FirstName: "Silent", LastName: "Jones", DisplayName: "Silent", Gender: "Male", GroupKey: ""},
+		{ID: "refused", FirstName: "Ruth", LastName: "Grey", DisplayName: "Ruth", Gender: "Female", GroupKey: ""},
+	}
+	groupAvailability := map[string][]int{
+		"couple_ab": {3},
+		// Silent Jones was never answered for: absent from the map.
+		// Ruth Grey answered, for nothing.
+		"Ruth Grey": {},
+	}
+	shiftDates := []string{"2026-07-13", "2026-07-20", "2026-07-27", "2026-08-03"}
+
+	overrides := []allocator.ShiftOverride{
+		// Shift 0 pins one of the couple, a volunteer nobody answered for, and
+		// a volunteer who answered "none of these".
+		{
+			AppliesTo: func(date string) bool { return date == "2026-07-13" },
+			Preallocations: []allocator.Preallocation{
+				{VolunteerID: "alice", Role: "Team lead"},
+				{VolunteerID: "silent", Role: "Service volunteer"},
+				{VolunteerID: "refused", Role: "Service volunteer"},
+				{Custom: "St John's team", Role: "Service volunteer"},
+				{VolunteerID: "ghost", Role: "Service volunteer"},
+			},
+		},
+		// A closed shift keeps its pins stripped, so it implies nothing.
+		{
+			AppliesTo: func(date string) bool { return date == "2026-07-27" },
+			Closed:    true,
+			Preallocations: []allocator.Preallocation{
+				{VolunteerID: "silent", Role: "Service volunteer"},
+			},
+		},
+	}
+
+	leadMax := 1
+	roles := []allocator.Role{
+		{Name: "Team lead", Max: &leadMax, Priority: 1},
+		{Name: "Service volunteer", Max: nil, Priority: 2},
+	}
+
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftDates, 2, overrides, nil, 0.5, roles, true)
+	require.NoError(t, err)
+
+	byKey := make(map[string]allocator.CpsatGroup, len(input.Groups))
+	for _, g := range input.Groups {
+		byKey[g.GroupKey] = g
+	}
+
+	// Two groups that would have been discarded now survive, each available for
+	// the pinned shift and nothing else — the pin says where they are needed,
+	// not that they are free all rota. Silent Jones is pinned to shift 2 as
+	// well, which is closed: its pins are stripped, so it grants nothing.
+	require.Contains(t, byKey, "Silent Jones")
+	assert.Equal(t, []int{0}, byKey["Silent Jones"].AvailableShiftIndices)
+	require.Contains(t, byKey, "Ruth Grey")
+	assert.Equal(t, []int{0}, byKey["Ruth Grey"].AvailableShiftIndices)
+
+	// A group that did answer keeps its answer, with the pinned shift added in
+	// order. The pin is group-atomic, so Bob comes with Alice.
+	require.Contains(t, byKey, "couple_ab")
+	assert.Equal(t, []int{0, 3}, byKey["couple_ab"].AvailableShiftIndices)
+
+	// A pin naming nobody on the roster stays the solver's error to report; it
+	// must not invent a group here.
+	assert.NotContains(t, byKey, "ghost")
+	assert.Len(t, input.Groups, 3)
+}
+
+// The caller's availability map is shared with the coverage and roster reads,
+// so building the solver's input must not rewrite what they see.
+func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: ""},
+	}
+	groupAvailability := map[string][]int{"Alice Smith": {1}}
+
+	overrides := []allocator.ShiftOverride{{
+		AppliesTo:      func(date string) bool { return date == "2026-07-13" },
+		Preallocations: []allocator.Preallocation{{VolunteerID: "alice", Role: "Service volunteer"}},
+	}}
+
+	roles := []allocator.Role{{Name: "Service volunteer", Max: nil, Priority: 1}}
+
+	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, []string{"2026-07-13", "2026-07-20"}, 2, overrides, nil, 0.5, roles, false)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string][]int{"Alice Smith": {1}}, groupAvailability)
+}
+
 func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 	volunteers := []allocator.Volunteer{
 		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},

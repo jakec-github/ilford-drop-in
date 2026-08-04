@@ -67,8 +67,10 @@ class Problem:
         preallocated_pairs: {(group_key, shift_index)} that MUST be
             allocated — from both volunteer and team-lead preallocations.
         preallocated_roles: {(volunteer_id, shift_index): role} the pinned
-            person must fill. Their group-mates are in preallocated_pairs
-            but not here: they attend, and the solver picks their Seat.
+            person must fill — and, through may_fill, may fill there even
+            if they do not hold the Role. Their group-mates are in
+            preallocated_pairs but not here: they attend, and the solver
+            picks their Seat.
         last_historical_group_keys: group keys present on the most recent
             historical shift (back-to-back boundary with the previous rota).
         historical_group_months: {group_key: frozenset of YYYY-MM months} the
@@ -98,18 +100,18 @@ class Problem:
         self.requires_male: bool = input_.requires_male
 
         volunteers: list[VolunteerView] = []
-        # volunteer id -> (owning group key, roles held)
-        self._member_index: dict[str, tuple[str, tuple[str, ...]]] = {}
+        # volunteer id -> owning group key
+        self._group_key_by_member: dict[str, str] = {}
         for group in self.groups:
             if not group.members:
                 raise ProblemError(f"group '{group.group_key}' has no members")
             available = frozenset(group.available_shift_indices)
             for m in group.members:
-                if m.id in self._member_index:
+                if m.id in self._group_key_by_member:
                     raise ProblemError(
                         f"volunteer id '{m.id}' appears in more than one group"
                     )
-                self._member_index[m.id] = (group.group_key, m.roles)
+                self._group_key_by_member[m.id] = group.group_key
                 volunteers.append(
                     VolunteerView(
                         member=m,
@@ -136,6 +138,25 @@ class Problem:
         self.historical_group_months: dict[str, frozenset[str]] = {
             k: frozenset(v) for k, v in months.items()
         }
+
+    def may_fill(self, volunteer: VolunteerView, shift_index: int, role: str) -> bool:
+        """Whether this volunteer may take a Seat in this Role on this shift.
+
+        Holding the Role is the ordinary answer. A preallocation is the
+        other: a pin records a decision already taken off-system — someone
+        has been asked to do this job on this shift — so it grants the Seat
+        rather than being refused for a roster that has not caught up.
+
+        The grant is deliberately the narrowest thing that makes the pin
+        work. It names one shift, and the Roles the volunteer holds are
+        untouched, so every other shift still sees them exactly as before;
+        widening their Roles instead would change who the solver may pick
+        them as across the whole rota.
+        """
+        return (
+            volunteer.holds(role)
+            or self.preallocated_roles.get((volunteer.id, shift_index)) == role
+        )
 
     def seats_for(self, shift: ShiftSpec, role: str) -> int:
         """How many Seats this shift's Shape asks for in the named Role."""
@@ -183,17 +204,11 @@ class Problem:
                     # group to force onto the shift; it just occupies a Seat.
                     continue
 
-                entry = self._member_index.get(pin.volunteer_id)
-                if entry is None:
+                group_key = self._group_key_by_member.get(pin.volunteer_id)
+                if group_key is None:
                     raise ProblemError(
                         f"preallocated volunteer '{pin.volunteer_id}' on shift "
                         f"{shift.index} does not match any volunteer"
-                    )
-                group_key, roles = entry
-                if pin.role not in roles:
-                    raise ProblemError(
-                        f"preallocated volunteer '{pin.volunteer_id}' on shift "
-                        f"{shift.index} does not hold role '{pin.role}'"
                     )
                 if self.seats_for(shift, pin.role) < 1:
                     raise ProblemError(

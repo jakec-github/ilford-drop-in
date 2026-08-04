@@ -2,6 +2,7 @@ package allocator
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -97,6 +98,64 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 	}
 
 	return volunteerState, nil
+}
+
+// withPreallocatedAvailability returns groupAvailability with every pinned
+// group marked available for the shift it is pinned to, leaving the caller's
+// map untouched.
+//
+// A pin is a decision already taken: someone has been asked to work that shift,
+// so the availability question for it is settled and an answer that never
+// arrived cannot unsettle it. Without this, InitVolunteerGroups discards the
+// group of anyone who did not reply — including the person who was pinned —
+// and the solver then fails on a pin naming somebody who is not in the problem.
+//
+// The grant is per shift, so a pinned group is available where it is pinned and
+// nowhere else it did not claim. It is group-atomic to match the solver, which
+// forces every member of a pinned group onto the shift. Pins are read from
+// resolved shift specs rather than raw overrides so that a closed shift, whose
+// pins InitShifts strips, implies nothing.
+func withPreallocatedAvailability(groupAvailability map[string][]int, shifts []*Shift, volunteers []Volunteer) map[string][]int {
+	groupKeyByVolunteerID := make(map[string]string, len(volunteers))
+	for _, volunteer := range volunteers {
+		groupKeyByVolunteerID[volunteer.ID] = GroupKeyFor(volunteer)
+	}
+
+	augmented := make(map[string][]int, len(groupAvailability))
+	for key, indices := range groupAvailability {
+		augmented[key] = append([]int(nil), indices...)
+	}
+
+	granted := make(map[string]bool)
+	for _, shift := range shifts {
+		for _, pin := range shift.Preallocations {
+			if pin.VolunteerID == "" {
+				// A custom entry is not a person, so there is nobody whose
+				// availability it could settle.
+				continue
+			}
+			key, known := groupKeyByVolunteerID[pin.VolunteerID]
+			if !known {
+				// A pin naming nobody on the roster is reported by the
+				// pre-solve check and by the solver, each of which can name it.
+				// Inventing a group for it here would only hide that.
+				continue
+			}
+			if slices.Contains(augmented[key], shift.Index) {
+				continue
+			}
+			augmented[key] = append(augmented[key], shift.Index)
+			granted[key] = true
+		}
+	}
+
+	// Shift indices are read as a set everywhere, but sorted is what an answer
+	// from the store looks like, and a stable input is worth the sort.
+	for key := range granted {
+		slices.Sort(augmented[key])
+	}
+
+	return augmented
 }
 
 // BuildVolunteerGroup creates a VolunteerGroup from a list of volunteers.

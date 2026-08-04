@@ -69,6 +69,24 @@ def test_preallocation_forces_the_pinned_role_not_just_attendance():
     assert result.solver.Value(built.x.role[("lead", 0, "Team lead")]) == 1
 
 
+def test_pinned_role_is_granted_for_that_shift_alone():
+    """The grant a pin carries is the narrowest thing that makes the pin
+    work: one Seat, on the pinned shift. Anywhere else the volunteer is
+    still only eligible for the Roles they hold, so pinning someone to
+    cover one shift cannot change who the solver may pick them as on any
+    other.
+    """
+    inp = make_input(
+        groups=[make_group("g1", available=[0, 1])],  # holds Service volunteer only
+        shifts=[make_shift(0, preallocated_team_lead_id="g1"), make_shift(1)],
+    )
+    problem = Problem(inp)
+    built = build(problem, [preallocations.CONSTRAINT], [maximize_allocations.PREFERENCE])
+
+    assert ("g1", 0, "Team lead") in built.x.role
+    assert ("g1", 1, "Team lead") not in built.x.role
+
+
 def test_missing_attendance_var_detected():
     inp = make_input(
         groups=[make_group("g1", available=[0])],
@@ -92,7 +110,7 @@ def test_role_var_for_a_role_the_volunteer_does_not_hold_detected():
         attend={("g1", 0): model.NewBoolVar("attend")},
         role={("g1", 0, "Team lead"): model.NewBoolVar("role")},
     )
-    with pytest.raises(AssertionError, match="does not hold that Role"):
+    with pytest.raises(AssertionError, match="may not fill that Role"):
         no_duplicate_allocation.CONSTRAINT.apply(model, x, problem)
 
 

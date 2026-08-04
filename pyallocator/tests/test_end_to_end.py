@@ -85,6 +85,10 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     problems: list[str] = []
     groups = {g.group_key: g for g in inp.groups}
     preallocated_pairs = set()
+    # (volunteer id, shift index) -> the Role a pin grants them there, which
+    # they need not hold. Both exemptions below are the same rule read twice:
+    # a pin is a decision already taken, and it binds one shift only.
+    preallocated_roles: dict[tuple[str, int], str] = {}
     member_to_group = {m.id: g.group_key for g in inp.groups for m in g.members}
     roles_held = {m.id: set(m.roles) for g in inp.groups for m in g.members}
     for spec in inp.shifts:
@@ -94,6 +98,9 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             )
         for vid in spec_volunteer_ids(spec):
             preallocated_pairs.add((member_to_group[vid], spec.index))
+        for p in spec.preallocations:
+            if p.volunteer_id:
+                preallocated_roles[(p.volunteer_id, spec.index)] = p.role
 
     allocated: dict[str, list[int]] = {key: [] for key in groups}
     for spec, shift in zip(inp.shifts, out.shifts):
@@ -157,10 +164,14 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
                 problems.append(
                     f"shift {shift.index}: assigned role '{a.role}' is not in the Shape"
                 )
-            if a.volunteer_id and a.role not in roles_held.get(a.volunteer_id, set()):
+            if (
+                a.volunteer_id
+                and a.role not in roles_held.get(a.volunteer_id, set())
+                and preallocated_roles.get((a.volunteer_id, shift.index)) != a.role
+            ):
                 problems.append(
                     f"shift {shift.index}: {a.volunteer_id} assigned role "
-                    f"'{a.role}', which they do not hold"
+                    f"'{a.role}', which they neither hold nor were pinned to"
                 )
         if len(assigned) != len(set(assigned)):
             problems.append(f"shift {shift.index}: someone assigned two Seats")

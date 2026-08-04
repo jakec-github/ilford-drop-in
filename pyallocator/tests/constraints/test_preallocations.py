@@ -90,12 +90,30 @@ def test_unknown_preallocated_team_lead_errors():
         Problem(inp)
 
 
-def test_pinning_someone_to_a_role_they_do_not_hold_errors():
+def test_pin_grants_a_role_the_volunteer_does_not_hold():
+    """A pin is a decision someone has already taken: they have been asked
+    to do this job on this shift, and the sheet not saying so yet is the
+    sheet lagging. The grant is worth one Seat on one shift — the Roles the
+    volunteer holds are left untouched, so nothing else changes for them.
+    """
     inp = make_input(
         groups=[make_group("g1", available=[0])],  # g1 does not hold Team lead
         shifts=[make_shift(0, preallocated_team_lead_id="g1")],
     )
-    with pytest.raises(ProblemError, match="does not hold role 'Team lead'"):
+    out = solve_with(inp, ONLY, preferences=[])
+    assert out.success
+    assert team_lead_id(out.shifts[0]) == "g1"
+
+
+def test_pinning_someone_to_a_role_the_shift_has_no_seat_for_errors():
+    """The Shape is still the last word on what a shift needs. A pin can
+    grant the Role, but it cannot conjure a Seat that is not there.
+    """
+    inp = make_input(
+        groups=[make_group("g1", available=[0])],
+        shifts=[make_shift(0, size=0, preallocated_volunteer_ids=["g1"])],
+    )
+    with pytest.raises(ProblemError, match="has no Seat for"):
         Problem(inp)
 
 

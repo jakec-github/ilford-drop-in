@@ -19,9 +19,9 @@ from .base import Vars
 class NoDuplicateAllocationConstraint:
     name = "no_duplicate_allocation"
     description = (
-        "a volunteer appears at most once per shift, in one Role (structural: "
-        "one attendance variable per volunteer-shift pair, equal to the sum of "
-        "their role variables for it)"
+        "a volunteer appears at most once per shift, in one Role they may fill "
+        "there (structural: one attendance variable per volunteer-shift pair, "
+        "equal to the sum of their role variables for it)"
     )
 
     def apply(self, model: cp_model.CpModel, x: Vars, problem: Problem) -> None:
@@ -35,9 +35,10 @@ class NoDuplicateAllocationConstraint:
                 f"{len(x.attend)}"
             )
 
-        # A role var may only exist where the volunteer holds the Role and the
-        # shift asks for it; anything else is a Seat that could be filled by
-        # someone ineligible.
+        # A role var may only exist where the volunteer may fill the Role on
+        # that shift (Problem.may_fill: they hold it, or a pin grants it there)
+        # and the shift asks for it; anything else is a Seat that could be
+        # filled by someone ineligible.
         volunteers_by_id = {v.id: v for v in problem.volunteers}
         shapes = {
             shift.index: {seat.role for seat in shift.shape if seat.count > 0}
@@ -45,10 +46,10 @@ class NoDuplicateAllocationConstraint:
         }
         for vol_id, shift_index, role in x.role:
             volunteer = volunteers_by_id.get(vol_id)
-            if volunteer is None or not volunteer.holds(role):
+            if volunteer is None or not problem.may_fill(volunteer, shift_index, role):
                 raise AssertionError(
                     f"role variable ({vol_id}, {shift_index}, {role}) exists for "
-                    "a volunteer who does not hold that Role"
+                    "a volunteer who may not fill that Role on that shift"
                 )
             if role not in shapes.get(shift_index, set()):
                 raise AssertionError(

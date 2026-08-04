@@ -28,13 +28,20 @@ and issue #34.
      0004), and the allocator keeping its own copy of it is what this replaced.
    - `InitShifts` applies date-matched overrides (size, closed, preallocations)
      and populates each shift's available groups.
+   - `withPreallocatedAvailability` marks each pinned group available for the
+     shift it is pinned to, before `InitVolunteerGroups` runs. A pin is a
+     decision already taken, so it settles the availability question for that
+     shift; without it, a pinned volunteer who never replied was discarded and
+     the solver failed on a pin naming somebody absent from the problem.
    - `BuildVolunteerGroup` builds a single group with its derived metadata
      (`MaleCount`).
 
 3. **CP-SAT contract** (`cpsat_contract.go`, `cpsat_runner.go`) — the JSON
    contract with `pyallocator` and the subprocess plumbing:
    - `BuildCpsatInput` assembles the solver input, reusing the model builders
-     above so grouping and override resolution are never duplicated.
+     above so grouping and override resolution are never duplicated. It resolves
+     shifts first, because the pins that come out of that grant the availability
+     grouping then works from.
    - `RunCpsatAllocator` runs `<python> -m pyallocator`, sending the problem on
      stdin and parsing the rota from stdout. `ResolvePythonInterpreter` picks
      the interpreter (flag > `ILFORD_CPSAT_PYTHON` > pyallocator venv > python3).
