@@ -17,7 +17,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 		Use:   "allocateRota",
 		Short: "Allocate a rota using the CP-SAT solver",
 		Long: "Run the Python CP-SAT allocator (pyallocator) to assign volunteers to shifts. " +
-			"Hard constraints (availability, capacity, no back-to-back, max one team lead, " +
+			"Hard constraints (availability, Seat capacity per Role, no back-to-back, " +
 			"male required, ...) are never violated; soft preferences shape the result to " +
 			"fill shifts evenly, spread males and distribute allocations fairly.",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,7 +71,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				fmt.Println("   • preallocations vs shift capacity (too many preallocated volunteers for a shift's size)")
 				fmt.Println("   • preallocations vs no-back-to-back (same group preallocated to consecutive shifts)")
 				fmt.Println("   • preallocations vs max frequency (a group preallocated to more shifts than the cap)")
-				fmt.Println("   • preallocations vs team leads (two team leads preallocated onto one shift)")
+				fmt.Println("   • preallocations vs a Role's ceiling (more pins for a capped Role than it has Seats)")
 				fmt.Println("   • preallocations vs male required (every slot preallocated female, leaving no open slot for a male)")
 				fmt.Println("   • closed shifts (an override closing a shift that another override populates)")
 				return nil
@@ -87,24 +87,31 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				colorBold   = "\033[1m"
 			)
 
-			// The Team Lead column is the highest-priority capped Role, which
-			// is what the pre-Roles "team lead" meant. #89 commit 11 gives
-			// every capped Role a column of its own.
-			leadRole := ""
+			// Each capped Role gets a column of its own, in priority order;
+			// the uncapped Role's holders share the Volunteers column, which
+			// is the one the shift's size is counted against.
+			cappedRoles := make([]string, 0)
 			for _, role := range app.Cfg.RoleTable().ByPriority() {
 				if role.Capped() {
-					leadRole = role.Name
-					break
+					cappedRoles = append(cappedRoles, role.Name)
 				}
 			}
 
 			// Calculate column widths
-			maxTeamLeadLen := 15
+			cappedColWidths := make(map[string]int, len(cappedRoles))
+			for _, name := range cappedRoles {
+				cappedColWidths[name] = len(name)
+				if cappedColWidths[name] < 15 {
+					cappedColWidths[name] = 15
+				}
+			}
 			maxVolunteersLen := 40
 			for _, shift := range result.AllocatedShifts {
-				lead, ordinary := splitByRole(shift.Assignments, leadRole)
-				if lead != nil && len(assignmentName(*lead)) > maxTeamLeadLen {
-					maxTeamLeadLen = len(assignmentName(*lead))
+				capped, ordinary := splitByRole(shift.Assignments, cappedRoles)
+				for _, name := range cappedRoles {
+					if width := len(strings.Join(capped[name], ", ")); width > cappedColWidths[name] {
+						cappedColWidths[name] = width
+					}
 				}
 
 				totalLen := 0
@@ -117,36 +124,44 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			}
 
 			dateColWidth := 12
-			teamLeadColWidth := maxTeamLeadLen + 2
+			for _, name := range cappedRoles {
+				cappedColWidths[name] += 2
+			}
 			volunteersColWidth := maxVolunteersLen + 2
 
-			fmt.Printf("%s%-*s  %-*s  %-*s  %s%s\n",
-				colorBold,
-				dateColWidth, "Date",
-				teamLeadColWidth, "Team Lead",
-				volunteersColWidth, "Volunteers",
-				"Size",
-				colorReset)
+			fmt.Printf("%s%-*s", colorBold, dateColWidth, "Date")
+			for _, name := range cappedRoles {
+				fmt.Printf("  %-*s", cappedColWidths[name], name)
+			}
+			fmt.Printf("  %-*s  %s%s\n", volunteersColWidth, "Volunteers", "Size", colorReset)
 
 			fmt.Print(strings.Repeat("-", dateColWidth))
-			fmt.Print("  ")
-			fmt.Print(strings.Repeat("-", teamLeadColWidth))
+			for _, name := range cappedRoles {
+				fmt.Print("  ")
+				fmt.Print(strings.Repeat("-", cappedColWidths[name]))
+			}
 			fmt.Print("  ")
 			fmt.Print(strings.Repeat("-", volunteersColWidth))
 			fmt.Print("  ")
 			fmt.Println("----")
 
 			for _, shift := range result.AllocatedShifts {
-				fmt.Printf("%-*s  ", dateColWidth, shift.Date)
+				fmt.Printf("%-*s", dateColWidth, shift.Date)
 
-				lead, ordinary := splitByRole(shift.Assignments, leadRole)
-				teamLeadStr := "—"
-				teamLeadDisplayWidth := 1
-				if lead != nil {
-					teamLeadDisplayWidth = len(assignmentName(*lead))
-					teamLeadStr = fmt.Sprintf("%s%s%s", colorGreen, assignmentName(*lead), colorReset)
+				capped, ordinary := splitByRole(shift.Assignments, cappedRoles)
+				for _, name := range cappedRoles {
+					cell := "—"
+					if len(capped[name]) > 0 {
+						cell = strings.Join(capped[name], ", ")
+					}
+					// The colour codes are invisible but counted, so the
+					// padding is written out rather than left to %-*s.
+					padding := strings.Repeat(" ", cappedColWidths[name]-len(cell))
+					if len(capped[name]) > 0 {
+						cell = fmt.Sprintf("%s%s%s", colorGreen, cell, colorReset)
+					}
+					fmt.Printf("  %s%s", cell, padding)
 				}
-				fmt.Printf("%s%s  ", teamLeadStr, strings.Repeat(" ", teamLeadColWidth-teamLeadDisplayWidth))
 
 				volunteers := make([]string, 0, len(ordinary))
 				for _, assignment := range ordinary {
@@ -163,7 +178,7 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				} else if len(volunteers) > 0 {
 					volunteersStr = strings.Join(volunteers, ", ")
 				}
-				fmt.Printf("%-*s  ", volunteersColWidth, volunteersStr)
+				fmt.Printf("  %-*s  ", volunteersColWidth, volunteersStr)
 
 				sizeStr := fmt.Sprintf("%d/%d", len(ordinary), shift.Size)
 				if len(ordinary) == shift.Size {
@@ -190,20 +205,25 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 	return cmd
 }
 
-// splitByRole separates a solved shift's filled Seats into the first one in
-// leadRole, which the table gives its own column, and everything else in
+// splitByRole separates a solved shift's filled Seats into the ones in a capped
+// Role, which the table gives their own columns, and everything else in
 // assignment order.
-func splitByRole(assignments []allocator.Assignment, leadRole string) (*allocator.Assignment, []allocator.Assignment) {
-	var lead *allocator.Assignment
+func splitByRole(assignments []allocator.Assignment, cappedRoles []string) (map[string][]string, []allocator.Assignment) {
+	isCapped := make(map[string]bool, len(cappedRoles))
+	for _, name := range cappedRoles {
+		isCapped[name] = true
+	}
+
+	capped := make(map[string][]string, len(cappedRoles))
 	ordinary := make([]allocator.Assignment, 0, len(assignments))
-	for i, assignment := range assignments {
-		if lead == nil && leadRole != "" && assignment.Role == leadRole {
-			lead = &assignments[i]
+	for _, assignment := range assignments {
+		if isCapped[assignment.Role] {
+			capped[assignment.Role] = append(capped[assignment.Role], assignmentName(assignment))
 			continue
 		}
 		ordinary = append(ordinary, assignment)
 	}
-	return lead, ordinary
+	return capped, ordinary
 }
 
 // assignmentName is what to print for a filled Seat: the volunteer in it,

@@ -306,20 +306,12 @@ func uncappedRole(roles []Role) (Role, bool) {
 	return Role{}, false
 }
 
-// shiftShape turns a shift size into Seats. Each capped Role asks for its
-// ceiling and the uncapped Role takes the size, which is what the size has
-// always meant: leads sat outside it, everyone else inside.
-//
-// S2 gives shifts their own editable Shape and this derivation goes; the
-// contract does not change again when it does.
+// shiftShape renders [ShiftShape] onto the wire.
 func shiftShape(size int, roles []Role) []CpsatSeat {
-	shape := make([]CpsatSeat, 0, len(roles))
-	for _, role := range sortedByPriority(roles) {
-		count := size
-		if role.Max != nil {
-			count = *role.Max
-		}
-		shape = append(shape, CpsatSeat{Role: role.Name, Count: count})
+	seats := ShiftShape(size, roles)
+	shape := make([]CpsatSeat, 0, len(seats))
+	for _, seat := range seats {
+		shape = append(shape, CpsatSeat{Role: seat.Role, Count: seat.Count})
 	}
 	return shape
 }

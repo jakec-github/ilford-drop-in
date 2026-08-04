@@ -13,6 +13,7 @@ import (
 )
 
 var calendarTestCfg = &config.Config{
+	Roles:          testCfg.Roles,
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
 }
@@ -84,13 +85,15 @@ func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
 	require.NoError(t, err)
-	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (team lead)")
+	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (Team lead)")
 
 	// The same shift from Bob's perspective is not a team-lead event
 	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}}
 	out, err = BuildVolunteerCalendar(shifts, bob, calendarTestCfg)
 	require.NoError(t, err)
-	assert.NotContains(t, out, "(team lead)")
+	assert.NotContains(t, out, "(Team lead)")
+	assert.NotContains(t, out, "(Service volunteer)",
+		"the uncapped Role is what being on the shift already means")
 }
 
 func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {

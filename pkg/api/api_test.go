@@ -691,7 +691,7 @@ func TestCalendarEndpoint(t *testing.T) {
 
 	body := rec.Body.String()
 	assert.Contains(t, body, "UID:alice-2026-01-11@ilford-drop-in")
-	assert.Contains(t, body, "SUMMARY:Ilford Drop-In shift (team lead)")
+	assert.Contains(t, body, "SUMMARY:Ilford Drop-In shift (Team lead)")
 	// Only alice's shifts appear
 	assert.NotContains(t, body, "2026-01-18")
 }

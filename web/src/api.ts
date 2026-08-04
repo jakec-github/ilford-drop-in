@@ -327,7 +327,14 @@ interface ApiAvailabilityRound {
     pinned: number;
     available: number;
     delta: number;
-    hasTeamLead: boolean;
+    roles: {
+      role: string;
+      seats: number;
+      pinned: number;
+      needed: number;
+      available: number;
+      delta: number;
+    }[];
   }[];
   groups: {
     key: string;
@@ -366,7 +373,14 @@ function toRound(data: ApiAvailabilityRound): AvailabilityRound {
     start: data.start,
     end: data.end,
     allocated: data.allocated,
-    shifts: data.shifts,
+    // The API reports coverage per Role now; the frontend still asks the one
+    // question "is a lead covered". Commit 12 of #89 widens it and this goes.
+    shifts: data.shifts.map((s) => ({
+      ...s,
+      hasTeamLead: s.roles.some(
+        (r) => r.role === TEAM_LEAD_ROLE && r.available + r.pinned > 0,
+      ),
+    })),
     groups: data.groups.map((g) => ({
       key: g.key,
       name: g.name,

@@ -35,12 +35,19 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, cfg *conf
 			return "", fmt.Errorf("failed to compute times for shift %s: %w", shift.Date, err)
 		}
 
+		// The Role is worth naming in the summary only when it says something
+		// the event does not already: being on the shift *is* the uncapped
+		// Role, so "(Service volunteer)" on every entry would be noise.
 		summary := "Ilford Drop-In shift"
+		roles := cfg.RoleTable()
 		for _, a := range shift.Assignees {
-			if a.VolunteerID == volunteer.ID && a.Role == string(model.RoleTeamLead) {
-				summary += " (team lead)"
-				break
+			if a.VolunteerID != volunteer.ID {
+				continue
 			}
+			if role, ok := roles.ByName(a.Role); ok && role.Capped() {
+				summary += " (" + role.Name + ")"
+			}
+			break
 		}
 
 		event := cal.AddEvent(fmt.Sprintf("%s-%s@ilford-drop-in", volunteer.ID, shift.Date))

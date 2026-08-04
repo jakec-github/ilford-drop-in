@@ -154,6 +154,9 @@ func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 		},
 	}
 	cfg := &config.Config{
+		// Coverage is counted per Role now, so a config without Roles describes
+		// a rota with no Seats and nothing to be short of.
+		Roles: testCfg.Roles,
 		RotaOverrides: []config.RotaOverride{
 			// 16 August, the rota's last date.
 			{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=16", Closed: true},

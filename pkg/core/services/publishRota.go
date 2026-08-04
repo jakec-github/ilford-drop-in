@@ -137,6 +137,20 @@ func PublishRota(
 
 	// Step 6: Build the published rota rows, iterating the rota's shifts in date
 	// order and looking up each shift's effective allocations by id.
+	//
+	// The sheet gives each capped Role its own column and lists the uncapped
+	// Role's holders across the rest — the shape the "Team lead + volunteers"
+	// layout always had, now read off the configured Roles instead of two
+	// constants. An allocation naming a Role config does not know is listed with
+	// the volunteers rather than dropped: it is somebody who worked the shift.
+	roles := cfg.RoleTable()
+	cappedRoleNames := make([]string, 0)
+	for _, role := range roles.ByPriority() {
+		if role.Capped() {
+			cappedRoleNames = append(cappedRoleNames, role.Name)
+		}
+	}
+
 	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shifts))
 
 	for _, shift := range shifts {
@@ -150,16 +164,16 @@ func PublishRota(
 		isClosed := isShiftClosed(shift.Date, cfg.RotaOverrides, shiftDates, logger)
 
 		row := sheetsclient.PublishedRotaRow{
-			Date:       shiftDate.Format("Mon Jan 02 2006"),
-			TeamLead:   "",
-			Volunteers: []string{},
-			HotFood:    "",
-			Collection: "",
+			Date:        shiftDate.Format("Mon Jan 02 2006"),
+			CappedRoles: map[string][]string{},
+			Volunteers:  []string{},
+			HotFood:     "",
+			Collection:  "",
 		}
 
-		// For closed shifts, display "CLOSED" instead of processing allocations
+		// A closed shift says so instead of carrying allocations
 		if isClosed {
-			row.TeamLead = "CLOSED"
+			row.Closed = true
 			rows = append(rows, row)
 			continue
 		}
@@ -181,24 +195,27 @@ func PublishRota(
 
 			fullName := volunteer.DisplayName
 
-			// Check if this is a team lead allocation
-			if allocation.Role == string(model.RoleTeamLead) {
-				row.TeamLead = fullName
+			if role, ok := roles.ByName(allocation.Role); ok && role.Capped() {
+				row.CappedRoles[role.Name] = append(row.CappedRoles[role.Name], fullName)
 			} else {
 				row.Volunteers = append(row.Volunteers, fullName)
 			}
 		}
 
-		// Sort volunteers alphabetically for consistency
+		// Sort alphabetically for consistency
 		sort.Strings(row.Volunteers)
+		for name := range row.CappedRoles {
+			sort.Strings(row.CappedRoles[name])
+		}
 
 		rows = append(rows, row)
 	}
 
 	publishedRota := &sheetsclient.PublishedRota{
-		StartDate:  targetRota.Start,
-		ShiftCount: targetRota.ShiftCount,
-		Rows:       rows,
+		StartDate:       targetRota.Start,
+		ShiftCount:      targetRota.ShiftCount,
+		CappedRoleNames: cappedRoleNames,
+		Rows:            rows,
 	}
 
 	logger.Info("Published rota built successfully",

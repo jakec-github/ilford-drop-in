@@ -46,17 +46,30 @@ type availabilityGroupResponse struct {
 }
 
 // availabilityCoverageResponse is one shift's staffing picture: what it still
-// needs, who is available for it, and whether it has a lead. A closed shift
-// carries zeroes — it is not a shift that is short of people.
+// needs and who is available for it. The top-level numbers are the uncapped
+// Role's; roles carries the same arithmetic per configured Role, in priority
+// order, which is what tells an admin the lead Seat is still empty. A closed
+// shift carries zeroes and no roles — it is not a shift that is short of people.
 type availabilityCoverageResponse struct {
-	ID          string `json:"id"`
-	Date        string `json:"date"`
-	Closed      bool   `json:"closed"`
-	Needed      int    `json:"needed"`
-	Pinned      int    `json:"pinned"`
-	Available   int    `json:"available"`
-	Delta       int    `json:"delta"`
-	HasTeamLead bool   `json:"hasTeamLead"`
+	ID        string                     `json:"id"`
+	Date      string                     `json:"date"`
+	Closed    bool                       `json:"closed"`
+	Needed    int                        `json:"needed"`
+	Pinned    int                        `json:"pinned"`
+	Available int                        `json:"available"`
+	Delta     int                        `json:"delta"`
+	Roles     []availabilityRoleCoverage `json:"roles"`
+}
+
+// availabilityRoleCoverage is one Role's Seats on one shift. Holders of two
+// Roles are counted under both, so these do not sum to the shift's total.
+type availabilityRoleCoverage struct {
+	Role      string `json:"role"`
+	Seats     int    `json:"seats"`
+	Pinned    int    `json:"pinned"`
+	Needed    int    `json:"needed"`
+	Available int    `json:"available"`
+	Delta     int    `json:"delta"`
 }
 
 type availabilityRoundResponse struct {
@@ -191,16 +204,29 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 		Groups:    make([]availabilityGroupResponse, 0, len(round.Groups)),
 	}
 	for _, s := range round.Shifts {
-		resp.Shifts = append(resp.Shifts, availabilityCoverageResponse{
-			ID:          s.ShiftID,
-			Date:        s.Date,
-			Closed:      s.Closed,
-			Needed:      s.Needed,
-			Pinned:      s.Pinned,
-			Available:   s.Available,
-			Delta:       s.Delta,
-			HasTeamLead: s.HasTeamLead,
-		})
+		shift := availabilityCoverageResponse{
+			ID:        s.ShiftID,
+			Date:      s.Date,
+			Closed:    s.Closed,
+			Needed:    s.Needed,
+			Pinned:    s.Pinned,
+			Available: s.Available,
+			Delta:     s.Delta,
+			// Never nil: a shift with no Roles left to fill and a closed one
+			// both have to serialise as a list rather than a null.
+			Roles: make([]availabilityRoleCoverage, 0, len(s.Roles)),
+		}
+		for _, r := range s.Roles {
+			shift.Roles = append(shift.Roles, availabilityRoleCoverage{
+				Role:      r.Role,
+				Seats:     r.Seats,
+				Pinned:    r.Pinned,
+				Needed:    r.Needed,
+				Available: r.Available,
+				Delta:     r.Delta,
+			})
+		}
+		resp.Shifts = append(resp.Shifts, shift)
 	}
 	for _, g := range round.Groups {
 		group := availabilityGroupResponse{

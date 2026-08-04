@@ -470,12 +470,17 @@ func buildRound(
 
 	groups := buildAvailabilityGroups(entries, volunteersByID, shifts)
 
+	seats, err := buildShiftSeats(cfg, shifts, pins, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve shift seats: %w", err)
+	}
+
 	return &AvailabilityRound{
 		RotaID:    rota.ID,
 		RotaStart: rota.Start,
 		RotaEnd:   rota.End,
 		Allocated: rota.AllocatedDatetime != "",
-		Shifts:    buildCoverage(shifts, groups, buildShiftSeats(cfg, shifts, pins, logger), volunteersByID),
+		Shifts:    buildCoverage(shifts, groups, seats, cfg.RoleTable(), volunteersByID),
 		Groups:    groups,
 	}, nil
 }
