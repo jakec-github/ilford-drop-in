@@ -25,7 +25,9 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "cli",
 		Short: "Ilford Drop-In CLI - Manage volunteer rotas",
-		Long:  `A CLI tool for managing volunteer rotas, availability requests, and shift scheduling.`,
+		Long: `A CLI tool for defining, allocating and publishing volunteer rotas.
+
+Availability is collected and chased through the web app, not here.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Skip initialization for help commands - no need for OAuth/API clients or env flag
 			helpFlag, _ := cmd.Flags().GetBool("help")
