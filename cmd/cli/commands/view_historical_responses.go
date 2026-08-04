@@ -37,7 +37,6 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 				app.Ctx,
 				app.Database,
 				app.SheetsClient,
-				app.FormsClient,
 				app.Cfg,
 				app.Logger,
 				count,
@@ -104,7 +103,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 				for _, rota := range result.Rotations {
 					status, exists := result.Matrix[vol.ID][rota.ID]
 					if !exists {
-						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "No form", colorReset)
+						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "Not asked", colorReset)
 						continue
 					}
 
@@ -119,9 +118,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 					case "no_response":
 						fmt.Printf("%s%-*s%s", colorRed, rotaColWidth, "No response", colorReset)
 					case "no_form":
-						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "No form", colorReset)
-					case "form_error":
-						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "Error", colorReset)
+						fmt.Printf("%s%-*s%s", colorDim, rotaColWidth, "Not asked", colorReset)
 					}
 				}
 				fmt.Println()
@@ -134,9 +131,8 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 			fmt.Printf("  %sX/Y%s   = available for half or fewer shifts\n", colorYellow, colorReset)
 			fmt.Printf("  %sX/Y%s   = available for 3 or fewer shifts\n", colorOrange, colorReset)
 			fmt.Printf("  %s0/Y%s   = responded with no availability\n", colorRed, colorReset)
-			fmt.Printf("  %sNo response%s = form sent, no response before cut-off\n", colorRed, colorReset)
-			fmt.Printf("  %sNo form%s     = no form was sent\n", colorDim, colorReset)
-			fmt.Printf("  %sError%s       = form could not be accessed\n", colorDim, colorReset)
+			fmt.Printf("  %sNo response%s = asked, no response before allocation\n", colorRed, colorReset)
+			fmt.Printf("  %sNot asked%s   = no availability request for this rota\n", colorDim, colorReset)
 
 			return nil
 		},
@@ -148,7 +144,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 }
 
 // totalAvailability sums a volunteer's available shift count across all rotations.
-// Non-"available" statuses (no_form, no_response, no_availability, form_error) count as 0.
+// Non-"available" statuses (no_form, no_response, no_availability) count as 0.
 func totalAvailability(vol model.Volunteer, rotations []db.Rotation, matrix map[string]map[string]services.VolunteerRotaStatus) int {
 	total := 0
 	for _, rota := range rotations {

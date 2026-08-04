@@ -61,10 +61,16 @@ type ViewResponsesResult struct {
 	TotalActiveCount  int
 }
 
-// ViewResponsesStore defines the database operations needed for viewing responses.
-// It reuses AllocateRotaStore's shape for the rota/shift/request lookups.
+// ViewResponsesStore defines the database operations needed for viewing
+// responses. It spells its reads out rather than borrowing AllocateRotaStore's
+// shape: allocation reads availability from the store now, and this command is
+// the last thing holding the Forms-era request table open (S5 deletes it along
+// with the rest of the Forms path).
 type ViewResponsesStore interface {
-	AllocateRotaStore
+	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
+	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
 }
 
 // FormsClientWithResponses defines the operations needed to fetch form responses

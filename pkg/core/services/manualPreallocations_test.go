@@ -173,8 +173,13 @@ func TestAllocateRotaFailsOnStaleManualPin(t *testing.T) {
 			{ID: "rota-1", Start: "2026-08-02", ShiftCount: 1},
 		},
 		shifts: sundayShifts("rota-1", "2026-08-02", 1),
-		availabilityRequests: []db.AvailabilityRequest{
-			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", FormID: "form-1", FormSent: true},
+		availabilityRequestsV2: []db.AvailabilityRequestV2{
+			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", Token: "tok-1"},
+		},
+		generations: map[string]db.AvailabilityGeneration{
+			"req-1": {RequestID: "req-1", ResponseID: "gen-1", Answers: []db.ShiftAnswer{
+				{ShiftID: "2026-08-02", Answer: db.AnswerYes},
+			}},
 		},
 		manualPreallocations: []db.ManualPreallocation{
 			{ID: "pin-1", ShiftID: "2026-08-02", Role: string(model.RoleVolunteer), VolunteerID: "gone"},
@@ -192,7 +197,6 @@ func TestAllocateRotaFailsOnStaleManualPin(t *testing.T) {
 		context.Background(),
 		store,
 		volClient,
-		&mockFormsClientWithResponses{},
 		&config.Config{},
 		zap.NewNop(),
 		false, // dryRun

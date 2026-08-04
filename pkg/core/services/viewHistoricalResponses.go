@@ -4,20 +4,24 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// VolunteerRotaStatus represents a volunteer's response status for a single rotation
+// VolunteerRotaStatus represents a volunteer's response status for a single rotation.
+//
+// The four statuses come straight off the stored round: no request row is
+// "no_form"; a request with no generation before the cut-off is "no_response";
+// a generation that ticked nothing is "no_availability"; anything else is
+// "available". The Forms path had a fifth, "form_error", for a form that could
+// not be read — there is no API left to fail, so it is gone.
 type VolunteerRotaStatus struct {
-	Status         string // "no_form", "no_response", "no_availability", "available", "form_error"
+	Status         string // "no_form", "no_response", "no_availability", "available"
 	AvailableCount int    // number of shifts available (only set when Status == "available")
 	ShiftCount     int    // total shifts in the rotation
 }
@@ -32,24 +36,22 @@ type ViewHistoricalResponsesResult struct {
 // ViewHistoricalResponsesStore defines the database operations needed
 type ViewHistoricalResponsesStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
-	GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error)
+	GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error)
+	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 }
 
-// HistoricalFormsClient defines the forms client operations needed for historical response fetching
-type HistoricalFormsClient interface {
-	GetFormResponseBefore(formID string, volunteerName string, shiftDates []time.Time, before time.Time) (*formsclient.FormResponse, error)
-}
-
-const maxConcurrentFormRequests = 10
-
-// ViewHistoricalResponses fetches and summarises volunteer response status across recent allocated rotations.
-// If volunteerIDs is non-empty, only those volunteers are included; otherwise all volunteers with forms are shown.
+// ViewHistoricalResponses summarises volunteer response status across recent
+// allocated rotations, reading the stored rounds rather than Google Forms.
+// If volunteerIDs is non-empty, only those volunteers are included; otherwise
+// every volunteer who was asked in any selected rotation is shown.
+//
+// The report is longitudinal — it is looking for who habitually does not reply
+// in time — so each rota is read as at its own `allocated_datetime`. An answer
+// changed after the rota went out is not an answer that counted.
 func ViewHistoricalResponses(
 	ctx context.Context,
 	database ViewHistoricalResponsesStore,
 	volunteerClient VolunteerClient,
-	formsClient HistoricalFormsClient,
 	cfg *config.Config,
 	logger *zap.Logger,
 	count int,
@@ -88,10 +90,19 @@ func ViewHistoricalResponses(
 
 	logger.Debug("Selected rotations", zap.Int("count", len(selectedRotations)))
 
-	// Step 2: Fetch all availability requests
-	allRequests, err := database.GetAvailabilityRequests(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
+	// Step 2: Read each selected rota's round — who was asked, and what they had
+	// said by the time the rota was allocated.
+	statusByRota := make(map[string]map[string]VolunteerRotaStatus, len(selectedRotations))
+	askedVolunteerIDs := make(map[string]bool)
+	for _, rota := range selectedRotations {
+		statuses, err := rotaResponseStatuses(ctx, database, rota)
+		if err != nil {
+			return nil, fmt.Errorf("rota %s: %w", rota.ID, err)
+		}
+		statusByRota[rota.ID] = statuses
+		for volunteerID := range statuses {
+			askedVolunteerIDs[volunteerID] = true
+		}
 	}
 
 	// Step 3: Fetch volunteer list
@@ -100,38 +111,23 @@ func ViewHistoricalResponses(
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
 
-	volunteersByID := make(map[string]model.Volunteer)
-	for _, vol := range allVolunteers {
-		volunteersByID[vol.ID] = vol
-	}
-
-	// Build set of volunteer IDs who appear in any selected rotation's availability requests
-	relevantVolunteerIDs := make(map[string]bool)
-	for _, rota := range selectedRotations {
-		for _, req := range allRequests {
-			if req.RotaID == rota.ID && req.FormSent {
-				relevantVolunteerIDs[req.VolunteerID] = true
-			}
-		}
-	}
-
 	// If specific volunteer IDs were requested, restrict to those
 	if len(volunteerIDs) > 0 {
 		filterSet := make(map[string]bool, len(volunteerIDs))
 		for _, id := range volunteerIDs {
 			filterSet[id] = true
 		}
-		for id := range relevantVolunteerIDs {
+		for id := range askedVolunteerIDs {
 			if !filterSet[id] {
-				delete(relevantVolunteerIDs, id)
+				delete(askedVolunteerIDs, id)
 			}
 		}
 	}
 
 	// Build the volunteer list (those who appear in any selected rotation)
 	var volunteers []model.Volunteer
-	for volID := range relevantVolunteerIDs {
-		if vol, exists := volunteersByID[volID]; exists {
+	for _, vol := range allVolunteers {
+		if askedVolunteerIDs[vol.ID] {
 			volunteers = append(volunteers, vol)
 		}
 	}
@@ -141,156 +137,18 @@ func ViewHistoricalResponses(
 		return volunteers[i].DisplayName < volunteers[j].DisplayName
 	})
 
-	// Step 4: For each rotation x volunteer, determine status
-	matrix := make(map[string]map[string]VolunteerRotaStatus)
-
-	// Build request lookup: [rotaID][volunteerID] -> AvailabilityRequest
-	requestLookup := make(map[string]map[string]db.AvailabilityRequest)
-	for _, req := range allRequests {
-		if req.FormSent {
-			if _, ok := requestLookup[req.RotaID]; !ok {
-				requestLookup[req.RotaID] = make(map[string]db.AvailabilityRequest)
-			}
-			requestLookup[req.RotaID][req.VolunteerID] = req
-		}
-	}
-
-	// Collect all form fetch tasks
-	type formFetchTask struct {
-		rotaID        string
-		volunteerID   string
-		volunteerName string
-		formID        string
-		shiftDates    []time.Time
-		cutoff        time.Time
-		shiftCount    int
-	}
-
-	var tasks []formFetchTask
-
-	// Read each rotation's shift dates from the shift table (ADR 0001)
-	shiftDatesByRota := make(map[string][]time.Time)
-	for _, rota := range selectedRotations {
-		dates, err := rotaShiftDates(ctx, database, rota.ID)
-		if err != nil {
-			return nil, fmt.Errorf("rota %s: %w", rota.ID, err)
-		}
-		shiftDatesByRota[rota.ID] = dates
-	}
-
+	// Step 4: Fill the matrix. A volunteer with no request for a rota was not
+	// asked at all, which is what "no_form" has always meant.
+	matrix := make(map[string]map[string]VolunteerRotaStatus, len(volunteers))
 	for _, vol := range volunteers {
-		matrix[vol.ID] = make(map[string]VolunteerRotaStatus)
-
+		matrix[vol.ID] = make(map[string]VolunteerRotaStatus, len(selectedRotations))
 		for _, rota := range selectedRotations {
-			reqMap, rotaHasRequests := requestLookup[rota.ID]
-			if !rotaHasRequests {
-				matrix[vol.ID][rota.ID] = VolunteerRotaStatus{
-					Status:     "no_form",
-					ShiftCount: rota.ShiftCount,
-				}
-				continue
+			status, asked := statusByRota[rota.ID][vol.ID]
+			if !asked {
+				status = VolunteerRotaStatus{Status: "no_form", ShiftCount: rota.ShiftCount}
 			}
-
-			req, volHasRequest := reqMap[vol.ID]
-			if !volHasRequest {
-				matrix[vol.ID][rota.ID] = VolunteerRotaStatus{
-					Status:     "no_form",
-					ShiftCount: rota.ShiftCount,
-				}
-				continue
-			}
-
-			// Parse the allocated_datetime cutoff
-			cutoff, err := time.Parse(time.RFC3339, rota.AllocatedDatetime)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse allocated_datetime for rota %s: %w", rota.ID, err)
-			}
-
-			volunteerName := fmt.Sprintf("%s %s", vol.FirstName, vol.LastName)
-
-			tasks = append(tasks, formFetchTask{
-				rotaID:        rota.ID,
-				volunteerID:   vol.ID,
-				volunteerName: volunteerName,
-				formID:        req.FormID,
-				shiftDates:    shiftDatesByRota[rota.ID],
-				cutoff:        cutoff,
-				shiftCount:    rota.ShiftCount,
-			})
+			matrix[vol.ID][rota.ID] = status
 		}
-	}
-
-	// Fetch form responses in parallel with semaphore
-	type formFetchResult struct {
-		rotaID      string
-		volunteerID string
-		status      VolunteerRotaStatus
-		err         error
-	}
-
-	resultChan := make(chan formFetchResult, len(tasks))
-	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, maxConcurrentFormRequests)
-
-	for _, task := range tasks {
-		wg.Add(1)
-		go func(t formFetchTask) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			formResp, err := formsClient.GetFormResponseBefore(t.formID, t.volunteerName, t.shiftDates, t.cutoff)
-			if err != nil {
-				resultChan <- formFetchResult{
-					rotaID:      t.rotaID,
-					volunteerID: t.volunteerID,
-					status: VolunteerRotaStatus{
-						Status:     "form_error",
-						ShiftCount: t.shiftCount,
-					},
-				}
-				logger.Warn("Form error for volunteer",
-					zap.String("volunteer_id", t.volunteerID),
-					zap.String("rota_id", t.rotaID),
-					zap.Error(err))
-				return
-			}
-
-			var status VolunteerRotaStatus
-			if !formResp.HasResponded {
-				status = VolunteerRotaStatus{
-					Status:     "no_response",
-					ShiftCount: t.shiftCount,
-				}
-			} else if len(formResp.AvailableDates) == 0 {
-				status = VolunteerRotaStatus{
-					Status:     "no_availability",
-					ShiftCount: t.shiftCount,
-				}
-			} else {
-				status = VolunteerRotaStatus{
-					Status:         "available",
-					AvailableCount: len(formResp.AvailableDates),
-					ShiftCount:     t.shiftCount,
-				}
-			}
-
-			resultChan <- formFetchResult{
-				rotaID:      t.rotaID,
-				volunteerID: t.volunteerID,
-				status:      status,
-			}
-		}(task)
-	}
-
-	wg.Wait()
-	close(resultChan)
-
-	for result := range resultChan {
-		if _, ok := matrix[result.volunteerID]; !ok {
-			matrix[result.volunteerID] = make(map[string]VolunteerRotaStatus)
-		}
-		matrix[result.volunteerID][result.rotaID] = result.status
 	}
 
 	logger.Debug("ViewHistoricalResponses completed",
@@ -302,4 +160,52 @@ func ViewHistoricalResponses(
 		Volunteers: volunteers,
 		Matrix:     matrix,
 	}, nil
+}
+
+// rotaResponseStatuses reads one allocated rota's round and returns a status per
+// volunteer who was asked, keyed by volunteer id. Volunteers who were not asked
+// are simply absent — the caller decides what that means.
+func rotaResponseStatuses(
+	ctx context.Context,
+	database ViewHistoricalResponsesStore,
+	rota db.Rotation,
+) (map[string]VolunteerRotaStatus, error) {
+	cutoff, err := time.Parse(time.RFC3339, rota.AllocatedDatetime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse allocated_datetime: %w", err)
+	}
+
+	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
+	}
+
+	requestIDs := make([]string, 0, len(requests))
+	for _, r := range requests {
+		requestIDs = append(requestIDs, r.ID)
+	}
+	latest, err := database.GetLatestAvailability(ctx, requestIDs, &cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read availability: %w", err)
+	}
+
+	statuses := make(map[string]VolunteerRotaStatus, len(requests))
+	for _, request := range requests {
+		status := VolunteerRotaStatus{ShiftCount: rota.ShiftCount}
+		generation, replied := latest[request.ID]
+		switch {
+		case !replied:
+			status.Status = "no_response"
+		case len(generation.Answers) == 0:
+			// Available for nothing: a real answer, and one the Forms encoding
+			// could not tell apart from silence.
+			status.Status = "no_availability"
+		default:
+			status.Status = "available"
+			status.AvailableCount = len(generation.Answers)
+		}
+		statuses[request.VolunteerID] = status
+	}
+
+	return statuses, nil
 }

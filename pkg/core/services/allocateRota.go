@@ -9,7 +9,6 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
 
@@ -28,14 +27,13 @@ type AllocateRotaResult struct {
 }
 
 // AllocateRota allocates the latest rota using the Python CP-SAT solver
-// (pyallocator). It fetches availability data, builds the solver input,
+// (pyallocator). It reads availability from the store, builds the solver input,
 // runs the subprocess and persists the result when !dryRun and the solve
 // succeeded (or forceCommit).
 func AllocateRota(
 	ctx context.Context,
 	database AllocateRotaStore,
 	volunteerClient VolunteerClient,
-	formsClient FormsClientWithResponses,
 	cfg *config.Config,
 	logger *zap.Logger,
 	dryRun bool,
@@ -91,43 +89,35 @@ func AllocateRota(
 		shiftIDs[i] = s.ID
 	}
 
-	rotaRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, targetRota.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
-	}
-	requestsForRota := utils.FilterSentRequests(rotaRequests)
-	if len(requestsForRota) == 0 {
-		return nil, fmt.Errorf("no availability requests found for rota %s - please run requestAvailability first", targetRota.ID)
-	}
-
 	allVolunteers, err := volunteerClient.ListVolunteers(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
-	volunteersByID := make(map[string]model.Volunteer)
-	for _, vol := range allVolunteers {
-		volunteersByID[vol.ID] = vol
-	}
 	activeVolunteers := utils.FilterActiveVolunteers(allVolunteers)
 	logger.Debug("Active volunteers", zap.Int("count", len(activeVolunteers)))
 
-	availability, err := fetchAvailabilityResponses(
+	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
+
+	// Shift indices are the solver's vocabulary, and index i is the i-th date in
+	// order, so the shift ids availability is stored against are lined up the
+	// same way.
+	shiftDateStrings := make([]string, len(shiftDates))
+	orderedShiftIDs := make([]string, len(shiftDates))
+	for i, date := range shiftDates {
+		shiftDateStrings[i] = date.Format("2006-01-02")
+		orderedShiftIDs[i] = shiftIDByDate[shiftDateStrings[i]]
+	}
+
+	groupAvailability, err := fetchGroupAvailability(
 		ctx,
-		requestsForRota,
-		volunteersByID,
-		shiftDates,
-		formsClient,
+		database,
+		targetRota.ID,
+		allocatorVolunteers,
+		orderedShiftIDs,
 		logger,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch availability responses: %w", err)
-	}
-
-	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
-
-	shiftDateStrings := make([]string, len(shiftDates))
-	for i, date := range shiftDates {
-		shiftDateStrings[i] = date.Format("2006-01-02")
+		return nil, err
 	}
 
 	// History gets ALL volunteers (inactive included) so past shifts
@@ -176,7 +166,7 @@ func AllocateRota(
 	// Build the solver input and run the Python subprocess.
 	input, err := allocator.BuildCpsatInput(
 		allocatorVolunteers,
-		availability,
+		groupAvailability,
 		shiftDateStrings,
 		cfg.DefaultShiftSize,
 		allocatorOverrides,

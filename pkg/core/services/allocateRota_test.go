@@ -31,7 +31,6 @@ func TestAllocateRotaRefusesAlreadyAllocatedRota(t *testing.T) {
 		context.Background(),
 		store,
 		&mockVolClient{},
-		&mockFormsClientWithResponses{},
 		&config.Config{},
 		zap.NewNop(),
 		false, // dryRun

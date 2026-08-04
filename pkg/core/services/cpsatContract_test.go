@@ -121,10 +121,11 @@ func TestBuildCpsatInput(t *testing.T) {
 		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female", IsTeamLead: false, GroupKey: ""},
 		{ID: "silent", FirstName: "Silent", LastName: "Bob", DisplayName: "Silent", Gender: "Male", IsTeamLead: false, GroupKey: ""},
 	}
-	availability := []allocator.VolunteerAvailability{
-		{VolunteerID: "alice", HasResponded: true, UnavailableShiftIndices: []int{1}},
-		{VolunteerID: "diana", HasResponded: true, UnavailableShiftIndices: []int{}},
-		// "silent" never responded: their group must be discarded.
+	groupAvailability := map[string][]int{
+		"couple_ab":   {0, 2, 3},
+		"Diana Green": {0, 1, 2, 3},
+		// "Silent Bob" was never answered for: absent from the map, so their
+		// group must be discarded.
 	}
 	shiftDates := []string{"2026-07-13", "2026-07-20", "2026-07-27", "2026-08-03"}
 	size := 5
@@ -156,21 +157,21 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, availability, shiftDates, 2, overrides, historical, 0.5, roles, true)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftDates, 2, overrides, historical, 0.5, roles, true)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
 	assert.Equal(t, 2, input.MaxAllocationCount)
 
 	// Grouping via InitVolunteerGroups: couple grouped, individual keyed
-	// by name, non-responder discarded; sorted by group key.
+	// by name, group nobody answered for discarded; sorted by group key.
 	require.Len(t, input.Groups, 2)
 	assert.Equal(t, "Diana Green", input.Groups[0].GroupKey)
 	assert.Equal(t, []int{0, 1, 2, 3}, input.Groups[0].AvailableShiftIndices)
 	assert.Equal(t, 1, input.Groups[0].HistoricalAllocationCount)
 	assert.Equal(t, "couple_ab", input.Groups[1].GroupKey)
 	require.Len(t, input.Groups[1].Members, 2)
-	// Group availability = union of responding members' unavailability.
+	// The group's settled answer, applied as given.
 	assert.Equal(t, []int{0, 2, 3}, input.Groups[1].AvailableShiftIndices)
 
 	// Shift overrides applied via InitShifts. The Shape spends the shift's size
