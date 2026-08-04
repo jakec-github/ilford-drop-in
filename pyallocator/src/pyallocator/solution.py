@@ -1,11 +1,14 @@
 """Extracts the solved rota from variable values.
 
-Team-lead designation per shift: the preallocated team lead if one was
-set, otherwise the first allocated team-lead volunteer (in canonical
-order: group input order, then member order). Any further team-lead
-volunteers are reported in volunteer_ids as ordinary volunteers —
-mirroring the Go side, where non-designated team-lead members get
-Role: Volunteer rows.
+Who the team lead is is no longer guessed here: it is whoever the solver
+put in the capped Role's Seat, read straight off that role variable.
+A team-lead holder the solver placed in an ordinary Seat is reported in
+volunteer_ids, because that is what they are doing.
+
+Temporary shape, not a temporary rule: the output contract still names a
+single team lead per shift, so this flattens the role variables back down
+to team_lead_id + volunteer_ids. #89 commit 9 gives the contract
+role-tagged assignments and this collapses to a straight read.
 """
 
 from __future__ import annotations
@@ -51,15 +54,16 @@ def _extract_shift(
         if result.solver.Value(x.attend[(v.id, shift_index)]) == 1
     ]
 
-    team_lead_id = problem.preallocated_team_lead.get(shift_index, "")
+    lead_name = problem.lead_role.name if problem.lead_role else None
+
+    team_lead_id = ""
     volunteer_ids: list[str] = []
     group_keys: list[str] = []
     for v in allocated:
         if v.group_key not in group_keys:
             group_keys.append(v.group_key)
-        if v.id == team_lead_id:
-            continue
-        if v.is_team_lead and not team_lead_id:
+        lead_var = x.role.get((v.id, shift_index, lead_name))
+        if lead_var is not None and result.solver.Value(lead_var) == 1:
             team_lead_id = v.id
             continue
         volunteer_ids.append(v.id)

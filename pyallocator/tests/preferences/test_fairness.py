@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from conftest import allocations_by_shift, make_group, make_input, make_shift, solve_with
-from pyallocator.constraints import shift_capacity
+from pyallocator.constraints import seat_capacity
 from pyallocator.preferences import fairness
 
 PREFS = [fairness.PREFERENCE]
@@ -19,7 +19,7 @@ def test_fresh_group_beats_heavily_allocated_group():
         ],
         shifts=[make_shift(0, size=1)],
     )
-    out = solve_with(inp, [shift_capacity.CONSTRAINT], preferences=PREFS)
+    out = solve_with(inp, [seat_capacity.CONSTRAINT], preferences=PREFS)
     assert out.success
     assert allocations_by_shift(out)[0] == ("fresh",)
 
@@ -35,7 +35,7 @@ def test_repeat_allocations_diminish_within_the_rota():
         ],
         shifts=[make_shift(0, size=1), make_shift(1, size=1)],
     )
-    out = solve_with(inp, [shift_capacity.CONSTRAINT], preferences=PREFS)
+    out = solve_with(inp, [seat_capacity.CONSTRAINT], preferences=PREFS)
     assert out.success
     by_shift = allocations_by_shift(out)
     allocated = [key for keys in by_shift.values() for key in keys]

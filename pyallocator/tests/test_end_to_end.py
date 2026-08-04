@@ -103,16 +103,17 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         if spec.closed and keys:
             problems.append(f"shift {shift.index}: closed but allocated")
 
-        ordinary = 0
-        team_lead_groups = 0
+        # Who sits in an ordinary Seat is a solver decision now, not a
+        # property of the Roles someone holds: a second team-lead holder
+        # works the shift as a Service volunteer. So read it off the
+        # output rather than deriving it from the input.
+        ordinary = len(shift.volunteer_ids)
         males = 0
         expected_ids: set[str] = set()
         for key in keys:
             group = groups[key]
             allocated[key].append(shift.index)
             expected_ids.update(m.id for m in group.members)
-            ordinary += sum(1 for m in group.members if not is_lead(m))
-            team_lead_groups += any(is_lead(m) for m in group.members)
             males += sum(1 for m in group.members if m.gender == "Male")
             if (
                 shift.index not in group.available_shift_indices
@@ -120,11 +121,9 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             ):
                 problems.append(f"shift {shift.index}: {key} not available")
 
-        if team_lead_groups > 1:
-            problems.append(f"shift {shift.index}: {team_lead_groups} team leads")
-        # No male => a slot must stay open (TL slot or an ordinary seat)
-        # so the rota creator can add one manually.
-        if not spec.closed and males == 0 and team_lead_groups > 0:
+        # No male => a Seat must stay open (the TL Seat or an ordinary
+        # one) so the rota creator can add one manually.
+        if not spec.closed and males == 0 and shift.team_lead_id:
             budget = max(0, spec_size(spec) - len(spec_customs(spec)))
             if ordinary >= budget:
                 problems.append(
@@ -287,8 +286,7 @@ def test_end_to_end_scenario():
         "grouping",
         "availability",
         "max_frequency",
-        "shift_capacity",
-        "at_most_one_team_lead",
+        "seat_capacity",
         "male_required",
         "no_back_to_back",
         "closed_shifts",

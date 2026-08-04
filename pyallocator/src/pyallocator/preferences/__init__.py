@@ -3,8 +3,10 @@
 DEFAULT_PREFERENCES is the explicit, ordered production list — add new
 preference modules here. Tests inject subsets via model_builder.build().
 
-Weight hierarchy (per unit, all harmonic-diminishing):
-    even_fill (60 // seat) > spread_males (30 // male)
+Weight hierarchy (per unit, harmonic-diminishing unless flat):
+    even_fill, capped Role Seat (61+, flat)
+    > even_fill, uncapped Role Seat (60 // Seat)
+    > spread_males (30 // male)
     > fairness (20 // lifetime allocation) > maximize_allocations (1).
 """
 
