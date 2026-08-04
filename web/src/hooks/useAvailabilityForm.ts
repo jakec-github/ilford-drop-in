@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AvailabilityLinkError,
   fetchAvailabilityForm,
@@ -17,21 +17,31 @@ interface UseAvailabilityForm {
   error: string | null;
   submitState: SubmitState;
   selected: Set<string>;
-  toggle: (shiftId: string) => void;
+  // Shifts whose answer on screen differs from the one the server holds. Empty
+  // until they have answered once — before that the form's yeses are a default
+  // nobody chose, so calling them changes would be inventing an earlier answer.
+  changed: ReadonlySet<string>;
+  // Set, not toggle: the form asks yes or no per shift, and answering "no" to a
+  // shift already at no must leave it there rather than flip it to yes.
+  setAvailable: (shiftId: string, available: boolean) => void;
   submit: () => Promise<void>;
 }
 
-// useAvailabilityForm owns one volunteer's form: the load, the ticks they have
-// made since, and the send.
+const NOTHING_CHANGED: ReadonlySet<string> = new Set();
+
+// useAvailabilityForm owns one volunteer's form: the load, the answers they have
+// given since, and the send.
 //
 // The selection is held here rather than derived from `form` on every render
-// because the two diverge the moment someone unticks a box — `form` is what the
+// because the two diverge the moment someone answers no — `form` is what the
 // server last confirmed, `selected` is what they are about to say. Submitting
 // reconciles them, so a successful send leaves no local state pretending to be
 // server state.
 export function useAvailabilityForm(token: string): UseAvailabilityForm {
   const [form, setForm] = useState<AvailabilityFormState | null>(null);
-  const [deadLink, setDeadLink] = useState<AvailabilityLinkFailure | null>(null);
+  const [deadLink, setDeadLink] = useState<AvailabilityLinkFailure | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -54,24 +64,46 @@ export function useAvailabilityForm(token: string): UseAvailabilityForm {
           setDeadLink(err.reason);
           return;
         }
-        setError(err instanceof Error ? err.message : "Failed to load the form");
+        setError(
+          err instanceof Error ? err.message : "Failed to load the form",
+        );
       });
     return () => {
       current = false;
     };
   }, [token, adopt]);
 
-  // Ticking after a send puts the form back into an unsent state: what is on
+  // Answering after a send puts the form back into an unsent state: what is on
   // screen is no longer what the server holds, and saying "sent" over an edited
   // form would be a lie.
-  const toggle = useCallback((shiftId: string) => {
+  const setAvailable = useCallback((shiftId: string, available: boolean) => {
     setSubmitState("idle");
     setSelected((previous) => {
+      if (previous.has(shiftId) === available) return previous;
       const next = new Set(previous);
-      if (!next.delete(shiftId)) next.add(shiftId);
+      if (available) next.add(shiftId);
+      else next.delete(shiftId);
       return next;
     });
   }, []);
+
+  // `form` is the last thing the server confirmed, so it doubles as the answer
+  // being edited away from — and a send adopts the response, which is what makes
+  // the highlighting clear itself rather than persisting over a saved form.
+  // Closed shifts are skipped: they carry no answer either side of the
+  // comparison.
+  const changed = useMemo(() => {
+    if (form === null || !form.submitted) return NOTHING_CHANGED;
+    const answered = new Set(form.selectedShiftIds);
+    const differing = new Set<string>();
+    for (const shift of form.shifts) {
+      if (shift.closed) continue;
+      if (answered.has(shift.id) !== selected.has(shift.id)) {
+        differing.add(shift.id);
+      }
+    }
+    return differing;
+  }, [form, selected]);
 
   const submit = useCallback(async () => {
     setSubmitState("sending");
@@ -91,5 +123,14 @@ export function useAvailabilityForm(token: string): UseAvailabilityForm {
     }
   }, [token, selected, adopt]);
 
-  return { form, deadLink, error, submitState, selected, toggle, submit };
+  return {
+    form,
+    deadLink,
+    error,
+    submitState,
+    selected,
+    changed,
+    setAvailable,
+    submit,
+  };
 }

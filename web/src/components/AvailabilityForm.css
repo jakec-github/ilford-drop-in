@@ -25,44 +25,95 @@
   font-size: 0.9375rem;
 }
 
+/* overflow-hidden so a changed row's tint and bar are clipped to the rounded
+   corners instead of squaring off the top and bottom of the list. */
 .shift-choices {
   margin: 1.5rem 0 0;
   padding: 0;
   list-style: none;
   border: 1px solid var(--border);
   border-radius: 8px;
+  overflow: hidden;
 }
 
 .shift-choice + .shift-choice {
   border-top: 1px solid var(--border);
 }
 
-/* The label fills the row, so the whole row is the tap target rather than the
-   checkbox alone — the difference between comfortable and fiddly on a phone. */
-.shift-choice label {
+/* Date on the left, the answer on the right. The date is allowed to wrap rather
+   than squeeze the buttons: on a narrow phone a long date ("Wednesday 25
+   September") would otherwise push them off the row. */
+.shift-choice {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem;
-  cursor: pointer;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
 }
 
-.shift-choice input {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  accent-color: var(--accent);
+.shift-choice-label {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .shift-choice-date {
   color: var(--text-h);
 }
 
+/* A row moved since the last send. The tint and the bar are the glance; the
+   "Changed from …" line under the date is what actually says so, and is the only
+   part of it a screen reader or a colourblind eye can use. */
+.shift-choice--changed {
+  background: var(--accent-bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shift-choice-was {
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.shift-answer {
+  display: flex;
+  flex: none;
+  gap: 0.25rem;
+}
+
+/* The word is inside the label, so the tap target is the radio and its word
+   together rather than the radio alone — the difference between comfortable and
+   fiddly on a phone. Padding, not a fixed height: it has to stay a tap target
+   when the text is scaled up. */
+.shift-option {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.shift-option input {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* Keyboard focus lands on the radio, which is small; putting the ring on the
+   whole option makes it as visible as the pointer target is. */
+.shift-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* A closed date is listed so its absence is not a mystery, but it is not a
-   choice: dimmed, uncheckable, and labelled — the tag is what carries the state
-   to a screen reader, which cannot see dimming. */
-.shift-choice--closed label {
-  cursor: default;
+   choice: dimmed, with no answer to give — the tag is what carries the state to
+   a screen reader, which cannot see dimming. */
+.shift-choice--closed {
   opacity: 0.55;
 }
 
@@ -78,6 +129,11 @@
 .availability-count {
   margin: 0.75rem 0 1.25rem;
   font-size: 0.8125rem;
+}
+
+.availability-count-changed {
+  display: block;
+  color: var(--accent);
 }
 
 .availability-message {
