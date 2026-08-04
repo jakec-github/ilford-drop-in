@@ -343,8 +343,8 @@ func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config) ([]model.Volunt
 // The two Roles S1 configures. Every endpoint that names a Role resolves it
 // against config, so a config without Roles is not a usable fixture.
 var apiTestRoles = []model.Role{
-	{Name: string(model.RoleTeamLead), Max: intPtr(1), Priority: 1},
-	{Name: string(model.RoleVolunteer), Priority: 2},
+	{Name: "Team lead", Max: intPtr(1), Priority: 1},
+	{Name: "Service volunteer", Priority: 2},
 }
 
 func intPtr(i int) *int { return &i }
@@ -358,9 +358,9 @@ var apiTestCfg = &config.Config{
 func testVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "Active"},
-			{ID: "bob", FirstName: "Bob", LastName: "Barnes", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}, Status: "Active"},
+			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Roles: []string{"Team lead", "Service volunteer"}, Status: "Active"},
+			{ID: "bob", FirstName: "Bob", LastName: "Barnes", DisplayName: "Bob", Roles: []string{"Service volunteer"}, Status: "Active"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Roles: []string{"Service volunteer"}, Status: "Active"},
 		},
 	}
 }
@@ -414,9 +414,9 @@ func doRequest(t *testing.T, handler http.Handler, method, target, body string, 
 func TestListShiftsEndpoint(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2026-01-11", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2026-01-18", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2026-01-18", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{
 			{ID: "alt1", ShiftID: "2026-01-18", Direction: "remove", VolunteerID: "bob", SetTime: "2026-01-02T10:00:00Z"},
@@ -470,7 +470,7 @@ func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {
 			{Shift: db.Shift{Date: "2026-01-18", RotaID: "rota-2"}, Allocated: false},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -501,8 +501,8 @@ func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {
 func TestListShiftsEndpoint_DateFilters(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a2", ShiftID: "2026-01-18", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2026-01-18", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 	handler := newTestHandler(store, testVolunteers())
@@ -538,7 +538,7 @@ func alterationTestStore() *mockStore {
 			{ID: "s2", RotaID: "rota-1", Date: "2026-01-18"},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "s1", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 }
@@ -581,7 +581,7 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedAlterations, 1)
-	assert.Equal(t, string(model.RoleTeamLead), store.insertedAlterations[0].Role)
+	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
 }
 
 // TestCreateAlterationEndpoint_RequiresAdmin proves the write endpoint is gated:
@@ -679,9 +679,9 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 func TestCalendarEndpoint(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2026-01-11", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2026-01-18", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2026-01-18", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -771,7 +771,7 @@ func TestFrontendOwnsEverythingOutsideTheAPI(t *testing.T) {
 func TestUnprefixedRoutesStayPutBehindTheFrontend(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
 		},
 	}
 	handler := newFullStackHandler(store)

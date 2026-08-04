@@ -5,16 +5,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
 func TestApplyAlterations_RemoveVolunteer(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleTeamLead), ShiftID: "shift-1"},
-			{ID: "a2", VolunteerID: "bob", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
-			{ID: "a3", VolunteerID: "charlie", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
+			{ID: "a2", VolunteerID: "bob", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a3", VolunteerID: "charlie", Role: "Service volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -22,7 +21,7 @@ func TestApplyAlterations_RemoveVolunteer(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	assert.Len(t, result["shift-1"], 2)
 	for _, a := range result["shift-1"] {
@@ -33,8 +32,8 @@ func TestApplyAlterations_RemoveVolunteer(t *testing.T) {
 func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleTeamLead), ShiftID: "shift-1"},
-			{ID: "a2", CustomEntry: "External John", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
+			{ID: "a2", CustomEntry: "External John", Role: "Service volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -42,7 +41,7 @@ func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", CustomValue: "External John", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
@@ -51,7 +50,7 @@ func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 func TestApplyAlterations_AddVolunteer(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleTeamLead), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
 		},
 	}
 
@@ -59,18 +58,18 @@ func TestApplyAlterations_AddVolunteer(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "add", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	assert.Len(t, result["shift-1"], 2)
 	assert.Equal(t, "bob", result["shift-1"][1].VolunteerID)
-	assert.Equal(t, string(model.RoleVolunteer), result["shift-1"][1].Role)
+	assert.Equal(t, "Service volunteer", result["shift-1"][1].Role)
 	assert.Equal(t, "shift-1", result["shift-1"][1].ShiftID)
 }
 
 func TestApplyAlterations_AddCustomEntry(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleTeamLead), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
 		},
 	}
 
@@ -78,18 +77,18 @@ func TestApplyAlterations_AddCustomEntry(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "add", CustomValue: "External John", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	assert.Len(t, result["shift-1"], 2)
 	assert.Equal(t, "External John", result["shift-1"][1].CustomEntry)
-	assert.Equal(t, string(model.RoleVolunteer), result["shift-1"][1].Role)
+	assert.Equal(t, "Service volunteer", result["shift-1"][1].Role)
 	assert.Equal(t, "shift-1", result["shift-1"][1].ShiftID)
 }
 
 func TestApplyAlterations_AppliedInSetTimeOrder(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -99,7 +98,7 @@ func TestApplyAlterations_AppliedInSetTimeOrder(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	// Alice should be removed, bob should be added
 	assert.Len(t, result["shift-1"], 1)
@@ -109,7 +108,7 @@ func TestApplyAlterations_AppliedInSetTimeOrder(t *testing.T) {
 func TestApplyAlterations_RemoveNonExistentIsNoOp(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -117,7 +116,7 @@ func TestApplyAlterations_RemoveNonExistentIsNoOp(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "nonexistent", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	// Should be unchanged
 	assert.Len(t, result["shift-1"], 1)
@@ -127,11 +126,11 @@ func TestApplyAlterations_RemoveNonExistentIsNoOp(t *testing.T) {
 func TestApplyAlterations_MultipleShifts(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
-			{ID: "a2", VolunteerID: "bob", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a2", VolunteerID: "bob", Role: "Service volunteer", ShiftID: "shift-1"},
 		},
 		"shift-2": {
-			{ID: "a3", VolunteerID: "charlie", Role: string(model.RoleVolunteer), ShiftID: "shift-2"},
+			{ID: "a3", VolunteerID: "charlie", Role: "Service volunteer", ShiftID: "shift-2"},
 		},
 	}
 
@@ -140,7 +139,7 @@ func TestApplyAlterations_MultipleShifts(t *testing.T) {
 		{ID: "alt2", ShiftID: "shift-2", Direction: "add", VolunteerID: "dave", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "bob", result["shift-1"][0].VolunteerID)
@@ -153,11 +152,11 @@ func TestApplyAlterations_MultipleShifts(t *testing.T) {
 func TestApplyAlterations_EmptyAlterations(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: string(model.RoleVolunteer), ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
 		},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, nil, string(model.RoleVolunteer))
+	result := ApplyAlterations(allocationsByShiftID, nil, "Service volunteer")
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)

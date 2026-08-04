@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -205,14 +204,14 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 	cfg.DefaultShiftSize = 4
 	cfg.RotaOverrides = append(cfg.RotaOverrides, config.RotaOverride{
 		RRule:          "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
-		Preallocations: []config.Preallocation{{Custom: "St John's team", Role: string(model.RoleVolunteer)}},
+		Preallocations: []config.Preallocation{{Custom: "St John's team", Role: "Service volunteer"}},
 	})
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
 	// Michael is pinned to the first date by hand.
 	store.manualPins = []db.ManualPreallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), VolunteerID: "michael"},
+		{ID: "pin-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "michael"},
 	}
 
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1", "shift-2")
@@ -243,7 +242,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	mintRound(t, store, volunteers, cfg)
 
 	store.manualPins = []db.ManualPreallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: string(model.RoleTeamLead), VolunteerID: "aaliyah"},
+		{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "aaliyah"},
 	}
 
 	round := readRound(t, store, volunteers, cfg)

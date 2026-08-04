@@ -49,7 +49,7 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 type mockAllocateRotaStore struct {
 	rotations                  []db.Rotation
 	shifts                     []db.Shift
-	availabilityRequests     []db.AvailabilityRequest
+	availabilityRequests       []db.AvailabilityRequest
 	generations                map[string]db.AvailabilityGeneration // keyed by request id
 	allocations                []db.Allocation
 	alterations                []db.Alteration
@@ -281,14 +281,14 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 		// Dave is individual
 		allocations: []db.Allocation{
 			// Shift 1 - Dec 1: Alice (group), Bob (group), Charlie (individual)
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "bob", Role: string(model.RoleTeamLead)},
-			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "bob", Role: "Team lead"},
+			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "charlie", Role: "Service volunteer"}, // Unknown
 			// Shift 2 - Dec 8: Dave (individual), Charlie (individual)
-			{ID: "alloc-4", ShiftID: "2024-12-08", VolunteerID: "dave", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-5", ShiftID: "2024-12-08", VolunteerID: "charlie", Role: string(model.RoleVolunteer)}, // Unknown
+			{ID: "alloc-4", ShiftID: "2024-12-08", VolunteerID: "dave", Role: "Service volunteer"},
+			{ID: "alloc-5", ShiftID: "2024-12-08", VolunteerID: "charlie", Role: "Service volunteer"}, // Unknown
 			// Allocations from current rota (not one of rota-0's shifts): ignored
-			{ID: "alloc-6", ShiftID: "2025-01-05", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-6", ShiftID: "2025-01-05", VolunteerID: "alice", Role: "Service volunteer"},
 		},
 	}
 
@@ -303,7 +303,7 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
 
 	// Call buildHistoricalShifts
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, string(model.RoleVolunteer), logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, "Service volunteer", logger)
 	require.NoError(t, err)
 
 	// Assertions
@@ -354,10 +354,10 @@ func TestBuildHistoricalShifts_KeepsShiftsWithNoKnownVolunteers(t *testing.T) {
 		},
 		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08", "2024-12-15"),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
-			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: "Service volunteer"},
 			// Dec 15 (the true last shift) was worked only by a deleted volunteer.
-			{ID: "alloc-3", ShiftID: "2024-12-15", VolunteerID: "ghost", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-3", ShiftID: "2024-12-15", VolunteerID: "ghost", Role: "Service volunteer"},
 		},
 	}
 
@@ -367,7 +367,7 @@ func TestBuildHistoricalShifts_KeepsShiftsWithNoKnownVolunteers(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, string(model.RoleVolunteer), logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, "Service volunteer", logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 3)
 
@@ -396,13 +396,13 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08"),
 		allocations: []db.Allocation{
 			// Dec 1: Alice worked as published.
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
 			// Dec 8: Alice dropped out and Dave covered (see alterations).
-			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: "Service volunteer"},
 		},
 		alterations: []db.Alteration{
 			{ID: "alt-1", ShiftID: "2024-12-08", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:00Z"},
-			{ID: "alt-2", ShiftID: "2024-12-08", Direction: "add", VolunteerID: "dave", Role: string(model.RoleVolunteer), SetTime: "2024-12-05T10:00:01Z"},
+			{ID: "alt-2", ShiftID: "2024-12-08", Direction: "add", VolunteerID: "dave", Role: "Service volunteer", SetTime: "2024-12-05T10:00:01Z"},
 			// Alteration on another rota's shift (not one of rota-0's): must be ignored.
 			{ID: "alt-3", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:02Z"},
 		},
@@ -415,7 +415,7 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, string(model.RoleVolunteer), logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 2)
 
@@ -444,7 +444,7 @@ func TestBuildHistoricalShifts_NoPreviousRota(t *testing.T) {
 		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
 	}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, string(model.RoleVolunteer), logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
 	require.NoError(t, err)
 	assert.Empty(t, historicalShifts, "Should have no historical shifts when there's no previous rota")
 }
@@ -467,7 +467,7 @@ func TestBuildHistoricalShifts_NoPreviousAllocations(t *testing.T) {
 		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
 	}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, string(model.RoleVolunteer), logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
 	require.NoError(t, err)
 	assert.Empty(t, historicalShifts, "Should have no historical shifts when previous rota has no allocations")
 }
@@ -485,9 +485,9 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 		shifts: shiftsOnDates("rota-0", "2024-12-01"),
 		allocations: []db.Allocation{
 			// Regular allocation
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
 			// Custom entry (should be ignored)
-			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "", CustomEntry: "External John", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "", CustomEntry: "External John", Role: "Service volunteer"},
 		},
 	}
 
@@ -497,7 +497,7 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, string(model.RoleVolunteer), logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 1)
 

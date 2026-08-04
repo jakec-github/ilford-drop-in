@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
@@ -27,8 +26,8 @@ func TestManualPreallocationInsertReadDelete(t *testing.T) {
 	shiftB := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
 	require.NoError(t, database.InsertRotationAndShifts(ctx, rota, []db.Shift{shiftA, shiftB}))
 
-	volPin := db.ManualPreallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: string(model.RoleTeamLead), VolunteerID: "alice"}
-	customPin := db.ManualPreallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: string(model.RoleVolunteer), CustomValue: "External Org"}
+	volPin := db.ManualPreallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "Team lead", VolunteerID: "alice"}
+	customPin := db.ManualPreallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "Service volunteer", CustomValue: "External Org"}
 
 	// Insert both pins under the lock.
 	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
@@ -121,7 +120,7 @@ func TestManualPreallocationFrozenAfterAllocation(t *testing.T) {
 	}))
 
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: string(model.RoleVolunteer), VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Service volunteer", VolunteerID: "alice"}},
 		rota.ID, time.Now()))
 
 	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
@@ -145,7 +144,7 @@ func TestManualPreallocationUnknownShiftIDFails(t *testing.T) {
 
 	err := database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
 		return store.InsertManualPreallocation(ctx, db.ManualPreallocation{
-			ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: string(model.RoleVolunteer), VolunteerID: "alice",
+			ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "Service volunteer", VolunteerID: "alice",
 		})
 	})
 	require.Error(t, err, "an unknown ShiftID must be rejected by the FK")
