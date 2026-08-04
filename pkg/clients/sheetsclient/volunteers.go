@@ -27,6 +27,14 @@ var volunteerFields = []string{
 // sheet is migrated.
 const roleColumnSuffix = " - Role"
 
+// noGroupValue is what the Group key dropdown holds for a volunteer in no
+// group. A Sheets dropdown cannot be unset, so `None` is the only way to say
+// "no longer in a group" once a key has been picked, and it means what a blank
+// cell means. Normalising it away here keeps the placeholder — a spreadsheet
+// artefact — out of the domain entirely. Compared lower-cased and trimmed,
+// since a dropdown's label is not guaranteed to keep its capitalisation.
+const noGroupValue = "none"
+
 // tickValues are the cell contents that count as a ticked box, compared
 // lower-cased and trimmed. A Sheets tick-box writes TRUE; the rest are what
 // people type by hand.
@@ -173,13 +181,22 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 			Status:    getField("Status", row),
 			Gender:    getField("Sex/Gender", row),
 			Email:     getField("Email", row),
-			GroupKey:  getField("Group key", row),
+			GroupKey:  groupKey(getField("Group key", row)),
 		}
 
 		volunteers = append(volunteers, volunteer)
 	}
 
 	return volunteers, nil
+}
+
+// groupKey reads one volunteer's Group key cell, returning the empty string for
+// anyone in no group however the sheet says it.
+func groupKey(cell string) string {
+	if strings.ToLower(cell) == noGroupValue {
+		return ""
+	}
+	return cell
 }
 
 // findRoleColumns maps each configured Role to the column holding its ticks,
