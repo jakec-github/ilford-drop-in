@@ -142,6 +142,56 @@ func TestParseVolunteers_NoRoleColumns(t *testing.T) {
 	assert.Empty(t, volunteers[0].Roles)
 }
 
+// The Group key column is a dropdown, and a dropdown cannot be unset: `None` is
+// what someone picks when a volunteer leaves a group, and it means exactly what
+// a blank cell means. The boundary is the only place that knows that, so the
+// placeholder never reaches the domain.
+func TestParseVolunteers_NoneGroupKeyIsNormalised(t *testing.T) {
+	tests := []struct {
+		cell     string
+		groupKey string
+	}{
+		{"None", ""},
+		{"none", ""},
+		{" None ", ""},
+		{"NONE", ""},
+		{"", ""},
+		{"Group A", "Group A"},
+		{" Group A ", "Group A"},
+		{"Nonesuch", "Nonesuch"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.cell, func(t *testing.T) {
+			raw := [][]any{
+				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key"),
+				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", tc.cell),
+			}
+
+			volunteers, err := ParseVolunteers(raw, twoRoles())
+			require.NoError(t, err)
+			require.Len(t, volunteers, 1)
+			assert.Equal(t, tc.groupKey, volunteers[0].GroupKey)
+		})
+	}
+}
+
+// Two volunteers who both left their groups are two groups of one, not one
+// group of two — the bug normalising at the boundary fixes.
+func TestParseVolunteers_NoneIsNotAGroup(t *testing.T) {
+	raw := [][]any{
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "None"),
+		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "None"),
+	}
+
+	volunteers, err := ParseVolunteers(raw, twoRoles())
+	require.NoError(t, err)
+	require.Len(t, volunteers, 2)
+	assert.Empty(t, volunteers[0].GroupKey)
+	assert.Empty(t, volunteers[1].GroupKey)
+}
+
 func TestParseVolunteers_MissingRequiredColumn(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email"),

@@ -132,13 +132,11 @@ func TestInitVolunteerGroups_DiscardGroupWithNoAvailability(t *testing.T) {
 	assert.Contains(t, err.Error(), "no valid volunteer groups")
 }
 
-// A volunteer with no group, or the sheet's literal "None", is their own group
-// of one — the key every caller has to agree on to line availability up with the
-// groups it belongs to.
+// A volunteer with no group is their own group of one — the key every caller
+// has to agree on to line availability up with the groups it belongs to.
 func TestGroupKeyFor(t *testing.T) {
 	assert.Equal(t, "couple_ab", GroupKeyFor(Volunteer{FirstName: "Alice", LastName: "Smith", GroupKey: "couple_ab"}))
 	assert.Equal(t, "Alice Smith", GroupKeyFor(Volunteer{FirstName: "Alice", LastName: "Smith"}))
-	assert.Equal(t, "Alice Smith", GroupKeyFor(Volunteer{FirstName: "Alice", LastName: "Smith", GroupKey: "None"}))
 }
 
 func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {

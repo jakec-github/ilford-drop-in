@@ -7,10 +7,9 @@ import (
 
 // GroupKeyFor returns the key binding a volunteer to the people they are
 // allocated alongside. A volunteer with no group is their own group of one,
-// keyed on their name. "None" may be set in the spreadsheet and does not equate
-// to a group.
+// keyed on their name.
 func GroupKeyFor(volunteer Volunteer) string {
-	if volunteer.GroupKey == "" || volunteer.GroupKey == "None" {
+	if volunteer.GroupKey == "" {
 		return volunteer.FirstName + " " + volunteer.LastName
 	}
 	return volunteer.GroupKey
