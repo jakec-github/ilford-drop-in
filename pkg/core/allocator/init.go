@@ -72,7 +72,7 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 		}
 
 		// Create the volunteer group using the shared builder
-		group := BuildVolunteerGroup(groupKey, members)
+		group := BuildVolunteerGroup(members)
 
 		// Set context-specific fields
 		group.AvailableShiftIndices = availableShiftIndices
@@ -159,20 +159,19 @@ func withPreallocatedAvailability(groupAvailability map[string][]int, shifts []*
 
 // BuildVolunteerGroup creates a VolunteerGroup from a list of volunteers.
 // This function encapsulates the logic for building a group with correct metadata.
-// It handles individual volunteers (empty GroupKey) by creating a unique group key.
 //
-// Parameters:
-//   - groupKey: The group key (empty string for individual volunteers)
-//   - members: The volunteers in this group
+// The key is derived — GroupKeyFor(members[0]) — rather than passed in, so
+// GroupKeyFor stays the single rule for what a group key is and no caller can
+// hold a different one. Every caller buckets by GroupKeyFor already, so any
+// member yields the same key. An empty member list has no key.
 //
 // Returns a VolunteerGroup with calculated metadata (MaleCount)
 // Note: AvailableShiftIndices, AllocatedShiftIndices, and HistoricalAllocationCount
 // must be set by the caller as they depend on context.
-func BuildVolunteerGroup(groupKey string, members []Volunteer) *VolunteerGroup {
-	// For individual volunteers, create a unique group key
-	effectiveGroupKey := groupKey
-	if effectiveGroupKey == "" && len(members) > 0 {
-		effectiveGroupKey = members[0].FirstName + " " + members[0].LastName
+func BuildVolunteerGroup(members []Volunteer) *VolunteerGroup {
+	groupKey := ""
+	if len(members) > 0 {
+		groupKey = GroupKeyFor(members[0])
 	}
 
 	// Calculate group metadata
@@ -185,7 +184,7 @@ func BuildVolunteerGroup(groupKey string, members []Volunteer) *VolunteerGroup {
 	}
 
 	return &VolunteerGroup{
-		GroupKey:  effectiveGroupKey,
+		GroupKey:  groupKey,
 		Members:   members,
 		MaleCount: maleCount,
 		// Note: Caller must set AvailableShiftIndices, AllocatedShiftIndices,

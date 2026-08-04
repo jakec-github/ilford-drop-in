@@ -34,7 +34,10 @@ and issue #34.
      shift; without it, a pinned volunteer who never replied was discarded and
      the solver failed on a pin naming somebody absent from the problem.
    - `BuildVolunteerGroup` builds a single group with its derived metadata
-     (`MaleCount`).
+     (`MaleCount`). Its key comes from `GroupKeyFor(members[0])` rather than
+     from the caller, so no caller can hold a second opinion about what a group
+     key is — one did, and every ungrouped volunteer on a historical shift
+     collapsed into a single group named after one of them (#108).
 
 3. **CP-SAT contract** (`cpsat_contract.go`, `cpsat_runner.go`) — the JSON
    contract with `pyallocator` and the subprocess plumbing:

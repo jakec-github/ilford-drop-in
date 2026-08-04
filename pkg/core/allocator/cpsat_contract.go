@@ -267,7 +267,7 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 		allocatedGroups := make([]*VolunteerGroup, 0, len(groupOrder))
 		maleCount := 0
 		for _, groupKey := range groupOrder {
-			group := BuildVolunteerGroup(groupKey, membersByGroup[groupKey])
+			group := BuildVolunteerGroup(membersByGroup[groupKey])
 			group.AllocatedShiftIndices = []int{outShift.Index}
 			allocatedGroups = append(allocatedGroups, group)
 			maleCount += group.MaleCount
