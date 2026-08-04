@@ -133,7 +133,7 @@ func PublishRota(
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, rotaAlterations)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, rotaAlterations, cfg.RoleTable().UncappedName())
 
 	// Step 6: Build the published rota rows, iterating the rota's shifts in date
 	// order and looking up each shift's effective allocations by id.

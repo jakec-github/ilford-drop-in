@@ -103,7 +103,19 @@ func defaultVolunteers() *mockChangeRotaVolClient {
 	}
 }
 
-var testCfg = &config.Config{}
+// testCfg configures the two Roles S1 ships with: one Team lead Seat ahead of
+// the uncapped Service volunteer. Every service that resolves a Role name reads
+// it from config now, so a config without Roles is not a usable fixture.
+var testCfg = &config.Config{
+	Roles: []model.Role{
+		{Name: string(model.RoleTeamLead), Max: intPtr(1), Priority: 1},
+		{Name: string(model.RoleVolunteer), Priority: 2},
+	},
+}
+
+var testRoles = testCfg.RoleTable()
+
+func intPtr(i int) *int { return &i }
 
 func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	ctx := context.Background()
@@ -122,6 +134,7 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 		Date:      "2025-01-05",
 		Out:       "bob",
 		In:        "dave",
+		Role:      string(model.RoleVolunteer),
 		Reason:    "Holiday cover",
 		UserEmail: "test@example.com",
 	}
@@ -334,6 +347,7 @@ func TestChangeRota_AddVolunteerAlreadyOnShift(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "alice", // Already on the shift
+		Role:      string(model.RoleVolunteer),
 		Reason:    "Test",
 		UserEmail: "test@example.com",
 	}
@@ -488,6 +502,7 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
+		Role:      string(model.RoleVolunteer),
 		Reason:    "Extra help needed",
 		UserEmail: "test@example.com",
 	}
@@ -585,6 +600,7 @@ func TestChangeRota_InvalidInVolunteerID(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "nonexistent",
+		Role:      string(model.RoleVolunteer),
 		Reason:    "Test",
 		UserEmail: "test@example.com",
 	}
@@ -612,7 +628,9 @@ func TestChangeRota_InvalidOutVolunteerID(t *testing.T) {
 	assert.Contains(t, err.Error(), "volunteer nonexistent not found")
 }
 
-func TestChangeRota_TeamLeadGetsCorrectRole(t *testing.T) {
+// The Roles someone holds on the roster no longer decide the Seat they land
+// in: a team lead added as a Service volunteer is a Service volunteer.
+func TestChangeRota_RoleIsNamedNotInferredFromTheRoster(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -634,7 +652,8 @@ func TestChangeRota_TeamLeadGetsCorrectRole(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
-		Reason:    "Adding team lead",
+		Role:      string(model.RoleVolunteer),
+		Reason:    "Extra pair of hands",
 		UserEmail: "test@example.com",
 	}
 
@@ -642,143 +661,115 @@ func TestChangeRota_TeamLeadGetsCorrectRole(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Find the add alteration
-	var addAlt *db.Alteration
-	for i := range store.insertedAlterations {
-		if store.insertedAlterations[i].Direction == "add" {
-			addAlt = &store.insertedAlterations[i]
-		}
-	}
-
-	require.NotNil(t, addAlt)
+	addAlt := addedAlteration(t, store)
 	assert.Equal(t, "bob", addAlt.VolunteerID)
-	assert.Equal(t, string(model.RoleTeamLead), addAlt.Role)
+	assert.Equal(t, string(model.RoleVolunteer), addAlt.Role)
 }
 
-func TestChangeRota_VolunteerReplacesTeamLead_InheritsRole(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
+// A change that puts someone in a Role the roster does not record them as
+// holding goes through: the structure is enforced, the roster is advice
+// (ADR 0005).
+func TestChangeRota_RoleTheVolunteerDoesNotHoldIsAllowed(t *testing.T) {
 	store := &mockChangeRotaStore{
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		shifts:      sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{},
+	}
+
+	// Every default volunteer holds only Service volunteer.
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "bob",
+		Role:      string(model.RoleTeamLead),
+		Reason:    "Bob is leading this once",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
+	require.NoError(t, err)
+	assert.Equal(t, string(model.RoleTeamLead), addedAlteration(t, store).Role)
+}
+
+// A swap names no Role, so each leg inherits the Role of the person it
+// replaces — the Seats are handed over intact, in both directions.
+func TestChangeRota_SwapLegsInheritTheRoleTheyReplace(t *testing.T) {
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
 			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
 		},
 	}
 
-	// dave is a regular volunteer replacing alice (team lead)
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		Out:       "alice",
-		In:        "dave",
-		Reason:    "Replacing team lead",
+		In:        "bob",
+		SwapDate:  "2025-01-12",
+		Reason:    "Swap",
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
-	require.NotNil(t, result)
 
-	var addAlt *db.Alteration
-	for i := range store.insertedAlterations {
-		if store.insertedAlterations[i].Direction == "add" {
-			addAlt = &store.insertedAlterations[i]
+	roleByVolunteer := map[string]string{}
+	for _, alt := range store.insertedAlterations {
+		if alt.Direction == "add" {
+			roleByVolunteer[alt.VolunteerID] = alt.Role
 		}
 	}
-
-	require.NotNil(t, addAlt)
-	assert.Equal(t, "dave", addAlt.VolunteerID)
-	assert.Equal(t, string(model.RoleTeamLead), addAlt.Role, "volunteer replacing team lead should inherit team lead role")
+	assert.Equal(t, string(model.RoleTeamLead), roleByVolunteer["bob"], "bob takes alice's lead Seat")
+	assert.Equal(t, string(model.RoleVolunteer), roleByVolunteer["alice"], "alice takes bob's ordinary Seat")
 }
 
-func TestChangeRota_TeamLeadReplacesVolunteer_InheritsRole(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
+// A move is a swap with nobody coming back, so the primary leg replaces
+// nobody. The Role travels with the person from the shift they are leaving,
+// rather than resetting to the uncapped one.
+func TestChangeRota_MoveCarriesTheRoleAcross(t *testing.T) {
 	store := &mockChangeRotaStore{
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-		},
-	}
-
-	// eve is a team lead replacing bob (volunteer)
-	volClient := &mockChangeRotaVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
-			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "eve", FirstName: "Eve", LastName: "E", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
+			{ID: "a1", ShiftID: "2025-01-12", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
 		},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
-		Out:       "bob",
-		In:        "eve",
-		Reason:    "Team lead filling volunteer slot",
+		In:        "alice",
+		SwapDate:  "2025-01-12",
+		Reason:    "Alice moves a week earlier",
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, volClient, testCfg, params, logger)
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
-	require.NotNil(t, result)
 
-	var addAlt *db.Alteration
-	for i := range store.insertedAlterations {
-		if store.insertedAlterations[i].Direction == "add" {
-			addAlt = &store.insertedAlterations[i]
-		}
-	}
-
-	require.NotNil(t, addAlt)
-	assert.Equal(t, "eve", addAlt.VolunteerID)
-	assert.Equal(t, string(model.RoleVolunteer), addAlt.Role, "team lead replacing volunteer should inherit volunteer role")
+	add := addedAlteration(t, store)
+	assert.Equal(t, "alice", add.VolunteerID)
+	assert.Equal(t, "2025-01-05", add.ShiftID)
+	assert.Equal(t, string(model.RoleTeamLead), add.Role)
 }
 
-func TestChangeRota_TeamLeadAddedToShiftWithExistingTeamLead_Downgraded(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
+// With nobody to replace and nothing to carry across — the shift they are
+// leaving predates alterations having a Role at all — the incoming volunteer
+// takes the uncapped Role, the Seat every shift has spare.
+func TestChangeRota_MoveWithNothingToInheritTakesTheUncappedRole(t *testing.T) {
 	store := &mockChangeRotaStore{
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-		},
-	}
-
-	// eve is a team lead being added (no --out) to a shift that already has alice as team lead
-	volClient := &mockChangeRotaVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
-			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "eve", FirstName: "Eve", LastName: "E", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
-		},
+		shifts:      sundayShifts("rota-1", "2025-01-05", 2),
+		allocations: []db.Allocation{{ID: "a1", ShiftID: "2025-01-12", VolunteerID: "alice"}},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
-		In:        "eve",
-		Reason:    "Extra help",
+		In:        "alice",
+		SwapDate:  "2025-01-12",
+		Reason:    "Alice moves a week earlier",
 		UserEmail: "test@example.com",
 	}
 
-	result, err := ChangeRota(ctx, store, volClient, testCfg, params, logger)
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	var addAlt *db.Alteration
-	for i := range store.insertedAlterations {
-		if store.insertedAlterations[i].Direction == "add" {
-			addAlt = &store.insertedAlterations[i]
-		}
-	}
-
-	require.NotNil(t, addAlt)
-	assert.Equal(t, "eve", addAlt.VolunteerID)
-	assert.Equal(t, string(model.RoleVolunteer), addAlt.Role, "team lead added to shift with existing team lead should be downgraded to volunteer")
+	assert.Equal(t, string(model.RoleVolunteer), addedAlteration(t, store).Role)
 }
 
 // addedAlteration returns the single "add" alteration the store recorded.
@@ -894,7 +885,7 @@ func TestChangeRota_ExplicitRoleBeatsInheritance(t *testing.T) {
 	assert.Equal(t, string(model.RoleVolunteer), addedAlteration(t, store).Role)
 }
 
-func TestChangeRota_ExplicitRoleRejected(t *testing.T) {
+func TestChangeRota_RoleRejected(t *testing.T) {
 	tests := []struct {
 		name   string
 		params ChangeRotaParams
@@ -920,11 +911,20 @@ func TestChangeRota_ExplicitRoleRejected(t *testing.T) {
 			},
 		},
 		{
-			name: "not a role",
+			name: "not a configured role",
 			params: ChangeRotaParams{
 				Date: "2025-01-05",
 				In:   "bob",
 				Role: "Supervisor",
+			},
+		},
+		{
+			// A volunteer coming in fills a Seat, and which Seat is not
+			// something to be guessed at from the roster.
+			name: "with no role at all",
+			params: ChangeRotaParams{
+				Date: "2025-01-05",
+				In:   "bob",
 			},
 		},
 	}

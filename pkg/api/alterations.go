@@ -16,8 +16,9 @@ type createAlterationRequest struct {
 	OutCustom string `json:"outCustom,omitempty"`
 	SwapDate  string `json:"swapDate,omitempty"`
 	Reason    string `json:"reason"`
-	// Role the volunteer named by In takes on Date. Optional: omitted, the
-	// service infers it from the shift and the volunteer's own role.
+	// Role the volunteer named by In takes on Date. Required whenever In is
+	// set, except on a swap — there each leg inherits the Role of the person it
+	// replaces, so naming one is refused.
 	Role string `json:"role,omitempty"`
 }
 

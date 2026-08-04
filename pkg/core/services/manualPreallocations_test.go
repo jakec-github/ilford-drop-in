@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -33,7 +32,7 @@ func TestBuildManualPreallocationOverrides_VolunteerUnion(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), VolunteerID: "vol-1"},
 	}
 
-	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, nil)
+	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, nil, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 1)
 
@@ -71,7 +70,7 @@ func TestBuildManualPreallocationOverrides_DedupesAgainstConfig(t *testing.T) {
 		{ID: "p4", ShiftID: "shift-2", Role: string(model.RoleVolunteer), VolunteerID: "vol-1"},
 	}
 
-	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, configOverrides)
+	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, configOverrides, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 1, "only the pin on a date config does not already cover survives")
 	assert.Equal(t, []allocator.Preallocation{
@@ -87,7 +86,7 @@ func TestBuildManualPreallocationOverrides_TeamLeadAndCustom(t *testing.T) {
 		{ID: "p2", ShiftID: "shift-1", Role: string(model.RoleVolunteer), CustomValue: "External Helper"},
 	}
 
-	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, nil)
+	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, nil, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 2)
 	assert.Equal(t, []allocator.Preallocation{
@@ -107,7 +106,7 @@ func TestBuildManualPreallocationOverrides_ClosedByConfigDropsPin(t *testing.T) 
 		{ID: "p1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), VolunteerID: "vol-1"},
 	}
 
-	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, configOverrides)
+	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, configOverrides, testRoles)
 	require.NoError(t, err)
 	assert.Empty(t, overrides, "a manual pin cannot reopen a config-closed date")
 }
@@ -116,7 +115,7 @@ func TestBuildManualPreallocationOverrides_UnknownShiftFails(t *testing.T) {
 	pins := []db.ManualPreallocation{
 		{ID: "p1", ShiftID: "ghost", Role: string(model.RoleVolunteer), VolunteerID: "vol-1"},
 	}
-	_, err := buildManualPreallocationOverrides(pins, map[string]string{}, nil)
+	_, err := buildManualPreallocationOverrides(pins, map[string]string{}, nil, testRoles)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ghost")
 }
@@ -197,7 +196,7 @@ func TestAllocateRotaFailsOnStaleManualPin(t *testing.T) {
 		context.Background(),
 		store,
 		volClient,
-		&config.Config{},
+		testCfg,
 		zap.NewNop(),
 		false, // dryRun
 		false, // forceCommit

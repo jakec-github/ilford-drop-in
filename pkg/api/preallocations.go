@@ -7,11 +7,14 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
+// createPreallocationRequest names the Seat a pin fills by its Role name — the
+// same string the listing returns, so the wire reads the same in both
+// directions.
 type createPreallocationRequest struct {
 	Date        string `json:"date"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
-	TeamLead    bool   `json:"teamLead,omitempty"`
+	Role        string `json:"role"`
 }
 
 // preallocationResponse is one pin from either source. id is absent on a config
@@ -47,7 +50,7 @@ func (h *Handler) handleCreatePreallocation(w http.ResponseWriter, r *http.Reque
 		Date:        req.Date,
 		VolunteerID: req.VolunteerID,
 		Custom:      req.Custom,
-		TeamLead:    req.TeamLead,
+		Role:        req.Role,
 	}, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)

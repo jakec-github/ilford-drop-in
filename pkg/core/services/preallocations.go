@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -30,13 +32,14 @@ type PreallocationStore interface {
 }
 
 // AddPreallocationParams holds the input for pinning one assignee to a shift.
-// Exactly one of VolunteerID or Custom is set; TeamLead only accompanies a
-// VolunteerID.
+// Exactly one of VolunteerID or Custom is set. Role names the Seat the pin
+// fills and is required — a pin is a promise about a job, and config pins have
+// named one since Roles became data.
 type AddPreallocationParams struct {
 	Date        string // Target shift date (YYYY-MM-DD)
 	VolunteerID string // Volunteer to pin
 	Custom      string // Custom (non-volunteer) entry to pin
-	TeamLead    bool   // Pin the volunteer in the team-lead slot
+	Role        string // Name of the Role the pin fills
 }
 
 // PreallocationSource says where a pin came from. Both sources union at
@@ -88,15 +91,21 @@ func AddPreallocation(
 		zap.String("date", params.Date),
 		zap.String("volunteer_id", params.VolunteerID),
 		zap.String("custom", params.Custom),
-		zap.Bool("team_lead", params.TeamLead))
+		zap.String("role", params.Role))
 
-	// Step 1: input shape — exactly one of volunteer / custom, and team lead only
-	// applies to a volunteer pin.
+	// Step 1: input shape — exactly one of volunteer / custom, filling a Role
+	// config names. An unconfigured Role would reach the solver as a Seat no
+	// Shape has, so it is refused here rather than at solve time.
 	if (params.VolunteerID == "") == (params.Custom == "") {
 		return nil, wrapf(ErrInvalidInput, "exactly one of volunteerId or custom must be provided")
 	}
-	if params.TeamLead && params.VolunteerID == "" {
-		return nil, wrapf(ErrInvalidInput, "teamLead can only be set for a volunteer pin")
+	if params.Role == "" {
+		return nil, wrapf(ErrInvalidInput, "role is required")
+	}
+	roles := cfg.RoleTable()
+	role, ok := roles.ByName(params.Role)
+	if !ok {
+		return nil, wrapf(ErrInvalidInput, "role %q is not a configured role", params.Role)
 	}
 
 	// Step 2: volunteer validation (network fetch, OUTSIDE the lock). The
@@ -121,8 +130,8 @@ func AddPreallocation(
 		if len(utils.FilterActiveVolunteers([]model.Volunteer{*vol})) == 0 {
 			return nil, wrapf(ErrInvalidInput, "volunteer %s is not active", params.VolunteerID)
 		}
-		if params.TeamLead && !vol.Holds(string(model.RoleTeamLead)) {
-			return nil, wrapf(ErrInvalidInput, "volunteer %s is not a team lead", params.VolunteerID)
+		if !vol.Holds(params.Role) {
+			return nil, wrapf(ErrInvalidInput, "volunteer %s does not hold the role %q", params.VolunteerID, params.Role)
 		}
 		name = vol.DisplayName
 	}
@@ -141,28 +150,26 @@ func AddPreallocation(
 	}
 
 	// Step 4: config checks for the date (no network). A Closed override blocks
-	// any pin; config is authoritative for the single-valued team-lead slot.
-	closed, configPinsTL, err := configPreallocationState(cfg, date)
+	// any pin; config is authoritative for a capped Role's Seats, so a Role
+	// config has already filled leaves nothing here to pin into.
+	configPins, closed, err := configPreallocationState(cfg, date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate config overrides for %s: %w", params.Date, err)
 	}
 	if closed {
 		return nil, wrapf(ErrConflict, "shift for %s is closed", params.Date)
 	}
-	if params.TeamLead && configPinsTL {
-		return nil, wrapf(ErrConflict, "config already pins a team lead for %s", params.Date)
+	configFilled := countRole(params.Role, configPins)
+	if role.Capped() && configFilled >= *role.Max {
+		return nil, wrapf(ErrConflict, "config already fills every %s seat for %s", params.Role, params.Date)
 	}
 
 	// Step 5: state read, duplicate/frozen checks, and insert under the rota
 	// lock.
-	role := string(model.RoleVolunteer)
-	if params.TeamLead {
-		role = string(model.RoleTeamLead)
-	}
 	created := db.ManualPreallocation{
 		ID:          uuid.New().String(),
 		ShiftID:     shift.ID,
-		Role:        role,
+		Role:        params.Role,
 		VolunteerID: params.VolunteerID,
 		CustomValue: params.Custom,
 	}
@@ -180,6 +187,7 @@ func AddPreallocation(
 		if err != nil {
 			return err
 		}
+		filled := configFilled
 		for _, p := range existing {
 			if params.VolunteerID != "" && p.VolunteerID == params.VolunteerID {
 				return wrapf(ErrConflict, "volunteer %s is already pinned to %s", params.VolunteerID, params.Date)
@@ -187,9 +195,14 @@ func AddPreallocation(
 			if params.Custom != "" && p.CustomValue == params.Custom {
 				return wrapf(ErrConflict, "custom entry %q is already pinned to %s", params.Custom, params.Date)
 			}
-			if params.TeamLead && p.Role == string(model.RoleTeamLead) {
-				return wrapf(ErrConflict, "a team lead is already pinned to %s", params.Date)
+			if p.Role == params.Role {
+				filled++
 			}
+		}
+		// A capped Role has only so many Seats, and pinning past them would
+		// hand the solver a shift it cannot fill legally.
+		if role.Capped() && filled >= *role.Max {
+			return wrapf(ErrConflict, "every %s seat for %s is already pinned", params.Role, params.Date)
 		}
 
 		return tx.InsertManualPreallocation(ctx, created)
@@ -313,6 +326,8 @@ func ListPreallocations(
 		volunteersByID[v.ID] = v
 	}
 
+	roles := cfg.RoleTable()
+
 	views, err := configPreallocationViews(cfg, shiftDates, volunteersByID, logger)
 	if err != nil {
 		return nil, err
@@ -334,16 +349,20 @@ func ListPreallocations(
 		})
 	}
 
-	sortPreallocationViews(views)
+	sortPreallocationViews(views, roles)
 	return views, nil
 }
 
 // configPreallocationViews resolves the config Rota Overrides to per-date pins
 // for the given shift dates. It goes through convertRotaOverrides and
 // configPreallocationsForDate — the same pair allocation uses — so a date's pins
-// read here exactly as InitShifts will apply them: sets, not sequences (two
-// overrides pinning the same person are one seat), the last matching override
-// winning the single-valued team-lead slot, and a closed date carrying none.
+// read here exactly as InitShifts will apply them: every matching override
+// contributing, and a closed date carrying none.
+//
+// The one thing it collapses is the identical pin: the same subject in the same
+// Role, named by two overrides, is one Seat to the solver and one chip here.
+// The same person in two different Roles is not collapsed — that is a config
+// error the solver will refuse, and hiding half of it hides the fix.
 func configPreallocationViews(
 	cfg *config.Config,
 	shiftDates []time.Time,
@@ -362,36 +381,25 @@ func configPreallocationViews(
 	var views []PreallocationView
 	for _, d := range shiftDates {
 		date := d.Format("2006-01-02")
-		volIDs, teamLead, customs, closed := configPreallocationsForDate(date, overrides)
+		pins, closed := configPreallocationsForDate(date, overrides)
 		if closed {
 			continue
 		}
 
-		configView := func(role model.LegacyRole, volunteerID, custom string) PreallocationView {
-			return PreallocationView{
-				Date:        date,
-				Role:        string(role),
-				VolunteerID: volunteerID,
-				Custom:      custom,
-				Name:        preallocationName(volunteerID, custom, volunteersByID, logger),
-				Source:      PreallocationSourceConfig,
-			}
-		}
-
-		if teamLead != "" {
-			views = append(views, configView(model.RoleTeamLead, teamLead, ""))
-		}
-		for id := range volIDs {
-			// Someone named as both the team lead and an ordinary preallocation
-			// still occupies one seat; showing them twice would misreport the
-			// shift as fuller than it is.
-			if id == teamLead {
+		seen := make(map[allocator.Preallocation]bool, len(pins))
+		for _, pin := range pins {
+			if seen[pin] {
 				continue
 			}
-			views = append(views, configView(model.RoleVolunteer, id, ""))
-		}
-		for custom := range customs {
-			views = append(views, configView(model.RoleVolunteer, "", custom))
+			seen[pin] = true
+			views = append(views, PreallocationView{
+				Date:        date,
+				Role:        pin.Role,
+				VolunteerID: pin.VolunteerID,
+				Custom:      pin.Custom,
+				Name:        preallocationName(pin.VolunteerID, pin.Custom, volunteersByID, logger),
+				Source:      PreallocationSourceConfig,
+			})
 		}
 	}
 	return views, nil
@@ -414,19 +422,29 @@ func preallocationName(volunteerID, custom string, volunteersByID map[string]mod
 	return volunteer.DisplayName
 }
 
-// sortPreallocationViews puts the pins in reading order — by date, then the team
-// lead first, then by name — so a listing is stable whichever order the two
-// sources produced their entries in (config pins come out of maps).
-func sortPreallocationViews(views []PreallocationView) {
+// sortPreallocationViews puts the pins in reading order — by date, then by Role
+// priority, then by name — so a listing is stable whichever order the two
+// sources produced their entries in. Role priority is the order Seats are
+// filled in, which is the order a shift reads in everywhere else.
+func sortPreallocationViews(views []PreallocationView, roles model.Roles) {
+	// A Role config no longer names sorts last rather than first: it is a stale
+	// pin, and a listing should not open with one.
+	priority := func(name string) int {
+		if role, ok := roles.ByName(name); ok {
+			return role.Priority
+		}
+		return math.MaxInt
+	}
 	sort.Slice(views, func(i, j int) bool {
 		a, b := views[i], views[j]
 		if a.Date != b.Date {
 			return a.Date < b.Date
 		}
-		aLead := a.Role == string(model.RoleTeamLead)
-		bLead := b.Role == string(model.RoleTeamLead)
-		if aLead != bLead {
-			return aLead
+		if pa, pb := priority(a.Role), priority(b.Role); pa != pb {
+			return pa < pb
+		}
+		if a.Role != b.Role {
+			return a.Role < b.Role
 		}
 		if a.Name != b.Name {
 			return a.Name < b.Name
@@ -439,33 +457,44 @@ func sortPreallocationViews(views []PreallocationView) {
 }
 
 // configPreallocationState resolves the config Rota Overrides for a single date,
-// reporting whether the date is closed and whether config pins a team lead
-// there. It builds one rrule matcher per override over a single-date window
+// returning the pins they contribute there and whether the date is closed. It
+// builds one rrule matcher per override over a single-date window
 // (NewRRuleMatcher widens the window by a week, so a lone date matches
-// correctly).
-func configPreallocationState(cfg *config.Config, date time.Time) (closed, pinsTeamLead bool, err error) {
+// correctly), and mirrors InitShifts: a closed override drops what came before
+// it.
+func configPreallocationState(cfg *config.Config, date time.Time) (pins []config.Preallocation, closed bool, err error) {
 	if cfg == nil {
-		return false, false, nil
+		return nil, false, nil
 	}
 	dateStr := date.Format("2006-01-02")
 	for _, o := range cfg.RotaOverrides {
 		matcher, err := utils.NewRRuleMatcher(o.RRule, []time.Time{date})
 		if err != nil {
-			return false, false, fmt.Errorf("invalid rrule %q: %w", o.RRule, err)
+			return nil, false, fmt.Errorf("invalid rrule %q: %w", o.RRule, err)
 		}
 		if !matcher(dateStr) {
 			continue
 		}
 		if o.Closed {
 			closed = true
+			pins = nil
+			continue
 		}
-		for _, pin := range o.Preallocations {
-			if pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "" {
-				pinsTeamLead = true
-			}
+		pins = append(pins, o.Preallocations...)
+	}
+	return pins, closed, nil
+}
+
+// countRole counts the pins filling one Role, which is how many of its Seats
+// are already spoken for.
+func countRole(role string, pins []config.Preallocation) int {
+	count := 0
+	for _, pin := range pins {
+		if pin.Role == role {
+			count++
 		}
 	}
-	return closed, pinsTeamLead, nil
+	return count
 }
 
 // parseDateRange parses optional from/to bounds (YYYY-MM-DD), leaving a blank

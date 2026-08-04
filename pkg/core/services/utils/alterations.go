@@ -3,7 +3,6 @@ package utils
 import (
 	"sort"
 
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -11,9 +10,15 @@ import (
 // alterations, and returns the modified allocation map. Alterations are applied
 // in set_time order. This function is pure (no DB calls) and used by both
 // changeRota (validation) and publishRota (output).
+//
+// defaultRole is the Role an "add" with no Role of its own lands in — the
+// uncapped one. Alterations only gained a role column in 004_alteration_role,
+// so historical rows have none and this is read-path back-compat, not a
+// default anything new is written with.
 func ApplyAlterations(
 	allocationsByShiftID map[string][]db.Allocation,
 	alterations []db.Alteration,
+	defaultRole string,
 ) map[string][]db.Allocation {
 	// Sort alterations by set_time to ensure deterministic ordering
 	sorted := make([]db.Alteration, len(alterations))
@@ -43,7 +48,7 @@ func ApplyAlterations(
 		case "add":
 			role := alt.Role
 			if role == "" {
-				role = string(model.RoleVolunteer)
+				role = defaultRole
 			}
 			newAlloc := db.Allocation{
 				ShiftID: shiftID,

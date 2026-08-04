@@ -106,7 +106,7 @@ func ListShifts(
 	for _, a := range allocations {
 		allocationsByShiftID[a.ShiftID] = append(allocationsByShiftID[a.ShiftID], a)
 	}
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, alterations)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, alterations, cfg.RoleTable().UncappedName())
 
 	alterationCounts := make(map[string]int)
 	lastChanged := make(map[string]time.Time)

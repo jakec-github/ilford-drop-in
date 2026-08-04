@@ -340,9 +340,19 @@ func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config) ([]model.Volunt
 	return m.volunteers, m.err
 }
 
+// The two Roles S1 configures. Every endpoint that names a Role resolves it
+// against config, so a config without Roles is not a usable fixture.
+var apiTestRoles = []model.Role{
+	{Name: string(model.RoleTeamLead), Max: intPtr(1), Priority: 1},
+	{Name: string(model.RoleVolunteer), Priority: 2},
+}
+
+func intPtr(i int) *int { return &i }
+
 var apiTestCfg = &config.Config{
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
+	Roles:          apiTestRoles,
 }
 
 func testVolunteers() *mockVolunteerClient {
@@ -535,7 +545,7 @@ func alterationTestStore() *mockStore {
 
 func TestCreateAlterationEndpoint(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover"}`
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -560,9 +570,9 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	assert.Len(t, store.insertedAlterations, 2)
 }
 
-// TestCreateAlterationEndpoint_Role proves an admin adding someone can say which
-// role they take, rather than accepting the one the service would infer — here a
-// team lead where the volunteer's own role is service volunteer.
+// TestCreateAlterationEndpoint_Role proves an admin adding someone says which
+// Seat they take — here a team lead, where the roster records them only as a
+// service volunteer. The roster is advice, not a gate.
 func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"Leading tonight"}`
@@ -579,7 +589,7 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 // before any change is attempted.
 func TestCreateAlterationEndpoint_RequiresAdmin(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","reason":"Holiday cover"}`
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -624,7 +634,7 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","in":"nobody","reason":"x"}`,
+			body:       `{"date":"2026-01-11","in":"nobody","role":"Service volunteer","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
@@ -637,6 +647,12 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 		{
 			name:       "unknown role",
 			body:       `{"date":"2026-01-11","in":"charlie","role":"Supervisor","reason":"x"}`,
+			store:      alterationTestStore(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "no role for a volunteer coming in",
+			body:       `{"date":"2026-01-11","in":"charlie","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},

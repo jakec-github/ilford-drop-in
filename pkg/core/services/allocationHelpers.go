@@ -232,6 +232,7 @@ func buildHistoricalShifts(
 	allRotations []db.Rotation,
 	targetRota *db.Rotation,
 	volunteers []allocator.Volunteer,
+	uncappedRole string,
 	logger *zap.Logger,
 ) ([]*allocator.Shift, error) {
 	// Find the previous rota (the one before the target rota)
@@ -284,7 +285,7 @@ func buildHistoricalShifts(
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 	logger.Debug("Applying alterations to historical shifts", zap.Int("count", len(previousRotaAlterations)))
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, previousRotaAlterations)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, previousRotaAlterations, uncappedRole)
 
 	// Build a map of volunteers by ID for quick lookup
 	volunteersByID := make(map[string]allocator.Volunteer)
@@ -365,33 +366,23 @@ func convertConfigPreallocations(pins []config.Preallocation) []allocator.Preall
 }
 
 // configPreallocationsForDate collects the config-derived preallocations that
-// apply to a single date, mirroring InitShifts' per-date append semantics: the
-// set of preallocated volunteer ids, the (last) team-lead id, the set of custom
-// entries, and whether config closes the date. Manual pins are deduped against
-// exactly what config already contributes for that date.
-func configPreallocationsForDate(date string, overrides []allocator.ShiftOverride) (volIDs map[string]bool, teamLead string, customs map[string]bool, closed bool) {
-	volIDs = make(map[string]bool)
-	customs = make(map[string]bool)
+// apply to a single date, mirroring InitShifts exactly: every matching override
+// appends its pins in order, and a closed override drops what came before it.
+// Manual pins are deduped against exactly what config already contributes for
+// that date.
+func configPreallocationsForDate(date string, overrides []allocator.ShiftOverride) (pins []allocator.Preallocation, closed bool) {
 	for _, o := range overrides {
 		if !o.AppliesTo(date) {
 			continue
 		}
 		if o.Closed {
 			closed = true
+			pins = nil
 			continue
 		}
-		for _, pin := range o.Preallocations {
-			switch {
-			case pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "":
-				teamLead = pin.VolunteerID
-			case pin.VolunteerID != "":
-				volIDs[pin.VolunteerID] = true
-			case pin.Custom != "":
-				customs[pin.Custom] = true
-			}
-		}
+		pins = append(pins, o.Preallocations...)
 	}
-	return volIDs, teamLead, customs, closed
+	return pins, closed
 }
 
 // exactDateMatcher returns an AppliesTo predicate matching exactly one date, so
@@ -404,14 +395,16 @@ func exactDateMatcher(date string) func(string) bool {
 // exact-date allocator.ShiftOverride so InitShifts unions them with the
 // config-derived overrides through its existing append semantics — no new merge
 // logic in the solver (issue #39 / ADR 0003). Manual is add-only: a pin that
-// duplicates a config contribution for the same date (same volunteer id, same
-// custom entry, or a team lead when config already pins one) is dropped so it
-// never doubles a seat; config stays authoritative for the single-valued
-// team-lead slot. A pin whose date config closes contributes nothing.
+// duplicates a config contribution for the same date is dropped so it never
+// doubles a Seat. That is either the same subject — a person holds one Role on
+// a Shift, so a second pin naming them is not a second Seat — or a capped Role
+// config has already filled, since config stays authoritative for those. A pin
+// whose date config closes contributes nothing.
 func buildManualPreallocationOverrides(
 	manualPins []db.ManualPreallocation,
 	dateByShiftID map[string]string,
 	configOverrides []allocator.ShiftOverride,
+	roles model.Roles,
 ) ([]allocator.ShiftOverride, error) {
 	overrides := make([]allocator.ShiftOverride, 0, len(manualPins))
 
@@ -420,28 +413,29 @@ func buildManualPreallocationOverrides(
 		if !ok {
 			return nil, fmt.Errorf("manual preallocation %s references shift %s with no minted date", pin.ID, pin.ShiftID)
 		}
+		if pin.VolunteerID == "" && pin.CustomValue == "" {
+			return nil, fmt.Errorf("manual preallocation %s has neither a volunteer nor a custom value", pin.ID)
+		}
 
-		configVolIDs, configTL, configCustoms, configClosed := configPreallocationsForDate(date, configOverrides)
+		configPins, configClosed := configPreallocationsForDate(date, configOverrides)
 		if configClosed {
 			// Config closes this date; a manual pin cannot reopen it.
 			continue
 		}
 
-		switch {
-		case pin.Role == string(model.RoleTeamLead):
-			if configTL != "" {
-				continue // config is authoritative for the team-lead slot
+		if configPinsSubject(configPins, pin) {
+			continue // config already pins this person or entry here
+		}
+		if role, ok := roles.ByName(pin.Role); ok && role.Capped() {
+			filled := 0
+			for _, configPin := range configPins {
+				if configPin.Role == pin.Role {
+					filled++
+				}
 			}
-		case pin.VolunteerID != "":
-			if configVolIDs[pin.VolunteerID] {
-				continue // already preallocated by config
+			if filled >= *role.Max {
+				continue // config has filled this Role's Seats
 			}
-		case pin.CustomValue != "":
-			if configCustoms[pin.CustomValue] {
-				continue // identical custom entry already preallocated by config
-			}
-		default:
-			return nil, fmt.Errorf("manual preallocation %s has neither a volunteer nor a custom value", pin.ID)
 		}
 
 		overrides = append(overrides, allocator.ShiftOverride{
@@ -455,6 +449,20 @@ func buildManualPreallocationOverrides(
 	}
 
 	return overrides, nil
+}
+
+// configPinsSubject reports whether config already pins the same person or the
+// same custom entry, whatever Role it named them in.
+func configPinsSubject(configPins []allocator.Preallocation, pin db.ManualPreallocation) bool {
+	for _, configPin := range configPins {
+		if pin.VolunteerID != "" && configPin.VolunteerID == pin.VolunteerID {
+			return true
+		}
+		if pin.CustomValue != "" && configPin.Custom == pin.CustomValue {
+			return true
+		}
+	}
+	return false
 }
 
 // checkPreallocationsResolve verifies, before the solver runs, that every

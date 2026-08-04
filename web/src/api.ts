@@ -46,7 +46,7 @@ interface ApiVolunteer {
   id: string;
   name: string;
   fullName: string;
-  role?: string;
+  roles: string[];
   group?: string;
   gender?: string;
   active: boolean;
@@ -80,7 +80,10 @@ function toVolunteer(v: ApiVolunteer): Volunteer {
     id: v.id,
     name: v.name,
     fullName: v.fullName,
-    role: v.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
+    // A volunteer holds a set of roles; the frontend still speaks one, and it
+    // is the highest-priority one held — the order the API sends them in.
+    // Commit 12 of #89 widens Role itself and this collapses.
+    role: v.roles.includes(TEAM_LEAD_ROLE) ? "lead" : "volunteer",
     group: v.group || null,
     gender: v.gender || null,
     active: v.active,
@@ -186,17 +189,19 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
 // Resolves with nothing: the created pin comes back, but a caller showing pins
 // is showing both sources merged and sorted server-side, so it re-reads the
 // listing rather than splicing this one in. Throws the server's own message,
-// which names what it clashed with ("a team lead is already pinned to …").
+// which names what it clashed with ("every Team lead seat for … is already
+// pinned").
 export async function createPreallocation(
   pin: NewPreallocation,
 ): Promise<void> {
-  const body: Record<string, string | boolean> = { date: pin.date };
+  // Every pin names the role it fills — a pin is a promise about a job, and
+  // the API refuses one the pinned volunteer does not hold.
+  const body: Record<string, string> = {
+    date: pin.date,
+    role: pin.role === "lead" ? TEAM_LEAD_ROLE : SERVICE_VOLUNTEER_ROLE,
+  };
   if ("volunteerId" in pin.person) {
     body.volunteerId = pin.person.volunteerId;
-    // Sent only when it is true: the API refuses teamLead for a volunteer the
-    // roster does not record as one, so sending false everywhere else would be
-    // an extra way to get it wrong.
-    if (pin.role === "lead") body.teamLead = true;
   } else {
     body.custom = pin.person.custom;
   }

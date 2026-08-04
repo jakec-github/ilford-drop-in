@@ -57,6 +57,18 @@ func (r Roles) ByPriority() []Role {
 	return ordered
 }
 
+// UncappedName is the name of the uncapped Role, or "" where none is
+// configured. It is what anything unlabelled falls back to: an alteration
+// written before Roles were data, or a volunteer joining a shift in nobody's
+// place.
+func (r Roles) UncappedName() string {
+	role, ok := r.Uncapped()
+	if !ok {
+		return ""
+	}
+	return role.Name
+}
+
 // Uncapped returns the single Role with no ceiling — the one whose Seats a
 // Shift's size is spent on. Config permits exactly one in S1.
 func (r Roles) Uncapped() (Role, bool) {

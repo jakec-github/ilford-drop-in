@@ -21,27 +21,29 @@ import (
 // mapping to a fixed set of values would be this endpoint guessing on the
 // admin's behalf. The allocator's gender balancing does its own matching
 // (allocator.GenderMale), and so does anything counting the roster.
+// Roles are every Role the volunteer holds, in priority order — a volunteer
+// holds a set, not one, and which of them they fill is decided per shift.
 type volunteerResponse struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	FullName string `json:"fullName"`
-	Role     string `json:"role,omitempty"`
-	Group    string `json:"group,omitempty"`
-	Gender   string `json:"gender,omitempty"`
-	Active   bool   `json:"active"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	FullName string   `json:"fullName"`
+	Roles    []string `json:"roles"`
+	Group    string   `json:"group,omitempty"`
+	Gender   string   `json:"gender,omitempty"`
+	Active   bool     `json:"active"`
 }
 
 type listVolunteersResponse struct {
 	Volunteers []volunteerResponse `json:"volunteers"`
 }
 
-// firstRole returns the highest-priority Role held, or "" for a volunteer who
-// holds none.
-func firstRole(roles []string) string {
-	if len(roles) == 0 {
-		return ""
+// heldRoles renders the Roles a volunteer holds, keeping [] rather than null
+// for someone who holds none — a client should not have to tell the two apart.
+func heldRoles(roles []string) []string {
+	if roles == nil {
+		return []string{}
 	}
-	return roles[0]
+	return roles
 }
 
 // handleListVolunteers returns the synced volunteer roster, sorted by name. It
@@ -67,12 +69,7 @@ func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
 			// sheet would otherwise get a trailing space.
 			Name:     v.DisplayName,
 			FullName: strings.TrimSpace(v.FirstName + " " + v.LastName),
-			// The wire still carries one Role while the frontend expects one.
-			// Roles arrive in priority order, so the first is the Role a
-			// volunteer is known by — the same value this field held when the
-			// roster had a single Role column. Commit 12 of #89 widens it to
-			// the full set.
-			Role:   firstRole(v.Roles),
+			Roles:  heldRoles(v.Roles),
 			Group:  v.GroupKey,
 			Gender: v.Gender,
 			Active: strings.EqualFold(v.Status, "Active"),
