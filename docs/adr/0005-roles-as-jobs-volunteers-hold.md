@@ -1,7 +1,9 @@
 # Roles are jobs volunteers hold
 
 Status: accepted. Amended 2026-08-02: Tracks removed before implementation —
-see "Tracks, considered and dropped".
+see "Tracks, considered and dropped". Amended 2026-08-04: a Preallocation
+grants the Role it names for that one Shift (#109) — see "Eligibility is exact
+match on a held Role".
 
 Two hardcoded roles (`RoleTeamLead`, `RoleVolunteer`) are being replaced by
 configured **Roles**. A Role is a job on a Shift; a volunteer **holds** the
@@ -26,6 +28,18 @@ ADR exists.
   a broadly-open Role must be ticked per volunteer, and a deputy Role means
   saying who will actually deputise. That is arguably the truer statement:
   not every team lead wants the deputy job.
+
+  *Amended 2026-08-04 (#109):* a **Preallocation is the one exception**. It
+  grants the Role it names, for the Shift it names and no other. A pin is a
+  decision already taken off-system — somebody has been asked to do that job
+  that week — and refusing it because the roster has not caught up fails the
+  whole allocation over a missing tick, at the moment there is least time to
+  fix it. The alternative, adding the Role to the volunteer, was rejected: it
+  is not per-Shift, so a pin for one week would silently change who the solver
+  may pick them as for every other week in the rota. Availability is granted
+  the same way and for the same reason. What a pin still cannot do is invent a
+  Seat: a Role the Shift's Shape has none of remains an error, because that is
+  a statement about the Shift rather than about the person.
 
 - **No "open to all" shortcut.** Tempting, and always slightly wrong: it is not
   true that anyone on the roster may deputise, because the roster includes

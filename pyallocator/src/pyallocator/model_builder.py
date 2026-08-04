@@ -1,7 +1,8 @@
 """Builds the CP-SAT model: a BoolVar per (volunteer, shift, Role) the
-volunteer could actually fill, plus an attendance BoolVar per (volunteer,
-shift) equal to their sum. It then applies the constraint list and sums the
-preference terms into a single Maximize objective.
+volunteer could actually fill there (Problem.may_fill), plus an attendance
+BoolVar per (volunteer, shift) equal to their sum. It then applies the
+constraint list and sums the preference terms into a single Maximize
+objective.
 
 Equating the role vars with attendance is the model's one structural rule:
 a person fills at most one Seat per shift. Group atomicity is not
@@ -44,11 +45,11 @@ def build(
             attendance = model.NewBoolVar(f"attend[{v.id},{shift.index}]")
             attend[(v.id, shift.index)] = attendance
 
-            # Only Roles this volunteer holds and this shift's Shape asks for:
-            # any other variable would be a Seat nobody could fill.
+            # Only Roles this volunteer may fill on this shift and the Shape
+            # asks for: any other variable would be a Seat nobody could fill.
             role_vars = []
             for seat in shift.shape:
-                if seat.count <= 0 or not v.holds(seat.role):
+                if seat.count <= 0 or not problem.may_fill(v, shift.index, seat.role):
                     continue
                 role_var = model.NewBoolVar(f"role[{v.id},{shift.index},{seat.role}]")
                 role[(v.id, shift.index, seat.role)] = role_var

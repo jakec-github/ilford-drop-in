@@ -139,18 +139,12 @@ func BuildCpsatInput(
 		return nil, fmt.Errorf("no uncapped role configured: a shift's size has no Seats to be spent on")
 	}
 
-	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
-		Volunteers:        volunteers,
-		GroupAvailability: groupAvailability,
-		HistoricalShifts:  historicalShifts,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize volunteer groups: %w", err)
-	}
-
 	// InitShifts resolves per-shift size/closed/preallocations from the
 	// overrides. AvailableGroups isn't part of the contract (Python
 	// derives availability from groups), so an empty state suffices.
+	//
+	// It runs first because the pins it resolves settle availability for the
+	// shifts they name, and InitVolunteerGroups discards a group with none.
 	shiftSpecs, err := InitShifts(InitShiftsInput{
 		ShiftDates:       shiftDateStrings,
 		DefaultShiftSize: defaultShiftSize,
@@ -159,6 +153,15 @@ func BuildCpsatInput(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize shifts: %w", err)
+	}
+
+	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+		Volunteers:        volunteers,
+		GroupAvailability: withPreallocatedAvailability(groupAvailability, shiftSpecs, volunteers),
+		HistoricalShifts:  historicalShifts,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize volunteer groups: %w", err)
 	}
 
 	input := &CpsatInput{

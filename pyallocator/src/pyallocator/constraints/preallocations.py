@@ -9,10 +9,15 @@ pin says what someone will do and not merely that they will be there. Their
 group-mates get no such constraint: they attend, and the solver picks their
 Seat.
 
-Resolution of volunteer ids to groups — and the error cases (unknown id,
-pinned to a Role they do not hold or the shift has no Seat for) — happens in
-problem.py, because other constraints (availability) also need the resolved
-pairs.
+A pin to a Role the volunteer does not hold is honoured rather than
+rejected: it grants them that Seat on that shift alone (Problem.may_fill),
+because a pin records a decision already taken and the roster not yet
+saying so is the roster lagging. What it cannot do is invent a Seat — a
+Role the shift's Shape has none of is still an error.
+
+Resolution of volunteer ids to groups — and the error cases (unknown id, or
+a Role the shift has no Seat for) — happens in problem.py, because other
+constraints (availability) also need the resolved pairs.
 """
 
 from __future__ import annotations

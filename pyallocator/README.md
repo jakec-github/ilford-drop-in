@@ -64,6 +64,13 @@ Role's Seats per shift — `null` means uncapped, and exactly one Role is
 uncapped. `shape` is the shift's Seats, resolved in Go. Every preallocation
 names the Role it fills and sets exactly one of `volunteer_id` and `custom`.
 
+A preallocation is the exception to both eligibility rules, because it records
+a decision already taken rather than asking the solver to make one: the pinned
+volunteer fills the named Role on that shift whether or not they hold it, and
+attends whether or not their group said it was available. Both grants are
+confined to the pinned shift. Pinning to a Role the shift's `shape` has no Seat
+for is still an error — that is a statement about the shift, not the person.
+
 Output:
 
 ```json

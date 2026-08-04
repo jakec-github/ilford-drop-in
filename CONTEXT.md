@@ -22,7 +22,8 @@ acceptable alias.
 
 **Role**:
 A job on a Shift — Team lead, Service volunteer, Food collector. A volunteer
-holds the Roles they will do, and only a holder may be allocated to one. The
+holds the Roles they will do, and only a holder may be allocated to one, bar a
+Preallocation, which grants the Role it names for the one Shift it names. The
 job and the holding of it share one name; there is no separate notion of being
 qualified for a job you do not hold. A person fills at most one Role on a
 Shift, however many they hold.
@@ -85,7 +86,10 @@ setting their Shape, or preallocating people.
 **Preallocation**:
 A person pinned to a specific Shift before Allocation runs, naming the Role
 they will fill and forcing the allocator to place them (their group included).
-Has two sources — Config and Manual — that union into one set.
+Has two sources — Config and Manual — that union into one set. It records a
+decision already taken, so it settles both questions the allocator would
+otherwise ask of the roster: the pinned person is available for that Shift
+whatever they answered, and holds the Role it names for that Shift alone.
 _Avoid_: pin (except as the informal verb, "pin to a Shift")
 
 **Config Preallocation**:
