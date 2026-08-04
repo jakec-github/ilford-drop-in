@@ -55,7 +55,11 @@ type ShiftCoverage struct {
 // Role be filled at all", which is the one an admin chasing a lead is asking,
 // and summing them is not meaningful.
 type RoleCoverage struct {
-	Role      string
+	Role string
+	// Capped marks a Role with a ceiling. An empty capped Role is worth calling
+	// out on its own — a shift with nobody who can lead it is short in a way no
+	// number of ordinary volunteers fixes.
+	Capped    bool
 	Seats     int // Seats of this Role on the shift
 	Pinned    int // of those, already held by a preallocation
 	Needed    int // Seats - Pinned, floored at zero
@@ -256,6 +260,7 @@ func buildCoverage(
 			}
 			roleCoverage = append(roleCoverage, RoleCoverage{
 				Role:      role.Name,
+				Capped:    role.Capped(),
 				Seats:     seat.seats[role.Name],
 				Pinned:    seat.pinned[role.Name],
 				Needed:    needed,

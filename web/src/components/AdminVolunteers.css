@@ -133,10 +133,11 @@
 }
 
 /* Team leads take the rota's lead colour, so a lead looks like a lead wherever
-   they appear. Service volunteers stay neutral: they are most of the roster, so
-   colouring them too would tell the eye nothing and drown out the leads. Every
-   row is still labelled — the colour is the emphasis, not the information. */
-.roster-tag--role-lead {
+   they appear. Every other Role stays neutral: the uncapped one is most of the
+   roster, so colouring it too would tell the eye nothing and drown out the
+   leads. Every tag is still labelled — the colour is emphasis, not information,
+   which is why a Role added to the config needs no rule of its own. */
+.roster-tag--role[data-role="Team lead"] {
   border-color: var(--role-lead);
   color: var(--role-lead);
 }

@@ -64,12 +64,15 @@ type availabilityCoverageResponse struct {
 // availabilityRoleCoverage is one Role's Seats on one shift. Holders of two
 // Roles are counted under both, so these do not sum to the shift's total.
 type availabilityRoleCoverage struct {
-	Role      string `json:"role"`
-	Seats     int    `json:"seats"`
-	Pinned    int    `json:"pinned"`
-	Needed    int    `json:"needed"`
-	Available int    `json:"available"`
-	Delta     int    `json:"delta"`
+	Role string `json:"role"`
+	// Capped tells a client which Roles are worth flagging as empty on their
+	// own account, without it having to know which Roles the server configures.
+	Capped    bool `json:"capped"`
+	Seats     int  `json:"seats"`
+	Pinned    int  `json:"pinned"`
+	Needed    int  `json:"needed"`
+	Available int  `json:"available"`
+	Delta     int  `json:"delta"`
 }
 
 type availabilityRoundResponse struct {
@@ -219,6 +222,7 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 		for _, r := range s.Roles {
 			shift.Roles = append(shift.Roles, availabilityRoleCoverage{
 				Role:      r.Role,
+				Capped:    r.Capped,
 				Seats:     r.Seats,
 				Pinned:    r.Pinned,
 				Needed:    r.Needed,

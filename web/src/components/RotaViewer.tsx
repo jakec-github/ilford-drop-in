@@ -8,6 +8,7 @@ import type {
   RotaShift,
   Volunteer,
 } from "../types";
+import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
 import { usePreallocations } from "../hooks/usePreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
@@ -267,7 +268,6 @@ function Chip({
 }) {
   const cls = [
     "chip",
-    `role-${assignee.role}`,
     assignee.custom ? "custom" : "volunteer",
     assignee.group ? "has-group" : "",
     selected ? "selected" : "",
@@ -281,6 +281,11 @@ function Chip({
     <button
       type="button"
       className={cls}
+      // The Role is an attribute rather than a class: role names are
+      // configuration, so `role-${name}` would mint class names no stylesheet
+      // has a rule for. Chips are neutral by default and the CSS names the one
+      // Role it colours.
+      data-role={assignee.role}
       aria-label={label}
       draggable={draggable}
       // aria-disabled rather than disabled: the chip stays focusable, so
@@ -387,7 +392,10 @@ function swapBlockedReason(
 // the answer to "why is this person already here" on a rota nobody has run yet,
 // and the answer is not somewhere this UI can reach.
 function pinTitle(pin: Preallocation): string {
-  const role = pin.role === "lead" ? " as team lead" : "";
+  // Naming the uncapped Role would be noise — being pinned to a shift already
+  // means being pinned to one of its ordinary Seats.
+  const role =
+    pin.role === SERVICE_VOLUNTEER_ROLE ? "" : ` as ${pin.role.toLowerCase()}`;
   return pin.source === "config"
     ? `${pin.name} is pinned${role} by the rota config, and will be placed here when the rota is allocated. Changing it means editing the config.`
     : `${pin.name} is pinned${role} to this shift, and will be placed here when the rota is allocated.`;
@@ -420,7 +428,8 @@ function PreallocationList({
             // Two pins on one shift can share a name only if they are the same
             // person from both sources, which the source keeps apart.
             key={`${pin.source}/${pin.volunteerId ?? pin.name}`}
-            className={`prealloc-chip role-${pin.role} ${pin.custom ? "custom" : "volunteer"}`}
+            className={`prealloc-chip ${pin.custom ? "custom" : "volunteer"}`}
+            data-role={pin.role}
             title={pinTitle(pin)}
           >
             {pin.name}
@@ -1013,7 +1022,7 @@ export default function RotaViewer({
             // A shift has one team lead. Where it already has one, joining as
             // one is not on offer — the way to change who leads is to replace
             // them, which hands the role over rather than adding a second.
-            leadTaken: shift.assignees.some((a) => a.role === "lead"),
+            leadTaken: shift.assignees.some((a) => a.role === TEAM_LEAD_ROLE),
           },
         });
       },
@@ -1259,7 +1268,9 @@ export default function RotaViewer({
           // takes it, so either kind rules out a second — but the dialog says
           // different things about them, so it is told which.
           leadPinnedBy={
-            (pinsByDate.get(dialog.date) ?? []).find((p) => p.role === "lead")
+            (pinsByDate.get(dialog.date) ?? []).find(
+              (p) => p.role === TEAM_LEAD_ROLE,
+            )
               ?.source ?? null
           }
           pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}

@@ -303,12 +303,16 @@
   color: var(--chip);
 }
 
-.prealloc-chip.role-lead {
-  --chip: var(--role-lead);
+/* Role names are configuration, so the chip's Role is a data attribute and the
+   default colour has to stand on its own — a Role added to the config gets a
+   readable chip without a stylesheet change. Team lead is the one name spelled
+   out here, because a lead looking like a lead is the point. */
+.prealloc-chip {
+  --chip: var(--role-volunteer);
 }
 
-.prealloc-chip.role-volunteer {
-  --chip: var(--role-volunteer);
+.prealloc-chip[data-role="Team lead"] {
+  --chip: var(--role-lead);
 }
 
 /* Matching .chip: volunteers are rounded pills, custom entries squared tags. */
@@ -376,6 +380,10 @@
    clickable on the public rota and are the handle for every edit on the admin
    one, so they have to be reachable by keyboard either way. */
 .chip {
+  /* Role names are configuration, so the Role is a data attribute and the
+     default has to stand on its own — a Role added to the config gets a
+     readable chip without a stylesheet change. */
+  --chip: var(--role-volunteer);
   position: relative;
   display: inline-block;
   padding: 3px 10px;
@@ -392,12 +400,10 @@
   user-select: none;
 }
 
-.chip.role-lead {
+/* The one Role name spelled out in CSS, because a lead looking like a lead is
+   the point. */
+.chip[data-role="Team lead"] {
   --chip: var(--role-lead);
-}
-
-.chip.role-volunteer {
-  --chip: var(--role-volunteer);
 }
 
 /* Volunteers are rounded pills; custom (manual) entries are squared tags. */
