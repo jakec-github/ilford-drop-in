@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -19,11 +17,11 @@ import (
 
 // mockHistoricalStore implements ViewHistoricalResponsesStore
 type mockHistoricalStore struct {
-	rotations            []db.Rotation
-	shifts               []db.Shift
-	availabilityRequests []db.AvailabilityRequest
-	getRotationsErr      error
-	getAvailabilityErr   error
+	rotations          []db.Rotation
+	requests           []db.AvailabilityRequestV2
+	generations        map[string]db.AvailabilityGeneration // keyed by request id
+	getRotationsErr    error
+	getAvailabilityErr error
 }
 
 func (m *mockHistoricalStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -33,41 +31,42 @@ func (m *mockHistoricalStore) GetRotations(ctx context.Context) ([]db.Rotation, 
 	return m.rotations, nil
 }
 
-func (m *mockHistoricalStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
-	var filtered []db.Shift
-	for _, s := range m.shifts {
-		if s.RotaID == rotaID {
-			filtered = append(filtered, s)
+func (m *mockHistoricalStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
+	if m.getAvailabilityErr != nil {
+		return nil, m.getAvailabilityErr
+	}
+	var filtered []db.AvailabilityRequestV2
+	for _, r := range m.requests {
+		if r.RotaID == rotaID {
+			filtered = append(filtered, r)
 		}
 	}
 	return filtered, nil
 }
 
-func (m *mockHistoricalStore) GetAvailabilityRequests(ctx context.Context) ([]db.AvailabilityRequest, error) {
-	if m.getAvailabilityErr != nil {
-		return nil, m.getAvailabilityErr
+func (m *mockHistoricalStore) GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error) {
+	latest := make(map[string]db.AvailabilityGeneration)
+	for _, id := range requestIDs {
+		generation, ok := m.generations[id]
+		if !ok {
+			continue
+		}
+		if cutoff != nil && generation.SubmittedAt.After(*cutoff) {
+			continue
+		}
+		latest[id] = generation
 	}
-	return m.availabilityRequests, nil
+	return latest, nil
 }
 
-// mockHistoricalFormsClient implements HistoricalFormsClient
-type mockHistoricalFormsClient struct {
-	// responses keyed by "formID" -> FormResponse
-	responses map[string]*formsclient.FormResponse
-	err       error
-}
-
-func (m *mockHistoricalFormsClient) GetFormResponseBefore(formID string, volunteerName string, shiftDates []time.Time, before time.Time) (*formsclient.FormResponse, error) {
-	if m.err != nil {
-		return nil, m.err
+// answersOn builds a generation's positives from shift ids, submitted at the
+// given moment.
+func answersOn(submittedAt time.Time, shiftIDs ...string) db.AvailabilityGeneration {
+	answers := make([]db.ShiftAnswer, 0, len(shiftIDs))
+	for _, id := range shiftIDs {
+		answers = append(answers, db.ShiftAnswer{ShiftID: id, Answer: db.AnswerYes})
 	}
-	if resp, ok := m.responses[formID]; ok {
-		return resp, nil
-	}
-	return &formsclient.FormResponse{
-		VolunteerName: volunteerName,
-		HasResponded:  false,
-	}, nil
+	return db.AvailabilityGeneration{SubmittedAt: submittedAt, Answers: answers}
 }
 
 // mockHistoricalVolClient implements VolunteerClient
@@ -84,23 +83,44 @@ func (m *mockHistoricalVolClient) ListVolunteers(cfg *config.Config) ([]model.Vo
 	return m.volunteers, nil
 }
 
+// historicalCutoff is the moment every rota in these tests was allocated, and
+// therefore the moment answers stop counting.
+var historicalCutoff = time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
+func allocatedRota(id, start string, shiftCount int) db.Rotation {
+	return db.Rotation{
+		ID: id, Start: start, ShiftCount: shiftCount,
+		AllocatedDatetime: historicalCutoff.Format(time.RFC3339),
+	}
+}
+
+func historicalRequest(rotaID, volunteerID string) db.AvailabilityRequestV2 {
+	return db.AvailabilityRequestV2{
+		ID: rotaID + "/" + volunteerID, RotaID: rotaID, VolunteerID: volunteerID,
+		Token: "tok-" + rotaID + "-" + volunteerID,
+	}
+}
+
+// The four statuses, one of each. They are all read off the stored round now:
+// what used to be a form fetch per volunteer per rota is two queries per rota.
 func TestViewHistoricalResponses_BasicMatrix(t *testing.T) {
-	cutoff := time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	answered := historicalCutoff.Add(-24 * time.Hour)
 
 	store := &mockHistoricalStore{
 		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 6, AllocatedDatetime: cutoff},
-			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 8, AllocatedDatetime: cutoff},
+			allocatedRota("rota-1", "2025-01-05", 6),
+			allocatedRota("rota-2", "2025-03-02", 8),
 		},
-		shifts: append(
-			sundayShifts("rota-1", "2025-01-05", 6),
-			sundayShifts("rota-2", "2025-03-02", 8)...,
-		),
-		availabilityRequests: []db.AvailabilityRequest{
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a1", FormSent: true},
-			{RotaID: "rota-1", VolunteerID: "bob", FormID: "form-b1", FormSent: true},
-			{RotaID: "rota-2", VolunteerID: "alice", FormID: "form-a2", FormSent: true},
-			// Bob has no form for rota-2
+		requests: []db.AvailabilityRequestV2{
+			historicalRequest("rota-1", "alice"),
+			historicalRequest("rota-1", "bob"),
+			historicalRequest("rota-2", "alice"),
+			// Bob was not asked about rota-2.
+		},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(answered, "d1", "d2", "d3", "d4"),
+			"rota-1/bob":   answersOn(answered), // answered, available for nothing
+			// Alice never answered for rota-2.
 		},
 	}
 
@@ -111,67 +131,38 @@ func TestViewHistoricalResponses_BasicMatrix(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{
-		responses: map[string]*formsclient.FormResponse{
-			"form-a1": {HasResponded: true, AvailableDates: []string{"d1", "d2", "d3", "d4"}},
-			"form-b1": {HasResponded: true, AvailableDates: []string{}}, // no availability
-			"form-a2": {HasResponded: false},                            // no response
-		},
-	}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, nil)
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Should include both rotations
 	assert.Len(t, result.Rotations, 2)
 	assert.Equal(t, "rota-1", result.Rotations[0].ID)
 	assert.Equal(t, "rota-2", result.Rotations[1].ID)
-
-	// Should include both volunteers
 	assert.Len(t, result.Volunteers, 2)
 
-	// Alice rota-1: available with 4 dates
 	aliceR1 := result.Matrix["alice"]["rota-1"]
 	assert.Equal(t, "available", aliceR1.Status)
 	assert.Equal(t, 4, aliceR1.AvailableCount)
 	assert.Equal(t, 6, aliceR1.ShiftCount)
 
-	// Bob rota-1: no_availability (responded, 0 available dates)
 	bobR1 := result.Matrix["bob"]["rota-1"]
 	assert.Equal(t, "no_availability", bobR1.Status)
 	assert.Equal(t, 6, bobR1.ShiftCount)
 
-	// Alice rota-2: no_response
-	aliceR2 := result.Matrix["alice"]["rota-2"]
-	assert.Equal(t, "no_response", aliceR2.Status)
-
-	// Bob rota-2: no_form (no availability request for this rota)
-	bobR2 := result.Matrix["bob"]["rota-2"]
-	assert.Equal(t, "no_form", bobR2.Status)
+	assert.Equal(t, "no_response", result.Matrix["alice"]["rota-2"].Status)
+	assert.Equal(t, "no_form", result.Matrix["bob"]["rota-2"].Status)
 }
 
-func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
-	cutoff := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
-
+// The cut-off is the rota's own allocation. An answer changed after the rota
+// went out never informed it, so the report must not credit it — this is the
+// whole reason the read is bounded rather than "latest wins".
+func TestViewHistoricalResponses_IgnoresAnswersAfterAllocation(t *testing.T) {
 	store := &mockHistoricalStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
-			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 4, AllocatedDatetime: cutoff},
-			{ID: "rota-3", Start: "2025-05-04", ShiftCount: 4, AllocatedDatetime: cutoff},
-		},
-		shifts: append(append(
-			sundayShifts("rota-1", "2025-01-05", 4),
-			sundayShifts("rota-2", "2025-03-02", 4)...),
-			sundayShifts("rota-3", "2025-05-04", 4)...),
-		availabilityRequests: []db.AvailabilityRequest{
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "f1", FormSent: true},
-			{RotaID: "rota-2", VolunteerID: "alice", FormID: "f2", FormSent: true},
-			{RotaID: "rota-3", VolunteerID: "alice", FormID: "f3", FormSent: true},
+		rotations: []db.Rotation{allocatedRota("rota-1", "2025-01-05", 4)},
+		requests:  []db.AvailabilityRequestV2{historicalRequest("rota-1", "alice")},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(historicalCutoff.Add(time.Hour), "d1", "d2"),
 		},
 	}
 
@@ -181,20 +172,43 @@ func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{
-		responses: map[string]*formsclient.FormResponse{
-			"f1": {HasResponded: true, AvailableDates: []string{"d1"}},
-			"f2": {HasResponded: true, AvailableDates: []string{"d1"}},
-			"f3": {HasResponded: true, AvailableDates: []string{"d1"}},
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "no_response", result.Matrix["alice"]["rota-1"].Status,
+		"an answer given after allocation did not count towards that rota")
+}
+
+func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
+	answered := historicalCutoff.Add(-24 * time.Hour)
+
+	store := &mockHistoricalStore{
+		rotations: []db.Rotation{
+			allocatedRota("rota-1", "2025-01-05", 4),
+			allocatedRota("rota-2", "2025-03-02", 4),
+			allocatedRota("rota-3", "2025-05-04", 4),
+		},
+		requests: []db.AvailabilityRequestV2{
+			historicalRequest("rota-1", "alice"),
+			historicalRequest("rota-2", "alice"),
+			historicalRequest("rota-3", "alice"),
+		},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(answered, "d1"),
+			"rota-2/alice": answersOn(answered, "d1"),
+			"rota-3/alice": answersOn(answered, "d1"),
 		},
 	}
 
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
+	volClient := &mockHistoricalVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "Smith", Status: "Active"},
+		},
+	}
 
-	// Request only last 2
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 2, nil)
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 2, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Rotations, 2)
@@ -203,22 +217,21 @@ func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
 }
 
 func TestViewHistoricalResponses_FiltersUnallocatedRotations(t *testing.T) {
-	cutoff := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	answered := historicalCutoff.Add(-24 * time.Hour)
 
 	store := &mockHistoricalStore{
 		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
-			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 4, AllocatedDatetime: ""}, // not allocated
-			{ID: "rota-3", Start: "2025-05-04", ShiftCount: 4, AllocatedDatetime: cutoff},
+			allocatedRota("rota-1", "2025-01-05", 4),
+			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 4}, // not allocated
+			allocatedRota("rota-3", "2025-05-04", 4),
 		},
-		// rota-2 is unallocated and never selected, so it needs no shift rows
-		shifts: append(
-			sundayShifts("rota-1", "2025-01-05", 4),
-			sundayShifts("rota-3", "2025-05-04", 4)...,
-		),
-		availabilityRequests: []db.AvailabilityRequest{
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "f1", FormSent: true},
-			{RotaID: "rota-3", VolunteerID: "alice", FormID: "f3", FormSent: true},
+		requests: []db.AvailabilityRequestV2{
+			historicalRequest("rota-1", "alice"),
+			historicalRequest("rota-3", "alice"),
+		},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(answered, "d1"),
+			"rota-3/alice": answersOn(answered, "d1"),
 		},
 	}
 
@@ -228,38 +241,29 @@ func TestViewHistoricalResponses_FiltersUnallocatedRotations(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{
-		responses: map[string]*formsclient.FormResponse{
-			"f1": {HasResponded: true, AvailableDates: []string{"d1"}},
-			"f3": {HasResponded: true, AvailableDates: []string{"d1"}},
-		},
-	}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 10, nil)
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 10, nil)
 	require.NoError(t, err)
 
-	// Only allocated rotations (rota-1, rota-3)
 	assert.Len(t, result.Rotations, 2)
 	assert.Equal(t, "rota-1", result.Rotations[0].ID)
 	assert.Equal(t, "rota-3", result.Rotations[1].ID)
 }
 
 func TestViewHistoricalResponses_VolunteerIDFilter(t *testing.T) {
-	cutoff := time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	answered := historicalCutoff.Add(-24 * time.Hour)
 
 	store := &mockHistoricalStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
+		rotations: []db.Rotation{allocatedRota("rota-1", "2025-01-05", 4)},
+		requests: []db.AvailabilityRequestV2{
+			historicalRequest("rota-1", "alice"),
+			historicalRequest("rota-1", "bob"),
+			historicalRequest("rota-1", "carol"),
 		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 4),
-		availabilityRequests: []db.AvailabilityRequest{
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a", FormSent: true},
-			{RotaID: "rota-1", VolunteerID: "bob", FormID: "form-b", FormSent: true},
-			{RotaID: "rota-1", VolunteerID: "carol", FormID: "form-c", FormSent: true},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(answered, "d1"),
+			"rota-1/bob":   answersOn(answered, "d1"),
+			"rota-1/carol": answersOn(answered, "d1"),
 		},
 	}
 
@@ -271,24 +275,11 @@ func TestViewHistoricalResponses_VolunteerIDFilter(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{
-		responses: map[string]*formsclient.FormResponse{
-			"form-a": {HasResponded: true, AvailableDates: []string{"d1"}},
-			"form-b": {HasResponded: true, AvailableDates: []string{"d1"}},
-			"form-c": {HasResponded: true, AvailableDates: []string{"d1"}},
-		},
-	}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	// Filter to only alice and carol
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, []string{"alice", "carol"})
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, []string{"alice", "carol"})
 	require.NoError(t, err)
 
-	assert.Len(t, result.Volunteers, 2)
-
+	require.Len(t, result.Volunteers, 2)
 	volIDs := make(map[string]bool)
 	for _, vol := range result.Volunteers {
 		volIDs[vol.ID] = true
@@ -297,57 +288,13 @@ func TestViewHistoricalResponses_VolunteerIDFilter(t *testing.T) {
 	assert.True(t, volIDs["carol"])
 	assert.False(t, volIDs["bob"])
 
-	// Matrix should only have alice and carol
-	_, aliceExists := result.Matrix["alice"]
 	_, bobExists := result.Matrix["bob"]
-	_, carolExists := result.Matrix["carol"]
-	assert.True(t, aliceExists)
 	assert.False(t, bobExists)
-	assert.True(t, carolExists)
-}
-
-func TestViewHistoricalResponses_FormErrorHandledGracefully(t *testing.T) {
-	cutoff := time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
-
-	store := &mockHistoricalStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 4),
-		availabilityRequests: []db.AvailabilityRequest{
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-deleted", FormSent: true},
-		},
-	}
-
-	volClient := &mockHistoricalVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith", Status: "Active"},
-		},
-	}
-
-	// All form requests return an error (simulating deleted form)
-	formsClient := &mockHistoricalFormsClient{
-		err: fmt.Errorf("googleapi: Error 404: Requested entity was not found"),
-	}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, nil)
-	require.NoError(t, err)
-
-	// Should have form_error status, not a fatal error
-	aliceR1 := result.Matrix["alice"]["rota-1"]
-	assert.Equal(t, "form_error", aliceR1.Status)
-	assert.Equal(t, 4, aliceR1.ShiftCount)
 }
 
 func TestViewHistoricalResponses_NoAllocatedRotations(t *testing.T) {
 	store := &mockHistoricalStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: ""},
-		},
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4}},
 	}
 
 	volClient := &mockHistoricalVolClient{
@@ -356,38 +303,33 @@ func TestViewHistoricalResponses_NoAllocatedRotations(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	_, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, nil)
+	_, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no allocated rotations found")
 }
 
+// Someone who was not on the roster when a round was minted has no request for
+// it, which reads as "not asked" rather than as a missed reply.
 func TestViewHistoricalResponses_VolunteerAcrossRotations(t *testing.T) {
-	// A volunteer with forms in rota-1 but not rota-2 should show "no_form" for rota-2
-	cutoff := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	answered := historicalCutoff.Add(-24 * time.Hour)
 
 	store := &mockHistoricalStore{
 		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
-			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 6, AllocatedDatetime: cutoff},
+			allocatedRota("rota-1", "2025-01-05", 4),
+			allocatedRota("rota-2", "2025-03-02", 6),
 		},
-		shifts: append(
-			sundayShifts("rota-1", "2025-01-05", 4),
-			sundayShifts("rota-2", "2025-03-02", 6)...,
-		),
-		availabilityRequests: []db.AvailabilityRequest{
-			// Alice has forms for both
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "f-a1", FormSent: true},
-			{RotaID: "rota-2", VolunteerID: "alice", FormID: "f-a2", FormSent: true},
-			// Bob only has form for rota-1
-			{RotaID: "rota-1", VolunteerID: "bob", FormID: "f-b1", FormSent: true},
-			// Carol only has form for rota-2
-			{RotaID: "rota-2", VolunteerID: "carol", FormID: "f-c2", FormSent: true},
+		requests: []db.AvailabilityRequestV2{
+			historicalRequest("rota-1", "alice"),
+			historicalRequest("rota-2", "alice"),
+			historicalRequest("rota-1", "bob"),   // bob only in rota-1
+			historicalRequest("rota-2", "carol"), // carol only in rota-2
+		},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(answered, "d1", "d2", "d3", "d4"),
+			"rota-2/alice": answersOn(answered, "d1", "d2", "d3", "d4", "d5", "d6"),
+			"rota-1/bob":   answersOn(answered, "d1", "d2"),
+			"rota-2/carol": answersOn(answered, "d1"),
 		},
 	}
 
@@ -399,53 +341,32 @@ func TestViewHistoricalResponses_VolunteerAcrossRotations(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{
-		responses: map[string]*formsclient.FormResponse{
-			"f-a1": {HasResponded: true, AvailableDates: []string{"d1", "d2", "d3", "d4"}},
-			"f-a2": {HasResponded: true, AvailableDates: []string{"d1", "d2", "d3", "d4", "d5", "d6"}},
-			"f-b1": {HasResponded: true, AvailableDates: []string{"d1", "d2"}},
-			"f-c2": {HasResponded: true, AvailableDates: []string{"d1"}},
-		},
-	}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, nil)
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 
-	// All three volunteers should appear
 	assert.Len(t, result.Volunteers, 3)
-
-	// Bob rota-2: no_form
 	assert.Equal(t, "no_form", result.Matrix["bob"]["rota-2"].Status)
-
-	// Carol rota-1: no_form
 	assert.Equal(t, "no_form", result.Matrix["carol"]["rota-1"].Status)
-
-	// Alice: available in both
 	assert.Equal(t, "available", result.Matrix["alice"]["rota-1"].Status)
 	assert.Equal(t, 4, result.Matrix["alice"]["rota-1"].AvailableCount)
 	assert.Equal(t, "available", result.Matrix["alice"]["rota-2"].Status)
 	assert.Equal(t, 6, result.Matrix["alice"]["rota-2"].AvailableCount)
-
-	// Carol rota-2: available with 1
-	assert.Equal(t, "available", result.Matrix["carol"]["rota-2"].Status)
 	assert.Equal(t, 1, result.Matrix["carol"]["rota-2"].AvailableCount)
 }
 
 func TestViewHistoricalResponses_EmptyVolunteerIDFilterShowsAll(t *testing.T) {
-	cutoff := time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	answered := historicalCutoff.Add(-24 * time.Hour)
 
 	store := &mockHistoricalStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 4, AllocatedDatetime: cutoff},
+		rotations: []db.Rotation{allocatedRota("rota-1", "2025-01-05", 4)},
+		requests: []db.AvailabilityRequestV2{
+			historicalRequest("rota-1", "alice"),
+			historicalRequest("rota-1", "bob"),
 		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 4),
-		availabilityRequests: []db.AvailabilityRequest{
-			{RotaID: "rota-1", VolunteerID: "alice", FormID: "form-a", FormSent: true},
-			{RotaID: "rota-1", VolunteerID: "bob", FormID: "form-b", FormSent: true},
+		generations: map[string]db.AvailabilityGeneration{
+			"rota-1/alice": answersOn(answered, "d1"),
+			"rota-1/bob":   answersOn(answered, "d1"),
 		},
 	}
 
@@ -456,24 +377,13 @@ func TestViewHistoricalResponses_EmptyVolunteerIDFilterShowsAll(t *testing.T) {
 		},
 	}
 
-	formsClient := &mockHistoricalFormsClient{
-		responses: map[string]*formsclient.FormResponse{
-			"form-a": {HasResponded: true, AvailableDates: []string{"d1"}},
-			"form-b": {HasResponded: true, AvailableDates: []string{"d1"}},
-		},
-	}
-
-	ctx := context.Background()
-	logger := zap.NewNop()
-	cfg := &config.Config{}
-
-	// Empty slice should show all volunteers
-	result, err := ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, []string{})
+	result, err := ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, []string{})
 	require.NoError(t, err)
 	assert.Len(t, result.Volunteers, 2)
 
-	// nil should also show all
-	result, err = ViewHistoricalResponses(ctx, store, volClient, formsClient, cfg, logger, 5, nil)
+	result, err = ViewHistoricalResponses(
+		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 	assert.Len(t, result.Volunteers, 2)
 }
