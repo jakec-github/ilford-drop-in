@@ -296,8 +296,11 @@ func buildHistoricalShifts(
 	// Build historical shifts
 	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByShiftID))
 	for shiftID, allocations := range allocationsByShiftID {
-		// Group volunteers by their GroupKey to reconstruct volunteer groups,
-		// skipping custom entries and unknown volunteer ids
+		// Group volunteers by allocator.GroupKeyFor to reconstruct volunteer
+		// groups, skipping custom entries and unknown volunteer ids. Only the
+		// key travels into the solver, and it is matched against the keys of
+		// the rota being allocated — so history must be grouped by the same
+		// rule, under which an ungrouped volunteer is their own group of one.
 		volunteersByGroup := make(map[string][]allocator.Volunteer)
 		for _, allocation := range allocations {
 			if allocation.VolunteerID == "" {
@@ -307,13 +310,14 @@ func buildHistoricalShifts(
 			if !exists {
 				continue
 			}
-			volunteersByGroup[volunteer.GroupKey] = append(volunteersByGroup[volunteer.GroupKey], volunteer)
+			groupKey := allocator.GroupKeyFor(volunteer)
+			volunteersByGroup[groupKey] = append(volunteersByGroup[groupKey], volunteer)
 		}
 
 		// Build AllocatedGroups for this shift using the allocator's BuildVolunteerGroup helper
 		allocatedGroups := make([]*allocator.VolunteerGroup, 0, len(volunteersByGroup))
-		for groupKey, members := range volunteersByGroup {
-			group := allocator.BuildVolunteerGroup(groupKey, members)
+		for _, members := range volunteersByGroup {
+			group := allocator.BuildVolunteerGroup(members)
 			allocatedGroups = append(allocatedGroups, group)
 		}
 
