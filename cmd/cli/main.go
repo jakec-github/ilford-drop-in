@@ -10,8 +10,6 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/cmd/cli/commands"
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils"
@@ -53,15 +51,11 @@ func main() {
 	// Add commands with lazy initialization
 	// These will use the app context after it's initialized by PersistentPreRunE
 	rootCmd.AddCommand(newLazyCommand(commands.DefineRotaCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.RequestAvailabilityCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.SendAvailabilityRemindersCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.ViewResponsesCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.AllocateRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.BackfillAvailabilityCmd))
 
 	// Not lazy, and deliberately not initialised: validate-config reads a file
 	// and nothing else, so it can vet a prod config from a laptop. It shadows
@@ -139,22 +133,6 @@ func initApp() error {
 	}
 	logger.Debug("Sheets client initialized successfully")
 
-	// Initialize forms client (uses same OAuth token from sheets client)
-	logger.Debug("Initializing forms client")
-	formsClient, err := formsclient.NewClient(ctx, oauthCfg, sheetsClient.Token())
-	if err != nil {
-		return fmt.Errorf("failed to create forms client: %w", err)
-	}
-	logger.Debug("Forms client initialized successfully")
-
-	// Initialize gmail client (uses same OAuth token from sheets client)
-	logger.Debug("Initializing gmail client")
-	gmailClient, err := gmailclient.NewClient(ctx, oauthCfg, sheetsClient.Token())
-	if err != nil {
-		return fmt.Errorf("failed to create gmail client: %w", err)
-	}
-	logger.Debug("Gmail client initialized successfully")
-
 	// Get authenticated user email for audit trail (from token, no extra scopes needed)
 	userEmail, err := utils.GetTokenEmail(ctx, sheetsClient.Token())
 	if err != nil {
@@ -178,8 +156,6 @@ func initApp() error {
 	app = &commands.AppContext{
 		Cfg:          cfg,
 		SheetsClient: sheetsClient,
-		FormsClient:  formsClient,
-		GmailClient:  gmailClient,
 		Database:     database,
 		Logger:       logger,
 		Ctx:          ctx,

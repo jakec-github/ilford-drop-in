@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
@@ -50,7 +49,6 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 type mockAllocateRotaStore struct {
 	rotations                  []db.Rotation
 	shifts                     []db.Shift
-	availabilityRequests       []db.AvailabilityRequest
 	availabilityRequestsV2     []db.AvailabilityRequestV2
 	generations                map[string]db.AvailabilityGeneration // keyed by request id
 	allocations                []db.Allocation
@@ -78,19 +76,6 @@ func (m *mockAllocateRotaStore) GetShiftsByRotaID(ctx context.Context, rotaID st
 	for _, s := range m.shifts {
 		if s.RotaID == rotaID {
 			filtered = append(filtered, s)
-		}
-	}
-	return filtered, nil
-}
-
-func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
-	if m.getAvailabilityErr != nil {
-		return nil, m.getAvailabilityErr
-	}
-	var filtered []db.AvailabilityRequest
-	for _, r := range m.availabilityRequests {
-		if r.RotaID == rotaID {
-			filtered = append(filtered, r)
 		}
 	}
 	return filtered, nil
@@ -190,30 +175,6 @@ func (m *mockVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, e
 	// Compute display names like the real client does
 	sheetsclient.ComputeDisplayNames(m.volunteers)
 	return m.volunteers, nil
-}
-
-// mockFormsClientWithResponses implements FormsClientWithResponses for testing
-type mockFormsClientWithResponses struct {
-	responses map[string]*formsclient.FormResponse // Map of volunteer name to response
-	getErr    error
-}
-
-func (m *mockFormsClientWithResponses) GetFormResponse(formID string, volunteerName string, shiftDates []time.Time) (*formsclient.FormResponse, error) {
-	if m.getErr != nil {
-		return nil, m.getErr
-	}
-	if resp, ok := m.responses[volunteerName]; ok {
-		return resp, nil
-	}
-	// Default: not responded
-	return &formsclient.FormResponse{
-		HasResponded:     false,
-		UnavailableDates: []string{},
-	}, nil
-}
-
-func (m *mockFormsClientWithResponses) HasResponse(formID string) (bool, error) {
-	return false, nil
 }
 
 func TestConvertToDBAllocations(t *testing.T) {

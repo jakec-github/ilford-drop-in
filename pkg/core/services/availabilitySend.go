@@ -60,6 +60,15 @@ type SentEmail struct {
 	Email         string
 }
 
+// FailedEmail is one that did not go out, carrying the reason so an admin can
+// tell a dead address from a Gmail hiccup worth retrying.
+type FailedEmail struct {
+	VolunteerID   string
+	VolunteerName string
+	Email         string
+	Error         string
+}
+
 // SendReport is what a send did. Sent and Failed together account for everyone
 // the mode selected; a volunteer the mode passed over appears in neither,
 // because "we deliberately did not email them" is not a result to report.
