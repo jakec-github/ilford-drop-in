@@ -18,7 +18,7 @@ import (
 // mockHistoricalStore implements ViewHistoricalResponsesStore
 type mockHistoricalStore struct {
 	rotations          []db.Rotation
-	requests           []db.AvailabilityRequestV2
+	requests           []db.AvailabilityRequest
 	generations        map[string]db.AvailabilityGeneration // keyed by request id
 	getRotationsErr    error
 	getAvailabilityErr error
@@ -31,11 +31,11 @@ func (m *mockHistoricalStore) GetRotations(ctx context.Context) ([]db.Rotation, 
 	return m.rotations, nil
 }
 
-func (m *mockHistoricalStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
+func (m *mockHistoricalStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
 	if m.getAvailabilityErr != nil {
 		return nil, m.getAvailabilityErr
 	}
-	var filtered []db.AvailabilityRequestV2
+	var filtered []db.AvailabilityRequest
 	for _, r := range m.requests {
 		if r.RotaID == rotaID {
 			filtered = append(filtered, r)
@@ -94,8 +94,8 @@ func allocatedRota(id, start string, shiftCount int) db.Rotation {
 	}
 }
 
-func historicalRequest(rotaID, volunteerID string) db.AvailabilityRequestV2 {
-	return db.AvailabilityRequestV2{
+func historicalRequest(rotaID, volunteerID string) db.AvailabilityRequest {
+	return db.AvailabilityRequest{
 		ID: rotaID + "/" + volunteerID, RotaID: rotaID, VolunteerID: volunteerID,
 		Token: "tok-" + rotaID + "-" + volunteerID,
 	}
@@ -111,7 +111,7 @@ func TestViewHistoricalResponses_BasicMatrix(t *testing.T) {
 			allocatedRota("rota-1", "2025-01-05", 6),
 			allocatedRota("rota-2", "2025-03-02", 8),
 		},
-		requests: []db.AvailabilityRequestV2{
+		requests: []db.AvailabilityRequest{
 			historicalRequest("rota-1", "alice"),
 			historicalRequest("rota-1", "bob"),
 			historicalRequest("rota-2", "alice"),
@@ -160,7 +160,7 @@ func TestViewHistoricalResponses_BasicMatrix(t *testing.T) {
 func TestViewHistoricalResponses_IgnoresAnswersAfterAllocation(t *testing.T) {
 	store := &mockHistoricalStore{
 		rotations: []db.Rotation{allocatedRota("rota-1", "2025-01-05", 4)},
-		requests:  []db.AvailabilityRequestV2{historicalRequest("rota-1", "alice")},
+		requests:  []db.AvailabilityRequest{historicalRequest("rota-1", "alice")},
 		generations: map[string]db.AvailabilityGeneration{
 			"rota-1/alice": answersOn(historicalCutoff.Add(time.Hour), "d1", "d2"),
 		},
@@ -189,7 +189,7 @@ func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
 			allocatedRota("rota-2", "2025-03-02", 4),
 			allocatedRota("rota-3", "2025-05-04", 4),
 		},
-		requests: []db.AvailabilityRequestV2{
+		requests: []db.AvailabilityRequest{
 			historicalRequest("rota-1", "alice"),
 			historicalRequest("rota-2", "alice"),
 			historicalRequest("rota-3", "alice"),
@@ -225,7 +225,7 @@ func TestViewHistoricalResponses_FiltersUnallocatedRotations(t *testing.T) {
 			{ID: "rota-2", Start: "2025-03-02", ShiftCount: 4}, // not allocated
 			allocatedRota("rota-3", "2025-05-04", 4),
 		},
-		requests: []db.AvailabilityRequestV2{
+		requests: []db.AvailabilityRequest{
 			historicalRequest("rota-1", "alice"),
 			historicalRequest("rota-3", "alice"),
 		},
@@ -255,7 +255,7 @@ func TestViewHistoricalResponses_VolunteerIDFilter(t *testing.T) {
 
 	store := &mockHistoricalStore{
 		rotations: []db.Rotation{allocatedRota("rota-1", "2025-01-05", 4)},
-		requests: []db.AvailabilityRequestV2{
+		requests: []db.AvailabilityRequest{
 			historicalRequest("rota-1", "alice"),
 			historicalRequest("rota-1", "bob"),
 			historicalRequest("rota-1", "carol"),
@@ -319,7 +319,7 @@ func TestViewHistoricalResponses_VolunteerAcrossRotations(t *testing.T) {
 			allocatedRota("rota-1", "2025-01-05", 4),
 			allocatedRota("rota-2", "2025-03-02", 6),
 		},
-		requests: []db.AvailabilityRequestV2{
+		requests: []db.AvailabilityRequest{
 			historicalRequest("rota-1", "alice"),
 			historicalRequest("rota-2", "alice"),
 			historicalRequest("rota-1", "bob"),   // bob only in rota-1
@@ -360,7 +360,7 @@ func TestViewHistoricalResponses_EmptyVolunteerIDFilterShowsAll(t *testing.T) {
 
 	store := &mockHistoricalStore{
 		rotations: []db.Rotation{allocatedRota("rota-1", "2025-01-05", 4)},
-		requests: []db.AvailabilityRequestV2{
+		requests: []db.AvailabilityRequest{
 			historicalRequest("rota-1", "alice"),
 			historicalRequest("rota-1", "bob"),
 		},

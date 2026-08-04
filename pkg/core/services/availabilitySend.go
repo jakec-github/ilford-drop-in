@@ -60,6 +60,15 @@ type SentEmail struct {
 	Email         string
 }
 
+// FailedEmail is one that did not go out, carrying the reason so an admin can
+// tell a dead address from a Gmail hiccup worth retrying.
+type FailedEmail struct {
+	VolunteerID   string
+	VolunteerName string
+	Email         string
+	Error         string
+}
+
 // SendReport is what a send did. Sent and Failed together account for everyone
 // the mode selected; a volunteer the mode passed over appears in neither,
 // because "we deliberately did not email them" is not a result to report.
@@ -102,7 +111,7 @@ func SendAvailabilityEmails(
 		return nil, wrapf(ErrConflict, "rota %s is already allocated, so its availability links no longer work", rota.ID)
 	}
 
-	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rota.ID)
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
@@ -214,7 +223,7 @@ func SendAvailabilityEmails(
 // recipient pairs a request with the volunteer it belongs to, which every send
 // needs together: the token comes from one and the address from the other.
 type recipient struct {
-	request   db.AvailabilityRequestV2
+	request   db.AvailabilityRequest
 	volunteer model.Volunteer
 }
 
@@ -225,7 +234,7 @@ func selectRecipients(
 	ctx context.Context,
 	database AvailabilityStore,
 	rota *db.Rotation,
-	requests []db.AvailabilityRequestV2,
+	requests []db.AvailabilityRequest,
 	volunteers []model.Volunteer,
 	params SendParams,
 ) ([]recipient, error) {
@@ -291,7 +300,7 @@ func groupsThatHaveAnswered(
 	ctx context.Context,
 	database AvailabilityStore,
 	rota *db.Rotation,
-	requests []db.AvailabilityRequestV2,
+	requests []db.AvailabilityRequest,
 	volunteers []model.Volunteer,
 	mode SendMode,
 ) (map[string]bool, error) {

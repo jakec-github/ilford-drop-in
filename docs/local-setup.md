@@ -16,11 +16,11 @@ Cloud project** for the path this guide describes.
 > the real, Sheets-backed path, and is what you need to develop against actual
 > data or to use the CLI.
 
-> **Scope.** Production and the availability journey (`requestAvailability`,
-> `viewResponses`, `allocateRota`, `publishRota`) are **not** expected to work
-> for outside contributors — they need real Forms/Sheets wired up and, for
-> prod, infrastructure access. This guide covers everything needed to run the
-> app, view the rota, and develop against it locally.
+> **Scope.** Production and the sheet-backed commands (`allocateRota`,
+> `publishRota`, `listVolunteers`) are **not** expected to work for outside
+> contributors — they need real Sheets wired up and, for prod, infrastructure
+> access. This guide covers everything needed to run the app, view the rota, and
+> develop against it locally.
 
 ## 1. Prerequisites
 
@@ -41,15 +41,15 @@ different part of the system. Set up all three for the `test` environment.
 1. **Create a project** in the [Google Cloud Console](https://console.cloud.google.com/)
    and enable these APIs (APIs & Services → Library):
    - Google Sheets API
-   - Google Forms API
    - Gmail API
 
 2. **Desktop OAuth client** — used by the **CLI**.
    - APIs & Services → Credentials → Create credentials → OAuth client ID →
      **Desktop app**.
    - Download the JSON and save it in the repo root as `oauthClient.test.json`.
-   - On first CLI run this opens a browser to authorise scopes (Sheets, Forms,
-     Gmail send, email). The resulting token is cached at
+   - On first CLI run this opens a browser to authorise two scopes: Sheets, to
+     read the volunteer roster, and email, to record who ran the command. The
+     resulting token is cached at
      `~/.ilford-drop-in/tokens/token-test.json` — delete that file to force
      re-authorisation.
    - The Google account you authorise **must have access to the sheets** in

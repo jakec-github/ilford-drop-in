@@ -66,16 +66,15 @@ All commands take `-e`/`--env` to pick the config environment
 | --- | --- |
 | `listVolunteers` | List volunteers from the volunteer sheet. |
 | `defineRota <n>` | Create a rotation with `n` weekly shifts (DB only). |
-| `requestAvailability <deadline>` | Send availability requests to volunteers. |
-| `sendAvailabilityReminders <deadline>` | Remind volunteers who haven't responded. |
-| `viewResponses [rota_id]` | Show availability responses for a rota. |
 | `allocateRota [--seed <n>] [--dry-run]` | Generate the rota from responses. |
 | `publishRota` | Publish the latest rota to the rota sheet. |
 | `changeRota ...` | Apply post-allocation changes (covers/alterations). |
 | `viewHistoricalResponses ...` | Inspect past availability responses. |
 
-The availability/allocation/publish commands talk to Google Forms and Sheets;
-see [`docs/local-setup.md`](docs/local-setup.md) for what they need.
+Availability itself is collected and chased through the web app, not the CLI:
+mint a round and send the links from the availability tab. The allocation and
+publish commands read the volunteer sheet; see
+[`docs/local-setup.md`](docs/local-setup.md) for what they need.
 
 ## Requirements
 

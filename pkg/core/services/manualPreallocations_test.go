@@ -173,7 +173,7 @@ func TestAllocateRotaFailsOnStaleManualPin(t *testing.T) {
 			{ID: "rota-1", Start: "2026-08-02", ShiftCount: 1},
 		},
 		shifts: sundayShifts("rota-1", "2026-08-02", 1),
-		availabilityRequestsV2: []db.AvailabilityRequestV2{
+		availabilityRequests: []db.AvailabilityRequest{
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", Token: "tok-1"},
 		},
 		generations: map[string]db.AvailabilityGeneration{

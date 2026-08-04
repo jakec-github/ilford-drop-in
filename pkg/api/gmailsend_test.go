@@ -47,7 +47,7 @@ func sendTestStore() *mockStore {
 			{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02"},
 			{ID: "shift-2", RotaID: "rota-1", Date: "2026-08-09"},
 		},
-		availabilityRequests: []db.AvailabilityRequestV2{
+		availabilityRequests: []db.AvailabilityRequest{
 			{ID: "req-alice", RotaID: "rota-1", VolunteerID: "alice", Token: "tok-alice"},
 			{ID: "req-bob", RotaID: "rota-1", VolunteerID: "bob", Token: "tok-bob"},
 			{ID: "req-charlie", RotaID: "rota-1", VolunteerID: "charlie", Token: "tok-charlie"},

@@ -6,8 +6,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/formsclient"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -16,8 +14,6 @@ import (
 type AppContext struct {
 	Cfg          *config.Config
 	SheetsClient *sheetsclient.Client
-	FormsClient  *formsclient.Client
-	GmailClient  *gmailclient.Client
 	Database     *db.DB
 	Logger       *zap.Logger
 	Ctx          context.Context

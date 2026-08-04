@@ -22,7 +22,7 @@ import (
 type mockAvailabilityStore struct {
 	rotations   []db.Rotation
 	shifts      []db.Shift
-	requests    []db.AvailabilityRequestV2
+	requests    []db.AvailabilityRequest
 	generations []db.AvailabilityGeneration
 	manualPins  []db.ManualPreallocation
 	nextID      int
@@ -56,7 +56,7 @@ func (m *mockAvailabilityStore) GetShiftsByRotaID(_ context.Context, rotaID stri
 	return out, nil
 }
 
-func (m *mockAvailabilityStore) MintAvailabilityRequests(_ context.Context, requests []db.AvailabilityRequestV2) (int, error) {
+func (m *mockAvailabilityStore) MintAvailabilityRequests(_ context.Context, requests []db.AvailabilityRequest) (int, error) {
 	inserted := 0
 	for _, req := range requests {
 		if _, exists := m.findRequest(req.RotaID, req.VolunteerID); exists {
@@ -68,17 +68,17 @@ func (m *mockAvailabilityStore) MintAvailabilityRequests(_ context.Context, requ
 	return inserted, nil
 }
 
-func (m *mockAvailabilityStore) findRequest(rotaID, volunteerID string) (db.AvailabilityRequestV2, bool) {
+func (m *mockAvailabilityStore) findRequest(rotaID, volunteerID string) (db.AvailabilityRequest, bool) {
 	for _, r := range m.requests {
 		if r.RotaID == rotaID && r.VolunteerID == volunteerID {
 			return r, true
 		}
 	}
-	return db.AvailabilityRequestV2{}, false
+	return db.AvailabilityRequest{}, false
 }
 
-func (m *mockAvailabilityStore) GetAvailabilityRequestsV2ByRotaID(_ context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
-	var out []db.AvailabilityRequestV2
+func (m *mockAvailabilityStore) GetAvailabilityRequestsByRotaID(_ context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
+	var out []db.AvailabilityRequest
 	for _, r := range m.requests {
 		if r.RotaID == rotaID {
 			out = append(out, r)
@@ -98,7 +98,7 @@ func (m *mockAvailabilityStore) MarkAvailabilityRequestSent(_ context.Context, i
 	return fmt.Errorf("no availability request %s", id)
 }
 
-func (m *mockAvailabilityStore) GetAvailabilityRequestByToken(_ context.Context, token string) (*db.AvailabilityRequestV2, error) {
+func (m *mockAvailabilityStore) GetAvailabilityRequestByToken(_ context.Context, token string) (*db.AvailabilityRequest, error) {
 	for i := range m.requests {
 		if m.requests[i].Token == token {
 			return &m.requests[i], nil

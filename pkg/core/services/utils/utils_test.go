@@ -7,22 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
-	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
-
-func TestFilterSentRequests(t *testing.T) {
-	requests := []db.AvailabilityRequest{
-		{ID: "req-1", RotaID: "rota-1", FormSent: true},
-		{ID: "req-2", RotaID: "rota-1", FormSent: false},
-		{ID: "req-3", RotaID: "rota-1", FormSent: true},
-	}
-
-	filtered := FilterSentRequests(requests)
-
-	require.Len(t, filtered, 2)
-	assert.Equal(t, "req-1", filtered[0].ID)
-	assert.Equal(t, "req-3", filtered[1].ID)
-}
 
 func TestFilterActiveVolunteers(t *testing.T) {
 	volunteers := []model.Volunteer{

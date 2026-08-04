@@ -20,9 +20,9 @@ import (
 type AvailabilityStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
-	MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequestV2) (int, error)
-	GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error)
-	GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequestV2, error)
+	MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) (int, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
+	GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequest, error)
 	// Stamped one request at a time rather than in a batch at the end: a send
 	// takes about a minute and a half, and the stamp is what stops the next
 	// send asking the same volunteer twice, so it has to land as each email
@@ -134,13 +134,13 @@ func MintAvailabilityRound(
 	// Only active volunteers are asked. Someone who has stopped volunteering is
 	// kept on the roster but is not part of a round.
 	active := utils.FilterActiveVolunteers(volunteers)
-	requests := make([]db.AvailabilityRequestV2, 0, len(active))
+	requests := make([]db.AvailabilityRequest, 0, len(active))
 	for _, v := range active {
 		token, err := pkgutils.RandomToken()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate availability token: %w", err)
 		}
-		requests = append(requests, db.AvailabilityRequestV2{
+		requests = append(requests, db.AvailabilityRequest{
 			ID:          uuid.New().String(),
 			RotaID:      rota.ID,
 			VolunteerID: v.ID,
@@ -294,7 +294,7 @@ func resolveToken(
 	cfg *config.Config,
 	logger *zap.Logger,
 	token string,
-) (*db.AvailabilityRequestV2, *db.Rotation, []AvailabilityShift, []model.Volunteer, error) {
+) (*db.AvailabilityRequest, *db.Rotation, []AvailabilityShift, []model.Volunteer, error) {
 	request, err := database.GetAvailabilityRequestByToken(ctx, token)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("failed to look up availability token: %w", err)
@@ -330,7 +330,7 @@ func resolveToken(
 // buildForm assembles the volunteer's view. generation is the zero value when
 // they have not replied, which is what selects the opt-out landing state.
 func buildForm(
-	request *db.AvailabilityRequestV2,
+	request *db.AvailabilityRequest,
 	shifts []AvailabilityShift,
 	volunteers []model.Volunteer,
 	generation db.AvailabilityGeneration,
@@ -398,7 +398,7 @@ func buildRound(
 		return nil, err
 	}
 
-	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rota.ID)
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
