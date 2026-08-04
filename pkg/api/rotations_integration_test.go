@@ -21,7 +21,7 @@ import (
 func TestDefineRotaEndpointIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())

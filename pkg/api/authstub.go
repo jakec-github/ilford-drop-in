@@ -1,12 +1,15 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
 // NewStubAuthenticator builds an Authenticator that signs in as a configured
@@ -37,6 +40,36 @@ func NewStubAuthenticator(dev *config.DevModeConfig, srv *config.ServerConfig, l
 	}
 
 	return a, nil
+}
+
+// NewStubMailer builds a MailerFunc that writes emails to the log instead of
+// sending them, so the whole send flow — the deadline, the job, the
+// per-volunteer report, sent_at landing on each request — is exercisable on a
+// checkout with no Google credentials.
+//
+// It is the mail half of what NewStubAuthenticator does for identity, and stubs
+// as little: recipient selection, the email's wording and the database writes
+// are all the real ones, so what an agent drives here is the real flow rather
+// than a mock of it.
+func NewStubMailer(logger *zap.Logger) MailerFunc {
+	return func(context.Context, *oauth2.Token) (services.GmailClient, error) {
+		return stubMailer{logger: logger}, nil
+	}
+}
+
+// stubMailer logs what would have gone out. The body is logged in full because
+// it carries the volunteer's link, which is the one thing worth reading out of a
+// dev-stack send.
+type stubMailer struct {
+	logger *zap.Logger
+}
+
+func (m stubMailer) SendEmail(to, subject, body string) error {
+	m.logger.Warn("Dev mode: pretending to send an email",
+		zap.String("to", to),
+		zap.String("subject", subject),
+		zap.String("body", body))
+	return nil
 }
 
 // handleStubLogin mints the admin session directly. It stands in for the whole

@@ -3,6 +3,7 @@ import type {
   AvailabilityFormState,
   AvailabilityLinkFailure,
   AvailabilityRound,
+  AvailabilitySend,
   DefinedRota,
   NewPreallocation,
   PersonRef,
@@ -10,6 +11,8 @@ import type {
   PreallocationSource,
   RotaChange,
   RotaShift,
+  SendMode,
+  SendOutcome,
   Volunteer,
 } from "./types";
 
@@ -299,6 +302,7 @@ interface ApiAvailabilityEntry {
   volunteerId: string;
   volunteerName: string;
   link: string;
+  sentAt?: string;
   replied: boolean;
   submittedAt?: string;
   availableShiftIds: string[] | null;
@@ -343,6 +347,7 @@ function toEntry(e: ApiAvailabilityEntry): AvailabilityEntry {
     volunteerId: e.volunteerId,
     volunteerName: e.volunteerName,
     link: e.link,
+    sentAt: e.sentAt ?? null,
     replied: e.replied,
     submittedAt: e.submittedAt ?? null,
     availableShiftIds: e.availableShiftIds ?? [],
@@ -462,6 +467,75 @@ export async function mintAvailabilityRound(): Promise<AvailabilityRound> {
     throw new Error(await errorMessage(res, "Failed to start the round"));
   }
   return toRound((await res.json()) as ApiAvailabilityRound);
+}
+
+interface ApiSendOutcome {
+  volunteerId: string;
+  volunteerName: string;
+  email?: string;
+  error?: string;
+}
+
+interface ApiAvailabilitySend {
+  id: string;
+  mode: string;
+  done: number;
+  total: number;
+  finished: boolean;
+  sent: ApiSendOutcome[] | null;
+  failed: ApiSendOutcome[] | null;
+  error?: string;
+}
+
+function toOutcome(o: ApiSendOutcome): SendOutcome {
+  return {
+    volunteerId: o.volunteerId,
+    volunteerName: o.volunteerName,
+    email: o.email ?? null,
+    error: o.error ?? null,
+  };
+}
+
+// sendUrl is the address that starts a send. Navigating to it — not fetching it
+// — is the point: the server answers with a redirect to Google for the
+// gmail.send scope, and only a real navigation can carry the admin through a
+// consent screen and back.
+//
+// The deadline is quoted in the email and nowhere else. It is not stored, not
+// shown on the site and not enforced; allocation is the real cutoff.
+export function sendUrl(
+  mode: SendMode,
+  deadline: string,
+  volunteerId?: string,
+): string {
+  const params = new URLSearchParams({ mode, deadline });
+  if (volunteerId) params.set("volunteerId", volunteerId);
+  return `/auth/gmail?${params.toString()}`;
+}
+
+// fetchSend reports on a send in progress or just finished. Admin-only, and
+// readable only by the admin who started it: it names every volunteer it reached
+// and every address it failed on.
+//
+// A send that has aged out of the server's memory is a 404, which is also the
+// answer for one that never existed — the same thing to a page that has an id
+// from an old tab.
+export async function fetchSend(id: string): Promise<AvailabilitySend> {
+  const res = await fetch(`/api/availability-sends/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to read the send"));
+  }
+  const data = (await res.json()) as ApiAvailabilitySend;
+  return {
+    id: data.id,
+    mode: data.mode as SendMode,
+    done: data.done,
+    total: data.total,
+    finished: data.finished,
+    sent: (data.sent ?? []).map(toOutcome),
+    failed: (data.failed ?? []).map(toOutcome),
+    error: data.error ?? null,
+  };
 }
 
 // syncVolunteers re-reads the roster sheet into the database. The server uses

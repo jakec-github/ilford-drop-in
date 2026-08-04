@@ -97,10 +97,44 @@ export interface AvailabilityEntry {
   volunteerId: string;
   volunteerName: string;
   link: string;
+  // When their link was emailed, or null while it has not been. Minting and
+  // sending are separate operations, so holding a link nobody has sent is an
+  // ordinary state — and it is the one a round send acts on.
+  sentAt: string | null;
   replied: boolean;
   submittedAt: string | null;
   availableShiftIds: string[];
   coveredBy: string[];
+}
+
+// Which emails a send covers, and what they say. The server owns the selection
+// rules; these are the names it answers to.
+export type SendMode = "round" | "reminder" | "resend";
+
+// One volunteer a send reached, or failed to. error is what makes it a failure —
+// a bounced address, or a volunteer with no address at all.
+export interface SendOutcome {
+  volunteerId: string;
+  volunteerName: string;
+  email: string | null;
+  error: string | null;
+}
+
+// AvailabilitySend is one send in flight or just finished.
+//
+// A send is watched rather than awaited because it takes about ninety seconds:
+// Gmail is throttled to one email every three seconds, and the browser arrives
+// back from the consent screen long before the last email goes out. done of
+// total is what fills the gap.
+export interface AvailabilitySend {
+  id: string;
+  mode: SendMode;
+  done: number;
+  total: number;
+  finished: boolean;
+  sent: SendOutcome[];
+  failed: SendOutcome[];
+  error: string | null;
 }
 
 // AvailabilityGroup is a round at the grain allocation happens at: the people

@@ -18,12 +18,16 @@ type availabilityShiftResponse struct {
 }
 
 // availabilityEntryResponse is one volunteer's place in a round. The link is
-// returned in full because copying it is the distribution mechanism until
-// sending exists, and remains the fallback for a volunteer whose email bounces.
+// returned in full because copying it is how an admin distributes one out of
+// band, and the fallback for a volunteer whose email bounces.
 type availabilityEntryResponse struct {
-	VolunteerID       string   `json:"volunteerId"`
-	VolunteerName     string   `json:"volunteerName"`
-	Link              string   `json:"link"`
+	VolunteerID   string `json:"volunteerId"`
+	VolunteerName string `json:"volunteerName"`
+	Link          string `json:"link"`
+	// Absent until their link has been emailed. Minting and sending are separate
+	// operations, so "has a link nobody sent them" is an ordinary state — and it
+	// is the one a round send acts on.
+	SentAt            string   `json:"sentAt,omitempty"`
 	Replied           bool     `json:"replied"`
 	SubmittedAt       string   `json:"submittedAt,omitempty"`
 	AvailableShiftIDs []string `json:"availableShiftIds"`
@@ -211,6 +215,7 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 				VolunteerID:       e.VolunteerID,
 				VolunteerName:     e.VolunteerName,
 				Link:              availabilityLink(r, e.Token),
+				SentAt:            e.SentAt,
 				Replied:           e.Replied,
 				AvailableShiftIDs: e.AvailableShiftIDs,
 				CoveredBy:         e.CoveredBy,

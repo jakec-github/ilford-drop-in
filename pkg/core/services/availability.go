@@ -23,6 +23,11 @@ type AvailabilityStore interface {
 	MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequestV2) (int, error)
 	GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error)
 	GetAvailabilityRequestByToken(ctx context.Context, token string) (*db.AvailabilityRequestV2, error)
+	// Stamped one request at a time rather than in a batch at the end: a send
+	// takes about a minute and a half, and the stamp is what stops the next
+	// send asking the same volunteer twice, so it has to land as each email
+	// goes out rather than once they all have.
+	MarkAvailabilityRequestSent(ctx context.Context, id string) error
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	InsertAvailabilityResponse(ctx context.Context, requestID string, answers []db.ShiftAnswer) (*db.AvailabilityGeneration, error)
 	// Pins hold seats the answers coming in do not have to fill, so the round's
@@ -49,8 +54,12 @@ type AvailabilityEntry struct {
 	VolunteerID   string
 	VolunteerName string
 	Token         string
-	Replied       bool
-	SubmittedAt   time.Time // zero when they have not replied
+	// When their link was emailed, RFC3339, empty until it has been. Minting and
+	// sending are separate operations, so a volunteer holding a link nobody has
+	// sent them is an ordinary state — and it is the one a round send acts on.
+	SentAt      string
+	Replied     bool
+	SubmittedAt time.Time // zero when they have not replied
 	// The shifts the latest generation said yes to. Empty for a volunteer who
 	// replied "none of these", which Replied still reports as an answer.
 	AvailableShiftIDs []string
@@ -419,6 +428,7 @@ func buildRound(
 			VolunteerID:       r.VolunteerID,
 			VolunteerName:     r.VolunteerID,
 			Token:             r.Token,
+			SentAt:            r.SentAt,
 			Replied:           hasReplied,
 			AvailableShiftIDs: make([]string, 0, len(generation.Answers)),
 		}
