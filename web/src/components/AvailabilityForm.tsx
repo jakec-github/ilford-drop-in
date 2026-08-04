@@ -36,20 +36,48 @@ const DEAD_LINK_MESSAGE: Record<AvailabilityLinkFailure, string> = {
 // A closed date offers no answer at all — the drop-in is not running, so there
 // is nothing to say — but it is still listed, so a volunteer can see that
 // instead of wondering why a Sunday is missing.
+//
+// A row they have moved since their last send is marked, because the answer it
+// is replacing has gone from the screen: without the mark, a volunteer who came
+// back to change one Sunday has nothing to check their edit against before
+// sending it.
 function ShiftChoice({
   shift,
   available,
+  changed,
   onAnswer,
 }: {
   shift: AvailabilityShift;
   available: boolean;
+  // True when this answer differs from the one already sent. Never set before a
+  // first send, so the note below can talk about what they told us without
+  // qualifying it.
+  changed: boolean;
   onAnswer: (available: boolean) => void;
 }) {
   const date = formatShiftDate(shift.date);
 
   return (
-    <li className={`shift-choice${shift.closed ? " shift-choice--closed" : ""}`}>
-      <span className="shift-choice-date">{date}</span>
+    <li
+      className={[
+        "shift-choice",
+        shift.closed && "shift-choice--closed",
+        changed && "shift-choice--changed",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <span className="shift-choice-label">
+        <span className="shift-choice-date">{date}</span>
+        {/* A change is only legible against something that is no longer on
+            screen, so the row has to say what it was. Text, not just the accent
+            bar: colour on its own reaches nobody who cannot see it. */}
+        {changed && (
+          <span className="shift-choice-was">
+            Changed from {available ? "no" : "yes"}
+          </span>
+        )}
+      </span>
       {shift.closed ? (
         <span className="shift-choice-tag">Closed</span>
       ) : (
@@ -89,8 +117,16 @@ function ShiftChoice({
 // record none at all — indistinguishable from a genuine "I can't do any of
 // these", and enough to drop someone from the rota silently (ADR 0004).
 export default function AvailabilityForm({ token }: { token: string }) {
-  const { form, deadLink, error, submitState, selected, setAvailable, submit } =
-    useAvailabilityForm(token);
+  const {
+    form,
+    deadLink,
+    error,
+    submitState,
+    selected,
+    changed,
+    setAvailable,
+    submit,
+  } = useAvailabilityForm(token);
 
   if (deadLink) {
     return (
@@ -131,10 +167,23 @@ export default function AvailabilityForm({ token }: { token: string }) {
         </p>
       )}
 
+      {/* Two different situations, and the first sentence is what tells them
+          which one they are in: a blank form to fill in, or the answer they
+          already sent. Someone who has answered is not being asked again. */}
       <p className="availability-intro">
-        Answer yes or no for each date. Every date starts on yes, so change the
-        ones you cannot do. You can come back to this link and change your answer
-        any time before the rota is worked out.
+        {form.submitted ? (
+          <>
+            This is the answer you sent us. Change any date and send again —
+            what you change is marked, so you can check it before it goes. You
+            can do this any time before the rota is worked out.
+          </>
+        ) : (
+          <>
+            Answer yes or no for each date. Every date starts on yes, so change
+            the ones you cannot do. You can come back to this link and change
+            your answer any time before the rota is worked out.
+          </>
+        )}
       </p>
 
       <form
@@ -149,6 +198,7 @@ export default function AvailabilityForm({ token }: { token: string }) {
               key={shift.id}
               shift={shift}
               available={selected.has(shift.id)}
+              changed={changed.has(shift.id)}
               onAnswer={(available) => setAvailable(shift.id, available)}
             />
           ))}
@@ -156,10 +206,26 @@ export default function AvailabilityForm({ token }: { token: string }) {
 
         <p className="availability-count">
           Yes to {chosen} of {openShifts.length} dates
+          {/* The marks up the list say which dates moved; this says how many,
+              which is the bit that is hard to hold in your head once the list is
+              longer than the screen. "Not sent" is the point of it — the edit
+              lives in the browser until the button is pressed. */}
+          {changed.size > 0 && (
+            <span className="availability-count-changed">
+              {changed.size === 1
+                ? "1 date changed"
+                : `${changed.size} dates changed`}
+              , not sent yet
+            </span>
+          )}
         </p>
 
         <Button type="submit" disabled={submitState === "sending"}>
-          {submitState === "sending" ? "Sending…" : "Send my availability"}
+          {submitState === "sending"
+            ? "Sending…"
+            : changed.size > 0
+              ? "Send my changes"
+              : "Send my availability"}
         </Button>
 
         {/* aria-live because submitting moves nothing into focus: without it
@@ -173,14 +239,6 @@ export default function AvailabilityForm({ token }: { token: string }) {
           {submitState === "error" && error && (
             <p className="availability-message availability-message--error">
               We could not send that: {error}
-            </p>
-          )}
-          {/* Shown only before the first send of this visit, so someone
-              returning to the link knows their earlier answer is what stands. */}
-          {submitState === "idle" && form.submitted && (
-            <p className="availability-message">
-              You have already answered. This form shows what you told us — send
-              again to change it.
             </p>
           )}
         </div>

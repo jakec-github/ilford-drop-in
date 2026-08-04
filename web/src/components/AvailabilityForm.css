@@ -25,12 +25,15 @@
   font-size: 0.9375rem;
 }
 
+/* overflow-hidden so a changed row's tint and bar are clipped to the rounded
+   corners instead of squaring off the top and bottom of the list. */
 .shift-choices {
   margin: 1.5rem 0 0;
   padding: 0;
   list-style: none;
   border: 1px solid var(--border);
   border-radius: 8px;
+  overflow: hidden;
 }
 
 .shift-choice + .shift-choice {
@@ -48,10 +51,28 @@
   padding: 0.5rem 0.875rem;
 }
 
-.shift-choice-date {
+.shift-choice-label {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+}
+
+.shift-choice-date {
   color: var(--text-h);
+}
+
+/* A row moved since the last send. The tint and the bar are the glance; the
+   "Changed from …" line under the date is what actually says so, and is the only
+   part of it a screen reader or a colourblind eye can use. */
+.shift-choice--changed {
+  background: var(--accent-bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shift-choice-was {
+  font-size: 0.75rem;
+  color: var(--accent);
 }
 
 .shift-answer {
@@ -108,6 +129,11 @@
 .availability-count {
   margin: 0.75rem 0 1.25rem;
   font-size: 0.8125rem;
+}
+
+.availability-count-changed {
+  display: block;
+  color: var(--accent);
 }
 
 .availability-message {
