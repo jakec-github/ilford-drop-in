@@ -428,6 +428,57 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 	assert.Equal(t, "dave", historicalShifts[1].AllocatedGroups[0].Members[0].ID)
 }
 
+func TestBuildHistoricalShifts_UngroupedVolunteersAreSeparateGroups(t *testing.T) {
+	// History must be grouped exactly the way the rota being allocated is
+	// grouped: by allocator.GroupKeyFor, under which an ungrouped volunteer is
+	// their own group of one keyed on their name. Bucketing on the raw GroupKey
+	// instead merged every ungrouped volunteer on a shift into a single bucket
+	// named after whichever allocation the database returned first, so everyone
+	// else's key never reached the solver (#108).
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 1},
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
+		},
+		shifts: shiftsOnDates("rota-0", "2024-12-01"),
+		allocations: []db.Allocation{
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "dave", Role: string(model.RoleVolunteer)},
+			// A real group on the same shift stays one group.
+			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "bob", Role: string(model.RoleVolunteer)},
+			{ID: "alloc-4", ShiftID: "2024-12-01", VolunteerID: "cara", Role: string(model.RoleVolunteer)},
+		},
+	}
+
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
+		{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male"},
+		{ID: "bob", FirstName: "Bob", LastName: "B", Gender: "Male", GroupKey: "couple_bc"},
+		{ID: "cara", FirstName: "Cara", LastName: "C", Gender: "Female", GroupKey: "couple_bc"},
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}
+
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, string(model.RoleVolunteer), logger)
+	require.NoError(t, err)
+	require.Len(t, historicalShifts, 1)
+
+	keys := make([]string, 0, len(historicalShifts[0].AllocatedGroups))
+	for _, group := range historicalShifts[0].AllocatedGroups {
+		keys = append(keys, group.GroupKey)
+	}
+	assert.ElementsMatch(t, []string{"Alice A", "Dave D", "couple_bc"}, keys)
+
+	// Stated the other way round, so the test cannot drift from the rule: every
+	// volunteer's own key is present, whether or not they are in a group.
+	for _, volunteer := range volunteers {
+		assert.Contains(t, keys, allocator.GroupKeyFor(volunteer))
+	}
+}
+
 func TestBuildHistoricalShifts_NoPreviousRota(t *testing.T) {
 	// Test that buildHistoricalShifts returns empty array when there's no previous rota
 	ctx := context.Background()

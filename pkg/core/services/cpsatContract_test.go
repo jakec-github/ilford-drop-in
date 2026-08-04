@@ -1,13 +1,17 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
 // TestCpsatInputContractGolden pins the JSON field names of the Go->Python
@@ -149,10 +153,10 @@ func TestBuildCpsatInput(t *testing.T) {
 	}
 	historical := []*allocator.Shift{
 		{Date: "2026-07-06", AllocatedGroups: []*allocator.VolunteerGroup{
-			allocator.BuildVolunteerGroup("couple_ab", volunteers[:2]),
+			allocator.BuildVolunteerGroup(volunteers[:2]),
 		}},
 		{Date: "2026-06-29", AllocatedGroups: []*allocator.VolunteerGroup{
-			allocator.BuildVolunteerGroup("", volunteers[2:3]),
+			allocator.BuildVolunteerGroup(volunteers[2:3]),
 		}},
 	}
 
@@ -209,6 +213,74 @@ func TestBuildCpsatInput(t *testing.T) {
 	assert.Equal(t, []string{"Diana Green"}, input.HistoricalShifts[0].GroupKeys)
 	assert.Equal(t, "2026-07-06", input.HistoricalShifts[1].Date)
 	assert.Equal(t, []string{"couple_ab"}, input.HistoricalShifts[1].GroupKeys)
+}
+
+// The keys the solver matches history against are the keys of the rota being
+// allocated, so the two must be minted by the same rule. This walks the whole
+// seam — database allocations through buildHistoricalShifts into the contract —
+// and asserts every volunteer on the previous rota's final shift carries their
+// own key into last_historical_group_keys, grouped or not. Grouping history on
+// the raw GroupKey merged the ungrouped ones into one bucket, and the rest were
+// then absent from history entirely: no_back_to_back never bound for them
+// (#108).
+func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},
+		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", GroupKey: "couple_ab"},
+		{ID: "diana", FirstName: "Diana", LastName: "Green", DisplayName: "Diana", Gender: "Female"},
+		{ID: "eve", FirstName: "Eve", LastName: "Hall", DisplayName: "Eve", Gender: "Female"},
+	}
+
+	// All four worked the previous rota's final shift, 2026-07-06.
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2026-06-29", ShiftCount: 2},
+			{ID: "rota-1", Start: "2026-07-13", ShiftCount: 1},
+		},
+		shifts: shiftsOnDates("rota-0", "2026-06-29", "2026-07-06"),
+		allocations: []db.Allocation{
+			{ID: "a-0", ShiftID: "2026-06-29", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "a-1", ShiftID: "2026-07-06", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
+			{ID: "a-2", ShiftID: "2026-07-06", VolunteerID: "bob", Role: string(model.RoleVolunteer)},
+			{ID: "a-3", ShiftID: "2026-07-06", VolunteerID: "diana", Role: string(model.RoleVolunteer)},
+			{ID: "a-4", ShiftID: "2026-07-06", VolunteerID: "eve", Role: string(model.RoleVolunteer)},
+		},
+	}
+
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2026-07-13", ShiftCount: 1}
+	historical, err := buildHistoricalShifts(
+		context.Background(), store, store.rotations, targetRota, volunteers,
+		string(model.RoleVolunteer), zap.NewNop())
+	require.NoError(t, err)
+
+	groupAvailability := map[string][]int{
+		"couple_ab":   {0},
+		"Diana Green": {0},
+		"Eve Hall":    {0},
+	}
+	leadMax := 1
+	roles := []allocator.Role{
+		{Name: "Team lead", Max: &leadMax, Priority: 1},
+		{Name: "Service volunteer", Max: nil, Priority: 2},
+	}
+
+	input, err := allocator.BuildCpsatInput(
+		volunteers, groupAvailability, []string{"2026-07-13"}, 4, nil,
+		historical, 1, roles, false)
+	require.NoError(t, err)
+
+	// The final historical shift is the one no_back_to_back reads.
+	require.Len(t, input.HistoricalShifts, 2)
+	last := input.HistoricalShifts[len(input.HistoricalShifts)-1]
+	require.Equal(t, "2026-07-06", last.Date)
+	assert.ElementsMatch(t, []string{"couple_ab", "Diana Green", "Eve Hall"}, last.GroupKeys)
+
+	// Every group in the problem is on that boundary, so none may take shift 0.
+	require.Len(t, input.Groups, 3)
+	for _, group := range input.Groups {
+		assert.Contains(t, last.GroupKeys, group.GroupKey,
+			"group %q is missing from history and would be free to work the first shift", group.GroupKey)
+	}
 }
 
 // A pin is a decision already taken, so it settles the availability question
