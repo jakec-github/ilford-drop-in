@@ -10,8 +10,9 @@ from conftest import (
     make_member,
     make_shift,
     solve_with,
+    volunteer_ids,
 )
-from pyallocator.constraints import shift_capacity
+from pyallocator.constraints import seat_capacity
 
 
 def test_members_always_allocated_together():
@@ -23,7 +24,7 @@ def test_members_always_allocated_together():
     assert out.success
     for shift in out.shifts:
         # Either the whole couple is on the shift or nobody is.
-        assert set(shift.volunteer_ids) in ({"a", "b"}, set())
+        assert set(volunteer_ids(shift)) in ({"a", "b"}, set())
 
 
 def test_group_too_big_for_shift_stays_off():
@@ -33,7 +34,7 @@ def test_group_too_big_for_shift_stays_off():
         "couple", members=[make_member("a"), make_member("b")], available=[0]
     )
     inp = make_input(groups=[couple], shifts=[make_shift(0, size=1)])
-    out = solve_with(inp, [shift_capacity.CONSTRAINT])
+    out = solve_with(inp, [seat_capacity.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out)[0] == ()
-    assert out.shifts[0].volunteer_ids == ()
+    assert volunteer_ids(out.shifts[0]) == ()

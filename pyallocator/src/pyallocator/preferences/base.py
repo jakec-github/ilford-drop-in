@@ -20,7 +20,7 @@ ObjectiveTerm = tuple[cp_model.LinearExpr, int]
 
 
 class Preference(Protocol):
-    name: str  # short id, e.g. "at_most_one_team_lead"
+    name: str  # short id, e.g. "even_fill"
     description: str  # human sentence: what rota feature this encourages
 
     def objective_terms(

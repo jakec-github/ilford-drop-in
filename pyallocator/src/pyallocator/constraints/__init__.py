@@ -10,7 +10,6 @@ Tests inject subsets via model_builder.build().
 """
 
 from . import (
-    at_most_one_team_lead,
     availability,
     closed_shifts,
     grouping,
@@ -20,7 +19,7 @@ from . import (
     no_duplicate_allocation,
     one_shift_per_month,
     preallocations,
-    shift_capacity,
+    seat_capacity,
 )
 from .base import Constraint, Vars
 
@@ -28,8 +27,7 @@ FUNDAMENTAL_CONSTRAINTS: list[Constraint] = [
     no_duplicate_allocation.CONSTRAINT,
     grouping.CONSTRAINT,
     availability.CONSTRAINT,
-    shift_capacity.CONSTRAINT,
-    at_most_one_team_lead.CONSTRAINT,
+    seat_capacity.CONSTRAINT,
     closed_shifts.CONSTRAINT,
     preallocations.CONSTRAINT,
 ]

@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
-from conftest import allocations_by_shift, make_group, make_input, make_shift, solve_with
-from pyallocator.constraints import max_frequency, shift_capacity
+from conftest import (
+    allocations_by_shift,
+    make_group,
+    make_input,
+    make_member,
+    make_shift,
+    solve_with,
+    team_lead_id,
+    volunteer_ids,
+)
+from pyallocator.constraints import max_frequency, seat_capacity
 from pyallocator.preferences import even_fill
 
 PREFS = [even_fill.PREFERENCE]
@@ -40,6 +49,20 @@ def test_custom_preallocations_count_as_early_seats():
     assert allocations_by_shift(out)[1] == ("g1",)
 
 
+def test_capped_role_seat_fills_before_an_ordinary_one():
+    # A team-lead holder who is working the shift anyway belongs in the
+    # Team lead Seat. Nothing forces it — the shift has room for them
+    # either way — so the capped Seat's higher weight is what decides it.
+    lead = make_group(
+        "lead", members=[make_member("lead", is_team_lead=True)], available=[0]
+    )
+    inp = make_input(groups=[lead], shifts=[make_shift(0, size=4)])
+    out = solve_with(inp, [seat_capacity.CONSTRAINT], preferences=PREFS)
+    assert out.success
+    assert team_lead_id(out.shifts[0]) == "lead"
+    assert volunteer_ids(out.shifts[0]) == ()
+
+
 def test_no_reward_beyond_capacity():
     # With capacity active, fill stops at size even though more groups
     # are available; the preference must not fight the constraint.
@@ -47,6 +70,6 @@ def test_no_reward_beyond_capacity():
         groups=[make_group(f"g{i}", available=[0]) for i in range(4)],
         shifts=[make_shift(0, size=2)],
     )
-    out = solve_with(inp, [shift_capacity.CONSTRAINT], preferences=PREFS)
+    out = solve_with(inp, [seat_capacity.CONSTRAINT], preferences=PREFS)
     assert out.success
     assert len(allocations_by_shift(out)[0]) == 2

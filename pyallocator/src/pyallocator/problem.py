@@ -29,10 +29,6 @@ class VolunteerView:
     member: Member
     group_key: str
     available_shift_indices: frozenset[int]  # inherited from the group
-    # Whether this volunteer holds a capped Role. Temporary: it stands in for
-    # the lead concept while the solver still designates a lead after the
-    # fact, and goes when role variables arrive.
-    is_team_lead: bool = False
 
     @property
     def id(self) -> str:
@@ -49,12 +45,6 @@ class VolunteerView:
     def is_male(self) -> bool:
         return self.member.gender == GENDER_MALE
 
-    @property
-    def seat_cost(self) -> int:
-        """Ordinary seats this volunteer occupies: team leads never
-        count toward shift size."""
-        return 0 if self.is_team_lead else 1
-
 
 class Problem:
     """Normalised, validated view of the allocation problem.
@@ -70,8 +60,8 @@ class Problem:
         role_by_name: {name: Role}.
         uncapped_role: the single Role with no ceiling.
         lead_role: the highest-priority capped Role, or None. Temporary —
-            it is what the pre-Roles "team lead" meant, and the solver still
-            designates a lead after the fact.
+            it is what the pre-Roles "team lead" meant, and the output
+            contract still names a single team lead per shift.
         requires_male: whether the male-cover rule applies.
         max_allocation_count: Go-computed cap on allocations per volunteer.
         preallocated_pairs: {(group_key, shift_index)} that MUST be
@@ -79,7 +69,6 @@ class Problem:
         preallocated_roles: {(volunteer_id, shift_index): role} the pinned
             person must fill. Their group-mates are in preallocated_pairs
             but not here: they attend, and the solver picks their Seat.
-        preallocated_team_lead: {shift_index: volunteer_id} designated TL.
         last_historical_group_keys: group keys present on the most recent
             historical shift (back-to-back boundary with the previous rota).
         historical_group_months: {group_key: frozenset of YYYY-MM months} the
@@ -108,8 +97,6 @@ class Problem:
         self.lead_role: Role | None = capped[0] if capped else None
         self.requires_male: bool = input_.requires_male
 
-        lead_name = self.lead_role.name if self.lead_role else None
-
         volunteers: list[VolunteerView] = []
         # volunteer id -> (owning group key, roles held)
         self._member_index: dict[str, tuple[str, tuple[str, ...]]] = {}
@@ -128,14 +115,12 @@ class Problem:
                         member=m,
                         group_key=group.group_key,
                         available_shift_indices=available,
-                        is_team_lead=lead_name is not None and lead_name in m.roles,
                     )
                 )
         self.volunteers: tuple[VolunteerView, ...] = tuple(volunteers)
 
         self.preallocated_pairs: set[tuple[str, int]] = set()
         self.preallocated_roles: dict[tuple[str, int], str] = {}
-        self.preallocated_team_lead: dict[int, str] = {}
         self._resolve_preallocations()
 
         self.last_historical_group_keys: frozenset[str] = frozenset(
@@ -165,17 +150,25 @@ class Problem:
         """
         return self.seats_for(shift, self.uncapped_role.name)
 
-    def shift_customs(self, shift: ShiftSpec) -> tuple[str, ...]:
-        """The shift's custom (non-volunteer) pins, in input order.
+    def customs_for(self, shift: ShiftSpec, role: str) -> tuple[str, ...]:
+        """The shift's custom (non-volunteer) pins on the named Role.
 
-        Temporary, for the same reason as shift_size: these all occupy
-        ordinary Seats today, whatever Role they name.
+        A custom entry is not a solver decision, so it occupies one of its
+        Role's Seats before the solver sees the Shape.
+        """
+        return tuple(
+            p.custom for p in shift.preallocations if p.custom and p.role == role
+        )
+
+    def shift_customs(self, shift: ShiftSpec) -> tuple[str, ...]:
+        """Every custom pin on the shift, in input order, Role discarded.
+
+        Temporary, for the same reason as shift_size: the output contract
+        still carries one flat list of custom entries per shift.
         """
         return tuple(p.custom for p in shift.preallocations if p.custom)
 
     def _resolve_preallocations(self) -> None:
-        lead_name = self.lead_role.name if self.lead_role else None
-
         for shift in self.shifts:
             # Go strips preallocations from closed shifts before sending;
             # reject rather than silently ignore if any slip through.
@@ -209,12 +202,6 @@ class Problem:
                         "that shift has no Seat for"
                     )
                 self.preallocated_roles[(pin.volunteer_id, shift.index)] = pin.role
-
-                # Temporary: the lead is still designated after the solve, so
-                # a pin on the capped Role has to be remembered separately.
-                # It goes when the solver assigns Roles itself.
-                if pin.role == lead_name:
-                    self.preallocated_team_lead[shift.index] = pin.volunteer_id
 
                 # Multiple ids from the same group dedupe to one pair —
                 # the whole group comes as a unit anyway.

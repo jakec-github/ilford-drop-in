@@ -178,7 +178,10 @@ func (m *mockVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, e
 }
 
 func TestConvertToDBAllocations(t *testing.T) {
-	// Test the conversion of allocator shifts to database allocations
+	// One row per filled Seat, each keeping the Role the solver gave it —
+	// including Roles this code has never heard of.
+	alice := allocator.Volunteer{ID: "alice"}
+	bob := allocator.Volunteer{ID: "bob"}
 	shifts := []*allocator.Shift{
 		{
 			Date:  "2025-01-05",
@@ -187,36 +190,34 @@ func TestConvertToDBAllocations(t *testing.T) {
 			AllocatedGroups: []*allocator.VolunteerGroup{
 				{
 					GroupKey: "group_a",
-					Members: []allocator.Volunteer{
-						{ID: "alice", IsTeamLead: true},
-						{ID: "bob", IsTeamLead: false},
-					},
+					Members:  []allocator.Volunteer{alice, bob},
 				},
 			},
-			TeamLead:             &allocator.Volunteer{ID: "alice", IsTeamLead: true},
-			CustomPreallocations: []string{"external_john"},
+			Assignments: []allocator.Assignment{
+				{Volunteer: &alice, Role: "Team lead"},
+				{Volunteer: &bob, Role: "Hot food"},
+				{Custom: "external_john", Role: "Service volunteer"},
+			},
 		},
 	}
 
 	shiftIDByDate := map[string]string{"2025-01-05": "shift-jan-5"}
 	allocations, err := convertToDBAllocations(shiftIDByDate, shifts)
 	require.NoError(t, err)
-
-	// Should have 1 regular allocation (Bob) + 1 team lead (Alice) + 1 pre-allocated (John) = 3 total
-	// Alice is in the group AND the team lead, so she should only appear once as team lead
 	require.Len(t, allocations, 3)
 
-	// Check that we have the right roles
 	roles := make(map[string]int)
 	for _, alloc := range allocations {
 		roles[alloc.Role]++
 		assert.Equal(t, "shift-jan-5", alloc.ShiftID)
 	}
+	assert.Equal(t, map[string]int{
+		"Team lead":         1,
+		"Hot food":          1,
+		"Service volunteer": 1,
+	}, roles)
 
-	assert.Equal(t, 1, roles[string(model.RoleTeamLead)], "Should have 1 team lead")
-	assert.Equal(t, 2, roles[string(model.RoleVolunteer)], "Should have 2 volunteers (Bob + external)")
-
-	// Check pre-allocated volunteer has correct field
+	// A custom entry is a name, not a volunteer.
 	found := false
 	for _, alloc := range allocations {
 		if alloc.CustomEntry == "external_john" {
@@ -231,10 +232,13 @@ func TestConvertToDBAllocations_MissingShiftFails(t *testing.T) {
 	// The solver only ever sees minted dates, so a date absent from the shift
 	// map is a broken invariant: convertToDBAllocations must fail loudly rather
 	// than emit an allocation that would trip the shift_id FK on insert.
+	alice := allocator.Volunteer{ID: "alice"}
 	shifts := []*allocator.Shift{
 		{
-			Date:     "2025-01-05",
-			TeamLead: &allocator.Volunteer{ID: "alice", IsTeamLead: true},
+			Date: "2025-01-05",
+			Assignments: []allocator.Assignment{
+				{Volunteer: &alice, Role: "Team lead"},
+			},
 		},
 	}
 
@@ -290,9 +294,9 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 
 	// Known volunteers (Charlie has been deleted from the sheet)
 	volunteers := []allocator.Volunteer{
-		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: "group_alice_bob", IsTeamLead: false},
-		{ID: "bob", FirstName: "Bob", LastName: "B", Gender: "Male", GroupKey: "group_alice_bob", IsTeamLead: true},
-		{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male", GroupKey: "", IsTeamLead: false}, // Individual
+		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female", GroupKey: "group_alice_bob"},
+		{ID: "bob", FirstName: "Bob", LastName: "B", Gender: "Male", GroupKey: "group_alice_bob"},
+		{ID: "dave", FirstName: "Dave", LastName: "D", Gender: "Male", GroupKey: ""}, // Individual
 		// Charlie is NOT in the list (deleted)
 	}
 
@@ -314,7 +318,6 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 	group1 := shift1.AllocatedGroups[0]
 	assert.Equal(t, "group_alice_bob", group1.GroupKey)
 	assert.Len(t, group1.Members, 2, "Group should have 2 members")
-	assert.True(t, group1.HasTeamLead, "Group should have a team lead")
 	assert.Equal(t, 1, group1.MaleCount, "Group should have 1 male (Bob)")
 
 	// Verify members
@@ -334,7 +337,6 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 	group2 := shift2.AllocatedGroups[0]
 	assert.Len(t, group2.Members, 1, "Group should have 1 member")
 	assert.Equal(t, "dave", group2.Members[0].ID)
-	assert.False(t, group2.HasTeamLead, "Dave is not a team lead")
 	assert.Equal(t, 1, group2.MaleCount, "Dave is male")
 }
 

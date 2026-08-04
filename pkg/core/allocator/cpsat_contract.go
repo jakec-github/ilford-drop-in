@@ -79,17 +79,26 @@ type CpsatInput struct {
 	HistoricalShifts   []CpsatHistoricalShift `json:"historical_shifts"`
 }
 
-// CpsatOutputShift is one solved shift. TeamLeadID is "" when the shift
-// has no team lead (expected and common; filled in manually later).
+// CpsatAssignment is one filled Seat: who is in it, and what Role it is.
+// Exactly one of VolunteerID and Custom is set, mirroring
+// CpsatPreallocation going the other way.
+type CpsatAssignment struct {
+	VolunteerID string `json:"volunteer_id"`
+	Custom      string `json:"custom"`
+	Role        string `json:"role"`
+}
+
+// CpsatOutputShift is one solved shift. Assignments are the Seats that
+// ended up filled; a Seat nobody filled is simply absent, which is how
+// "this shift has no team lead" is said (expected and common; filled in
+// manually later).
 type CpsatOutputShift struct {
-	Index                int      `json:"index"`
-	Date                 string   `json:"date"`
-	Size                 int      `json:"size"`
-	Closed               bool     `json:"closed"`
-	TeamLeadID           string   `json:"team_lead_id"`
-	VolunteerIDs         []string `json:"volunteer_ids"`
-	CustomPreallocations []string `json:"custom_preallocations"`
-	AllocatedGroupKeys   []string `json:"allocated_group_keys"`
+	Index              int               `json:"index"`
+	Date               string            `json:"date"`
+	Size               int               `json:"size"`
+	Closed             bool              `json:"closed"`
+	Assignments        []CpsatAssignment `json:"assignments"`
+	AllocatedGroupKeys []string          `json:"allocated_group_keys"`
 }
 
 // CpsatDiagnostics reports solver metadata for logging/inspection.
@@ -222,26 +231,29 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 
 	shifts := make([]*Shift, len(output.Shifts))
 	for i, outShift := range output.Shifts {
-		var teamLead *Volunteer
-		memberIDs := outShift.VolunteerIDs
-		if outShift.TeamLeadID != "" {
-			vol, exists := volunteersByID[outShift.TeamLeadID]
-			if !exists {
-				return nil, fmt.Errorf("solver returned unknown team lead ID %s for shift %s", outShift.TeamLeadID, outShift.Date)
-			}
-			teamLead = &vol
-			memberIDs = append(append([]string{}, memberIDs...), outShift.TeamLeadID)
-		}
-
 		// Regroup members by GroupKey (individuals keyed by name, as in
 		// InitVolunteerGroups) and rebuild groups with the shared helper.
+		assignments := make([]Assignment, 0, len(outShift.Assignments))
 		membersByGroup := make(map[string][]Volunteer)
 		groupOrder := []string{}
-		for _, id := range memberIDs {
-			vol, exists := volunteersByID[id]
-			if !exists {
-				return nil, fmt.Errorf("solver returned unknown volunteer ID %s for shift %s", id, outShift.Date)
+		for _, assigned := range outShift.Assignments {
+			if assigned.VolunteerID == "" {
+				assignments = append(assignments, Assignment{
+					Custom: assigned.Custom,
+					Role:   assigned.Role,
+				})
+				continue
 			}
+
+			vol, exists := volunteersByID[assigned.VolunteerID]
+			if !exists {
+				return nil, fmt.Errorf("solver returned unknown volunteer ID %s for shift %s", assigned.VolunteerID, outShift.Date)
+			}
+			assignments = append(assignments, Assignment{
+				Volunteer: &vol,
+				Role:      assigned.Role,
+			})
+
 			groupKey := GroupKeyFor(vol)
 			if _, seen := membersByGroup[groupKey]; !seen {
 				groupOrder = append(groupOrder, groupKey)
@@ -259,14 +271,13 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 		}
 
 		shifts[i] = &Shift{
-			Date:                 outShift.Date,
-			Index:                outShift.Index,
-			Size:                 outShift.Size,
-			Closed:               outShift.Closed,
-			AllocatedGroups:      allocatedGroups,
-			CustomPreallocations: outShift.CustomPreallocations,
-			TeamLead:             teamLead,
-			MaleCount:            maleCount,
+			Date:            outShift.Date,
+			Index:           outShift.Index,
+			Size:            outShift.Size,
+			Closed:          outShift.Closed,
+			AllocatedGroups: allocatedGroups,
+			Assignments:     assignments,
+			MaleCount:       maleCount,
 		}
 	}
 

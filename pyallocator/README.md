@@ -70,16 +70,21 @@ Output:
 {
   "solver_status": "OPTIMAL", "success": true, "error": "", "objective_value": 23,
   "shifts": [{"index": 0, "date": "2026-07-13", "size": 4, "closed": false,
-              "team_lead_id": "vol-9", "volunteer_ids": ["vol-1", "vol-2"],
-              "custom_preallocations": ["St John's team"],
+              "assignments": [
+                {"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},
+                {"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
+                {"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"}],
               "allocated_group_keys": ["couple_alice_bob", "Diana Green"]}],
   "diagnostics": {"solve_time_seconds": 0.12, "num_groups": 18,
                   "num_variables": 126, "constraints_applied": ["availability"]}
 }
 ```
 
-`team_lead_id` is `""` when a shift has no team lead — expected and
-common; missing team leads are filled in manually later.
+`assignments` are the Seats that ended up filled, mirroring the
+preallocations going in: exactly one of `volunteer_id` and `custom` is
+set. A Seat nobody filled is simply absent, which is how "this shift has
+no team lead" is said — expected and common, and filled in manually
+later.
 
 ## How the code is organised
 
@@ -97,9 +102,10 @@ read `x.role`. Modularity is the point of this package:
   what rota feature it ensures. Production set: `DEFAULT_CONSTRAINTS` in
   `constraints/__init__.py`: grouping (members of a group work each
   shift together or not at all), availability, max_frequency,
-  shift_capacity, at_most_one_team_lead (0 or 1 per shift),
-  male_required (a shift without a male keeps a slot open — the TL slot
-  or an ordinary seat — so one can be added manually), no_back_to_back,
+  seat_capacity (a Role's Seats on a shift are never oversubscribed —
+  where "at most one team lead" now comes from, that Role having one
+  Seat), male_required (a shift without a male keeps a Seat open so one
+  can be added manually), no_back_to_back,
   closed_shifts, preallocations, no_duplicate_allocation.
   `one_shift_per_month` also exists but sits in `STRICT_CONSTRAINTS`, out of
   the production set: it is regularly unsatisfiable at real volunteer numbers.
@@ -110,8 +116,10 @@ read `x.role`. Modularity is the point of this package:
   preferences use harmonic diminishing returns (the nth unit is worth
   `WEIGHT // n`), which makes marginal value fall as a shift/group
   accumulates — scarce resources spread evenly instead of stacking:
-  - `even_fill` (60 // seat) — get every shift to N volunteers before
-    pushing any shift to N+1; custom preallocations occupy early seats.
+  - `even_fill` (uncapped Role: 60 // Seat; capped Role: a flat 61+) —
+    get every shift to N volunteers before pushing any shift to N+1,
+    and fill a capped Role's Seat before an ordinary one; custom
+    preallocations occupy their Role's early Seats.
   - `spread_males` (30 // male) — distribute males one-per-shift first.
   - `fairness` (20 // lifetime allocation, historical + this rota) —
     reach for under-used groups before frequently-allocated ones.

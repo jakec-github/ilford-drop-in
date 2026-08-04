@@ -29,7 +29,7 @@ and issue #34.
    - `InitShifts` applies date-matched overrides (size, closed, preallocations)
      and populates each shift's available groups.
    - `BuildVolunteerGroup` builds a single group with its derived metadata
-     (`HasTeamLead`, `MaleCount`).
+     (`MaleCount`).
 
 3. **CP-SAT contract** (`cpsat_contract.go`, `cpsat_runner.go`) — the JSON
    contract with `pyallocator` and the subprocess plumbing:
@@ -42,7 +42,7 @@ and issue #34.
      persistence and printing reuse the existing code paths.
 
 The solver's constraints and objective (hard constraints such as availability,
-capacity, no back-to-back, at most one team lead, and the soft preferences that
+capacity per Role's Seats, no back-to-back, and the soft preferences that
 shape the result) are documented in `pyallocator/README.md`.
 
 ## Core data structures
@@ -56,22 +56,18 @@ Volunteers allocated together (e.g. couples, families):
 - `AvailableShiftIndices` — shifts this group is available for
 - `AllocatedShiftIndices` — shifts this group has been allocated to
 - `HistoricalAllocationCount` — historical allocations, for fairness
-- `HasTeamLead` — whether any member is a team lead
 - `MaleCount` — number of male volunteers in the group
 
 ### Shift
 
 A single shift to be filled:
 
-- `Date`, `Index`, `Size` (target ordinary-volunteer count; excludes team lead)
+- `Date`, `Index`, `Size` (Seats the shift buys in the uncapped Role)
 - `AllocatedGroups` — groups assigned to this shift
-- `CustomPreallocations` — string IDs of manually pre-assigned volunteers
-  (count toward `Size`)
-- `TeamLead` — the assigned team lead (separate from `Size`, may be nil)
-- `Closed` / `PreallocatedVolunteerIDs` / `PreallocatedTeamLeadID` — resolved
-  from overrides during `InitShifts`
+- `Assignments` — the filled Seats on a *solved* shift, each naming its Role
+  and holding either a volunteer or a custom (free-text) entry
+- `Closed` / `Preallocations` — resolved from overrides during `InitShifts`
 
-**Team leads and pre-allocated volunteers** are treated specially: team leads
-are stored in `TeamLead` and do NOT count toward `Size`; pre-allocated
-volunteers are string IDs that DO count toward `Size` but don't affect
-`TeamLead` or `MaleCount`.
+**Preallocations and Assignments are the same shape** — a Seat spoken for, and
+a Seat filled. A volunteer, a team lead and a free-text entry are all just
+someone in a Seat of some Role; nothing here special-cases which Role that is.

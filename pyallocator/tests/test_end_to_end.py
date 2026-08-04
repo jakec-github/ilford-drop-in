@@ -28,7 +28,16 @@ from importlib.metadata import version
 from pathlib import Path
 
 import pytest
-from conftest import DEFAULT_ROLES, SERVICE_VOLUNTEER, TEAM_LEAD, make_member, make_shift
+from conftest import (
+    DEFAULT_ROLES,
+    SERVICE_VOLUNTEER,
+    TEAM_LEAD,
+    customs,
+    make_member,
+    make_shift,
+    team_lead_id,
+    volunteer_ids,
+)
 from pyallocator.api import solve
 from pyallocator.domain import (
     AllocationInput,
@@ -77,6 +86,7 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     groups = {g.group_key: g for g in inp.groups}
     preallocated_pairs = set()
     member_to_group = {m.id: g.group_key for g in inp.groups for m in g.members}
+    roles_held = {m.id: set(m.roles) for g in inp.groups for m in g.members}
     for spec in inp.shifts:
         if spec_team_lead_id(spec):
             preallocated_pairs.add(
@@ -94,7 +104,7 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             shift.closed,
         ):
             problems.append(f"shift {spec.index}: spec fields not echoed faithfully")
-        if spec_customs(spec) != list(shift.custom_preallocations):
+        if spec_customs(spec) != list(customs(shift)):
             problems.append(f"shift {spec.index}: custom preallocations not echoed")
 
         keys = shift.allocated_group_keys
@@ -103,16 +113,17 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         if spec.closed and keys:
             problems.append(f"shift {shift.index}: closed but allocated")
 
-        ordinary = 0
-        team_lead_groups = 0
+        # Who sits in an ordinary Seat is a solver decision now, not a
+        # property of the Roles someone holds: a second team-lead holder
+        # works the shift as a Service volunteer. So read it off the
+        # output rather than deriving it from the input.
+        ordinary = len(volunteer_ids(shift))
         males = 0
         expected_ids: set[str] = set()
         for key in keys:
             group = groups[key]
             allocated[key].append(shift.index)
             expected_ids.update(m.id for m in group.members)
-            ordinary += sum(1 for m in group.members if not is_lead(m))
-            team_lead_groups += any(is_lead(m) for m in group.members)
             males += sum(1 for m in group.members if m.gender == "Male")
             if (
                 shift.index not in group.available_shift_indices
@@ -120,11 +131,11 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             ):
                 problems.append(f"shift {shift.index}: {key} not available")
 
-        if team_lead_groups > 1:
-            problems.append(f"shift {shift.index}: {team_lead_groups} team leads")
-        # No male => a slot must stay open (TL slot or an ordinary seat)
-        # so the rota creator can add one manually.
-        if not spec.closed and males == 0 and team_lead_groups > 0:
+        lead_id = team_lead_id(shift)
+
+        # No male => a Seat must stay open (the TL Seat or an ordinary
+        # one) so the rota creator can add one manually.
+        if not spec.closed and males == 0 and lead_id:
             budget = max(0, spec_size(spec) - len(spec_customs(spec)))
             if ordinary >= budget:
                 problems.append(
@@ -136,24 +147,34 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         ):
             problems.append(f"shift {shift.index}: over capacity ({ordinary})")
 
-        # volunteer_ids + team_lead_id must be exactly the allocated members.
-        reported = set(shift.volunteer_ids) | ({shift.team_lead_id} - {""})
-        if reported != expected_ids:
+        # Every assignment must be a Seat the Shape offers, held by whoever
+        # is in it; and the people assigned must be exactly the members of
+        # the allocated groups, each appearing once.
+        shape_roles = {s.role for s in spec.shape if s.count > 0}
+        assigned = [a.volunteer_id for a in shift.assignments if a.volunteer_id]
+        for a in shift.assignments:
+            if a.role not in shape_roles:
+                problems.append(
+                    f"shift {shift.index}: assigned role '{a.role}' is not in the Shape"
+                )
+            if a.volunteer_id and a.role not in roles_held.get(a.volunteer_id, set()):
+                problems.append(
+                    f"shift {shift.index}: {a.volunteer_id} assigned role "
+                    f"'{a.role}', which they do not hold"
+                )
+        if len(assigned) != len(set(assigned)):
+            problems.append(f"shift {shift.index}: someone assigned two Seats")
+        if set(assigned) != expected_ids:
             problems.append(
-                f"shift {shift.index}: reported ids {sorted(reported)} != "
+                f"shift {shift.index}: assigned ids {sorted(set(assigned))} != "
                 f"allocated group members {sorted(expected_ids)}"
             )
-        if shift.team_lead_id:
-            tl_group = member_to_group.get(shift.team_lead_id)
-            is_tl = any(
-                m.id == shift.team_lead_id and is_lead(m)
-                for g in inp.groups
-                for m in g.members
-            )
-            if tl_group not in keys or not is_tl:
-                problems.append(f"shift {shift.index}: bad team lead designation")
-        if spec_team_lead_id(spec) and shift.team_lead_id != spec_team_lead_id(spec):
-            problems.append(f"shift {shift.index}: preallocated TL not designated")
+        if lead_id:
+            tl_group = member_to_group.get(lead_id)
+            if tl_group not in keys:
+                problems.append(f"shift {shift.index}: team lead outside the rota")
+        if spec_team_lead_id(spec) and lead_id != spec_team_lead_id(spec):
+            problems.append(f"shift {shift.index}: preallocated TL not in the TL Seat")
 
     for group_key, shift_index in preallocated_pairs:
         if shift_index not in allocated[group_key]:
@@ -266,9 +287,9 @@ def test_end_to_end_scenario():
     # Closed shift untouched.
     assert by_shift[5].allocated_group_keys == ()
     # Custom preallocation echoed back for persistence.
-    assert by_shift[6].custom_preallocations == ("external_john",)
-    # Preallocated team lead designated on shift 1.
-    assert by_shift[1].team_lead_id == "george"
+    assert customs(by_shift[6]) == ("external_john",)
+    # The preallocated team lead is in shift 1's Team lead Seat.
+    assert team_lead_id(by_shift[1]) == "george"
     # Availability-overriding volunteer preallocation honoured.
     assert "Charlie Green" in by_shift[4].allocated_group_keys
     # Back-to-back boundary: Alice/Bob and Diana sat out shift 0.
@@ -287,8 +308,7 @@ def test_end_to_end_scenario():
         "grouping",
         "availability",
         "max_frequency",
-        "shift_capacity",
-        "at_most_one_team_lead",
+        "seat_capacity",
         "male_required",
         "no_back_to_back",
         "closed_shifts",
@@ -299,10 +319,10 @@ def test_end_to_end_scenario():
 def rota_content(out: AllocationOutput) -> dict:
     """The solved rota as *content* — who works when, in what job.
 
-    Deliberately not the JSON contract. The contract is about to be
-    reshaped (team_lead_id and volunteer_ids give way to role-tagged
-    assignments in #89), and a golden written in contract shape would
-    have to be regenerated for every rename, which is exactly when it
+    Deliberately not the JSON contract. The contract has already been
+    reshaped once under #89 (team_lead_id and volunteer_ids gave way to
+    role-tagged assignments), and a golden written in contract shape
+    would have had to be regenerated for it — which is exactly when it
     stops being able to tell a rename from a behaviour change. Read this
     function as the mapping from whatever the contract currently says to
     the rota a volunteer would recognise; rewrite it when the contract
@@ -310,9 +330,9 @@ def rota_content(out: AllocationOutput) -> dict:
     """
     return {
         str(shift.index): {
-            "team_lead": shift.team_lead_id,
-            "volunteers": sorted(shift.volunteer_ids),
-            "customs": list(shift.custom_preallocations),
+            "team_lead": team_lead_id(shift),
+            "volunteers": sorted(volunteer_ids(shift)),
+            "customs": list(customs(shift)),
         }
         for shift in out.shifts
     }

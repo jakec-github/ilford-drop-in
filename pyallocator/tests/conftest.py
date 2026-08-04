@@ -9,7 +9,8 @@ objective so solutions are non-empty).
 The builders take sizes, team-lead flags and pins the way the contract used
 to express them, and translate to Roles, Seats and role-named pins here. That
 keeps every test stating what it is actually about, and means the translation
-is written once rather than in forty places.
+is written once rather than in forty places. team_lead_id/volunteer_ids/
+customs read the solved shift back the same way round.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pyallocator.domain import (
     Group,
     HistoricalShift,
     Member,
+    OutputShift,
     Preallocation,
     Role,
     Seat,
@@ -161,3 +163,25 @@ def solve_with(
 def allocations_by_shift(output: AllocationOutput) -> dict[int, tuple[str, ...]]:
     """shift index -> allocated group keys."""
     return {s.index: s.allocated_group_keys for s in output.shifts}
+
+
+def team_lead_id(shift: OutputShift) -> str:
+    """Whoever the solver put in the Team lead Seat, "" if nobody did."""
+    for a in shift.assignments:
+        if a.role == TEAM_LEAD and a.volunteer_id:
+            return a.volunteer_id
+    return ""
+
+
+def volunteer_ids(shift: OutputShift) -> tuple[str, ...]:
+    """The volunteers in ordinary Seats, in assignment order."""
+    return tuple(
+        a.volunteer_id
+        for a in shift.assignments
+        if a.volunteer_id and a.role != TEAM_LEAD
+    )
+
+
+def customs(shift: OutputShift) -> tuple[str, ...]:
+    """The custom (free-text) entries echoed back, in assignment order."""
+    return tuple(a.custom for a in shift.assignments if a.custom)

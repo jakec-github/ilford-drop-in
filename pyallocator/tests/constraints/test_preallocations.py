@@ -11,6 +11,8 @@ from conftest import (
     make_member,
     make_shift,
     solve_with,
+    team_lead_id,
+    volunteer_ids,
 )
 from pyallocator.constraints import preallocations
 from pyallocator.problem import Problem, ProblemError
@@ -41,7 +43,7 @@ def test_partner_comes_along():
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
     shift = out.shifts[0]
-    assert set(shift.volunteer_ids) == {"a", "b"}
+    assert set(volunteer_ids(shift)) == {"a", "b"}
 
 
 def test_preallocated_team_lead_designated():
@@ -54,7 +56,7 @@ def test_preallocated_team_lead_designated():
     )
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
-    assert out.shifts[0].team_lead_id == "lead"
+    assert team_lead_id(out.shifts[0]) == "lead"
 
 
 def test_multiple_ids_same_group_dedupe():
