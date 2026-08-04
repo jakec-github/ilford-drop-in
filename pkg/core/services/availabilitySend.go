@@ -111,7 +111,7 @@ func SendAvailabilityEmails(
 		return nil, wrapf(ErrConflict, "rota %s is already allocated, so its availability links no longer work", rota.ID)
 	}
 
-	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rota.ID)
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
@@ -223,7 +223,7 @@ func SendAvailabilityEmails(
 // recipient pairs a request with the volunteer it belongs to, which every send
 // needs together: the token comes from one and the address from the other.
 type recipient struct {
-	request   db.AvailabilityRequestV2
+	request   db.AvailabilityRequest
 	volunteer model.Volunteer
 }
 
@@ -234,7 +234,7 @@ func selectRecipients(
 	ctx context.Context,
 	database AvailabilityStore,
 	rota *db.Rotation,
-	requests []db.AvailabilityRequestV2,
+	requests []db.AvailabilityRequest,
 	volunteers []model.Volunteer,
 	params SendParams,
 ) ([]recipient, error) {
@@ -300,7 +300,7 @@ func groupsThatHaveAnswered(
 	ctx context.Context,
 	database AvailabilityStore,
 	rota *db.Rotation,
-	requests []db.AvailabilityRequestV2,
+	requests []db.AvailabilityRequest,
 	volunteers []model.Volunteer,
 	mode SendMode,
 ) (map[string]bool, error) {

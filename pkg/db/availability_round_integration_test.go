@@ -34,8 +34,8 @@ func roundFixture(t *testing.T, database *db.DB) (rotaID string, shiftIDs []stri
 	return rotaID, shiftIDs
 }
 
-func request(rotaID, volunteerID, token string) db.AvailabilityRequestV2 {
-	return db.AvailabilityRequestV2{
+func request(rotaID, volunteerID, token string) db.AvailabilityRequest {
+	return db.AvailabilityRequest{
 		ID:          uuid.New().String(),
 		RotaID:      rotaID,
 		VolunteerID: volunteerID,
@@ -52,7 +52,7 @@ func TestMintAvailabilityRequestsIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	rotaID, _ := roundFixture(t, database)
 
-	first := []db.AvailabilityRequestV2{
+	first := []db.AvailabilityRequest{
 		request(rotaID, "alice", "token-alice"),
 		request(rotaID, "bob", "token-bob"),
 	}
@@ -62,7 +62,7 @@ func TestMintAvailabilityRequestsIsIdempotent(t *testing.T) {
 
 	// A second mint over the same volunteers plus a newcomer adds only the
 	// newcomer, and does not re-token alice or bob.
-	second := []db.AvailabilityRequestV2{
+	second := []db.AvailabilityRequest{
 		request(rotaID, "alice", "token-alice-2"),
 		request(rotaID, "bob", "token-bob-2"),
 		request(rotaID, "carol", "token-carol"),
@@ -71,7 +71,7 @@ func TestMintAvailabilityRequestsIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, inserted, "only the volunteer with no request yet is minted")
 
-	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rotaID)
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rotaID)
 	require.NoError(t, err)
 	require.Len(t, requests, 3)
 
@@ -92,7 +92,7 @@ func TestGetAvailabilityRequestByToken(t *testing.T) {
 	ctx := context.Background()
 	rotaID, _ := roundFixture(t, database)
 
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{
 		request(rotaID, "alice", "token-alice"),
 	})
 	require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestLatestAvailabilityTakesTheNewestGeneration(t *testing.T) {
 	rotaID, shiftIDs := roundFixture(t, database)
 
 	req := request(rotaID, "alice", "token-alice")
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{req})
 	require.NoError(t, err)
 
 	_, err = database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
@@ -154,7 +154,7 @@ func TestLatestAvailabilityRecordsAnEmptyGeneration(t *testing.T) {
 
 	replied := request(rotaID, "alice", "token-alice")
 	silent := request(rotaID, "bob", "token-bob")
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{replied, silent})
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{replied, silent})
 	require.NoError(t, err)
 
 	_, err = database.InsertAvailabilityResponse(ctx, replied.ID, nil)
@@ -181,7 +181,7 @@ func TestLatestAvailabilityRespectsTheCutoff(t *testing.T) {
 	rotaID, shiftIDs := roundFixture(t, database)
 
 	req := request(rotaID, "alice", "token-alice")
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{req})
 	require.NoError(t, err)
 
 	inTime, err := database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
@@ -222,7 +222,7 @@ func TestInsertAvailabilityResponseIsAtomic(t *testing.T) {
 	rotaID, shiftIDs := roundFixture(t, database)
 
 	req := request(rotaID, "alice", "token-alice")
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{req})
 	require.NoError(t, err)
 
 	_, err = database.InsertAvailabilityResponse(ctx, req.ID, []db.ShiftAnswer{
@@ -256,7 +256,7 @@ func TestMarkAvailabilityRequestSentStampsOneRequest(t *testing.T) {
 	ctx := context.Background()
 	rotaID, _ := roundFixture(t, database)
 
-	requests := []db.AvailabilityRequestV2{
+	requests := []db.AvailabilityRequest{
 		request(rotaID, "alice", "token-alice"),
 		request(rotaID, "bob", "token-bob"),
 	}
@@ -266,11 +266,11 @@ func TestMarkAvailabilityRequestSentStampsOneRequest(t *testing.T) {
 	before := time.Now().Add(-time.Second)
 	require.NoError(t, database.MarkAvailabilityRequestSent(ctx, requests[0].ID))
 
-	stored, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rotaID)
+	stored, err := database.GetAvailabilityRequestsByRotaID(ctx, rotaID)
 	require.NoError(t, err)
 	require.Len(t, stored, 2)
 
-	byVolunteer := make(map[string]db.AvailabilityRequestV2, len(stored))
+	byVolunteer := make(map[string]db.AvailabilityRequest, len(stored))
 	for _, r := range stored {
 		byVolunteer[r.VolunteerID] = r
 	}
@@ -305,7 +305,7 @@ func TestBackfilledResponseKeepsItsOriginalTimestamp(t *testing.T) {
 	rotaID, shiftIDs := roundFixture(t, database)
 
 	req := request(rotaID, "alice", "token-alice")
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{req})
 	require.NoError(t, err)
 
 	answered := time.Date(2025, 3, 4, 9, 30, 0, 0, time.UTC)
@@ -334,7 +334,7 @@ func TestBackfilledResponseIsIdempotent(t *testing.T) {
 	rotaID, shiftIDs := roundFixture(t, database)
 
 	req := request(rotaID, "alice", "token-alice")
-	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequestV2{req})
+	_, err := database.MintAvailabilityRequests(ctx, []db.AvailabilityRequest{req})
 	require.NoError(t, err)
 
 	// Nanoseconds Postgres cannot store: the second run must still recognise the

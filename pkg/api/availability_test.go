@@ -56,7 +56,7 @@ func TestAvailabilityLinkIsGoneOnceAllocated(t *testing.T) {
 			AllocatedDatetime: "2026-07-30T09:00:00Z",
 		}},
 		shifts: []db.Shift{{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02"}},
-		availabilityRequests: []db.AvailabilityRequestV2{
+		availabilityRequests: []db.AvailabilityRequest{
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "bob", Token: "bob-token"},
 		},
 	}

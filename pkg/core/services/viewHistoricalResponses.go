@@ -36,7 +36,7 @@ type ViewHistoricalResponsesResult struct {
 // ViewHistoricalResponsesStore defines the database operations needed
 type ViewHistoricalResponsesStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 }
 
@@ -175,7 +175,7 @@ func rotaResponseStatuses(
 		return nil, fmt.Errorf("failed to parse allocated_datetime: %w", err)
 	}
 
-	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rota.ID)
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}

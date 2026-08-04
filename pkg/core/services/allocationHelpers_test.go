@@ -49,7 +49,7 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 type mockAllocateRotaStore struct {
 	rotations                  []db.Rotation
 	shifts                     []db.Shift
-	availabilityRequestsV2     []db.AvailabilityRequestV2
+	availabilityRequests     []db.AvailabilityRequest
 	generations                map[string]db.AvailabilityGeneration // keyed by request id
 	allocations                []db.Allocation
 	alterations                []db.Alteration
@@ -81,12 +81,12 @@ func (m *mockAllocateRotaStore) GetShiftsByRotaID(ctx context.Context, rotaID st
 	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
+func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error) {
 	if m.getAvailabilityErr != nil {
 		return nil, m.getAvailabilityErr
 	}
-	var filtered []db.AvailabilityRequestV2
-	for _, r := range m.availabilityRequestsV2 {
+	var filtered []db.AvailabilityRequest
+	for _, r := range m.availabilityRequests {
 		if r.RotaID == rotaID {
 			filtered = append(filtered, r)
 		}
@@ -519,7 +519,7 @@ func availabilityRound(generations map[string][]string) *mockAllocateRotaStore {
 	}
 	for volunteerID, shiftIDs := range generations {
 		requestID := "req-" + volunteerID
-		store.availabilityRequestsV2 = append(store.availabilityRequestsV2, db.AvailabilityRequestV2{
+		store.availabilityRequests = append(store.availabilityRequests, db.AvailabilityRequest{
 			ID: requestID, RotaID: "rota-1", VolunteerID: volunteerID, Token: "tok-" + volunteerID,
 		})
 		if shiftIDs == nil {
