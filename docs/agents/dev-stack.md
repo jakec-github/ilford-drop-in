@@ -104,6 +104,47 @@ and 410 once the rota has been allocated.
 `shiftIds` is the volunteer's whole answer, never a delta — an absent shift is a
 no. Submitting again appends a generation and the latest wins.
 
+### Answering a whole round at once
+
+Answering link by link is fine for one volunteer and tedious for thirty. To get
+a round into a state worth looking at — coverage figures off zero, something for
+an allocation run to chew on — `scripts/fake-availability.py` answers the whole
+round with random availability, through the same public endpoint above:
+
+```bash
+scripts/fake-availability.py --dry-run     # what it would submit
+scripts/fake-availability.py --seed 1      # reproducible
+scripts/fake-availability.py --mean 0.75 --sd 0.1 --reply-rate 0.6
+```
+
+Each answerer gets their own rate drawn around `--mean`, so the round has
+volunteers who are nearly always free and volunteers who are hardly ever free,
+rather than everyone sitting on the average. `--reply-rate` leaves some
+unanswered, which is what the chase list and covered-by are for. Anyone who has
+already replied is skipped, so re-running tops the round up rather than
+overwriting it.
+
+**One member answers per group by default.** A group's availability is the
+intersection over its members who replied (ADR 0004), so two partners answering
+independently at 60% each leaves the group at 36% — the rate you asked for is
+only the rate the allocator sees if each group speaks once. `--per-volunteer`
+makes everyone answer separately, for testing the intersection itself.
+
+By default it logs in at `/auth/login`, which only mints a session on a dev-mode
+stack. Against an environment with real Google login — test, say — log in
+through the browser, copy the `session` cookie out of devtools (it is HttpOnly,
+so the Application tab, not the console) and hand it over:
+
+```bash
+scripts/fake-availability.py --api-url https://<host> --session '<cookie>' --dry-run
+```
+
+It checks the session against `/auth/me` before writing anything and prints the
+admin it is acting as. A rejected session is reported as such rather than
+surfacing later as a bare 401 — though the server cannot distinguish an expired
+cookie from an address missing off that environment's `server.adminEmails`, so
+the message names both.
+
 ## Send the round
 
 Minting writes the links; sending emails them. In production that is an OAuth
