@@ -21,56 +21,111 @@ import (
 type AllocateRotaStore interface {
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
-	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
+	GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error)
+	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
 	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
-// fetchAvailabilityResponses fetches form responses and converts them to allocator availability format
-func fetchAvailabilityResponses(
+// fetchGroupAvailability reads a rota's stored availability and settles it into
+// the answer the allocator works in: the shift indices each group can work,
+// keyed the way the allocator keys its groups.
+//
+// This is where the two grains meet. Requests are minted per volunteer;
+// allocation happens per group. The rule bridging them — available iff at least
+// one member answered and every member who answered said yes (ADR 0004) — is
+// applied here from the round's own implementation, rather than copied. The
+// allocator kept its own version of it until this slice, written against the
+// opposite encoding: it unioned unavailability where this intersects
+// availability, which is the same rule read backwards.
+//
+// orderedShiftIDs must be in the solver's shift order, since that is what an
+// index means to it.
+func fetchGroupAvailability(
 	ctx context.Context,
-	requests []db.AvailabilityRequest,
-	volunteersByID map[string]model.Volunteer,
-	shiftDates []time.Time,
-	formsClient FormsClientWithResponses,
+	database AllocateRotaStore,
+	rotaID string,
+	activeVolunteers []allocator.Volunteer,
+	orderedShiftIDs []string,
 	logger *zap.Logger,
-) ([]allocator.VolunteerAvailability, error) {
-	availability := make([]allocator.VolunteerAvailability, 0, len(requests))
+) (map[string][]int, error) {
+	requests, err := database.GetAvailabilityRequestsV2ByRotaID(ctx, rotaID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
+	}
+	if len(requests) == 0 {
+		return nil, fmt.Errorf("no availability round has been minted for rota %s - mint one before allocating", rotaID)
+	}
 
-	for _, req := range requests {
-		volunteer, exists := volunteersByID[req.VolunteerID]
-		if !exists {
-			logger.Warn("Volunteer not found in map", zap.String("volunteer_id", req.VolunteerID))
+	requestIDs := make([]string, 0, len(requests))
+	for _, r := range requests {
+		requestIDs = append(requestIDs, r.ID)
+	}
+	// No cutoff: allocation refuses a rota that is already allocated, so every
+	// answer on record is an answer that still counts.
+	latest, err := database.GetLatestAvailability(ctx, requestIDs, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read availability: %w", err)
+	}
+
+	volunteersByID := make(map[string]allocator.Volunteer, len(activeVolunteers))
+	for _, v := range activeVolunteers {
+		volunteersByID[v.ID] = v
+	}
+
+	entriesByGroup := make(map[string][]AvailabilityEntry)
+	for _, request := range requests {
+		volunteer, active := volunteersByID[request.VolunteerID]
+		if !active {
+			// Someone who has gone inactive or left the sheet since the round
+			// was minted still holds a link, but cannot be allocated — and so
+			// has no group here for their answer to speak for.
+			logger.Debug("Skipping availability for a volunteer who is not active",
+				zap.String("volunteer_id", request.VolunteerID))
 			continue
 		}
 
-		volunteerName := fmt.Sprintf("%s %s", volunteer.FirstName, volunteer.LastName)
-
-		// Get form response
-		formResp, err := formsClient.GetFormResponse(req.FormID, volunteerName, shiftDates)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get form response for volunteer %s: %w", volunteer.ID, err)
+		generation, replied := latest[request.ID]
+		entry := AvailabilityEntry{
+			VolunteerID:       request.VolunteerID,
+			VolunteerName:     strings.TrimSpace(volunteer.FirstName + " " + volunteer.LastName),
+			Replied:           replied,
+			AvailableShiftIDs: make([]string, 0, len(generation.Answers)),
+		}
+		for _, answer := range generation.Answers {
+			entry.AvailableShiftIDs = append(entry.AvailableShiftIDs, answer.ShiftID)
 		}
 
-		// Convert unavailable dates to shift indices
-		unavailableIndices := make([]int, 0)
-		for _, unavailableDateStr := range formResp.UnavailableDates {
-			// Find the index of this date in shiftDates
-			for i, shiftDate := range shiftDates {
-				if shiftDate.Format("Mon Jan 2 2006") == unavailableDateStr {
-					unavailableIndices = append(unavailableIndices, i)
-					break
-				}
-			}
-		}
+		key := allocator.GroupKeyFor(volunteer)
+		entriesByGroup[key] = append(entriesByGroup[key], entry)
+	}
 
-		availability = append(availability, allocator.VolunteerAvailability{
-			VolunteerID:             req.VolunteerID,
-			HasResponded:            formResp.HasResponded,
-			UnavailableShiftIndices: unavailableIndices,
-		})
+	// The group rule works in shift ids; the solver works in indices. Closed is
+	// left false throughout because the allocator resolves closure itself, from
+	// the config overrides — and a volunteer cannot say yes to a closed shift in
+	// the first place, so nothing here can leak one in.
+	shiftOrder := make([]AvailabilityShift, len(orderedShiftIDs))
+	indexByShiftID := make(map[string]int, len(orderedShiftIDs))
+	for i, id := range orderedShiftIDs {
+		shiftOrder[i] = AvailabilityShift{ID: id}
+		indexByShiftID[id] = i
+	}
+
+	availability := make(map[string][]int, len(entriesByGroup))
+	for key, entries := range entriesByGroup {
+		group := buildAvailabilityGroup(key, entries, shiftOrder)
+		if !group.Replied {
+			// Nobody in the group answered. Absent from the map is how that is
+			// told apart from a group that answered "none of these".
+			continue
+		}
+		indices := make([]int, 0, len(group.AvailableShiftIDs))
+		for _, shiftID := range group.AvailableShiftIDs {
+			indices = append(indices, indexByShiftID[shiftID])
+		}
+		availability[key] = indices
 	}
 
 	return availability, nil

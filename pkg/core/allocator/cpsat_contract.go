@@ -117,7 +117,7 @@ type CpsatOutput struct {
 // override application are never duplicated.
 func BuildCpsatInput(
 	volunteers []Volunteer,
-	availability []VolunteerAvailability,
+	groupAvailability map[string][]int,
 	shiftDateStrings []string,
 	defaultShiftSize int,
 	overrides []ShiftOverride,
@@ -131,10 +131,9 @@ func BuildCpsatInput(
 	}
 
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
-		Volunteers:       volunteers,
-		Availability:     availability,
-		TotalShifts:      len(shiftDateStrings),
-		HistoricalShifts: historicalShifts,
+		Volunteers:        volunteers,
+		GroupAvailability: groupAvailability,
+		HistoricalShifts:  historicalShifts,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize volunteer groups: %w", err)
@@ -243,10 +242,7 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 			if !exists {
 				return nil, fmt.Errorf("solver returned unknown volunteer ID %s for shift %s", id, outShift.Date)
 			}
-			groupKey := vol.GroupKey
-			if groupKey == "" || groupKey == "None" {
-				groupKey = vol.FirstName + " " + vol.LastName
-			}
+			groupKey := GroupKeyFor(vol)
 			if _, seen := membersByGroup[groupKey]; !seen {
 				groupOrder = append(groupOrder, groupKey)
 			}

@@ -14,12 +14,10 @@ func TestInitVolunteerGroups_BasicGrouping(t *testing.T) {
 			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
 			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Female", IsTeamLead: true, GroupKey: "group_b"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{0}},
-			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{1}},
-			{VolunteerID: "v3", HasResponded: true, UnavailableShiftIndices: []int{}},
+		GroupAvailability: map[string][]int{
+			"group_a": {2},
+			"group_b": {0, 1, 2},
 		},
-		TotalShifts:      3,
 		HistoricalShifts: []*Shift{},
 	}
 
@@ -62,11 +60,10 @@ func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: ""},
 			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: true, GroupKey: ""},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{0}},
-			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{1}},
+		GroupAvailability: map[string][]int{
+			"Alice Smith": {1, 2},
+			"Bob Jones":   {0, 2},
 		},
-		TotalShifts:      3,
 		HistoricalShifts: []*Shift{},
 	}
 
@@ -90,12 +87,8 @@ func TestInitVolunteerGroups_GroupWithTwoTeamLeadsIsAllowed(t *testing.T) {
 			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: true, GroupKey: "lead_couple"},
 			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: true, GroupKey: "lead_couple"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{}},
-		},
-		TotalShifts:      3,
-		HistoricalShifts: []*Shift{},
+		GroupAvailability: map[string][]int{"lead_couple": {0, 1, 2}},
+		HistoricalShifts:  []*Shift{},
 	}
 
 	volunteerState, err := InitVolunteerGroups(input)
@@ -113,13 +106,9 @@ func TestInitVolunteerGroups_DiscardGroupWithNoResponses(t *testing.T) {
 			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "no_response_group"},
 			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: "has_response_group"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: false, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v2", HasResponded: false, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v3", HasResponded: true, UnavailableShiftIndices: []int{}},
-		},
-		TotalShifts:      3,
-		HistoricalShifts: []*Shift{},
+		// no_response_group is simply absent from the map.
+		GroupAvailability: map[string][]int{"has_response_group": {0, 1, 2}},
+		HistoricalShifts:  []*Shift{},
 	}
 
 	volunteerState, err := InitVolunteerGroups(input)
@@ -135,11 +124,9 @@ func TestInitVolunteerGroups_DiscardGroupWithNoAvailability(t *testing.T) {
 		Volunteers: []Volunteer{
 			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "unavailable_group"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{0, 1, 2}}, // Unavailable for all shifts
-		},
-		TotalShifts:      3,
-		HistoricalShifts: []*Shift{},
+		// Answered, but for nothing: present in the map with no shifts.
+		GroupAvailability: map[string][]int{"unavailable_group": {}},
+		HistoricalShifts:  []*Shift{},
 	}
 
 	_, err := InitVolunteerGroups(input)
@@ -148,32 +135,13 @@ func TestInitVolunteerGroups_DiscardGroupWithNoAvailability(t *testing.T) {
 	assert.Contains(t, err.Error(), "no valid volunteer groups")
 }
 
-func TestInitVolunteerGroups_GroupAvailabilityLogic(t *testing.T) {
-	// Test that group availability = all shifts EXCEPT those where ANY responding member is unavailable
-	input := InitVolunteerGroupsInput{
-		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
-		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{0, 1}},
-			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{2}},
-			{VolunteerID: "v3", HasResponded: false, UnavailableShiftIndices: []int{}}, // Non-responder doesn't affect availability
-		},
-		TotalShifts:      5,
-		HistoricalShifts: []*Shift{},
-	}
-
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
-	require.Len(t, volunteerState.VolunteerGroups, 1)
-
-	group := volunteerState.VolunteerGroups[0]
-	// Group unavailable on: 0, 1 (v1), 2 (v2)
-	// Group available on: 3, 4
-	assert.ElementsMatch(t, []int{3, 4}, group.AvailableShiftIndices)
+// A volunteer with no group, or the sheet's literal "None", is their own group
+// of one — the key every caller has to agree on to line availability up with the
+// groups it belongs to.
+func TestGroupKeyFor(t *testing.T) {
+	assert.Equal(t, "couple_ab", GroupKeyFor(Volunteer{FirstName: "Alice", LastName: "Smith", GroupKey: "couple_ab"}))
+	assert.Equal(t, "Alice Smith", GroupKeyFor(Volunteer{FirstName: "Alice", LastName: "Smith"}))
+	assert.Equal(t, "Alice Smith", GroupKeyFor(Volunteer{FirstName: "Alice", LastName: "Smith", GroupKey: "None"}))
 }
 
 func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {
@@ -204,11 +172,10 @@ func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {
 			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
 			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_b"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{}},
+		GroupAvailability: map[string][]int{
+			"group_a": {0, 1, 2},
+			"group_b": {0, 1, 2},
 		},
-		TotalShifts:      3,
 		HistoricalShifts: historicalShifts,
 	}
 
@@ -241,13 +208,8 @@ func TestInitVolunteerGroups_MaleCountAccuracy(t *testing.T) {
 			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
 			{ID: "v3", FirstName: "Charlie", LastName: "Brown", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v2", HasResponded: true, UnavailableShiftIndices: []int{}},
-			{VolunteerID: "v3", HasResponded: true, UnavailableShiftIndices: []int{}},
-		},
-		TotalShifts:      3,
-		HistoricalShifts: []*Shift{},
+		GroupAvailability: map[string][]int{"group_a": {0, 1, 2}},
+		HistoricalShifts:  []*Shift{},
 	}
 
 	volunteerState, err := InitVolunteerGroups(input)
@@ -258,45 +220,33 @@ func TestInitVolunteerGroups_MaleCountAccuracy(t *testing.T) {
 	assert.Equal(t, 2, volunteerState.VolunteerGroups[0].MaleCount, "Should count 2 males in group")
 }
 
-func TestInitVolunteerGroups_NonRespondingMembersIgnored(t *testing.T) {
-	// Test that non-responding members don't make the group unavailable on all dates
+// The map is taken as given: whatever settled a group's answer, the allocator
+// applies it verbatim rather than second-guessing it against the members.
+func TestInitVolunteerGroups_AppliesGroupAvailabilityVerbatim(t *testing.T) {
 	input := InitVolunteerGroupsInput{
 		Volunteers: []Volunteer{
-			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
-			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", IsTeamLead: false, GroupKey: "group_a"},
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male", GroupKey: "group_a"},
 		},
-		Availability: []VolunteerAvailability{
-			{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{0}},
-			{VolunteerID: "v2", HasResponded: false, UnavailableShiftIndices: []int{}}, // Not responded
-		},
-		TotalShifts:      3,
-		HistoricalShifts: []*Shift{},
+		GroupAvailability: map[string][]int{"group_a": {1, 2}},
+		HistoricalShifts:  []*Shift{},
 	}
 
 	volunteerState, err := InitVolunteerGroups(input)
 
 	require.NoError(t, err)
 	require.Len(t, volunteerState.VolunteerGroups, 1)
-
-	group := volunteerState.VolunteerGroups[0]
-	// Group should be available on 1, 2 (not 0 due to Alice)
-	// Bob's non-response should NOT make all dates unavailable
-	assert.ElementsMatch(t, []int{1, 2}, group.AvailableShiftIndices)
+	assert.Equal(t, []int{1, 2}, volunteerState.VolunteerGroups[0].AvailableShiftIndices)
 }
 
 func TestInitShifts_ClosedShifts(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
 	}
-	availability := []VolunteerAvailability{
-		{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
-	}
-
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
-		Volunteers:       volunteers,
-		Availability:     availability,
-		TotalShifts:      3,
-		HistoricalShifts: []*Shift{},
+		Volunteers:        volunteers,
+		GroupAvailability: map[string][]int{"group_a": {0, 1, 2}},
+		HistoricalShifts:  []*Shift{},
 	})
 	require.NoError(t, err)
 
@@ -341,15 +291,10 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", IsTeamLead: false, GroupKey: "group_a"},
 	}
-	availability := []VolunteerAvailability{
-		{VolunteerID: "v1", HasResponded: true, UnavailableShiftIndices: []int{}},
-	}
-
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
-		Volunteers:       volunteers,
-		Availability:     availability,
-		TotalShifts:      2,
-		HistoricalShifts: []*Shift{},
+		Volunteers:        volunteers,
+		GroupAvailability: map[string][]int{"group_a": {0, 1}},
+		HistoricalShifts:  []*Shift{},
 	})
 	require.NoError(t, err)
 

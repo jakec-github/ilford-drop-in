@@ -5,13 +5,15 @@ import (
 	"sort"
 )
 
-// VolunteerAvailability represents a volunteer's availability response
-type VolunteerAvailability struct {
-	VolunteerID  string
-	HasResponded bool
-	// UnavailableShiftIndices contains shift indices this volunteer marked as unavailable
-	// Only meaningful if HasResponded is true
-	UnavailableShiftIndices []int
+// GroupKeyFor returns the key binding a volunteer to the people they are
+// allocated alongside. A volunteer with no group is their own group of one,
+// keyed on their name. "None" may be set in the spreadsheet and does not equate
+// to a group.
+func GroupKeyFor(volunteer Volunteer) string {
+	if volunteer.GroupKey == "" || volunteer.GroupKey == "None" {
+		return volunteer.FirstName + " " + volunteer.LastName
+	}
+	return volunteer.GroupKey
 }
 
 // InitVolunteerGroupsInput contains the raw data needed to initialize volunteer groups
@@ -19,11 +21,16 @@ type InitVolunteerGroupsInput struct {
 	// Volunteers is the list of all volunteers
 	Volunteers []Volunteer
 
-	// Availability is the list of availability responses from volunteers
-	Availability []VolunteerAvailability
-
-	// TotalShifts is the total number of shifts in the current rota
-	TotalShifts int
+	// GroupAvailability is each group's settled answer: the shift indices the
+	// group can work, keyed by GroupKeyFor. A group absent from the map has not
+	// been answered for by anybody and is discarded.
+	//
+	// The rule turning per-volunteer answers into this lives with the
+	// availability store, not here — a group is available iff at least one
+	// member answered and every member who answered said yes (ADR 0004). The
+	// allocator used to keep its own copy of that rule, which is how the same
+	// logic came to be written three times over.
+	GroupAvailability map[string][]int
 
 	// HistoricalShifts for calculating historical frequency per group
 	HistoricalShifts []*Shift
@@ -31,11 +38,6 @@ type InitVolunteerGroupsInput struct {
 
 // InitVolunteerGroups creates and initializes volunteer groups from raw volunteer data
 // Groups volunteers by GroupKey, calculates metadata, and filters out invalid groups.
-//
-// Availability logic (matching ViewResponses):
-//   - A group has responded if ANY member has responded
-//   - A group is unavailable on a date if ANY responding member marked it unavailable
-//   - Non-responding members don't affect availability
 //
 // Returns:
 //   - A VolunteerState with initialized groups and empty exhaustion map
@@ -46,24 +48,14 @@ type InitVolunteerGroupsInput struct {
 // and a second lead is free to take an ordinary Seat, so the rule is gone (#89).
 //
 // Invalid groups (discarded):
-//   - Groups where no members have responded
+//   - Groups nobody answered for
 //   - Groups with no availability
 func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error) {
-	// Build availability lookup map
-	availabilityMap := make(map[string]VolunteerAvailability)
-	for _, avail := range input.Availability {
-		availabilityMap[avail.VolunteerID] = avail
-	}
-
 	// Step 1: Group volunteers by GroupKey
 	groupMap := make(map[string][]Volunteer)
 
 	for _, volunteer := range input.Volunteers {
-		groupKey := volunteer.GroupKey
-		if groupKey == "" || groupKey == "None" { // Tha value "None" may be set in the spreadsheet. This does not equate to a group
-			// Individual volunteer - create unique group key
-			groupKey = volunteer.FirstName + " " + volunteer.LastName
-		}
+		groupKey := GroupKeyFor(volunteer)
 		groupMap[groupKey] = append(groupMap[groupKey], volunteer)
 	}
 
@@ -71,44 +63,11 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 	groups := make([]*VolunteerGroup, 0, len(groupMap))
 
 	for groupKey, members := range groupMap {
-		// Calculate availability for the group
-		// Group has responded if ANY member responded
-		groupHasResponded := false
-		unavailableSet := make(map[int]bool)
-
-		for _, member := range members {
-			memberAvail, exists := availabilityMap[member.ID]
-			if !exists {
-				continue
-			}
-
-			if memberAvail.HasResponded {
-				groupHasResponded = true
-
-				// Add this member's unavailable dates to the group's unavailable set
-				for _, shiftIdx := range memberAvail.UnavailableShiftIndices {
-					unavailableSet[shiftIdx] = true
-				}
-			}
-			// If member hasn't responded, they don't affect availability
-		}
-
-		// Discard groups where no one has responded
-		if !groupHasResponded {
-			continue
-		}
-
-		// Calculate available shift indices
-		// All shifts EXCEPT those in the unavailable set
-		availableShiftIndices := make([]int, 0)
-		for shiftIdx := 0; shiftIdx < input.TotalShifts; shiftIdx++ {
-			if !unavailableSet[shiftIdx] {
-				availableShiftIndices = append(availableShiftIndices, shiftIdx)
-			}
-		}
-
-		// Discard groups with no availability
-		if len(availableShiftIndices) == 0 {
+		// An absent key is a group nobody answered for; a present but empty one
+		// is a group that answered and can work nothing. Both are discarded, but
+		// only the first is "no reply".
+		availableShiftIndices, answered := input.GroupAvailability[groupKey]
+		if !answered || len(availableShiftIndices) == 0 {
 			continue
 		}
 

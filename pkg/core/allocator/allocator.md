@@ -15,14 +15,17 @@ and issue #34.
    `VolunteerState`, `Shift`. Shared by the model builders, the CP-SAT
    contract, and the services layer.
 
-2. **Model building** (`init.go`) — turns raw volunteers, availability
-   responses and shift overrides into the grouped, availability-resolved model
-   the solver needs:
-   - `InitVolunteerGroups` groups volunteers by `GroupKey` (couples/families
-     allocated together; individuals keyed by name), resolves each group's
-     availability (a group is available on a date unless a responding member
-     marked it unavailable), and discards groups that never responded or have
-     no availability. A group may contain at most one team lead.
+2. **Model building** (`init.go`) — turns raw volunteers, per-group availability
+   and shift overrides into the grouped model the solver needs:
+   - `GroupKeyFor` is the one place the grouping rule lives: a volunteer's
+     `GroupKey`, or their name when they have none (or the sheet's literal
+     "None"). Callers use it to key availability the same way.
+   - `InitVolunteerGroups` groups volunteers with `GroupKeyFor` (couples and
+     families allocated together; individuals keyed by name) and attaches each
+     group's availability from `GroupAvailability`, discarding groups nobody
+     answered for and groups with no availability. It does **not** decide what a
+     group's answer is — that rule belongs with the availability store (ADR
+     0004), and the allocator keeping its own copy of it is what this replaced.
    - `InitShifts` applies date-matched overrides (size, closed, preallocations)
      and populates each shift's available groups.
    - `BuildVolunteerGroup` builds a single group with its derived metadata

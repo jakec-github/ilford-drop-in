@@ -33,7 +33,6 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				app.Ctx,
 				app.Database,
 				app.SheetsClient,
-				app.FormsClient,
 				app.Cfg,
 				app.Logger,
 				dryRun,

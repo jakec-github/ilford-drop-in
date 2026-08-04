@@ -51,12 +51,15 @@ type mockAllocateRotaStore struct {
 	rotations                  []db.Rotation
 	shifts                     []db.Shift
 	availabilityRequests       []db.AvailabilityRequest
+	availabilityRequestsV2     []db.AvailabilityRequestV2
+	generations                map[string]db.AvailabilityGeneration // keyed by request id
 	allocations                []db.Allocation
 	alterations                []db.Alteration
 	manualPreallocations       []db.ManualPreallocation
 	insertedAllocations        []db.Allocation
 	getRotationsErr            error
 	getAvailabilityErr         error
+	getLatestAvailabilityErr   error
 	getAllocationsErr          error
 	getAlterationsErr          error
 	getManualPreallocationsErr error
@@ -91,6 +94,37 @@ func (m *mockAllocateRotaStore) GetAvailabilityRequestsByRotaID(ctx context.Cont
 		}
 	}
 	return filtered, nil
+}
+
+func (m *mockAllocateRotaStore) GetAvailabilityRequestsV2ByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequestV2, error) {
+	if m.getAvailabilityErr != nil {
+		return nil, m.getAvailabilityErr
+	}
+	var filtered []db.AvailabilityRequestV2
+	for _, r := range m.availabilityRequestsV2 {
+		if r.RotaID == rotaID {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockAllocateRotaStore) GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error) {
+	if m.getLatestAvailabilityErr != nil {
+		return nil, m.getLatestAvailabilityErr
+	}
+	latest := make(map[string]db.AvailabilityGeneration)
+	for _, id := range requestIDs {
+		generation, ok := m.generations[id]
+		if !ok {
+			continue
+		}
+		if cutoff != nil && generation.SubmittedAt.After(*cutoff) {
+			continue
+		}
+		latest[id] = generation
+	}
+	return latest, nil
 }
 
 func (m *mockAllocateRotaStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
@@ -507,4 +541,145 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 	// Should only have Alice's individual group (custom entry ignored)
 	assert.Len(t, historicalShifts[0].AllocatedGroups, 1)
 	assert.Equal(t, "Alice A", historicalShifts[0].AllocatedGroups[0].GroupKey)
+}
+
+// availabilityShiftIDs are the shift ids of a three-shift rota, in the order
+// the solver indexes them.
+var availabilityShiftIDs = []string{"2026-08-02", "2026-08-09", "2026-08-16"}
+
+// availabilityRound sets a store up with one minted request per volunteer and
+// the generations behind them, so the group rule can be exercised against the
+// store the allocator now reads.
+func availabilityRound(generations map[string][]string) *mockAllocateRotaStore {
+	store := &mockAllocateRotaStore{
+		rotations:   []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 3}},
+		shifts:      shiftsOnDates("rota-1", availabilityShiftIDs...),
+		generations: map[string]db.AvailabilityGeneration{},
+	}
+	for volunteerID, shiftIDs := range generations {
+		requestID := "req-" + volunteerID
+		store.availabilityRequestsV2 = append(store.availabilityRequestsV2, db.AvailabilityRequestV2{
+			ID: requestID, RotaID: "rota-1", VolunteerID: volunteerID, Token: "tok-" + volunteerID,
+		})
+		if shiftIDs == nil {
+			continue // minted but never answered
+		}
+		answers := make([]db.ShiftAnswer, 0, len(shiftIDs))
+		for _, shiftID := range shiftIDs {
+			answers = append(answers, db.ShiftAnswer{ShiftID: shiftID, Answer: db.AnswerYes})
+		}
+		store.generations[requestID] = db.AvailabilityGeneration{
+			RequestID: requestID, ResponseID: "gen-" + volunteerID, Answers: answers,
+		}
+	}
+	return store
+}
+
+// The group rule of ADR 0004, read off the store: a group can work a shift iff
+// at least one member answered and every member who answered said yes. Each row
+// of the plan's Michael/Emma table is one shift here, so the whole rule is
+// checked in one allocation-shaped read.
+//
+// This is the switchover's central claim — that DB-backed availability resolves
+// to what the equivalent Forms answers resolved to. Forms encoded the dual
+// (union the responders' unavailability); the columns below are that union's
+// complement, shift for shift.
+func TestFetchGroupAvailability_GroupRule(t *testing.T) {
+	store := availabilityRound(map[string][]string{
+		// Both answered: where they agree the group can work, and Emma's
+		// silence on s1 and s2 is a NO that takes the group out of them.
+		"michael": availabilityShiftIDs,
+		"emma":    {availabilityShiftIDs[0]},
+		// Only Jack answered. Kate is opted in by his answer rather than
+		// blocking it — a partially-responding group is still a responding one.
+		"jack": {availabilityShiftIDs[0], availabilityShiftIDs[1]},
+		"kate": nil,
+		// An individual, and someone nobody has heard from at all.
+		"lonely": {availabilityShiftIDs[1]},
+		"silent": nil,
+	})
+
+	volunteers := []allocator.Volunteer{
+		{ID: "michael", FirstName: "Michael", LastName: "Smith", GroupKey: "couple_me"},
+		{ID: "emma", FirstName: "Emma", LastName: "Williams", GroupKey: "couple_me"},
+		{ID: "jack", FirstName: "Jack", LastName: "Green", GroupKey: "couple_jk"},
+		{ID: "kate", FirstName: "Kate", LastName: "Green", GroupKey: "couple_jk"},
+		{ID: "lonely", FirstName: "Lonely", LastName: "Jones"},
+		{ID: "silent", FirstName: "Silent", LastName: "Brown"},
+	}
+
+	availability, err := fetchGroupAvailability(
+		context.Background(), store, "rota-1", volunteers, availabilityShiftIDs, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{0}, availability["couple_me"])
+	assert.Equal(t, []int{0, 1}, availability["couple_jk"])
+	assert.Equal(t, []int{1}, availability["Lonely Jones"])
+	assert.NotContains(t, availability, "Silent Brown",
+		"a group nobody answered for must be absent, not empty")
+}
+
+// "Available for nothing" is a real answer and reads differently from silence:
+// the group is in the map, with no shifts. The allocator discards both, but only
+// one of them is a non-reply.
+func TestFetchGroupAvailability_AnsweredWithNothing(t *testing.T) {
+	store := availabilityRound(map[string][]string{"nobody": {}})
+	volunteers := []allocator.Volunteer{{ID: "nobody", FirstName: "No", LastName: "Body"}}
+
+	availability, err := fetchGroupAvailability(
+		context.Background(), store, "rota-1", volunteers, availabilityShiftIDs, zap.NewNop())
+	require.NoError(t, err)
+
+	indices, present := availability["No Body"]
+	assert.True(t, present, "an answer of none-of-these is still an answer")
+	assert.Empty(t, indices)
+}
+
+// A volunteer who has gone inactive since the round was minted still holds a
+// working link, but cannot be allocated — so their answer must not speak for the
+// group they used to be in.
+func TestFetchGroupAvailability_IgnoresInactiveVolunteers(t *testing.T) {
+	store := availabilityRound(map[string][]string{
+		"michael": {availabilityShiftIDs[0], availabilityShiftIDs[1]},
+		"emma":    {availabilityShiftIDs[0]},
+	})
+
+	// Emma is no longer in the active set handed to the allocator.
+	volunteers := []allocator.Volunteer{
+		{ID: "michael", FirstName: "Michael", LastName: "Smith", GroupKey: "couple_me"},
+	}
+
+	availability, err := fetchGroupAvailability(
+		context.Background(), store, "rota-1", volunteers, availabilityShiftIDs, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{0, 1}, availability["couple_me"],
+		"Emma's answer must not narrow a group she is no longer part of")
+}
+
+// Indices are positions in the solver's shift order, not in the order the
+// answers happen to come back in.
+func TestFetchGroupAvailability_IndicesFollowShiftOrder(t *testing.T) {
+	store := availabilityRound(map[string][]string{
+		"vol": {availabilityShiftIDs[2], availabilityShiftIDs[0]},
+	})
+	volunteers := []allocator.Volunteer{{ID: "vol", FirstName: "Vol", LastName: "Unteer"}}
+
+	availability, err := fetchGroupAvailability(
+		context.Background(), store, "rota-1", volunteers, availabilityShiftIDs, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{0, 2}, availability["Vol Unteer"])
+}
+
+// Allocating a rota nobody was asked about is an operator mistake, not an empty
+// result: it would otherwise solve against silence and produce an empty rota.
+func TestFetchGroupAvailability_NoRoundMinted(t *testing.T) {
+	store := availabilityRound(nil)
+
+	_, err := fetchGroupAvailability(
+		context.Background(), store, "rota-1", nil, availabilityShiftIDs, zap.NewNop())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rota-1")
+	assert.Contains(t, err.Error(), "minted")
 }
