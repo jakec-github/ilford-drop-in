@@ -154,6 +154,9 @@ func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 		},
 	}
 	cfg := &config.Config{
+		// Coverage is counted per Role now, so a config without Roles describes
+		// a rota with no Seats and nothing to be short of.
+		Roles: testCfg.Roles,
 		RotaOverrides: []config.RotaOverride{
 			// 16 August, the rota's last date.
 			{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=16", Closed: true},
@@ -167,10 +170,10 @@ func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 func availabilityVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "michael", FirstName: "Michael", LastName: "Smith", DisplayName: "Michael", Status: "Active", GroupKey: "smiths", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "emma", FirstName: "Emma", LastName: "Williams", DisplayName: "Emma", Status: "Active", GroupKey: "smiths", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "aaliyah", FirstName: "Aaliyah", LastName: "Khan", DisplayName: "Aaliyah", Status: "Active", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
-			{ID: "gone", FirstName: "Gordon", LastName: "Past", DisplayName: "Gordon", Status: "Inactive", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "michael", FirstName: "Michael", LastName: "Smith", DisplayName: "Michael", Status: "Active", GroupKey: "smiths", Roles: []string{"Service volunteer"}},
+			{ID: "emma", FirstName: "Emma", LastName: "Williams", DisplayName: "Emma", Status: "Active", GroupKey: "smiths", Roles: []string{"Service volunteer"}},
+			{ID: "aaliyah", FirstName: "Aaliyah", LastName: "Khan", DisplayName: "Aaliyah", Status: "Active", Roles: []string{"Team lead", "Service volunteer"}},
+			{ID: "gone", FirstName: "Gordon", LastName: "Past", DisplayName: "Gordon", Status: "Inactive", Roles: []string{"Service volunteer"}},
 		},
 	}
 }
@@ -242,7 +245,7 @@ func TestMintAvailabilityRoundTwiceIsANoOp(t *testing.T) {
 
 	// A volunteer joins the roster between rounds.
 	volunteers.volunteers = append(volunteers.volunteers, model.Volunteer{
-		ID: "nina", FirstName: "Nina", LastName: "Osei", DisplayName: "Nina", Status: "Active", Roles: []string{string(model.RoleVolunteer)},
+		ID: "nina", FirstName: "Nina", LastName: "Osei", DisplayName: "Nina", Status: "Active", Roles: []string{"Service volunteer"},
 	})
 
 	second := mintRound(t, store, volunteers, cfg)

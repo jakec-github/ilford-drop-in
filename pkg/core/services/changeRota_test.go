@@ -95,10 +95,10 @@ func (m *mockChangeRotaVolClient) ListVolunteers(cfg *config.Config) ([]model.Vo
 func defaultVolunteers() *mockChangeRotaVolClient {
 	return &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", DisplayName: "Alice", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "bob", FirstName: "Bob", LastName: "B", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "charlie", FirstName: "Charlie", LastName: "C", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "dave", FirstName: "Dave", LastName: "D", DisplayName: "Dave", Roles: []string{string(model.RoleVolunteer)}},
+			{ID: "alice", FirstName: "Alice", LastName: "A", DisplayName: "Alice", Roles: []string{"Service volunteer"}},
+			{ID: "bob", FirstName: "Bob", LastName: "B", DisplayName: "Bob", Roles: []string{"Service volunteer"}},
+			{ID: "charlie", FirstName: "Charlie", LastName: "C", DisplayName: "Charlie", Roles: []string{"Service volunteer"}},
+			{ID: "dave", FirstName: "Dave", LastName: "D", DisplayName: "Dave", Roles: []string{"Service volunteer"}},
 		},
 	}
 }
@@ -108,8 +108,8 @@ func defaultVolunteers() *mockChangeRotaVolClient {
 // it from config now, so a config without Roles is not a usable fixture.
 var testCfg = &config.Config{
 	Roles: []model.Role{
-		{Name: string(model.RoleTeamLead), Max: intPtr(1), Priority: 1},
-		{Name: string(model.RoleVolunteer), Priority: 2},
+		{Name: "Team lead", Max: intPtr(1), Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
 	},
 }
 
@@ -124,9 +124,9 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "charlie"},
 		},
 	}
 
@@ -134,7 +134,7 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 		Date:      "2025-01-05",
 		Out:       "bob",
 		In:        "dave",
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Holiday cover",
 		UserEmail: "test@example.com",
 	}
@@ -181,8 +181,8 @@ func TestChangeRota_SwapDate(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -237,7 +237,7 @@ func TestChangeRota_CustomInOut(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), CustomEntry: "External John"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", CustomEntry: "External John"},
 		},
 	}
 
@@ -317,7 +317,7 @@ func TestChangeRota_RemoveVolunteerNotOnShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
@@ -340,14 +340,14 @@ func TestChangeRota_AddVolunteerAlreadyOnShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "alice", // Already on the shift
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Test",
 		UserEmail: "test@example.com",
 	}
@@ -368,7 +368,7 @@ func TestChangeRota_RemoveCustomNotOnShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
@@ -391,7 +391,7 @@ func TestChangeRota_AddDuplicateCustomAllowed(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), CustomEntry: "Org X"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", CustomEntry: "Org X"},
 		},
 	}
 
@@ -422,9 +422,9 @@ func TestChangeRota_SwapDateValidation(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "alice"}, // alice is also on swap date
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "alice"}, // alice is also on swap date
 		},
 	}
 
@@ -468,7 +468,7 @@ func TestChangeRota_OnlyOut(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
@@ -495,14 +495,14 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Extra help needed",
 		UserEmail: "test@example.com",
 	}
@@ -528,8 +528,8 @@ func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
 			sundayShifts("rota-2", "2025-01-19", 2)...,
 		),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-19", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -570,8 +570,8 @@ func TestChangeRota_RespectsExistingAlterations(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{
 			{ID: "prev-alt", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
@@ -600,7 +600,7 @@ func TestChangeRota_InvalidInVolunteerID(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "nonexistent",
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Test",
 		UserEmail: "test@example.com",
 	}
@@ -637,22 +637,22 @@ func TestChangeRota_RoleIsNamedNotInferredFromTheRoster(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
 	// bob is a team lead in the volunteer list
 	volClient := &mockChangeRotaVolClient{
 		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{string(model.RoleVolunteer)}},
-			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}},
+			{ID: "alice", FirstName: "Alice", LastName: "A", Roles: []string{"Service volunteer"}},
+			{ID: "bob", FirstName: "Bob", LastName: "B", Roles: []string{"Team lead", "Service volunteer"}},
 		},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Extra pair of hands",
 		UserEmail: "test@example.com",
 	}
@@ -663,7 +663,7 @@ func TestChangeRota_RoleIsNamedNotInferredFromTheRoster(t *testing.T) {
 
 	addAlt := addedAlteration(t, store)
 	assert.Equal(t, "bob", addAlt.VolunteerID)
-	assert.Equal(t, string(model.RoleVolunteer), addAlt.Role)
+	assert.Equal(t, "Service volunteer", addAlt.Role)
 }
 
 // A change that puts someone in a Role the roster does not record them as
@@ -679,14 +679,14 @@ func TestChangeRota_RoleTheVolunteerDoesNotHoldIsAllowed(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
-		Role:      string(model.RoleTeamLead),
+		Role:      "Team lead",
 		Reason:    "Bob is leading this once",
 		UserEmail: "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
-	assert.Equal(t, string(model.RoleTeamLead), addedAlteration(t, store).Role)
+	assert.Equal(t, "Team lead", addedAlteration(t, store).Role)
 }
 
 // A swap names no Role, so each leg inherits the Role of the person it
@@ -695,8 +695,8 @@ func TestChangeRota_SwapLegsInheritTheRoleTheyReplace(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -718,8 +718,8 @@ func TestChangeRota_SwapLegsInheritTheRoleTheyReplace(t *testing.T) {
 			roleByVolunteer[alt.VolunteerID] = alt.Role
 		}
 	}
-	assert.Equal(t, string(model.RoleTeamLead), roleByVolunteer["bob"], "bob takes alice's lead Seat")
-	assert.Equal(t, string(model.RoleVolunteer), roleByVolunteer["alice"], "alice takes bob's ordinary Seat")
+	assert.Equal(t, "Team lead", roleByVolunteer["bob"], "bob takes alice's lead Seat")
+	assert.Equal(t, "Service volunteer", roleByVolunteer["alice"], "alice takes bob's ordinary Seat")
 }
 
 // A move is a swap with nobody coming back, so the primary leg replaces
@@ -729,7 +729,7 @@ func TestChangeRota_MoveCarriesTheRoleAcross(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-12", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-12", Role: "Team lead", VolunteerID: "alice"},
 		},
 	}
 
@@ -747,7 +747,7 @@ func TestChangeRota_MoveCarriesTheRoleAcross(t *testing.T) {
 	add := addedAlteration(t, store)
 	assert.Equal(t, "alice", add.VolunteerID)
 	assert.Equal(t, "2025-01-05", add.ShiftID)
-	assert.Equal(t, string(model.RoleTeamLead), add.Role)
+	assert.Equal(t, "Team lead", add.Role)
 }
 
 // With nobody to replace and nothing to carry across — the shift they are
@@ -769,7 +769,7 @@ func TestChangeRota_MoveWithNothingToInheritTakesTheUncappedRole(t *testing.T) {
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
-	assert.Equal(t, string(model.RoleVolunteer), addedAlteration(t, store).Role)
+	assert.Equal(t, "Service volunteer", addedAlteration(t, store).Role)
 }
 
 // addedAlteration returns the single "add" alteration the store recorded.
@@ -791,14 +791,14 @@ func TestChangeRota_ExplicitTeamLeadRefusedWhenShiftHasOne(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
 		},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
-		Role:      string(model.RoleTeamLead),
+		Role:      "Team lead",
 		Reason:    "Alice needs a co-lead",
 		UserEmail: "test@example.com",
 	}
@@ -816,7 +816,7 @@ func TestChangeRota_ExplicitTeamLeadReplacesTheTeamLead(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
 		},
 	}
 
@@ -824,7 +824,7 @@ func TestChangeRota_ExplicitTeamLeadReplacesTheTeamLead(t *testing.T) {
 		Date:      "2025-01-05",
 		Out:       "alice",
 		In:        "bob",
-		Role:      string(model.RoleTeamLead),
+		Role:      "Team lead",
 		Reason:    "Alice is away; Bob leads",
 		UserEmail: "test@example.com",
 	}
@@ -832,7 +832,7 @@ func TestChangeRota_ExplicitTeamLeadReplacesTheTeamLead(t *testing.T) {
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
 
-	assert.Equal(t, string(model.RoleTeamLead), addedAlteration(t, store).Role)
+	assert.Equal(t, "Team lead", addedAlteration(t, store).Role)
 }
 
 // A shift can lose its team lead — someone is removed, or a replacement is a
@@ -842,14 +842,14 @@ func TestChangeRota_ExplicitTeamLeadAllowedWhenShiftHasNone(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
 		},
 	}
 
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		In:        "bob",
-		Role:      string(model.RoleTeamLead),
+		Role:      "Team lead",
 		Reason:    "Nobody is leading that week",
 		UserEmail: "test@example.com",
 	}
@@ -857,7 +857,7 @@ func TestChangeRota_ExplicitTeamLeadAllowedWhenShiftHasNone(t *testing.T) {
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
 
-	assert.Equal(t, string(model.RoleTeamLead), addedAlteration(t, store).Role)
+	assert.Equal(t, "Team lead", addedAlteration(t, store).Role)
 }
 
 // The same override applies to a replacement, where the incoming volunteer
@@ -866,7 +866,7 @@ func TestChangeRota_ExplicitRoleBeatsInheritance(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
 		},
 	}
 
@@ -874,7 +874,7 @@ func TestChangeRota_ExplicitRoleBeatsInheritance(t *testing.T) {
 		Date:      "2025-01-05",
 		Out:       "alice",
 		In:        "bob",
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Bob is covering but not leading",
 		UserEmail: "test@example.com",
 	}
@@ -882,7 +882,7 @@ func TestChangeRota_ExplicitRoleBeatsInheritance(t *testing.T) {
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
 
-	assert.Equal(t, string(model.RoleVolunteer), addedAlteration(t, store).Role)
+	assert.Equal(t, "Service volunteer", addedAlteration(t, store).Role)
 }
 
 func TestChangeRota_RoleRejected(t *testing.T) {
@@ -899,7 +899,7 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 				Out:      "alice",
 				In:       "bob",
 				SwapDate: "2025-01-12",
-				Role:     string(model.RoleTeamLead),
+				Role:     "Team lead",
 			},
 		},
 		{
@@ -907,7 +907,7 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			params: ChangeRotaParams{
 				Date: "2025-01-05",
 				Out:  "alice",
-				Role: string(model.RoleTeamLead),
+				Role: "Team lead",
 			},
 		},
 		{
@@ -934,8 +934,8 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			store := &mockChangeRotaStore{
 				shifts: sundayShifts("rota-1", "2025-01-05", 2),
 				allocations: []db.Allocation{
-					{ID: "a1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-					{ID: "a2", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+					{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+					{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
 				},
 			}
 			params := tt.params

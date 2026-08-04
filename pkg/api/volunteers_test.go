@@ -17,9 +17,9 @@ import (
 func rosterVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
 		volunteers: []model.Volunteer{
-			{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Roles: []string{string(model.RoleVolunteer)}, Status: "Active", Gender: "Male", GroupKey: "smith-family"},
-			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Roles: []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, Status: "active", Gender: "Female"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Roles: []string{string(model.RoleVolunteer)}, Status: "Left"},
+			{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Roles: []string{"Service volunteer"}, Status: "Active", Gender: "Male", GroupKey: "smith-family"},
+			{ID: "alice", FirstName: "Alice", LastName: "Adams", DisplayName: "Alice", Roles: []string{"Team lead", "Service volunteer"}, Status: "active", Gender: "Female"},
+			{ID: "charlie", FirstName: "Charlie", LastName: "Cole", DisplayName: "Charlie", Roles: []string{"Service volunteer"}, Status: "Left"},
 		},
 	}
 }
@@ -55,12 +55,12 @@ func TestListVolunteersEndpoint(t *testing.T) {
 
 	assert.Equal(t, volunteerBody{
 		ID: "alice", Name: "Alice", FullName: "Alice Adams",
-		Roles:  []string{string(model.RoleTeamLead), string(model.RoleVolunteer)},
+		Roles:  []string{"Team lead", "Service volunteer"},
 		Gender: "Female", Active: true,
 	}, volunteers[0], "every Role held comes back, in priority order")
 	assert.Equal(t, volunteerBody{
 		ID: "bob", Name: "Bob", FullName: "Bob Smith",
-		Roles: []string{string(model.RoleVolunteer)}, Group: "smith-family", Gender: "Male", Active: true,
+		Roles: []string{"Service volunteer"}, Group: "smith-family", Gender: "Male", Active: true,
 	}, volunteers[1])
 }
 

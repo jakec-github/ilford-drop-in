@@ -15,7 +15,10 @@ const SYNC_CAPTION: Record<SyncState, string> = {
 
 interface RosterCounts {
   activeVolunteers: number;
-  activeTeamLeads: number;
+  // One entry per Role anybody active holds, in priority order. Derived from
+  // the roster rather than from a list of configured Roles, because nothing
+  // tells the frontend what those are yet — a Role nobody holds does not appear.
+  byRole: { role: string; count: number }[];
   // null when nobody is active, since there is then no denominator to take a
   // percentage of — shown as a dash rather than 0%, which would read as a fact.
   malePercentage: number | null;
@@ -30,16 +33,32 @@ function isMale(volunteer: Volunteer): boolean {
 }
 
 // Every count is over active volunteers only: an admin sizing up the team wants
-// who can actually be rostered, not who has ever been on the sheet. Team leads
-// are a subset of that same total, not a separate population — a lead is a
-// volunteer holding the lead role.
+// who can actually be rostered, not who has ever been on the sheet. The per-Role
+// counts are subsets of that same total, not separate populations, and they
+// overlap each other — somebody who will lead and will do an ordinary shift is
+// counted under both, so these do not add up to the total.
 function countRoster(volunteers: Volunteer[]): RosterCounts {
   const active = volunteers.filter((v) => v.active);
   const male = active.filter(isMale).length;
 
+  const counts = new Map<string, number>();
+  // A volunteer's Roles arrive in priority order, so a lower-priority Role is
+  // always further down some list than a higher-priority one. Ranking each Role
+  // by the furthest down it ever appears recovers the configured order from the
+  // roster alone, which is the only place the frontend can read it until S3.
+  const rank = new Map<string, number>();
+  for (const volunteer of active) {
+    volunteer.roles.forEach((role, index) => {
+      counts.set(role, (counts.get(role) ?? 0) + 1);
+      rank.set(role, Math.max(rank.get(role) ?? 0, index));
+    });
+  }
+
   return {
     activeVolunteers: active.length,
-    activeTeamLeads: active.filter((v) => v.role === "lead").length,
+    byRole: [...counts]
+      .map(([role, count]) => ({ role, count }))
+      .sort((a, b) => (rank.get(a.role) ?? 0) - (rank.get(b.role) ?? 0)),
     malePercentage:
       active.length === 0 ? null : Math.round((male / active.length) * 100),
   };
@@ -81,9 +100,18 @@ function RosterRow({ volunteer }: { volunteer: Volunteer }) {
     >
       <span className="roster-name">{volunteer.fullName}</span>
       <span className="roster-tags">
-        {volunteer.role === "lead" && (
-          <span className="roster-tag roster-tag--role-lead">Team lead</span>
-        )}
+        {/* Every Role held, not just the lead one: a roster row should say what
+            somebody will actually do. The lead keeps its own colour, which is
+            the one Role name the frontend still knows by heart. */}
+        {volunteer.roles.map((role) => (
+          <span
+            key={role}
+            className="roster-tag roster-tag--role"
+            data-role={role}
+          >
+            {role}
+          </span>
+        ))}
         {isMale(volunteer) && <span className="roster-tag">Male</span>}
         {volunteer.group && (
           <span className="roster-tag" title="Group">
@@ -142,10 +170,9 @@ export default function AdminVolunteers() {
               label="Active volunteers"
               value={String(counts.activeVolunteers)}
             />
-            <Count
-              label="Active team leads"
-              value={String(counts.activeTeamLeads)}
-            />
+            {counts.byRole.map(({ role, count }) => (
+              <Count key={role} label={role} value={String(count)} />
+            ))}
             <Count
               label="Male"
               value={

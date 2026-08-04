@@ -8,7 +8,23 @@ import type {
   Role,
   Volunteer,
 } from "../types";
+import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
 import "./RotaEditDialogs.css";
+
+// The Role to offer for a volunteer before the admin says otherwise: the
+// highest-priority one they hold, which the API lists first. It is the right
+// answer far more often than not — pinning a team lead is nearly always pinning
+// them to lead — and the admin can still choose the other.
+function defaultRoleFor(volunteer: Volunteer | null | undefined): Role {
+  return volunteer?.roles[0] ?? SERVICE_VOLUNTEER_ROLE;
+}
+
+// How a Role reads in a sentence about somebody's place on a shift. The uncapped
+// Role is what being on the shift already means, so naming it would be noise;
+// anything else is worth saying.
+function roleSuffix(role: Role): string {
+  return role === SERVICE_VOLUNTEER_ROLE ? "" : `, as ${role.toLowerCase()}`;
+}
 
 // Every change to a published rota is recorded against a reason, so both
 // dialogs below end in the same field. It is deliberately not pre-filled: a
@@ -143,7 +159,7 @@ export function AssigneeDialog({
 }) {
   const [choice, setChoice] = useState("");
   const [customName, setCustomName] = useState("");
-  const [role, setRole] = useState<Role>("volunteer");
+  const [role, setRole] = useState<Role>(SERVICE_VOLUNTEER_ROLE);
   const [reason, setReason] = useState("");
 
   const isCustom = choice === CUSTOM_CHOICE;
@@ -162,7 +178,7 @@ export function AssigneeDialog({
     change.kind === "replace"
       ? change.outgoing.role
       : change.leadTaken
-        ? "volunteer"
+        ? SERVICE_VOLUNTEER_ROLE
         : role;
 
   function handleChoice(value: string) {
@@ -170,7 +186,7 @@ export function AssigneeDialog({
     // Default to the role the volunteer holds on the roster: it is the right
     // answer far more often than not, and the admin can still say otherwise.
     const chosen = volunteers?.find((v) => v.id === value);
-    setRole(chosen ? chosen.role : "volunteer");
+    setRole(defaultRoleFor(chosen));
   }
 
   return (
@@ -200,7 +216,7 @@ export function AssigneeDialog({
           <p className="rota-edit-summary">
             Whoever you choose takes {change.outgoing.name}&rsquo;s place on{" "}
             {dateLabel}
-            {change.outgoing.role === "lead" ? ", as team lead" : ""}.
+            {roleSuffix(change.outgoing.role)}.
           </p>
         )}
 
@@ -265,8 +281,8 @@ export function AssigneeDialog({
                 value={role}
                 onChange={(e) => setRole(e.target.value as Role)}
               >
-                <option value="volunteer">Volunteer</option>
-                <option value="lead">Team lead</option>
+                <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
+                <option value={TEAM_LEAD_ROLE}>Team lead</option>
               </select>
             </label>
           ))}
@@ -325,7 +341,7 @@ export function PinDialog({
 }) {
   const [choice, setChoice] = useState("");
   const [customName, setCustomName] = useState("");
-  const [role, setRole] = useState<Role>("volunteer");
+  const [role, setRole] = useState<Role>(SERVICE_VOLUNTEER_ROLE);
 
   const isCustom = choice === CUSTOM_CHOICE;
   const trimmedName = customName.trim();
@@ -339,17 +355,18 @@ export function PinDialog({
       : null;
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
-  const rosterLead = chosen?.role === "lead";
-  // The slot is the admin's to fill only when the person could hold it and it
-  // is still free.
-  const canChooseRole = rosterLead && leadPinnedBy === null;
+  // The Seat is the admin's to fill only when the person holds the Role and it
+  // is not already at its ceiling. Team lead's ceiling is one in S1, so one pin
+  // is the whole of it; S3 reads real ceilings from the server.
+  const canChooseRole =
+    (chosen?.roles.includes(TEAM_LEAD_ROLE) ?? false) && leadPinnedBy === null;
 
   function handleChoice(value: string) {
     setChoice(value);
     // Default to the role the volunteer holds on the roster, as adding to a
     // shift does: pinning a team lead is nearly always pinning them to lead.
     const picked = volunteers?.find((v) => v.id === value);
-    setRole(picked?.role === "lead" ? "lead" : "volunteer");
+    setRole(defaultRoleFor(picked));
   }
 
   return (
@@ -357,7 +374,8 @@ export function PinDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (person) onConfirm(person, canChooseRole ? role : "volunteer");
+          if (person)
+            onConfirm(person, canChooseRole ? role : SERVICE_VOLUNTEER_ROLE);
         }}
       >
         <p className="rota-edit-summary">
@@ -422,8 +440,8 @@ export function PinDialog({
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
             >
-              <option value="lead">Team lead</option>
-              <option value="volunteer">Volunteer</option>
+              <option value={TEAM_LEAD_ROLE}>Team lead</option>
+              <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
             </select>
           </label>
         )}
@@ -432,7 +450,7 @@ export function PinDialog({
             pin is not something this dialog can tell the admin to undo, so
             offering the same "remove it first" for both would send them looking
             for a button that is deliberately not there. */}
-        {rosterLead && leadPinnedBy !== null && (
+        {chosen?.roles.includes(TEAM_LEAD_ROLE) && leadPinnedBy !== null && (
           <p className="rota-edit-note">
             {dateLabel} already has a team lead pinned, so {chosen.name} is
             pinned as a service volunteer.{" "}

@@ -138,12 +138,30 @@ name, so historical rows remain readable when a Role is retired.
 
 ## Slices
 
-**S1 — Roles as data, behaviour unchanged.** Config gains roles; the roster
-moves to ` - Role` columns; the solver assigns Roles; services, CLI and
-published output stop special-casing team leads. Configured with the two
-existing Roles, output is identical to today, so the existing test suite is the
-oracle for the solver rewrite — the genuinely risky part. No user-visible
-change.
+**S1 — Roles as data.** *Shipped, #89.* Config gained `roles`; the roster moved
+to ` - Role` tick columns; the solver assigns Seats per Role; services, CLI,
+published output and the frontend stopped special-casing team leads.
+`model.RoleTeamLead`/`RoleVolunteer` are gone — every Role name is read from
+config now.
+
+The slice was planned as "output identical to today". Two divergences were
+accepted rather than engineered away, both consequences of a Role becoming
+something a person can hold more than one of:
+
+- **`Team lead` gets a Seat**, so `even_fill` sees leads and the objective value
+  moves (997 → 1363 on the e2e scenario: 61 per shift that now fills one). One
+  shift changed lead as a result. The bar was re-settled as "a sensible legal
+  rota, with differences explained" after enumeration showed that scenario has
+  227 equally-optimal rotas differing only in their leads.
+- **A lead who also holds the uncapped Role now counts as available for an
+  ordinary Seat.** Holding `Team lead` used to exclude someone from the ordinary
+  count outright — an artefact of Role being single-valued, when the solver has
+  always been free to place a lead in an ordinary Seat.
+
+Also recorded here because they outlive the ticket: a group may hold two team
+leads (the per-group ceiling went; Seats carry it), a second lead pinned to one
+shift is a 409 rather than a silent downgrade, and `requiresMale` became
+load-bearing — a config without it switches male cover off.
 
 **S2 — Shifts own their Shape.** `shift_requirement` table written at
 define-rota, editable over HTTP and in the admin UI while the Rotation is

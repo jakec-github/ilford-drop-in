@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -24,6 +23,18 @@ func coverageOf(t *testing.T, round *AvailabilityRound, date string) ShiftCovera
 	}
 	t.Fatalf("no shift for %s in the round", date)
 	return ShiftCoverage{}
+}
+
+// roleCoverageOf picks one Role's numbers out of a shift's picture.
+func roleCoverageOf(t *testing.T, shift ShiftCoverage, role string) RoleCoverage {
+	t.Helper()
+	for _, r := range shift.Roles {
+		if r.Role == role {
+			return r
+		}
+	}
+	t.Fatalf("no coverage for role %q on %s", role, shift.Date)
+	return RoleCoverage{}
 }
 
 func groupOf(t *testing.T, round *AvailabilityRound, key string) AvailabilityGroup {
@@ -97,9 +108,12 @@ func TestCoverageIgnoresASilentPartner(t *testing.T) {
 }
 
 // TestCoverageReportsTeamLeadCover separates the two questions a shift asks: are
-// there enough people, and is one of them allowed to lead. A team lead never
-// counts towards the shift's size, so an available lead moves the flag and not
-// the count.
+// there enough people, and is one of them allowed to lead. Both are the same
+// arithmetic now, run once per Role, so the lead Seat is a Needed and an
+// Available like any other rather than a boolean off to one side.
+//
+// Aaliyah holds both Roles, and is counted under both: she can fill either Seat.
+// She is not counted twice for the shift, because she can only take one of them.
 func TestCoverageReportsTeamLeadCover(t *testing.T) {
 	store, cfg := availabilityFixture()
 	cfg.DefaultShiftSize = 2
@@ -112,12 +126,35 @@ func TestCoverageReportsTeamLeadCover(t *testing.T) {
 	updated := readRound(t, store, volunteers, cfg)
 
 	first := coverageOf(t, updated, "2026-08-02")
-	assert.False(t, first.HasTeamLead, "the only team lead is not available on the first date")
+	assert.Equal(t, 0, roleCoverageOf(t, first, "Team lead").Available,
+		"the only team lead is not available on the first date")
+	assert.Equal(t, 1, roleCoverageOf(t, first, "Team lead").Needed,
+		"the lead Seat is still to be filled")
 	assert.Equal(t, 2, first.Available)
 
 	second := coverageOf(t, updated, "2026-08-09")
-	assert.True(t, second.HasTeamLead)
-	assert.Equal(t, 2, second.Available, "a team lead does not fill an ordinary seat")
+	assert.Equal(t, 1, roleCoverageOf(t, second, "Team lead").Available)
+	assert.Equal(t, 3, second.Available,
+		"a lead who also holds the uncapped Role could take one of its Seats")
+}
+
+// TestCoverageShapesSeatsFromTheRoles: the Seats a shift reports are the Seats
+// the solver will be given — a capped Role's ceiling, and the shift's size for
+// the uncapped one. If these two ever disagree the page promises staffing the
+// solve cannot deliver.
+func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
+	store, cfg := availabilityFixture()
+	cfg.DefaultShiftSize = 4
+	volunteers := availabilityVolunteers()
+	mintRound(t, store, volunteers, cfg)
+
+	first := coverageOf(t, readRound(t, store, volunteers, cfg), "2026-08-02")
+
+	require.Len(t, first.Roles, 2, "every configured Role is reported")
+	assert.Equal(t, "Team lead", first.Roles[0].Role, "priority order")
+	assert.Equal(t, 1, first.Roles[0].Seats, "the capped Role gets its ceiling")
+	assert.Equal(t, "Service volunteer", first.Roles[1].Role)
+	assert.Equal(t, 4, first.Roles[1].Seats, "the uncapped Role takes the shift's size")
 }
 
 // TestCoverageReportsTheDelta is the number an admin is really after: how far
@@ -167,14 +204,14 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 	cfg.DefaultShiftSize = 4
 	cfg.RotaOverrides = append(cfg.RotaOverrides, config.RotaOverride{
 		RRule:          "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
-		Preallocations: []config.Preallocation{{Custom: "St John's team", Role: string(model.RoleVolunteer)}},
+		Preallocations: []config.Preallocation{{Custom: "St John's team", Role: "Service volunteer"}},
 	})
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
 	// Michael is pinned to the first date by hand.
 	store.manualPins = []db.ManualPreallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: string(model.RoleVolunteer), VolunteerID: "michael"},
+		{ID: "pin-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "michael"},
 	}
 
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1", "shift-2")
@@ -205,13 +242,15 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	mintRound(t, store, volunteers, cfg)
 
 	store.manualPins = []db.ManualPreallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: string(model.RoleTeamLead), VolunteerID: "aaliyah"},
+		{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "aaliyah"},
 	}
 
 	round := readRound(t, store, volunteers, cfg)
 	first := coverageOf(t, round, "2026-08-02")
-	assert.True(t, first.HasTeamLead)
-	assert.Equal(t, 0, first.Pinned, "a team lead never occupies an ordinary seat")
+	lead := roleCoverageOf(t, first, "Team lead")
+	assert.Equal(t, 1, lead.Pinned)
+	assert.Equal(t, 0, lead.Needed, "the lead Seat is spoken for")
+	assert.Equal(t, 0, first.Pinned, "a Seat in a capped Role is not one of the uncapped Role's")
 	assert.Equal(t, 2, first.Needed)
 }
 
@@ -231,7 +270,7 @@ func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {
 	assert.Equal(t, 0, closed.Needed, "a closed shift needs nobody")
 	assert.Equal(t, 0, closed.Available)
 	assert.Equal(t, 0, closed.Delta)
-	assert.False(t, closed.HasTeamLead)
+	assert.Empty(t, closed.Roles, "a closed shift has no Seats of any Role")
 }
 
 // TestCoverageSkipsVolunteersWhoHaveStopped: a round is minted against the

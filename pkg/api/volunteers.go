@@ -69,10 +69,10 @@ func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
 			// sheet would otherwise get a trailing space.
 			Name:     v.DisplayName,
 			FullName: strings.TrimSpace(v.FirstName + " " + v.LastName),
-			Roles:  heldRoles(v.Roles),
-			Group:  v.GroupKey,
-			Gender: v.Gender,
-			Active: strings.EqualFold(v.Status, "Active"),
+			Roles:    heldRoles(v.Roles),
+			Group:    v.GroupKey,
+			Gender:   v.Gender,
+			Active:   strings.EqualFold(v.Status, "Active"),
 		})
 	}
 

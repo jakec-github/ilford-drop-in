@@ -21,26 +21,50 @@ import (
 // does not survive the move (ADR 0001).
 //
 // The numbers are only worth anything if they are the numbers the allocator will
-// work to, so the seat arithmetic here deliberately mirrors InitShifts and the
-// solver's capacity constraint: the last matching override sets the size, pins
-// from config and from manual rows both hold seats, and a team lead never holds
-// an ordinary one.
+// work to, so the seat arithmetic here does not restate the allocator's rules —
+// it calls them. [allocator.ShiftShape] says how many Seats of each Role a shift
+// has, and the pins are the ones InitShifts will see, resolved by the same
+// helpers allocation resolves them with.
 
 // ShiftCoverage is one shift's staffing picture before allocation runs.
 //
-// Needed is what is left for the allocator to fill: the shift's size with the
-// already-pinned seats taken out. Available is who could fill them, so Delta —
-// the difference — is the number the admin is really after. A closed shift
-// carries zeroes throughout: it is not a shift that is short of people.
+// Needed is what is left for the allocator to fill: the shift's Seats with the
+// already-pinned ones taken out. Available is who could fill them, so Delta —
+// the difference — is the number the admin is really after. These four speak for
+// the uncapped Role, the one a shift's size is spent on and the one the page is
+// mostly asking about; Roles carries the same arithmetic for every configured
+// Role, capped ones included. A closed shift carries zeroes throughout: it is not
+// a shift that is short of people.
 type ShiftCoverage struct {
-	ShiftID     string
-	Date        string // YYYY-MM-DD
-	Closed      bool
-	Needed      int
-	Pinned      int // ordinary seats already held by a preallocation
-	Available   int
-	Delta       int  // Available - Needed; negative is understaffed
-	HasTeamLead bool // a lead is available for this date, or already pinned to it
+	ShiftID   string
+	Date      string // YYYY-MM-DD
+	Closed    bool
+	Needed    int
+	Pinned    int // uncapped Seats already held by a preallocation
+	Available int
+	Delta     int            // Available - Needed; negative is understaffed
+	Roles     []RoleCoverage // every configured Role, in priority order
+}
+
+// RoleCoverage is one Role's part of a shift's picture: the Seats the Shape
+// gives it, how many are already spoken for, and how many holders could take
+// what is left.
+//
+// Someone holding two Roles is counted available for both. They can only fill
+// one Seat, so the tallies overlap — the question each answers is "could this
+// Role be filled at all", which is the one an admin chasing a lead is asking,
+// and summing them is not meaningful.
+type RoleCoverage struct {
+	Role string
+	// Capped marks a Role with a ceiling. An empty capped Role is worth calling
+	// out on its own — a shift with nobody who can lead it is short in a way no
+	// number of ordinary volunteers fixes.
+	Capped    bool
+	Seats     int // Seats of this Role on the shift
+	Pinned    int // of those, already held by a preallocation
+	Needed    int // Seats - Pinned, floored at zero
+	Available int // holders available for the shift and not already pinned to it
+	Delta     int // Available - Needed; negative is understaffed
 }
 
 // AvailabilityGroup is a round seen at the grain allocation happens at. Members
@@ -59,31 +83,26 @@ type AvailabilityGroup struct {
 }
 
 // shiftSeats is what config and pins have already settled about one date, before
-// anybody is allocated: how big the shift is, who holds one of its ordinary
-// seats, and whether the team-lead slot is spoken for.
+// anybody is allocated: the Seats each Role has, and who is already in them.
 type shiftSeats struct {
-	size       int
-	closed     bool
-	volunteers map[string]bool // volunteer ids holding an ordinary seat
-	customs    int             // non-volunteer entries holding one
-	teamLeadID string
+	closed bool
+	// seats is the Shape — how many Seats each Role has, by Role name.
+	seats map[string]int
+	// pinned counts how many of each Role's Seats a preallocation already holds.
+	pinned map[string]int
+	// pinnedVolunteers are the volunteers in those Seats. One Seat per person
+	// per Shift, so anyone here is unavailable for every other Role too.
+	pinnedVolunteers map[string]bool
 }
 
-// pinnedSeats is how many of the shift's seats are already committed. Team leads
-// are excluded because they never count towards a shift's size — the solver's
-// capacity constraint gives them a seat cost of zero.
-func (s shiftSeats) pinnedSeats() int {
-	return len(s.volunteers) + s.customs
-}
-
-// buildShiftSeats resolves every shift's size and pins, keyed by shift id.
+// buildShiftSeats resolves every shift's Shape and pins, keyed by shift id.
 //
-// It mirrors InitShifts rather than reimplementing it: the last matching
-// override with an explicit size wins, a closed date carries no pins at all, and
-// manual pins union with the config ones with the same de-duplication the
-// allocator applies (ADR 0003) — config stays authoritative for the
-// single-valued team-lead slot, and a pin that repeats a config one is one seat,
-// not two.
+// The pins are resolved through the same two helpers allocation uses —
+// buildManualPreallocationOverrides for the manual/config merge (ADR 0003), then
+// configPreallocationsForDate over the union, which mirrors InitShifts. That is
+// deliberate: the page must show the Seats the solve will actually see, and a
+// second implementation of the merge is how the three copies of the group rule
+// happened.
 //
 // An unparseable rrule is warned about and skipped, as everywhere else on a read
 // path. Allocation is where it fails hard; refusing to show an admin their round
@@ -93,7 +112,7 @@ func buildShiftSeats(
 	shifts []AvailabilityShift,
 	pins []db.ManualPreallocation,
 	logger *zap.Logger,
-) map[string]shiftSeats {
+) (map[string]shiftSeats, error) {
 	shiftDates := make([]time.Time, 0, len(shifts))
 	for _, s := range shifts {
 		date, err := time.Parse("2006-01-02", s.Date)
@@ -122,15 +141,30 @@ func buildShiftSeats(
 		})
 	}
 
-	pinsByShiftID := make(map[string][]db.ManualPreallocation, len(pins))
-	for _, p := range pins {
-		pinsByShiftID[p.ShiftID] = append(pinsByShiftID[p.ShiftID], p)
+	// Manual pins become synthetic overrides appended after the config ones,
+	// exactly as allocation composes them, so the union below is the pin list
+	// InitShifts would build.
+	dateByShiftID := make(map[string]string, len(shifts))
+	for _, s := range shifts {
+		dateByShiftID[s.ID] = s.Date
 	}
+	manualOverrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, overrides, cfg.RoleTable())
+	if err != nil {
+		return nil, err
+	}
+	overrides = append(overrides, manualOverrides...)
+
+	roles := convertConfigRoles(cfg.Roles)
 
 	seats := make(map[string]shiftSeats, len(shifts))
 	for _, shift := range shifts {
 		if shift.Closed {
-			seats[shift.ID] = shiftSeats{closed: true, volunteers: map[string]bool{}}
+			seats[shift.ID] = shiftSeats{
+				closed:           true,
+				seats:            map[string]int{},
+				pinned:           map[string]int{},
+				pinnedVolunteers: map[string]bool{},
+			}
 			continue
 		}
 
@@ -141,49 +175,28 @@ func buildShiftSeats(
 			}
 		}
 
-		// Coverage still counts seats as "the lead's, and everyone else's", so
-		// the config pins are folded back into that shape here. Commit 11 of
-		// #89 replaces the whole tally with a per-Role one and this goes.
-		volunteerIDs := make(map[string]bool)
-		customs := make(map[string]bool)
-		teamLeadID := ""
-		configPins, _ := configPreallocationsForDate(shift.Date, overrides)
-		for _, pin := range configPins {
-			switch {
-			case pin.Role == string(model.RoleTeamLead) && pin.VolunteerID != "":
-				teamLeadID = pin.VolunteerID
-			case pin.VolunteerID != "":
-				volunteerIDs[pin.VolunteerID] = true
-			case pin.Custom != "":
-				customs[pin.Custom] = true
+		shape := make(map[string]int)
+		for _, seat := range allocator.ShiftShape(size, roles) {
+			shape[seat.Role] = seat.Count
+		}
+
+		pinned := make(map[string]int)
+		pinnedVolunteers := make(map[string]bool)
+		effectivePins, _ := configPreallocationsForDate(shift.Date, overrides)
+		for _, pin := range effectivePins {
+			pinned[pin.Role]++
+			if pin.VolunteerID != "" {
+				pinnedVolunteers[pin.VolunteerID] = true
 			}
 		}
-		for _, pin := range pinsByShiftID[shift.ID] {
-			switch {
-			case pin.Role == string(model.RoleTeamLead):
-				// Config is authoritative for the team-lead slot, so a manual
-				// pin only fills it when config has left it empty.
-				if teamLeadID == "" {
-					teamLeadID = pin.VolunteerID
-				}
-			case pin.VolunteerID != "":
-				volunteerIDs[pin.VolunteerID] = true
-			case pin.CustomValue != "":
-				customs[pin.CustomValue] = true
-			}
-		}
-		// Someone pinned as both the lead and an ordinary volunteer still holds
-		// one seat, and it is the lead's, which costs the shift nothing.
-		delete(volunteerIDs, teamLeadID)
 
 		seats[shift.ID] = shiftSeats{
-			size:       size,
-			volunteers: volunteerIDs,
-			customs:    len(customs),
-			teamLeadID: teamLeadID,
+			seats:            shape,
+			pinned:           pinned,
+			pinnedVolunteers: pinnedVolunteers,
 		}
 	}
-	return seats
+	return seats, nil
 }
 
 // buildCoverage turns the round's groups into the per-shift picture.
@@ -197,18 +210,26 @@ func buildCoverage(
 	shifts []AvailabilityShift,
 	groups []AvailabilityGroup,
 	seats map[string]shiftSeats,
+	roles model.Roles,
 	volunteersByID map[string]model.Volunteer,
 ) []ShiftCoverage {
+	byPriority := roles.ByPriority()
+	uncapped := roles.UncappedName()
+
 	coverage := make([]ShiftCoverage, 0, len(shifts))
 	for _, shift := range shifts {
 		seat := seats[shift.ID]
 		if shift.Closed {
-			coverage = append(coverage, ShiftCoverage{ShiftID: shift.ID, Date: shift.Date, Closed: true})
+			coverage = append(coverage, ShiftCoverage{
+				ShiftID: shift.ID,
+				Date:    shift.Date,
+				Closed:  true,
+				Roles:   []RoleCoverage{},
+			})
 			continue
 		}
 
-		available := 0
-		hasTeamLead := seat.teamLeadID != ""
+		available := make(map[string]int, len(byPriority))
 		for _, group := range groups {
 			if !group.availableOn(shift.ID) {
 				continue
@@ -218,33 +239,53 @@ func buildCoverage(
 				if !known || !utils.IsActive(volunteer) {
 					continue
 				}
-				if volunteer.Holds(string(model.RoleTeamLead)) {
-					hasTeamLead = true
-					continue
-				}
 				// A pinned volunteer is already counted on the other side of
-				// the sum, as a seat that has come out of Needed.
-				if seat.volunteers[volunteer.ID] {
+				// the sum, as a Seat that has come out of Needed.
+				if seat.pinnedVolunteers[volunteer.ID] {
 					continue
 				}
-				available++
+				for _, role := range byPriority {
+					if volunteer.Holds(role.Name) {
+						available[role.Name]++
+					}
+				}
 			}
 		}
 
-		needed := seat.size - seat.pinnedSeats()
-		if needed < 0 {
-			needed = 0
+		roleCoverage := make([]RoleCoverage, 0, len(byPriority))
+		for _, role := range byPriority {
+			needed := seat.seats[role.Name] - seat.pinned[role.Name]
+			if needed < 0 {
+				needed = 0
+			}
+			roleCoverage = append(roleCoverage, RoleCoverage{
+				Role:      role.Name,
+				Capped:    role.Capped(),
+				Seats:     seat.seats[role.Name],
+				Pinned:    seat.pinned[role.Name],
+				Needed:    needed,
+				Available: available[role.Name],
+				Delta:     available[role.Name] - needed,
+			})
 		}
 
-		coverage = append(coverage, ShiftCoverage{
-			ShiftID:     shift.ID,
-			Date:        shift.Date,
-			Needed:      needed,
-			Pinned:      seat.pinnedSeats(),
-			Available:   available,
-			Delta:       available - needed,
-			HasTeamLead: hasTeamLead,
-		})
+		shiftCoverage := ShiftCoverage{
+			ShiftID: shift.ID,
+			Date:    shift.Date,
+			Roles:   roleCoverage,
+		}
+		// The headline numbers are the uncapped Role's: a shift being "short"
+		// has always meant short of the people its size buys.
+		for _, rc := range roleCoverage {
+			if rc.Role == uncapped {
+				shiftCoverage.Needed = rc.Needed
+				shiftCoverage.Pinned = rc.Pinned
+				shiftCoverage.Available = rc.Available
+				shiftCoverage.Delta = rc.Delta
+				break
+			}
+		}
+		coverage = append(coverage, shiftCoverage)
 	}
 	return coverage
 }

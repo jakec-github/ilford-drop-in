@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -154,7 +155,7 @@ func ListShifts(
 		// unallocated shift has none. Closed shifts also carry none, mirroring
 		// publishRota.
 		if shift.Allocated && !shift.Closed {
-			shift.Assignees = buildAssignees(allocationsByShiftID[s.ID], volunteersByID, logger)
+			shift.Assignees = buildAssignees(allocationsByShiftID[s.ID], volunteersByID, cfg.RoleTable(), logger)
 		}
 
 		shifts = append(shifts, shift)
@@ -198,10 +199,16 @@ func parseShiftDateBounds(params ListShiftsParams) (from, to time.Time, err erro
 	return from, to, nil
 }
 
-// buildAssignees resolves allocation entries to named assignees, team lead
-// first then alphabetical. Unknown volunteer IDs degrade to the raw ID rather
-// than failing, so a volunteer removed from the sheet cannot break listings.
-func buildAssignees(allocations []db.Allocation, volunteersByID map[string]model.Volunteer, logger *zap.Logger) []ShiftAssignee {
+// buildAssignees resolves allocation entries to named assignees, ordered by
+// their Role's configured priority and then alphabetically. Unknown volunteer
+// IDs degrade to the raw ID rather than failing, so a volunteer removed from
+// the sheet cannot break listings.
+func buildAssignees(
+	allocations []db.Allocation,
+	volunteersByID map[string]model.Volunteer,
+	roles model.Roles,
+	logger *zap.Logger,
+) []ShiftAssignee {
 	assignees := make([]ShiftAssignee, 0, len(allocations))
 	for _, a := range allocations {
 		assignee := ShiftAssignee{
@@ -226,11 +233,19 @@ func buildAssignees(allocations []db.Allocation, volunteersByID map[string]model
 		assignees = append(assignees, assignee)
 	}
 
+	// A Role the config does not know — an allocation written before it was
+	// removed — sorts after every configured one rather than jumping to the
+	// front, which is where an unrecognised name would otherwise land.
+	priority := func(role string) int {
+		if r, ok := roles.ByName(role); ok {
+			return r.Priority
+		}
+		return math.MaxInt
+	}
 	sort.Slice(assignees, func(i, j int) bool {
-		iLead := assignees[i].Role == string(model.RoleTeamLead)
-		jLead := assignees[j].Role == string(model.RoleTeamLead)
-		if iLead != jLead {
-			return iLead
+		iPriority, jPriority := priority(assignees[i].Role), priority(assignees[j].Role)
+		if iPriority != jPriority {
+			return iPriority < jPriority
 		}
 		return assignees[i].Name < assignees[j].Name
 	})

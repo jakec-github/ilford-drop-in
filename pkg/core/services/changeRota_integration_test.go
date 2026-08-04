@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
@@ -29,7 +28,7 @@ func seedAllocatedRota(t *testing.T, database *db.DB) string {
 		{ID: shiftID, Date: "2026-08-02", RotaID: rotaID},
 	}))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: shiftID, Role: string(model.RoleVolunteer), VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: shiftID, Role: "Service volunteer", VolunteerID: "alice"},
 	}, rotaID, time.Now()))
 
 	return rotaID
@@ -64,7 +63,7 @@ func TestChangeRotaConcurrentIdenticalAdds(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2026-08-02",
 		In:        "dave",
-		Role:      string(model.RoleVolunteer),
+		Role:      "Service volunteer",
 		Reason:    "Extra cover",
 		UserEmail: "test@example.com",
 	}
@@ -128,7 +127,7 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 	_, err = allocTx.Exec(ctx, `SELECT id FROM rotation WHERE id = $1 FOR UPDATE`, rotaID)
 	require.NoError(t, err)
 	_, err = allocTx.Exec(ctx, `INSERT INTO allocation (id, role, volunteer_id, shift_id) VALUES ($1, $2, $3, $4)`,
-		uuid.New().String(), string(model.RoleVolunteer), "dave", shiftID)
+		uuid.New().String(), "Service volunteer", "dave", shiftID)
 	require.NoError(t, err)
 	_, err = allocTx.Exec(ctx, `UPDATE rotation SET allocated_datetime = NOW() WHERE id = $1`, rotaID)
 	require.NoError(t, err)
@@ -141,7 +140,7 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 		_, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
 			Date:      "2026-08-02",
 			In:        "dave",
-			Role:      string(model.RoleVolunteer),
+			Role:      "Service volunteer",
 			Reason:    "Extra cover",
 			UserEmail: "test@example.com",
 		}, zap.NewNop())

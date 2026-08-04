@@ -15,11 +15,7 @@ import type {
   SendOutcome,
   Volunteer,
 } from "./types";
-
-// The API's role names, as stored against an allocation. The frontend's Role
-// is a two-value union, so these are the only two strings that cross the wire.
-const TEAM_LEAD_ROLE = "Team lead";
-const SERVICE_VOLUNTEER_ROLE = "Service volunteer";
+import { SERVICE_VOLUNTEER_ROLE } from "./types";
 
 interface ApiAssignee {
   volunteerId?: string;
@@ -80,10 +76,8 @@ function toVolunteer(v: ApiVolunteer): Volunteer {
     id: v.id,
     name: v.name,
     fullName: v.fullName,
-    // A volunteer holds a set of roles; the frontend still speaks one, and it
-    // is the highest-priority one held — the order the API sends them in.
-    // Commit 12 of #89 widens Role itself and this collapses.
-    role: v.roles.includes(TEAM_LEAD_ROLE) ? "lead" : "volunteer",
+    // In the order the API sends them: highest-priority Role first.
+    roles: v.roles,
     group: v.group || null,
     gender: v.gender || null,
     active: v.active,
@@ -100,7 +94,9 @@ function toRotaShift(shift: ApiShift): RotaShift {
       ? []
       : shift.assignees.map((a) => ({
           name: a.name,
-          role: a.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
+          // An allocation predating the role column has none; it is one of the
+          // uncapped Role's, which is what the server backfills it to.
+          role: a.role ?? SERVICE_VOLUNTEER_ROLE,
           custom: !a.volunteerId,
           group: a.group || null,
           volunteerId: a.volunteerId || null,
@@ -156,7 +152,7 @@ function toPreallocation(p: ApiPreallocation): Preallocation {
   return {
     id: p.id ?? null,
     date: p.date,
-    role: p.role === TEAM_LEAD_ROLE ? "lead" : "volunteer",
+    role: p.role,
     name: p.name,
     custom: !p.volunteerId,
     volunteerId: p.volunteerId ?? null,
@@ -198,7 +194,7 @@ export async function createPreallocation(
   // the API refuses one the pinned volunteer does not hold.
   const body: Record<string, string> = {
     date: pin.date,
-    role: pin.role === "lead" ? TEAM_LEAD_ROLE : SERVICE_VOLUNTEER_ROLE,
+    role: pin.role,
   };
   if ("volunteerId" in pin.person) {
     body.volunteerId = pin.person.volunteerId;
@@ -288,10 +284,7 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   if (change.in) Object.assign(body, personFields("in", change.in));
   if (change.out) Object.assign(body, personFields("out", change.out));
   if (change.swapDate) body.swapDate = change.swapDate;
-  if (change.role) {
-    body.role =
-      change.role === "lead" ? TEAM_LEAD_ROLE : SERVICE_VOLUNTEER_ROLE;
-  }
+  if (change.role) body.role = change.role;
 
   const res = await fetch("/api/alterations", {
     method: "POST",
@@ -327,7 +320,15 @@ interface ApiAvailabilityRound {
     pinned: number;
     available: number;
     delta: number;
-    hasTeamLead: boolean;
+    roles: {
+      role: string;
+      capped: boolean;
+      seats: number;
+      pinned: number;
+      needed: number;
+      available: number;
+      delta: number;
+    }[];
   }[];
   groups: {
     key: string;

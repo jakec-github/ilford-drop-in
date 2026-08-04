@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,13 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
+
+// leadOf is who the row puts in the Team lead column — the shape the sheet had
+// before Roles were data, asserted here through the capped-Role map that
+// replaced it.
+func leadOf(row sheetsclient.PublishedRotaRow) string {
+	return strings.Join(row.CappedRoles["Team lead"], ", ")
+}
 
 func TestPublishRota_Success(t *testing.T) {
 	ctx := context.Background()
@@ -30,12 +38,12 @@ func TestPublishRota_Success(t *testing.T) {
 		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
 			// Shift 1 - Jan 5
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
 			// Shift 2 - Jan 12
-			{ID: "alloc-4", ShiftID: "2025-01-12", Role: string(model.RoleTeamLead), VolunteerID: "dave"},
-			{ID: "alloc-5", ShiftID: "2025-01-12", Role: string(model.RoleVolunteer), VolunteerID: "eve"},
+			{ID: "alloc-4", ShiftID: "2025-01-12", Role: "Team lead", VolunteerID: "dave"},
+			{ID: "alloc-5", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "eve"},
 		},
 	}
 
@@ -49,7 +57,7 @@ func TestPublishRota_Success(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	// Call PublishRota
@@ -65,7 +73,7 @@ func TestPublishRota_Success(t *testing.T) {
 	// Check first shift (all first names are unique, so DisplayName = FirstName only)
 	shift1 := result.Rows[0]
 	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
-	assert.Equal(t, "Alice", shift1.TeamLead)
+	assert.Equal(t, "Alice", leadOf(shift1))
 	assert.Len(t, shift1.Volunteers, 2)
 	assert.Contains(t, shift1.Volunteers, "Bob")
 	assert.Contains(t, shift1.Volunteers, "Charlie")
@@ -75,7 +83,7 @@ func TestPublishRota_Success(t *testing.T) {
 	// Check second shift
 	shift2 := result.Rows[1]
 	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
-	assert.Equal(t, "Dave", shift2.TeamLead)
+	assert.Equal(t, "Dave", leadOf(shift2))
 	assert.Len(t, shift2.Volunteers, 1)
 	assert.Contains(t, shift2.Volunteers, "Eve")
 }
@@ -90,10 +98,10 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 		},
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
 			// Custom entry (external volunteer)
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "", CustomEntry: "External John"},
+			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "", CustomEntry: "External John"},
 		},
 	}
 
@@ -104,7 +112,7 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -113,7 +121,7 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
-	assert.Equal(t, "Alice", shift.TeamLead)
+	assert.Equal(t, "Alice", leadOf(shift))
 	assert.Len(t, shift.Volunteers, 2)
 	assert.Contains(t, shift.Volunteers, "Bob")
 	assert.Contains(t, shift.Volunteers, "[External John]")
@@ -129,11 +137,11 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 		},
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
 			// Volunteers in reverse alphabetical order
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "zebra"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "alloc-4", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "mike"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "zebra"},
+			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "alloc-4", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "mike"},
 		},
 	}
 
@@ -146,7 +154,7 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -173,7 +181,7 @@ func TestPublishRota_RotaNotFound(t *testing.T) {
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	// Try to publish non-existent rota
@@ -196,7 +204,7 @@ func TestPublishRota_NoAllocations(t *testing.T) {
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -205,9 +213,9 @@ func TestPublishRota_NoAllocations(t *testing.T) {
 
 	// Should have rows but with empty data
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, "", result.Rows[0].TeamLead)
+	assert.Equal(t, "", leadOf(result.Rows[0]))
 	assert.Empty(t, result.Rows[0].Volunteers)
-	assert.Equal(t, "", result.Rows[1].TeamLead)
+	assert.Equal(t, "", leadOf(result.Rows[1]))
 	assert.Empty(t, result.Rows[1].Volunteers)
 }
 
@@ -221,10 +229,10 @@ func TestPublishRota_MissingVolunteer(t *testing.T) {
 		},
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
 			// Bob doesn't exist in volunteer list
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
 		},
 	}
 
@@ -236,7 +244,7 @@ func TestPublishRota_MissingVolunteer(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -258,8 +266,8 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 		},
 		shifts: sundayShifts("rota-2", "2025-01-19", 1),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-19", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "alloc-1", ShiftID: "2025-01-19", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "alloc-2", ShiftID: "2025-01-19", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -270,7 +278,7 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	// Call with empty rotaID to trigger default behavior
@@ -283,7 +291,7 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 	assert.Equal(t, 1, result.ShiftCount)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "Sun Jan 19 2025", result.Rows[0].Date)
-	assert.Equal(t, "Alice", result.Rows[0].TeamLead)
+	assert.Equal(t, "Alice", leadOf(result.Rows[0]))
 	assert.Contains(t, result.Rows[0].Volunteers, "Bob")
 }
 
@@ -297,7 +305,7 @@ func TestPublishRota_NoRotations(t *testing.T) {
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "")
@@ -374,12 +382,12 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 		shifts: sundayShifts("rota-1", "2025-01-05", 3),
 		allocations: []db.Allocation{
 			// Shift 1 - Jan 5 (open shift)
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
 			// Shift 2 - Jan 12 (closed - no allocations in DB)
 			// Shift 3 - Jan 19 (open shift)
-			{ID: "alloc-3", ShiftID: "2025-01-19", Role: string(model.RoleTeamLead), VolunteerID: "charlie"},
-			{ID: "alloc-4", ShiftID: "2025-01-19", Role: string(model.RoleVolunteer), VolunteerID: "dave"},
+			{ID: "alloc-3", ShiftID: "2025-01-19", Role: "Team lead", VolunteerID: "charlie"},
+			{ID: "alloc-4", ShiftID: "2025-01-19", Role: "Service volunteer", VolunteerID: "dave"},
 		},
 	}
 
@@ -394,6 +402,7 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 
 	// Configure closed shift for Jan 12
 	cfg := &config.Config{
+		Roles: testCfg.Roles,
 		RotaOverrides: []config.RotaOverride{
 			{
 				RRule:  "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=12", // January 12 every year
@@ -412,14 +421,15 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 	// Check first shift (open) - first names are unique, so DisplayName = FirstName
 	shift1 := result.Rows[0]
 	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
-	assert.Equal(t, "Alice", shift1.TeamLead)
+	assert.Equal(t, "Alice", leadOf(shift1))
 	assert.Len(t, shift1.Volunteers, 1)
 	assert.Contains(t, shift1.Volunteers, "Bob")
 
 	// Check second shift (closed)
 	shift2 := result.Rows[1]
 	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
-	assert.Equal(t, "CLOSED", shift2.TeamLead, "Closed shift should display 'CLOSED' in TeamLead column")
+	assert.True(t, shift2.Closed, "a closed shift is flagged, not spelled into a name column")
+	assert.Empty(t, leadOf(shift2), "a closed shift fills no Seats")
 	assert.Empty(t, shift2.Volunteers, "Closed shift should have no volunteers")
 	assert.Equal(t, "", shift2.HotFood)
 	assert.Equal(t, "", shift2.Collection)
@@ -427,7 +437,7 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 	// Check third shift (open)
 	shift3 := result.Rows[2]
 	assert.Equal(t, "Sun Jan 19 2025", shift3.Date)
-	assert.Equal(t, "Charlie", shift3.TeamLead)
+	assert.Equal(t, "Charlie", leadOf(shift3))
 	assert.Len(t, shift3.Volunteers, 1)
 	assert.Contains(t, shift3.Volunteers, "Dave")
 }
@@ -442,9 +452,9 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 		},
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "charlie"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
 		},
 		alterations: []db.Alteration{
 			// Remove bob and add dave
@@ -462,7 +472,7 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -471,7 +481,7 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
-	assert.Equal(t, "Alice", shift.TeamLead)
+	assert.Equal(t, "Alice", leadOf(shift))
 	assert.Len(t, shift.Volunteers, 2)
 	assert.Contains(t, shift.Volunteers, "Charlie")
 	assert.Contains(t, shift.Volunteers, "Dave")
@@ -488,8 +498,8 @@ func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
 		},
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: string(model.RoleTeamLead), VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: string(model.RoleVolunteer), VolunteerID: "bob"},
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{}, // No alterations
 	}
@@ -501,7 +511,7 @@ func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{Roles: testCfg.Roles}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -510,7 +520,7 @@ func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
 
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
-	assert.Equal(t, "Alice", shift.TeamLead)
+	assert.Equal(t, "Alice", leadOf(shift))
 	assert.Len(t, shift.Volunteers, 1)
 	assert.Contains(t, shift.Volunteers, "Bob")
 }

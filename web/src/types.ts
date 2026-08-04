@@ -1,6 +1,15 @@
-// Role a person holds on a given shift. Only these two exist; anything the API
-// doesn't recognise as team lead is treated as a service volunteer.
-export type Role = "lead" | "volunteer";
+// Role is a job on a shift — "Team lead", "Service volunteer" — named exactly as
+// the server's config names it. The frontend matches on the name and never
+// enumerates the set: which Roles exist is configuration, and the API is the
+// authority on it.
+export type Role = string;
+
+// The two Role names S1 ships with. Nothing tells the frontend which Roles are
+// configured yet, so the pickers that offer one, and the styling that gives the
+// lead its own colour, name them here. S3 adds an endpoint reporting the
+// configured Roles and these go.
+export const TEAM_LEAD_ROLE = "Team lead";
+export const SERVICE_VOLUNTEER_ROLE = "Service volunteer";
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
 // entry. Role is the role held on this shift, not the volunteer's intrinsic
@@ -15,8 +24,9 @@ export interface Assignee {
   volunteerId: string | null;
 }
 
-// Volunteer is one entry of the admin roster. Role is the volunteer's intrinsic
-// role, unlike Assignee.role which is the role held on one shift. Group is their
+// Volunteer is one entry of the admin roster. roles are the jobs they will do —
+// holding a Role is what makes them eligible for its Seats — unlike
+// Assignee.role, which is the single Role they hold on one shift. Group is their
 // group key, or null when they are not in one.
 //
 // name is the display name — the shortest unambiguous form, as the rota shows it.
@@ -29,7 +39,7 @@ export interface Volunteer {
   id: string;
   name: string;
   fullName: string;
-  role: Role;
+  roles: Role[];
   group: string | null;
   gender: string | null;
   active: boolean;
@@ -153,12 +163,13 @@ export interface AvailabilityGroup {
 }
 
 // ShiftCoverage is one shift's staffing picture before the rota is run: what it
-// still needs once already-pinned seats are taken out, how many people are
-// available to fill them, and whether it has a team lead. delta is the number an
-// admin is really after — negative is short.
+// still needs once already-pinned seats are taken out, and how many people are
+// available to fill them. delta is the number an admin is really after —
+// negative is short. These four speak for the uncapped Role, the one the shift's
+// size is spent on; roles carries the same arithmetic for every Role.
 //
-// A closed shift carries zeroes: the drop-in is not running that day, so it is
-// not a shift that is short of people.
+// A closed shift carries zeroes and no roles: the drop-in is not running that
+// day, so it is not a shift that is short of people.
 export interface ShiftCoverage {
   id: string;
   date: string;
@@ -167,7 +178,21 @@ export interface ShiftCoverage {
   pinned: number;
   available: number;
   delta: number;
-  hasTeamLead: boolean;
+  roles: RoleCoverage[];
+}
+
+// RoleCoverage is one Role's Seats on one shift. Someone holding two Roles is
+// counted under both — they could fill either, so these do not sum to the
+// shift's total. capped marks a Role with a ceiling, which is what makes an
+// empty one worth calling out on its own rather than folding into delta.
+export interface RoleCoverage {
+  role: Role;
+  capped: boolean;
+  seats: number;
+  pinned: number;
+  needed: number;
+  available: number;
+  delta: number;
 }
 
 // AvailabilityRound is a rota's round: how each of its shifts is looking, and

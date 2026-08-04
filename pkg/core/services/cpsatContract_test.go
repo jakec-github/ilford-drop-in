@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -239,18 +238,18 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 		},
 		shifts: shiftsOnDates("rota-0", "2026-06-29", "2026-07-06"),
 		allocations: []db.Allocation{
-			{ID: "a-0", ShiftID: "2026-06-29", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
-			{ID: "a-1", ShiftID: "2026-07-06", VolunteerID: "alice", Role: string(model.RoleVolunteer)},
-			{ID: "a-2", ShiftID: "2026-07-06", VolunteerID: "bob", Role: string(model.RoleVolunteer)},
-			{ID: "a-3", ShiftID: "2026-07-06", VolunteerID: "diana", Role: string(model.RoleVolunteer)},
-			{ID: "a-4", ShiftID: "2026-07-06", VolunteerID: "eve", Role: string(model.RoleVolunteer)},
+			{ID: "a-0", ShiftID: "2026-06-29", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "a-1", ShiftID: "2026-07-06", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "a-2", ShiftID: "2026-07-06", VolunteerID: "bob", Role: "Service volunteer"},
+			{ID: "a-3", ShiftID: "2026-07-06", VolunteerID: "diana", Role: "Service volunteer"},
+			{ID: "a-4", ShiftID: "2026-07-06", VolunteerID: "eve", Role: "Service volunteer"},
 		},
 	}
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2026-07-13", ShiftCount: 1}
 	historical, err := buildHistoricalShifts(
 		context.Background(), store, store.rotations, targetRota, volunteers,
-		string(model.RoleVolunteer), zap.NewNop())
+		"Service volunteer", zap.NewNop())
 	require.NoError(t, err)
 
 	groupAvailability := map[string][]int{

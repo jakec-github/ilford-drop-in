@@ -10,20 +10,32 @@ import (
 
 const latestTabTitle = "Latest"
 
+// closedCell is what a shift that did not run says in place of a name.
+const closedCell = "CLOSED"
+
 // PublishedRotaRow represents a single row in the published rota
 type PublishedRotaRow struct {
-	Date       string   // Format: "Mon Jan 02 2006"
-	TeamLead   string   // Full name of team lead
-	Volunteers []string // Full names of volunteers
-	HotFood    string   // Leave blank for now
-	Collection string   // Leave blank for now
+	Date string // Format: "Mon Jan 02 2006"
+	// Closed is a shift that did not run. It is rendered in the first capped
+	// Role's column, which is where the sheet has always shown it.
+	Closed bool
+	// CappedRoles holds the names filling each capped Role, by Role name. Each
+	// gets its own columns, ahead of the uncapped Role's.
+	CappedRoles map[string][]string
+	Volunteers  []string // Full names of volunteers in the uncapped Role
+	HotFood     string   // Leave blank for now
+	Collection  string   // Leave blank for now
 }
 
 // PublishedRota represents the complete published rota data
 type PublishedRota struct {
 	StartDate  string // Format: "2006-01-02"
 	ShiftCount int
-	Rows       []PublishedRotaRow
+	// CappedRoleNames are the capped Roles in priority order, one group of
+	// columns each. The sheet's shape follows the configured Roles rather than
+	// a hardcoded "Team lead" column.
+	CappedRoleNames []string
+	Rows            []PublishedRotaRow
 }
 
 // PublishRota publishes a rota to the "Latest" tab in Google Sheets.
@@ -113,6 +125,11 @@ func resolveUniqueTitle(spreadsheet *sheets.Spreadsheet, title string) string {
 
 // writeRotaData writes rota rows to an existing tab, then clears any stale rows below.
 // Layout: rows 1-2 empty, row 3 header, row 4+ data.
+//
+// Columns are Date, then each capped Role in priority order, then the uncapped
+// Role's, then the two hand-typed trailing ones. A capped Role always gets at
+// least one column even when nothing fills it, so a rota of nothing but closed
+// shifts still has somewhere to say so.
 func (c *Client) writeRotaData(spreadsheetID, tabTitle string, publishedRota *PublishedRota) error {
 	maxVolunteers := 0
 	for _, row := range publishedRota.Rows {
@@ -121,7 +138,29 @@ func (c *Client) writeRotaData(spreadsheetID, tabTitle string, publishedRota *Pu
 		}
 	}
 
-	header := []interface{}{"Date", "Team lead"}
+	cappedWidths := make(map[string]int, len(publishedRota.CappedRoleNames))
+	for _, name := range publishedRota.CappedRoleNames {
+		cappedWidths[name] = 1
+		for _, row := range publishedRota.Rows {
+			if len(row.CappedRoles[name]) > cappedWidths[name] {
+				cappedWidths[name] = len(row.CappedRoles[name])
+			}
+		}
+	}
+
+	header := []interface{}{"Date"}
+	for _, name := range publishedRota.CappedRoleNames {
+		if cappedWidths[name] == 1 {
+			header = append(header, name)
+			continue
+		}
+		for i := 0; i < cappedWidths[name]; i++ {
+			header = append(header, fmt.Sprintf("%s %d", name, i+1))
+		}
+	}
+	// The uncapped Role's columns keep the heading the sheet has always used
+	// rather than taking the Role's configured name, which readers of the
+	// published rota have no reason to learn. S3 revisits the sheet's shape.
 	for i := 0; i < maxVolunteers; i++ {
 		header = append(header, fmt.Sprintf("Volunteer %d", i+1))
 	}
@@ -129,11 +168,31 @@ func (c *Client) writeRotaData(spreadsheetID, tabTitle string, publishedRota *Pu
 
 	dataRows := make([][]interface{}, 0, len(publishedRota.Rows))
 	for _, row := range publishedRota.Rows {
-		sheetRow := []interface{}{row.Date, row.TeamLead}
+		sheetRow := []interface{}{row.Date}
+		closedCellWritten := false
+		for _, name := range publishedRota.CappedRoleNames {
+			for i := 0; i < cappedWidths[name]; i++ {
+				switch {
+				case row.Closed && !closedCellWritten:
+					sheetRow = append(sheetRow, closedCell)
+					closedCellWritten = true
+				case i < len(row.CappedRoles[name]):
+					sheetRow = append(sheetRow, row.CappedRoles[name][i])
+				default:
+					sheetRow = append(sheetRow, "")
+				}
+			}
+		}
 		for i := 0; i < maxVolunteers; i++ {
-			if i < len(row.Volunteers) {
+			switch {
+			case row.Closed && !closedCellWritten:
+				// No capped Role is configured, so the closure is announced in
+				// the first column there is.
+				sheetRow = append(sheetRow, closedCell)
+				closedCellWritten = true
+			case i < len(row.Volunteers):
 				sheetRow = append(sheetRow, row.Volunteers[i])
-			} else {
+			default:
 				sheetRow = append(sheetRow, "")
 			}
 		}

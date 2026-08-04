@@ -19,8 +19,8 @@ const repoCSV = "../../test_data/volunteers.csv"
 func twoRoles() model.Roles {
 	max := 1
 	return model.NewRoles([]model.Role{
-		{Name: string(model.RoleTeamLead), Max: &max, Priority: 1},
-		{Name: string(model.RoleVolunteer), Priority: 2},
+		{Name: "Team lead", Max: &max, Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
 	})
 }
 
@@ -38,7 +38,7 @@ func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
 	require.True(t, ok, "expected the first data row to be loaded")
 	assert.Equal(t, "Emma", lead.FirstName)
 	assert.Equal(t, "Welder", lead.LastName)
-	assert.Equal(t, []string{string(model.RoleTeamLead), string(model.RoleVolunteer)}, lead.Roles)
+	assert.Equal(t, []string{"Team lead", "Service volunteer"}, lead.Roles)
 	assert.Equal(t, "Active", lead.Status)
 	assert.Equal(t, "Female", lead.Gender)
 	assert.Equal(t, "youremail+sarah.johnson@gmail.com", lead.Email)

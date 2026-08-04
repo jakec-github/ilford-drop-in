@@ -84,9 +84,17 @@ function CoverageRow({ shift }: { shift: ShiftCoverage }) {
         >
           {shift.delta > 0 ? `+${shift.delta}` : shift.delta}
         </span>
-        {!shift.hasTeamLead && (
-          <span className="cover-tag cover-tag--short">No team lead</span>
-        )}
+        {/* A capped Role with Seats and nobody to fill them is short in a way
+            the delta cannot express: no number of ordinary volunteers gets a
+            shift a lead. The uncapped Role is left to the delta, which is the
+            same fact stated better. */}
+        {shift.roles
+          .filter((r) => r.capped && r.needed > 0 && r.available === 0)
+          .map((r) => (
+            <span key={r.role} className="cover-tag cover-tag--short">
+              No {r.role.toLowerCase()}
+            </span>
+          ))}
       </span>
     </li>
   );
