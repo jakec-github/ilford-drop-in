@@ -391,6 +391,14 @@ func validateRoles(roles []model.Role) error {
 		}
 		seenPriorities[role.Priority] = true
 
+		// Empty is allowed and means "no preference": the lookup table gives it
+		// the default. Anything else has to name a palette token, since the
+		// values behind the tokens are the app's to choose.
+		if role.Colour != "" && !model.ValidRoleColour(role.Colour) {
+			return fmt.Errorf("roles[%d] (%s) has colour %q; use one of %s, or omit it for %s",
+				i, role.Name, role.Colour, strings.Join(model.RoleColours, ", "), model.DefaultRoleColour)
+		}
+
 		if role.Capped() && *role.Max < 1 {
 			return fmt.Errorf("roles[%d] (%s) has max %d; omit max for no ceiling", i, role.Name, *role.Max)
 		}
