@@ -471,6 +471,77 @@ export function PinDialog({
   );
 }
 
+// ClosureDialog confirms shutting a shift or opening it back up. Both
+// directions go through one dialog because they are one decision seen from
+// either side, and both say the same thing: the drop-in either runs that day or
+// it does not, and allocation will be worked out accordingly.
+//
+// Closing is worth confirming despite being reversible, because of what it
+// takes away from the row: anyone pinned there is set aside until it reopens,
+// which the summary says out loud rather than leaving as a surprise.
+export function ClosureDialog({
+  dateLabel,
+  closing,
+  pinnedCount,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  dateLabel: string;
+  // True when the shift is being shut, false when it is being reopened.
+  closing: boolean;
+  // How many people are pinned to it, from either source. Only mentioned when
+  // closing, and only when there are any.
+  pinnedCount: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog
+      title={closing ? `Close ${dateLabel}?` : `Reopen ${dateLabel}?`}
+      onClose={onCancel}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onConfirm();
+        }}
+      >
+        <p className="rota-edit-summary">
+          {closing ? (
+            <>
+              The drop-in does not run on {dateLabel}, so nobody will be
+              allocated there.
+              {pinnedCount > 0 && (
+                <>
+                  {" "}
+                  {pinnedCount === 1
+                    ? "The person"
+                    : `All ${pinnedCount} people`}{" "}
+                  pinned there {pinnedCount === 1 ? "is" : "are"} set aside, and
+                  comes back if you reopen it.
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              The drop-in runs on {dateLabel} again, and allocation will fill it
+              like any other shift.
+            </>
+          )}
+        </p>
+        <DialogActions
+          confirmLabel={closing ? "Close shift" : "Reopen shift"}
+          busy={busy}
+          canConfirm
+          onCancel={onCancel}
+        />
+      </form>
+    </Dialog>
+  );
+}
+
 // UnpinDialog confirms taking one manual pin off a shift. Removing a pin is not
 // removing anyone from the rota — nobody has been allocated yet — so the
 // summary says what is actually being given up: the guarantee, not the shift.

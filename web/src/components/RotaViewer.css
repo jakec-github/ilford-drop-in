@@ -215,7 +215,12 @@
   border-bottom: none;
 }
 
-.shift-row.closed {
+/* A closed row reads as dimmed, but the dimming is on what it says rather than
+   on the row: `opacity` on the row is a compositing group no child can escape,
+   and the one control a closed row carries is the way back out of it. A faded
+   "Reopen" would read as unavailable. */
+.shift-row.closed .shift-date,
+.shift-row.closed .shift-note {
   opacity: 0.55;
 }
 
@@ -361,7 +366,16 @@
 
 /* The pin button is on its own line under the pins, in a column layout, so it
    has to be told not to stretch across the row. */
-.shift-pin {
+/* The unallocated row stacks its parts vertically, but the two things it can
+   do sit side by side: they are alternatives, not steps. */
+.shift-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shift-actions,
+.shift-closure {
   align-self: flex-start;
 }
 

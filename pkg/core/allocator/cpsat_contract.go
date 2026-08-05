@@ -127,7 +127,7 @@ type CpsatOutput struct {
 func BuildCpsatInput(
 	volunteers []Volunteer,
 	groupAvailability map[string][]int,
-	shiftDateStrings []string,
+	shiftSpecs []ShiftSpec,
 	defaultShiftSize int,
 	overrides []ShiftOverride,
 	historicalShifts []*Shift,
@@ -139,14 +139,15 @@ func BuildCpsatInput(
 		return nil, fmt.Errorf("no uncapped role configured: a shift's size has no Seats to be spent on")
 	}
 
-	// InitShifts resolves per-shift size/closed/preallocations from the
-	// overrides. AvailableGroups isn't part of the contract (Python
-	// derives availability from groups), so an empty state suffices.
+	// InitShifts resolves per-shift size and preallocations from the overrides,
+	// carrying each shift's own Closed through. AvailableGroups isn't part of
+	// the contract (Python derives availability from groups), so an empty state
+	// suffices.
 	//
 	// It runs first because the pins it resolves settle availability for the
 	// shifts they name, and InitVolunteerGroups discards a group with none.
-	shiftSpecs, err := InitShifts(InitShiftsInput{
-		ShiftDates:       shiftDateStrings,
+	initialised, err := InitShifts(InitShiftsInput{
+		Shifts:           shiftSpecs,
 		DefaultShiftSize: defaultShiftSize,
 		Overrides:        overrides,
 		VolunteerState:   &VolunteerState{VolunteerGroups: []*VolunteerGroup{}},
@@ -157,7 +158,7 @@ func BuildCpsatInput(
 
 	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,
-		GroupAvailability: withPreallocatedAvailability(groupAvailability, shiftSpecs, volunteers),
+		GroupAvailability: withPreallocatedAvailability(groupAvailability, initialised, volunteers),
 		HistoricalShifts:  historicalShifts,
 	})
 	if err != nil {
@@ -165,15 +166,15 @@ func BuildCpsatInput(
 	}
 
 	input := &CpsatInput{
-		MaxAllocationCount: int(float64(len(shiftDateStrings)) * maxAllocationFrequency),
+		MaxAllocationCount: int(float64(len(shiftSpecs)) * maxAllocationFrequency),
 		Roles:              contractRoles(roles),
 		RequiresMale:       requiresMale,
-		Shifts:             make([]CpsatShift, len(shiftSpecs)),
+		Shifts:             make([]CpsatShift, len(initialised)),
 		Groups:             make([]CpsatGroup, len(volunteerState.VolunteerGroups)),
 		HistoricalShifts:   make([]CpsatHistoricalShift, len(historicalShifts)),
 	}
 
-	for i, shift := range shiftSpecs {
+	for i, shift := range initialised {
 		input.Shifts[i] = CpsatShift{
 			Index:          shift.Index,
 			Date:           shift.Date,

@@ -204,7 +204,6 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 		result = append(result, allocator.ShiftOverride{
 			AppliesTo:      appliesTo,
 			ShiftSize:      override.ShiftSize,
-			Closed:         override.Closed,
 			Preallocations: pins,
 		})
 
@@ -212,8 +211,7 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
 			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("preallocation_count", len(pins)),
-			zap.Bool("closed", override.Closed))
+			zap.Int("preallocation_count", len(pins)))
 	}
 
 	return result, nil
@@ -373,22 +371,21 @@ func convertConfigPreallocations(pins []config.Preallocation) []allocator.Preall
 
 // configPreallocationsForDate collects the config-derived preallocations that
 // apply to a single date, mirroring InitShifts exactly: every matching override
-// appends its pins in order, and a closed override drops what came before it.
-// Manual pins are deduped against exactly what config already contributes for
-// that date.
-func configPreallocationsForDate(date string, overrides []allocator.ShiftOverride) (pins []allocator.Preallocation, closed bool) {
+// appends its pins in order. Manual pins are deduped against exactly what
+// config already contributes for that date.
+//
+// Whether the shift is closed plays no part here. Closure is a field on the
+// Shift now, so the shifts a caller is iterating already carry it, and
+// InitShifts strips the pins of a closed one wherever they came from.
+func configPreallocationsForDate(date string, overrides []allocator.ShiftOverride) []allocator.Preallocation {
+	var pins []allocator.Preallocation
 	for _, o := range overrides {
 		if !o.AppliesTo(date) {
 			continue
 		}
-		if o.Closed {
-			closed = true
-			pins = nil
-			continue
-		}
 		pins = append(pins, o.Preallocations...)
 	}
-	return pins, closed
+	return pins
 }
 
 // exactDateMatcher returns an AppliesTo predicate matching exactly one date, so
@@ -405,7 +402,8 @@ func exactDateMatcher(date string) func(string) bool {
 // doubles a Seat. That is either the same subject — a person holds one Role on
 // a Shift, so a second pin naming them is not a second Seat — or a capped Role
 // config has already filled, since config stays authoritative for those. A pin
-// whose date config closes contributes nothing.
+// on a closed Shift is left alone here and stripped by InitShifts, alongside
+// the config pins on that date.
 func buildManualPreallocationOverrides(
 	manualPins []db.ManualPreallocation,
 	dateByShiftID map[string]string,
@@ -423,12 +421,7 @@ func buildManualPreallocationOverrides(
 			return nil, fmt.Errorf("manual preallocation %s has neither a volunteer nor a custom value", pin.ID)
 		}
 
-		configPins, configClosed := configPreallocationsForDate(date, configOverrides)
-		if configClosed {
-			// Config closes this date; a manual pin cannot reopen it.
-			continue
-		}
-
+		configPins := configPreallocationsForDate(date, configOverrides)
 		if configPinsSubject(configPins, pin) {
 			continue // config already pins this person or entry here
 		}
@@ -478,33 +471,49 @@ func configPinsSubject(configPins []allocator.Preallocation, pin db.ManualPreall
 // pin(s). It covers both manual pins and config preallocations (ADR 0003 asks
 // the check to shield config too). Custom (non-volunteer) pins carry no id and
 // are not checked.
+//
+// Closed shifts are skipped on both sides: InitShifts strips their pins, so a
+// stale one there reaches neither the solver nor anything else, and reporting
+// it would block a rota over a pin that has no effect.
 func checkPreallocationsResolve(
 	manualPins []db.ManualPreallocation,
-	dateByShiftID map[string]string,
+	shifts []db.Shift,
 	configOverrides []allocator.ShiftOverride,
-	shiftDates []time.Time,
 	activeIDs map[string]bool,
 ) error {
 	var offenders []string
+
+	openByShiftID := make(map[string]string, len(shifts))
+	for _, s := range shifts {
+		if !s.Closed {
+			openByShiftID[s.ID] = s.Date
+		}
+	}
 
 	for _, pin := range manualPins {
 		if pin.VolunteerID == "" {
 			continue
 		}
+		date, open := openByShiftID[pin.ShiftID]
+		if !open {
+			continue
+		}
 		if !activeIDs[pin.VolunteerID] {
-			offenders = append(offenders, fmt.Sprintf("manual pin for %s: volunteer %s is not active", dateByShiftID[pin.ShiftID], pin.VolunteerID))
+			offenders = append(offenders, fmt.Sprintf("manual pin for %s: volunteer %s is not active", date, pin.VolunteerID))
 		}
 	}
 
-	for _, date := range shiftDates {
-		dateStr := date.Format("2006-01-02")
+	for _, s := range shifts {
+		if s.Closed {
+			continue
+		}
 		for _, o := range configOverrides {
-			if !o.AppliesTo(dateStr) || o.Closed {
+			if !o.AppliesTo(s.Date) {
 				continue
 			}
 			for _, pin := range o.Preallocations {
 				if pin.VolunteerID != "" && !activeIDs[pin.VolunteerID] {
-					offenders = append(offenders, fmt.Sprintf("config pin for %s: %s %s is not active", dateStr, strings.ToLower(pin.Role), pin.VolunteerID))
+					offenders = append(offenders, fmt.Sprintf("config pin for %s: %s %s is not active", s.Date, strings.ToLower(pin.Role), pin.VolunteerID))
 				}
 			}
 		}

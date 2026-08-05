@@ -1,6 +1,8 @@
 # Shift is a first-class entity
 
-Status: accepted
+Status: accepted. Amended 2026-08-05 (#132): `closed` is a column on `shift`,
+set by hand — see "`closed` deliberately stays config-derived", which this
+supersedes.
 
 A shift used to be an inference: a `shift_date` string scattered across
 `allocation`, `alteration`, and `availability_request`, with its properties
@@ -37,6 +39,16 @@ rotation, and made it the sole authority on which shifts belong to a rota
   already-defined rota currently happens by config edit and would otherwise
   need manual SQL. Do not "fix" this by snapshotting closed at mint time
   without also building the close/open command.
+
+  *Superseded 2026-08-05 (#132).* The close/open command exists — `PATCH
+  /api/shifts/{id}` and the Close/Reopen buttons on the rota editor — so
+  `closed` is a `BOOLEAN NOT NULL DEFAULT FALSE` column on `shift` and the
+  `closed` key is gone from `rotaOverrides`. A Shift is minted open and there
+  is no stored list of known closure dates: you close the Christmas shift by
+  hand. Because it is an allocator input, it is frozen once the Rotation is
+  allocated — unlike a Shift's times, which are descriptive and stay editable
+  (`docs/allocation_journey_plan.md`). The existing rows were stamped by a
+  one-off `backfillShiftClosed` command, deleted in the same PR.
 - **The v1 table is deliberately thin.** Notes, times, and size arrive as
   `ALTER TABLE` when their features do; the v1 job is identity plus the FK
   spine.

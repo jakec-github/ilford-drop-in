@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -8,6 +9,9 @@ import (
 )
 
 type shiftResponse struct {
+	// ID is how a client addresses one shift to change it. Dates are the
+	// external language everywhere else, but identity is the UUID (ADR 0001).
+	ID        string             `json:"id"`
 	Date      string             `json:"date"`
 	Start     string             `json:"start"`
 	End       string             `json:"end"`
@@ -60,6 +64,7 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		}
 
 		resp.Shifts = append(resp.Shifts, shiftResponse{
+			ID:        shift.ID,
 			Date:      shift.Date,
 			Start:     start.Format(time.RFC3339),
 			End:       end.Format(time.RFC3339),
@@ -70,4 +75,51 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusOK, resp)
+}
+
+// updateShiftRequest is the shape of a per-Shift edit. Closed is a pointer so
+// "leave it alone" and "open it" are distinguishable — which matters now the
+// body has one field and will matter more when times and Shape join it.
+type updateShiftRequest struct {
+	Closed *bool `json:"closed"`
+}
+
+// shiftClosureResponse is what a close or reopen answers with: the shift's id,
+// the date it names, and the state it is now in. Not the full shift view — the
+// client re-reads the rota anyway, and a change should not have to assemble a
+// projection that needs the roster.
+type shiftClosureResponse struct {
+	ID     string `json:"id"`
+	Date   string `json:"date"`
+	Closed bool   `json:"closed"`
+}
+
+// handleUpdateShift changes one Shift. Today the only editable field is closed;
+// a shift's times and Shape land here as they become fields of their own.
+// Refusals — an unknown shift, or a rota already allocated — map to 404/409 via
+// writeServiceError.
+func (h *Handler) handleUpdateShift(w http.ResponseWriter, r *http.Request) {
+	var req updateShiftRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if req.Closed == nil {
+		h.writeError(w, http.StatusBadRequest, "closed is required")
+		return
+	}
+
+	closure, err := services.SetShiftClosed(r.Context(), h.store, r.PathValue("id"), *req.Closed, h.logger)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, shiftClosureResponse{
+		ID:     closure.ID,
+		Date:   closure.Date,
+		Closed: closure.Closed,
+	})
 }

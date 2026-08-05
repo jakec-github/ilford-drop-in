@@ -17,6 +17,7 @@ import Button from "../ui/Button";
 import type { AssigneeChange } from "./RotaEditDialogs";
 import {
   AssigneeDialog,
+  ClosureDialog,
   ConfirmChangeDialog,
   PinDialog,
   UnpinDialog,
@@ -32,6 +33,10 @@ interface RotaViewerProps {
   // own message when the change is refused. Only ever called by the editing
   // affordances, which are unreachable unless isAdmin.
   onChange: (change: RotaChange) => Promise<void>;
+  // Shuts or reopens one shift, on the same terms. Separate from onChange
+  // because it is not an alteration: it changes what allocation will do rather
+  // than what an allocated rota says.
+  onSetClosed: (shiftId: string, closed: boolean) => Promise<void>;
 }
 
 // A shift that exists but has not been through allocation yet: no assignees,
@@ -240,6 +245,10 @@ interface RowEdit {
   // made to place.
   onPin: () => void;
   onUnpin: (pin: Preallocation) => void;
+  // Whether this row may be shut or opened at all. False once the rota has been
+  // allocated: closure is an allocator input, and the rota was solved around it.
+  canSetClosed: boolean;
+  onSetClosed: () => void;
 }
 
 function Chip({
@@ -521,9 +530,33 @@ function ShiftRow({
       )) ||
     null;
 
+  // Shutting a date and opening it again is offered on the same terms as
+  // pinning: while editing, with nothing being carried, and only where the rota
+  // has not been allocated. It is the one editing affordance a closed row has —
+  // there is nobody on it to do anything else to.
+  const closureButton = edit && !pending && edit.canSetClosed && (
+    <button
+      type="button"
+      className="shift-add shift-closure"
+      aria-label={
+        shift.closed
+          ? `Reopen ${formatShiftDateLong(shift.date)}`
+          : `Close ${formatShiftDateLong(shift.date)}`
+      }
+      onClick={edit.onSetClosed}
+    >
+      {shift.closed ? "Reopen" : "Close"}
+    </button>
+  );
+
   let body;
   if (shift.closed) {
-    body = <span className="shift-note">Closed</span>;
+    body = (
+      <div className="shift-unallocated">
+        <span className="shift-note">Closed</span>
+        {closureButton}
+      </div>
+    );
   } else if (unallocated) {
     body = (
       <div className="shift-unallocated">
@@ -542,14 +575,17 @@ function ShiftRow({
         {/* Editing an unallocated shift means changing who is promised it —
             there is nobody on it to move around. */}
         {edit && !pending && (
-          <button
-            type="button"
-            className="shift-add shift-pin"
-            aria-label={`Pin someone to ${formatShiftDateLong(shift.date)}`}
-            onClick={edit.onPin}
-          >
-            + Pin
-          </button>
+          <div className="shift-actions">
+            <button
+              type="button"
+              className="shift-add shift-pin"
+              aria-label={`Pin someone to ${formatShiftDateLong(shift.date)}`}
+              onClick={edit.onPin}
+            >
+              + Pin
+            </button>
+            {closureButton}
+          </div>
         )}
       </div>
     );
@@ -696,12 +732,16 @@ type EditDialog =
   // Someone being pinned to, or unpinned from, a shift the rota has not been
   // run for. Not alterations: nothing is on the rota yet to alter.
   | { kind: "pin"; date: string }
-  | { kind: "unpin"; pin: Preallocation };
+  | { kind: "unpin"; pin: Preallocation }
+  // A shift being shut or opened again, which is neither an alteration nor a
+  // pin: it changes whether the drop-in runs that day at all.
+  | { kind: "closure"; shift: RotaShift };
 
 export default function RotaViewer({
   rotaShifts,
   isAdmin,
   onChange,
+  onSetClosed,
 }: RotaViewerProps) {
   const [selectedName, setSelectedName] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -773,6 +813,14 @@ export default function RotaViewer({
   // admin, since the public is not shown unallocated shifts in the first place.
   const hasUnallocated = useMemo(
     () => visibleShifts.some(isUnallocated),
+    [visibleShifts],
+  );
+
+  // Whether any row can be shut or opened. A wider set than hasUnallocated: a
+  // shift that is already closed is not "not yet allocated", but reopening it
+  // is exactly what an admin might be here to do.
+  const hasClosable = useMemo(
+    () => visibleShifts.some((s) => !s.allocated),
     [visibleShifts],
   );
 
@@ -922,6 +970,14 @@ export default function RotaViewer({
     );
   }
 
+  function submitClosure(shift: RotaShift) {
+    return run(
+      shift.date,
+      () => onSetClosed(shift.id, !shift.closed),
+      shift.closed ? "The shift was not reopened" : "The shift was not closed",
+    );
+  }
+
   function submitUnpin(pin: Preallocation) {
     // Only ever called for a manual pin, which is the only kind with an id.
     if (pin.id === null) return;
@@ -1053,6 +1109,14 @@ export default function RotaViewer({
         setChangeError(null);
         setOpenMenu(null);
         setDialog({ kind: "unpin", pin });
+      },
+      // An allocated rota was solved around which of its shifts run, so the
+      // flag is frozen. A shift's times are not, but they are not editable here.
+      canSetClosed: !shift.allocated,
+      onSetClosed: () => {
+        setChangeError(null);
+        setOpenMenu(null);
+        setDialog({ kind: "closure", shift });
       },
     };
   }
@@ -1214,6 +1278,13 @@ export default function RotaViewer({
               you pin there is guaranteed the shift when it is allocated.
             </>
           )}
+          {hasClosable && (
+            <>
+              {" "}
+              Close one for a date the drop-in is not running, up until the rota
+              is allocated.
+            </>
+          )}
         </p>
       )}
 
@@ -1297,6 +1368,17 @@ export default function RotaViewer({
           onConfirm={(person, role) =>
             void submitPin(dialog.date, person, role)
           }
+        />
+      )}
+
+      {editing && dialog?.kind === "closure" && (
+        <ClosureDialog
+          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          closing={!dialog.shift.closed}
+          pinnedCount={(pinsByDate.get(dialog.shift.date) ?? []).length}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => void submitClosure(dialog.shift)}
         />
       )}
 

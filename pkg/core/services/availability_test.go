@@ -144,24 +144,21 @@ func (m *mockAvailabilityStore) InsertAvailabilityResponse(_ context.Context, re
 }
 
 // availabilityFixture is a rota of three weekly shifts with nobody minted into
-// it yet. The third date is shut by a rota override, so every test runs against
-// a round that has an open/closed distinction to get wrong.
+// it yet. The third date is shut, so every test runs against a round that has an
+// open/closed distinction to get wrong.
 func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 	store := &mockAvailabilityStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", End: "2026-08-16", ShiftCount: 3}},
 		shifts: []db.Shift{
 			{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02"},
 			{ID: "shift-2", RotaID: "rota-1", Date: "2026-08-09"},
-			{ID: "shift-3", RotaID: "rota-1", Date: "2026-08-16"},
+			// The rota's last date is shut, which is a field on the Shift.
+			{ID: "shift-3", RotaID: "rota-1", Date: "2026-08-16", Closed: true},
 		},
 	}
-	cfg := &config.Config{
-		RotaOverrides: []config.RotaOverride{
-			// 16 August, the rota's last date.
-			{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=16", Closed: true},
-		},
-	}
-	return store, cfg
+	// Nothing left for the config to say about these shifts: the Roles that
+	// exist are rows now, and so is each shift's closure.
+	return store, &config.Config{}
 }
 
 // availabilityVolunteers is a roster with a two-person group (michael and emma),
@@ -281,7 +278,7 @@ func TestAvailabilityFormLandsOptedIn(t *testing.T) {
 
 	require.Len(t, form.Shifts, 3)
 	assert.False(t, form.Shifts[0].Closed)
-	assert.True(t, form.Shifts[2].Closed, "the override shuts the last date")
+	assert.True(t, form.Shifts[2].Closed, "the last date is shut")
 	assert.Equal(t, []string{"shift-1", "shift-2"}, form.SelectedShiftIDs)
 }
 

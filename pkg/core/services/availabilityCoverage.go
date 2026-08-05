@@ -137,7 +137,6 @@ func buildShiftSeats(
 		overrides = append(overrides, allocator.ShiftOverride{
 			AppliesTo:      appliesTo,
 			ShiftSize:      override.ShiftSize,
-			Closed:         override.Closed,
 			Preallocations: convertConfigPreallocations(override.Preallocations),
 		})
 	}
@@ -183,7 +182,7 @@ func buildShiftSeats(
 
 		pinned := make(map[string]int)
 		pinnedVolunteers := make(map[string]bool)
-		effectivePins, _ := configPreallocationsForDate(shift.Date, overrides)
+		effectivePins := configPreallocationsForDate(shift.Date, overrides)
 		for _, pin := range effectivePins {
 			pinned[pin.Role]++
 			if pin.VolunteerID != "" {

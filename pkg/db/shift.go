@@ -15,7 +15,7 @@ import (
 // instead (ADR 0001).
 func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, date, rota_id
+		SELECT id, date, rota_id, closed
 		FROM shift
 		WHERE rota_id = $1
 		ORDER BY date
@@ -29,7 +29,7 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 	for rows.Next() {
 		var s Shift
 		var date time.Time
-		if err := rows.Scan(&s.ID, &date, &s.RotaID); err != nil {
+		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed); err != nil {
 			return nil, fmt.Errorf("failed to scan shift: %w", err)
 		}
 		s.Date = date.Format("2006-01-02")
@@ -59,7 +59,7 @@ type ShiftInRange struct {
 func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT s.id, s.date, s.rota_id, r.allocated_datetime IS NOT NULL
+		SELECT s.id, s.date, s.rota_id, s.closed, r.allocated_datetime IS NOT NULL
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 	`+where+`
@@ -74,7 +74,7 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 	for rows.Next() {
 		var s ShiftInRange
 		var date time.Time
-		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Allocated); err != nil {
+		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &s.Allocated); err != nil {
 			return nil, fmt.Errorf("failed to scan shift: %w", err)
 		}
 		s.Date = date.Format("2006-01-02")
@@ -115,10 +115,10 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 	var s Shift
 	var d0 time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT id, date, rota_id
+		SELECT id, date, rota_id, closed
 		FROM shift
 		WHERE date = $1
-	`, date).Scan(&s.ID, &d0, &s.RotaID)
+	`, date).Scan(&s.ID, &d0, &s.RotaID, &s.Closed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -127,6 +127,40 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 	}
 	s.Date = d0.Format("2006-01-02")
 	return &s, nil
+}
+
+// GetShiftByID retrieves one shift with its rota's allocation state, or nil if
+// no shift has that id. It is the read behind close/reopen: whether the shift
+// exists and whether its rota has been allocated are the two things that decide
+// whether the flag may move at all.
+func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error) {
+	var s ShiftInRange
+	var date time.Time
+	err := d.pool.QueryRow(ctx, `
+		SELECT s.id, s.date, s.rota_id, s.closed, r.allocated_datetime IS NOT NULL
+		FROM shift s
+		JOIN rotation r ON r.id = s.rota_id
+		WHERE s.id = $1
+	`, id).Scan(&s.ID, &date, &s.RotaID, &s.Closed, &s.Allocated)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query shift %s: %w", id, err)
+	}
+	s.Date = date.Format("2006-01-02")
+	return &s, nil
+}
+
+// setShiftClosed writes a shift's closed flag, reporting whether a row matched.
+// It carries no freeze check of its own: the caller holds the rota's row lock
+// and has already established that the rota is unallocated.
+func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (bool, error) {
+	tag, err := q.Exec(ctx, `UPDATE shift SET closed = $2 WHERE id = $1`, id, closed)
+	if err != nil {
+		return false, fmt.Errorf("failed to set closed on shift %s: %w", id, err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // InsertRotationAndShifts inserts a rotation and all of its minted shifts in a
@@ -156,9 +190,9 @@ func (d *DB) InsertRotationAndShifts(ctx context.Context, rotation *Rotation, sh
 	batch := &pgx.Batch{}
 	for _, s := range shifts {
 		batch.Queue(`
-			INSERT INTO shift (id, date, rota_id)
-			VALUES ($1, $2, $3)
-		`, s.ID, s.Date, s.RotaID)
+			INSERT INTO shift (id, date, rota_id, closed)
+			VALUES ($1, $2, $3, $4)
+		`, s.ID, s.Date, s.RotaID, s.Closed)
 	}
 	results := tx.SendBatch(ctx, batch)
 	for range shifts {

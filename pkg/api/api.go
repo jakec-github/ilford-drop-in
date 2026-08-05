@@ -22,6 +22,7 @@ type Store interface {
 	services.DefineRotaStore
 	services.ListShiftsStore
 	services.PreallocationStore
+	services.SetShiftClosedStore
 	// Ping reports whether the database is reachable, for GET /health.
 	Ping(ctx context.Context) error
 }
@@ -102,6 +103,9 @@ const apiPrefix = "/api"
 func (h *Handler) Routes() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /shifts", h.handleListShifts)
+	// Editing a Shift is admin-only, and admin-only for a reason the listing is
+	// not: closing one is an allocator input, and the rota is solved around it.
+	api.Handle("PATCH /shifts/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleUpdateShift)))
 	// Public alongside the rota: it is what tells a client which Roles exist
 	// and what each is drawn in, and the rota names Roles on every chip.
 	api.HandleFunc("GET /roles", h.handleListRoles)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createAlteration, fetchRota } from "../api";
+import { createAlteration, fetchRota, setShiftClosed } from "../api";
 import type { RotaChange, RotaShift } from "../types";
 
 interface UseRota {
@@ -10,6 +10,10 @@ interface UseRota {
   // change records one alteration and reloads the rota, whether or not the
   // change was accepted. It rejects with the server's message when it was not.
   change: (change: RotaChange) => Promise<void>;
+  // setClosed shuts or reopens one shift, reloading on the same terms. Not an
+  // alteration: it changes what allocation will do rather than what an
+  // allocated rota says.
+  setClosed: (shiftId: string, closed: boolean) => Promise<void>;
 }
 
 // useRota owns the rota the page shows: the read and the changes that
@@ -57,5 +61,16 @@ export function useRota(): UseRota {
     [load],
   );
 
-  return { shifts, error, change };
+  const setClosed = useCallback(
+    async (shiftId: string, closed: boolean) => {
+      try {
+        await setShiftClosed(shiftId, closed);
+      } finally {
+        await load();
+      }
+    },
+    [load],
+  );
+
+  return { shifts, error, change, setClosed };
 }

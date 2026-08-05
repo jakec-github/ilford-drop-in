@@ -153,15 +153,18 @@ func AddPreallocation(
 		return nil, wrapf(ErrNotFound, "date %s is not in any rota", params.Date)
 	}
 
-	// Step 4: config checks for the date (no network). A Closed override blocks
-	// any pin; config is authoritative for a capped Role's Seats, so a Role
-	// config has already filled leaves nothing here to pin into.
-	configPins, closed, err := configPreallocationState(cfg, date)
+	// A closed shift is a day the drop-in does not run, so there is no Seat to
+	// promise anyone. Reopening it is the way to make one.
+	if shift.Closed {
+		return nil, wrapf(ErrConflict, "shift for %s is closed", params.Date)
+	}
+
+	// Step 4: config checks for the date (no network). Config is authoritative
+	// for a capped Role's Seats, so a Role config has already filled leaves
+	// nothing here to pin into.
+	configPins, err := configPreallocationState(cfg, date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate config overrides for %s: %w", params.Date, err)
-	}
-	if closed {
-		return nil, wrapf(ErrConflict, "shift for %s is closed", params.Date)
 	}
 	configFilled := countRole(params.Role, configPins)
 	if role.Capped() && configFilled >= *role.Max {
@@ -303,12 +306,19 @@ func ListPreallocations(
 		return nil, fmt.Errorf("failed to fetch shifts in range: %w", err)
 	}
 
+	// A closed shift carries no pins from either source: the drop-in is not
+	// running, so nobody is promised it, and InitShifts strips whatever the two
+	// sources contributed. Dropping them here is what stops the rota page
+	// listing people against a shut date.
 	dateByShiftID := make(map[string]string, len(shifts))
 	shiftIDs := make([]string, 0, len(shifts))
 	// The rrule matchers search a window bounded by these dates, so a shift
 	// whose date will not parse is dropped rather than widening it wrongly.
 	shiftDates := make([]time.Time, 0, len(shifts))
 	for _, s := range shifts {
+		if s.Closed {
+			continue
+		}
 		dateByShiftID[s.ID] = s.Date
 		shiftIDs = append(shiftIDs, s.ID)
 		date, err := time.Parse("2006-01-02", s.Date)
@@ -364,7 +374,7 @@ func ListPreallocations(
 // for the given shift dates. It goes through convertRotaOverrides and
 // configPreallocationsForDate — the same pair allocation uses — so a date's pins
 // read here exactly as InitShifts will apply them: every matching override
-// contributing, and a closed date carrying none.
+// contributing. Closed shifts never reach it; the caller has dropped them.
 //
 // The one thing it collapses is the identical pin: the same subject in the same
 // Role, named by two overrides, is one Seat to the solver and one chip here.
@@ -388,11 +398,7 @@ func configPreallocationViews(
 	var views []PreallocationView
 	for _, d := range shiftDates {
 		date := d.Format("2006-01-02")
-		pins, closed := configPreallocationsForDate(date, overrides)
-		if closed {
-			continue
-		}
-
+		pins := configPreallocationsForDate(date, overrides)
 		seen := make(map[allocator.Preallocation]bool, len(pins))
 		for _, pin := range pins {
 			if seen[pin] {
@@ -464,32 +470,27 @@ func sortPreallocationViews(views []PreallocationView, roles model.Roles) {
 }
 
 // configPreallocationState resolves the config Rota Overrides for a single date,
-// returning the pins they contribute there and whether the date is closed. It
-// builds one rrule matcher per override over a single-date window
-// (NewRRuleMatcher widens the window by a week, so a lone date matches
-// correctly), and mirrors InitShifts: a closed override drops what came before
-// it.
-func configPreallocationState(cfg *config.Config, date time.Time) (pins []config.Preallocation, closed bool, err error) {
+// returning the pins they contribute there. It builds one rrule matcher per
+// override over a single-date window (NewRRuleMatcher widens the window by a
+// week, so a lone date matches correctly), and mirrors InitShifts: every
+// matching override appends its pins in order.
+func configPreallocationState(cfg *config.Config, date time.Time) ([]config.Preallocation, error) {
 	if cfg == nil {
-		return nil, false, nil
+		return nil, nil
 	}
+	var pins []config.Preallocation
 	dateStr := date.Format("2006-01-02")
 	for _, o := range cfg.RotaOverrides {
 		matcher, err := utils.NewRRuleMatcher(o.RRule, []time.Time{date})
 		if err != nil {
-			return nil, false, fmt.Errorf("invalid rrule %q: %w", o.RRule, err)
+			return nil, fmt.Errorf("invalid rrule %q: %w", o.RRule, err)
 		}
 		if !matcher(dateStr) {
 			continue
 		}
-		if o.Closed {
-			closed = true
-			pins = nil
-			continue
-		}
 		pins = append(pins, o.Preallocations...)
 	}
-	return pins, closed, nil
+	return pins, nil
 }
 
 // countRole counts the pins filling one Role, which is how many of its Seats

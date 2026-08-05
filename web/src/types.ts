@@ -271,7 +271,12 @@ export interface AvailabilityFormState {
 export type AvailabilityLinkFailure = "not-found" | "gone";
 
 export interface RotaShift {
+  // How a change to this shift is addressed. The rota reads in dates, but a
+  // close or reopen is a change to the entity, which is keyed by id.
+  id: string;
   date: string;
+  // closed is a date the drop-in does not run — a holiday closure, set by hand
+  // on the shift itself. Frozen once the rota is allocated.
   closed: boolean;
   // allocated is false for a minted shift whose rota has not been run yet: it
   // exists but has no assignees. Shown only to admins (with a distinct style).

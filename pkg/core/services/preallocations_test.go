@@ -251,13 +251,16 @@ func TestAddPreallocation_UnknownDate(t *testing.T) {
 	assert.Contains(t, err.Error(), "not in any rota")
 }
 
+// A closed shift has no Seats to promise anyone, so a pin on one is refused
+// rather than stored and then quietly stripped at allocation.
 func TestAddPreallocation_ClosedShift(t *testing.T) {
 	store := oneShiftStore()
-	cfg := cfgWithOverrides(config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Closed: true})
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
+	store.shifts[0].Closed = true
+	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "closed")
+	assert.Empty(t, store.inserted)
 }
 
 func TestAddPreallocation_ConfigFillsTheCappedRole(t *testing.T) {
@@ -468,15 +471,20 @@ func TestListPreallocations_IncludesConfigPins(t *testing.T) {
 	assert.Empty(t, views[2].VolunteerID)
 }
 
-// A closed date carries no pins into allocation (InitShifts clears them), so it
-// must not show any either.
-func TestListPreallocations_ConfigPinsSkipClosedDates(t *testing.T) {
+// A closed shift carries no pins into allocation (InitShifts clears them), so
+// it must not show any either — from either source.
+func TestListPreallocations_SkipsClosedShifts(t *testing.T) {
 	cfg := cfgWithOverrides(
 		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: "Service volunteer"}}},
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Closed: true},
 	)
 
-	assert.Empty(t, listPreallocs(t, twoSundayStore(), cfg))
+	store := twoSundayStore()
+	store.shiftRanges[0].Closed = true
+	store.preallocs = []db.ManualPreallocation{
+		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "dan"},
+	}
+
+	assert.Empty(t, listPreallocs(t, store, cfg))
 }
 
 // Two overrides pinning the same person to the same date are one seat at
