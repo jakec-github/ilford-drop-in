@@ -31,14 +31,10 @@ job and the holding of it share one name; there is no separate notion of being
 qualified for a job you do not hold. A person fills at most one Role on a
 Shift, however many they hold. A Role has an identity of its own: its name is
 what the roster and past rotas record, but what a Shape asks for is the Role
-itself, so renaming one leaves both readable.
+itself, so renaming one leaves both readable. A Role is permanent — once
+created it always exists, so no reference to one can ever dangle and a past
+rota always reads as it was made.
 _Avoid_: position, qualification, badge
-
-**Retired Role**:
-A Role that is no longer offered: absent from pickers and unaddable to any
-Shape, while every existing reference to it still resolves. Roles are retired,
-never deleted, so a past rota always reads as it was made.
-_Avoid_: deleted role, archived role
 
 **Seat**:
 One place on a Shift: one Role, at most one person.

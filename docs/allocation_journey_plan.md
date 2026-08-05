@@ -8,7 +8,7 @@ Decision records: [ADR 0006](adr/0006-domain-settings-in-the-app.md),
 [ADR 0007](adr/0007-shift-start-as-local-time.md),
 [ADR 0008](adr/0008-draft-allocations.md). Language: `CONTEXT.md`, which now
 carries the agreed vocabulary ahead of the code — `Rota Defaults`, `Allocation
-Settings`, `Draft Rota Allocation`, `Standing Preallocation`, `Retired Role`.
+Settings`, `Draft Rota Allocation` and `Standing Preallocation`.
 
 Roles S2 (#90) is a prerequisite, not part of this, with one scope change noted
 below.
@@ -98,32 +98,34 @@ Sheet is distribution, a different act with a different audience.
 
 ## Slices
 
-Each is a vertical slice, API and screen together.
+Seven groups, cut into individual tickets on the tracker under #117. Each
+ticket is a vertical slice, API and screen together, except the shift-time
+refactor, which is expand–contract because its blast radius crosses every
+consumer of a Shift at once.
 
-1. **Roles become rows.** Table with a stable id; name, max, priority, colour;
-   retire rather than delete; management on the settings screen; `roles` leaves
+Settings come **before** Shapes. Seeding `shift_requirement` from config and
+re-pointing it at Rota Defaults two tickets later is work done twice, so Rota
+Defaults land first and #90's table is seeded from the default Shape on day one.
+
+1. **Roles as rows.** Table with a stable id; name, max, priority, colour;
+   permanent once created; management on the settings screen; `roles` leaves
    config. Land PR #125 (role colours in config) first so colour moves once.
-   **Blocks #90.**
-2. **#90 Roles S2 — Shifts own their Shape.** As ticketed, with one change:
-   `shift_requirement` seats reference a Role **id** with a foreign key, not a
-   name. Historical tables keep names as `TEXT`.
-3. **Shifts carry their start and end.** `start_at` / `end_at` as local
-   `TIMESTAMP`, `shift.date` deleted, unique index on `start_at::date`,
-   migration composing both from each Shift's date and the current config
-   times. Closes #32 and part of #23.
-4. **Rota Defaults and the settings screen.** Settings record, allocation
-   settings as `jsonb`, default Shape as rows, default times and timezone,
-   Standing Preallocations. `defaultShape`, `requiresMale`,
-   `maxAllocationFrequency`, shift times and `rotaOverrides` leave config;
-   Config Preallocations are deleted outright. Invalid settings block
-   allocation and nothing else.
-5. **One rota in flight.** Define screen (count, start date, Shape, times,
-   seeded pins), refusal while an unallocated rota exists, discard.
-6. **Draft Rota Allocations.** `draft_allocation` table, solve outcome, dirty flag,
-   six-hourly tick, re-solve on demand, dashed chips in the rota view.
-7. **Allocate in the app.** Re-solve, output-hash comparison, commit and stamp;
-   `allocate_rota` deleted.
-8. **The Allocation tab.** Merges the Rota and Availability tabs into one
+2. **Rota Defaults.** The settings record: default times and timezone, default
+   Shape as rows, Allocation Settings as `jsonb`, Standing Preallocations.
+   `defaultShiftSize`, `requiresMale`, `maxAllocationFrequency` and the shift
+   times leave config; Config Preallocations are deleted outright.
+3. **Shifts carry their own time.** `Closed` as a field; `start_at` / `end_at`
+   as local `TIMESTAMP` added, readers moved off `shift.date`, the column
+   dropped; unique index on `start_at::date`; `rotaOverrides` deleted last of
+   all. Closes #32 and part of #23.
+4. **Shapes.** `shift_requirement` seeded from the default Shape, seats
+   referencing a Role **id** with a foreign key; per-Shift editing while
+   unallocated. Supersedes #90.
+5. **Rota lifecycle.** One rota in flight, discard, and the define screen.
+6. **Draft Rota Allocations.** `draft_allocation` table, solve outcome, dirty
+   flag, six-hourly tick, dashed chips in the rota view, and allocation by
+   output-hash comparison; `allocate_rota` deleted.
+7. **The Allocation tab.** Merges the Rota and Availability tabs into one
    two-state screen; `define_rota` deleted.
 
 ## Deliberately not in scope

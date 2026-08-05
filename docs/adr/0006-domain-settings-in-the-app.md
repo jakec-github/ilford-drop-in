@@ -32,11 +32,15 @@ part of the system most expected to change.
   key; JSON cannot. It also matches `shift_requirement`, which holds the same
   thing per Shift.
 
-- **Roles get an identity separate from their name, and are retired rather than
-  deleted.** A retired Role is absent from pickers and unaddable to any Shape,
-  while every existing reference still resolves, so a past rota always reads as
-  it was made. `allocation.role`, `alteration.role` and `preallocation.role`
-  keep the name as `TEXT` for exactly that reason.
+- **Roles get an identity separate from their name, and are permanent.** Once
+  created a Role always exists — there is no deletion and no retirement. That
+  keeps the model as small as it can be: no lifecycle state, no "is this Role
+  still offered?" question at any of the dozen places a Role is read, and no
+  reference that can dangle. The cost is a picker that accumulates Roles the
+  drop-in has stopped using, which is a cosmetic problem and a cheap one to
+  solve later if it ever bites. `allocation.role`, `alteration.role` and
+  `preallocation.role` still keep the name as `TEXT`, so a past rota reads as it
+  was made even after a rename.
 
 - **Renaming a Role is allowed but flagged.** The roster is a Google Sheet and
   a volunteer's held Roles are names in a cell, so the app owns only half of
