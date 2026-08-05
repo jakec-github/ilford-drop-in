@@ -165,12 +165,22 @@ requiresMale: true                            # every open shift needs a male al
 # max is the ceiling — how many of that role a shift may ever hold; omit it for
 # no ceiling. Exactly one role must be uncapped, and it is that role's seats
 # defaultShiftSize buys. priority orders the filling of seats.
+# colour is what the role is drawn in on the rota and the roster. It names one
+# of twelve palette tokens rather than a colour value, because the app owns
+# what each looks like in light and dark mode:
+#   violet  teal  blue  indigo  cyan  green
+#   amber   orange  rose  pink   brown  slate
+# Omit it and the role gets slate, so an uncoloured role looks unstyled rather
+# than borrowing a colour somebody chose deliberately. Give every role its own
+# token: two roles sharing one is legal and unreadable.
 roles:
   - name: 'Team lead'
     max: 1
     priority: 1
+    colour: 'violet'
   - name: 'Service volunteer'
     priority: 2
+    colour: 'teal'
 
 # Shift times (24h HH:MM)
 shiftStartTime: '19:30'

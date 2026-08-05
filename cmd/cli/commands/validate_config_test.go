@@ -75,7 +75,11 @@ func TestValidateConfigCmd_ValidConfig(t *testing.T) {
 	// The pin count is the number the operator checks against what they meant to
 	// write — the failure this command exists for dropped pins silently.
 	assert.Contains(t, out, "1 preallocation")
-	assert.Contains(t, out, "Team lead")
+	// Each Role with its ceiling and its colour: a rollout that changes either
+	// is one the summary has to show, since neither is visible in a diff of the
+	// file the operator is about to send to a server they cannot see.
+	assert.Contains(t, out, "Team lead (max 1, slate)")
+	assert.Contains(t, out, "Service volunteer (uncapped, slate)")
 }
 
 // An unknown key is reported, not rejected — it may be one another build knows.

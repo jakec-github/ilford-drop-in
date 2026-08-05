@@ -84,16 +84,18 @@ devMode block is only permitted under "dev".`,
 
 // describeRoles lists the Roles in the order their Seats are filled, since that
 // ordering is configured by a priority number an operator cannot read off the
-// file at a glance.
+// file at a glance. The colour is shown for the same reason, and because a Role
+// that names none is reported as the default it will actually be drawn in
+// rather than as a blank.
 func describeRoles(cfg *config.Config) string {
 	roles := cfg.RoleTable().ByPriority()
 	described := make([]string, 0, len(roles))
 	for _, role := range roles {
+		ceiling := "uncapped"
 		if role.Capped() {
-			described = append(described, fmt.Sprintf("%s (max %d)", role.Name, *role.Max))
-			continue
+			ceiling = fmt.Sprintf("max %d", *role.Max)
 		}
-		described = append(described, fmt.Sprintf("%s (uncapped)", role.Name))
+		described = append(described, fmt.Sprintf("%s (%s, %s)", role.Name, ceiling, role.Colour))
 	}
 	return strings.Join(described, ", ")
 }
