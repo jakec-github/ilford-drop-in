@@ -1,0 +1,83 @@
+package model_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+)
+
+// The stored times are wall-clock in the drop-in's zone, so the same 19:30
+// shift is a different moment in winter and in summer. This is the whole reason
+// the zone is stored rather than an offset.
+func TestShiftTimesFollowsTheZone(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+
+	// GMT date: London is UTC+0
+	start, end, err := defaults.ShiftTimes("2026-01-12")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-01-12T19:30:00Z", start.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-01-12T21:30:00Z", end.UTC().Format(time.RFC3339))
+
+	// BST date: London is UTC+1
+	start, end, err = defaults.ShiftTimes("2026-07-13")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-13T18:30:00Z", start.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-07-13T20:30:00Z", end.UTC().Format(time.RFC3339))
+}
+
+// A zone an admin has chosen is used; no zone falls back rather than failing,
+// because without one a time of day cannot become a moment at all.
+func TestShiftTimesTimezone(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+	assert.Equal(t, model.DefaultShiftTimezone, defaults.Timezone())
+
+	defaults.ShiftTimezone = "UTC"
+	assert.Equal(t, "UTC", defaults.Timezone())
+
+	start, _, err := defaults.ShiftTimes("2026-07-13")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-13T19:30:00Z", start.UTC().Format(time.RFC3339))
+}
+
+func TestShiftTimesRejectsAMalformedDate(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+
+	_, _, err := defaults.ShiftTimes("13/07/2026")
+	assert.Error(t, err)
+}
+
+// Settings nobody has filled in are the ordinary first state of a deployment.
+// Asking for a time is answered with a refusal, and the caller is expected to
+// have asked HasShiftTimes first.
+func TestShiftTimesUnset(t *testing.T) {
+	var defaults model.RotaDefaults
+
+	assert.False(t, defaults.HasShiftTimes())
+	assert.Equal(t, []string{
+		"the default shift start time",
+		"the default shift end time",
+	}, defaults.MissingShiftTimes())
+
+	_, _, err := defaults.ShiftTimes("2026-07-13")
+	assert.Error(t, err)
+}
+
+// Half-filled settings name only the half that is missing — the message an
+// allocation refuses with has to say what to go and do.
+func TestMissingShiftTimesNamesOnlyWhatIsMissing(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30"}
+
+	assert.Equal(t, []string{"the default shift end time"}, defaults.MissingShiftTimes())
+	assert.False(t, defaults.HasShiftTimes())
+}
+
+func TestHasShiftTimes(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+
+	assert.True(t, defaults.HasShiftTimes())
+	assert.Empty(t, defaults.MissingShiftTimes())
+}
