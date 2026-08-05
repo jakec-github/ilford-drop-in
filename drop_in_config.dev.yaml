@@ -20,8 +20,9 @@ gmailSender: 'dev@example.com'
 # A database of its own, deliberately not ilford_dropin_test: that one is the
 # golden template git worktrees clone from, and Postgres refuses to clone a
 # database with a connection open on it. scripts/dev-stack.sh creates this one
-# if it is missing; migrations run on connect, and it stays empty — seeding is
-# out of scope (issue #68), so the rota page renders empty.
+# if it is missing; migrations run on connect. The rota is still empty — the
+# only thing seeded is the Roles, which the server does in dev mode
+# (internal/devmode) because they are rows now rather than a key in this file.
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslmode=disable'
 
 maxAllocationFrequency: 0.34
@@ -29,19 +30,6 @@ defaultShiftSize: 4
 shiftStartTime: '19:30'
 shiftEndTime: '21:30'
 requiresMale: true
-
-# The jobs volunteers hold. These names are matched against the values in the
-# roster's 'Roles' column and against every preallocation, so they have to agree
-# with test_data/volunteers.csv. Exactly one role may be uncapped — its seats
-# are what defaultShiftSize buys.
-roles:
-  - name: 'Team lead'
-    max: 1
-    priority: 1
-    colour: 'violet'
-  - name: 'Service volunteer'
-    priority: 2
-    colour: 'teal'
 
 server:
   port: 8080

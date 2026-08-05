@@ -116,7 +116,12 @@ func SendAvailabilityEmails(
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

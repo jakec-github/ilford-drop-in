@@ -24,6 +24,7 @@ import (
 // (issue #39, mirroring the changeRota locking discipline). ListPreallocations
 // reads outside any lock.
 type PreallocationStore interface {
+	RoleStore
 	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
 	GetManualPreallocationByID(ctx context.Context, id string) (*db.ManualPreallocation, *db.Shift, error)
 	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
@@ -102,10 +103,13 @@ func AddPreallocation(
 	if params.Role == "" {
 		return nil, wrapf(ErrInvalidInput, "role is required")
 	}
-	roles := cfg.RoleTable()
+	roles, err := RoleTable(ctx, store)
+	if err != nil {
+		return nil, err
+	}
 	role, ok := roles.ByName(params.Role)
 	if !ok {
-		return nil, wrapf(ErrInvalidInput, "role %q is not a configured role", params.Role)
+		return nil, wrapf(ErrInvalidInput, "role %q is not a known role", params.Role)
 	}
 
 	// Step 2: volunteer validation (network fetch, OUTSIDE the lock). The
@@ -113,7 +117,7 @@ func AddPreallocation(
 	// listed one without a second fetch.
 	name := params.Custom
 	if params.VolunteerID != "" {
-		volunteers, err := volunteerClient.ListVolunteers(cfg)
+		volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 		}
@@ -317,7 +321,12 @@ func ListPreallocations(
 
 	// Names are resolved here rather than left to the caller: a pin is only
 	// legible as a person, and a config pin is a bare id in a YAML file.
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -325,8 +334,6 @@ func ListPreallocations(
 	for _, v := range volunteers {
 		volunteersByID[v.ID] = v
 	}
-
-	roles := cfg.RoleTable()
 
 	views, err := configPreallocationViews(cfg, shiftDates, volunteersByID, logger)
 	if err != nil {

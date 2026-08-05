@@ -27,12 +27,6 @@ defaultShiftSize: 4
 shiftStartTime: "19:30"
 shiftEndTime: "21:30"
 requiresMale: true
-roles:
-  - name: "Team lead"
-    max: 1
-    priority: 1
-  - name: "Service volunteer"
-    priority: 2
 rotaOverrides:
   - rrule: "FREQ=MONTHLY;BYDAY=3SU"
     preallocations:
@@ -75,11 +69,24 @@ func TestValidateConfigCmd_ValidConfig(t *testing.T) {
 	// The pin count is the number the operator checks against what they meant to
 	// write — the failure this command exists for dropped pins silently.
 	assert.Contains(t, out, "1 preallocation")
-	// Each Role with its ceiling and its colour: a rollout that changes either
-	// is one the summary has to show, since neither is visible in a diff of the
-	// file the operator is about to send to a server they cannot see.
-	assert.Contains(t, out, "Team lead (max 1, slate)")
-	assert.Contains(t, out, "Service volunteer (uncapped, slate)")
+}
+
+// `roles:` left config for the database in ticket #126, and a deployed file
+// still carrying it must validate: the file outlives the build reading it. The
+// summary is the only place an operator finds out the key stopped configuring
+// anything.
+func TestValidateConfigCmd_LegacyRolesKeyIsReportedNotRejected(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+`roles:
+  - name: "Team lead"
+    max: 1
+    priority: 1
+`)
+
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "1 unknown key")
+	assert.Contains(t, out, "roles")
 }
 
 // An unknown key is reported, not rejected — it may be one another build knows.
@@ -96,12 +103,15 @@ func TestValidateConfigCmd_UnknownKey(t *testing.T) {
 	assert.Contains(t, out, "1 preallocation")
 }
 
-func TestValidateConfigCmd_UnknownRole(t *testing.T) {
-	path := writeConfig(t, prodConfigYAML+"  - rrule: 'FREQ=WEEKLY'\n    preallocations:\n      - custom: 'X'\n        role: 'Nobody'\n")
+// A pin with no Role at all is still refused here. Which Roles exist is a
+// database question this command cannot ask, but a pin naming none is broken on
+// the face of the file.
+func TestValidateConfigCmd_PreallocationWithoutARole(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+"  - rrule: 'FREQ=WEEKLY'\n    preallocations:\n      - custom: 'X'\n")
 
 	_, err := runValidateConfig(t, "-e", "prod", path)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not a configured role")
+	assert.Contains(t, err.Error(), "role is required")
 }
 
 // devMode is env-dependent, so the command has to know which environment the

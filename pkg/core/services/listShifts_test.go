@@ -23,6 +23,8 @@ import (
 // shift's id doubles as its date. Allocation/alteration fetches are scoped by
 // shift id, mirroring production.
 type mockListShiftsStore struct {
+	testRoleStore
+
 	shifts      []db.ShiftInRange
 	allocations []db.Allocation
 	alterations []db.Alteration

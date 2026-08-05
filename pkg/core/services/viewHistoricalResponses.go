@@ -35,6 +35,7 @@ type ViewHistoricalResponsesResult struct {
 
 // ViewHistoricalResponsesStore defines the database operations needed
 type ViewHistoricalResponsesStore interface {
+	RoleStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
@@ -106,7 +107,11 @@ func ViewHistoricalResponses(
 	}
 
 	// Step 3: Fetch volunteer list
-	allVolunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	allVolunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

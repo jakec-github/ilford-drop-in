@@ -66,6 +66,18 @@ func run(env string, portOverride int) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The database comes up before anything that reads a roster. Roles are rows
+	// now (ADR 0006), and the roster names the Roles a volunteer holds as
+	// strings, so parsing one means reading them first.
+	database, err := db.NewDB(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+	}
+	defer database.Close()
+	if err := database.RunMigrations(ctx); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
 	volunteers := api.NewVolunteerStore()
 
 	// Dev mode replaces every part of the Google dependency — the roster fetch,
@@ -80,8 +92,22 @@ func run(env string, portOverride int) error {
 			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
 			zap.String("adminEmail", cfg.DevMode.AdminEmail))
 
-		syncVolunteers = func(context.Context) error {
-			fetched, err := devmode.LoadVolunteers(cfg.DevMode.VolunteersCSV, cfg.RoleTable())
+		// Nothing else creates Roles yet, and the roster below is read against
+		// them, so the seed has to run before the first sync.
+		seeded, err := devmode.SeedRoles(ctx, database)
+		if err != nil {
+			return fmt.Errorf("failed to seed dev roles: %w", err)
+		}
+		if seeded > 0 {
+			logger.Info("DEV MODE: seeded roles", zap.Int("count", seeded))
+		}
+
+		syncVolunteers = func(ctx context.Context) error {
+			roles, err := services.RoleTable(ctx, database)
+			if err != nil {
+				return err
+			}
+			fetched, err := devmode.LoadVolunteers(cfg.DevMode.VolunteersCSV, roles)
 			if err != nil {
 				return err
 			}
@@ -121,7 +147,11 @@ func run(env string, portOverride int) error {
 			if err != nil {
 				return fmt.Errorf("failed to build sheets client for sync: %w", err)
 			}
-			fetched, err := client.ListVolunteers(cfg)
+			roles, err := services.RoleTable(ctx, database)
+			if err != nil {
+				return err
+			}
+			fetched, err := client.ListVolunteers(cfg, roles)
 			if err != nil {
 				return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
 			}
@@ -152,13 +182,14 @@ func run(env string, portOverride int) error {
 		}
 	}
 
-	database, err := db.NewDB(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
-	}
-	defer database.Close()
-	if err := database.RunMigrations(ctx); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	// A server with no Roles starts and serves, but nobody holds a Role, so
+	// nothing can be allocated. That is the state a deployment is in between
+	// this ticket's migration and someone creating its Roles, and it is quiet
+	// enough to be worth saying out loud.
+	if roles, err := services.RoleTable(ctx, database); err != nil {
+		logger.Warn("Failed to read roles at startup", zap.Error(err))
+	} else if len(roles.ByPriority()) == 0 {
+		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run")
 	}
 
 	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, logger)

@@ -1,6 +1,8 @@
 package sheetsclient
 
 import (
+	"bytes"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,8 +13,8 @@ import (
 
 func intPtr(i int) *int { return &i }
 
-// twoRoles is today's configuration: a capped Team lead ahead of an uncapped
-// Service volunteer.
+// twoRoles is the pair the app ships with: a capped Team lead ahead of an
+// uncapped Service volunteer.
 func twoRoles() model.Roles {
 	return model.NewRoles([]model.Role{
 		{Name: "Team lead", Max: intPtr(1), Priority: 1},
@@ -183,8 +185,8 @@ func TestParseVolunteers_RolesCellMalformedQuoting(t *testing.T) {
 	}
 }
 
-// A value config does not name is a sheet the config has not caught up with —
-// or a typo in a hand-edited cell. Skip it rather than failing the roster, and
+// A value the app does not name is a sheet the app has not caught up with — or
+// a typo in a hand-edited cell. Skip it rather than failing the roster, and
 // keep the rest of the cell.
 func TestParseVolunteers_UnknownRoleValueIsSkipped(t *testing.T) {
 	raw := [][]any{
@@ -301,4 +303,54 @@ func TestParseVolunteers_RaggedRows(t *testing.T) {
 	require.Len(t, volunteers, 1)
 	assert.Empty(t, volunteers[0].Roles)
 	assert.Empty(t, volunteers[0].Email)
+}
+
+// The app owns which Roles exist and the sheet owns who holds them, so a Role
+// renamed in one and not the other leaves nobody holding it. Nothing else
+// notices — the roster loads, allocation just finds no eligible volunteer — so
+// the warning is the whole check (ADR 0006).
+func TestParseVolunteers_WarnsAboutARoleNobodyHolds(t *testing.T) {
+	logged := captureRosterWarnings(t)
+
+	raw := [][]any{
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "Service volunteer"),
+	}
+
+	_, err := ParseVolunteers(raw, twoRoles())
+	require.NoError(t, err)
+
+	assert.Contains(t, logged.String(), "Team lead")
+	assert.NotContains(t, logged.String(), "Service volunteer",
+		"a Role somebody holds is not worth a line in the log")
+}
+
+// A roster where every Role has a holder is the ordinary case, and a warning
+// that fires every sync is a warning nobody reads.
+func TestParseVolunteers_NoWarningWhenEveryRoleIsHeld(t *testing.T) {
+	logged := captureRosterWarnings(t)
+
+	raw := [][]any{
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "Team lead, Service volunteer"),
+	}
+
+	_, err := ParseVolunteers(raw, twoRoles())
+	require.NoError(t, err)
+
+	assert.Empty(t, logged.String())
+}
+
+// captureRosterWarnings redirects the default slog logger into a buffer for one
+// test. The roster parser reports what it could not match through it, and those
+// warnings are the only signal a sheet and the app have drifted apart.
+func captureRosterWarnings(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return &buf
 }

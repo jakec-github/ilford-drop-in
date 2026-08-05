@@ -19,7 +19,7 @@ const calendarRefreshInterval = "PT6H"
 // volunteer and date so clients update events in place rather than
 // duplicating them, SEQUENCE increases with each alteration to the shift, and
 // DTSTAMP only changes when the shift changes.
-func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, cfg *config.Config) (string, error) {
+func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, cfg *config.Config) (string, error) {
 	cal := ics.NewCalendar()
 	cal.SetProductId("-//ilford-drop-in//EN")
 	cal.SetCalscale("GREGORIAN")
@@ -39,7 +39,6 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, cfg *conf
 		// the event does not already: being on the shift *is* the uncapped
 		// Role, so "(Service volunteer)" on every entry would be noise.
 		summary := "Ilford Drop-In shift"
-		roles := cfg.RoleTable()
 		for _, a := range shift.Assignees {
 			if a.VolunteerID != volunteer.ID {
 				continue
