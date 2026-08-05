@@ -44,11 +44,36 @@ export const ROLE_COLOURS: readonly RoleColour[] = [
   "slate",
 ];
 
+// DEFAULT_ROLE_COLOUR is what a Role with no colour of its own is drawn in, and
+// what an unrecognised token falls back to. Slate is the dullest token in the
+// palette on purpose: an uncoloured Role should look unstyled rather than
+// collide with one somebody chose a colour for.
+export const DEFAULT_ROLE_COLOUR: RoleColour = "slate";
+
 // ConfiguredRole is one of the Roles the server holds. This is the only thing
 // that tells the frontend which Roles exist — everywhere else a Role is just
 // its name.
 export interface ConfiguredRole {
+  // The Role's identity, stable across a rename. Nothing that merely names a
+  // Role needs it; the settings screen edits a Role by addressing it.
+  id: string;
   name: Role;
+  // The ceiling — how many of this Role a shift may ever hold. null is
+  // uncapped, which is the Role a shift's size is spent on.
+  max: number | null;
+  // Orders the filling of seats when people are scarce, lowest first.
+  priority: number;
+  colour: RoleColour;
+}
+
+// RoleEdit is a Role as an admin states it: everything editable, and nothing
+// else. The same shape creates one and edits one, because an edit says
+// everything a creation says — a Role must not be able to reach through an edit
+// a state it could not have been created in.
+export interface RoleEdit {
+  name: Role;
+  max: number | null;
+  priority: number;
   colour: RoleColour;
 }
 
