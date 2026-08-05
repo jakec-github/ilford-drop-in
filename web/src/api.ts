@@ -305,6 +305,7 @@ interface ApiAvailabilityEntry {
   submittedAt?: string;
   availableShiftIds: string[] | null;
   coveredBy?: string[];
+  roles: string[] | null;
 }
 
 interface ApiAvailabilityRound {
@@ -358,6 +359,7 @@ function toEntry(e: ApiAvailabilityEntry): AvailabilityEntry {
     submittedAt: e.submittedAt ?? null,
     availableShiftIds: e.availableShiftIds ?? [],
     coveredBy: e.coveredBy ?? [],
+    roles: e.roles ?? [],
   };
 }
 

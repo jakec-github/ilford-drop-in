@@ -224,7 +224,7 @@ since the web server does not expose it. So:
 | Login and logout | The header shows the signed-in address and a Log out button |
 | Header nav | Rota ↔ Admin |
 | `/admin` tab routing | Redirects to `/admin/volunteers`; Config is still an unbuilt stub |
-| The availability tab | Starts a round for the latest rota and lists every volunteer, their link and whether they have answered |
+| The availability tab | Starts a round for the latest rota and shows it as a grid — groups down the side, shifts along the top, each Role's surplus or deficit above the answers. Rows open to their members' links. Desktop first: it scrolls sideways on a phone |
 | The volunteer's form | `/availability/<token>`, public — no session, no header, mobile first |
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |

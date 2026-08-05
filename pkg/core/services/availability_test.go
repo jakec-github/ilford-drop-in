@@ -230,7 +230,8 @@ func TestMintAvailabilityRoundAsksEveryActiveVolunteer(t *testing.T) {
 		names = append(names, e.VolunteerName)
 	}
 	sort.Strings(names)
-	assert.Equal(t, []string{"Aaliyah Khan", "Emma Williams", "Michael Smith"}, names)
+	assert.Equal(t, []string{"Aaliyah", "Emma", "Michael"}, names,
+		"the round is an admin screen, so it names people the way the rota does")
 }
 
 // TestMintAvailabilityRoundTwiceIsANoOp proves minting is repeatable: the second
@@ -400,7 +401,7 @@ func TestRoundReportsGroupCover(t *testing.T) {
 	assert.Empty(t, byVolunteer["emma"].CoveredBy, "a volunteer who replied is not covered by anyone")
 
 	assert.False(t, byVolunteer["michael"].Replied)
-	assert.Equal(t, []string{"Emma Williams"}, byVolunteer["michael"].CoveredBy)
+	assert.Equal(t, []string{"Emma"}, byVolunteer["michael"].CoveredBy)
 
 	assert.False(t, byVolunteer["aaliyah"].Replied)
 	assert.Empty(t, byVolunteer["aaliyah"].CoveredBy, "an ungrouped volunteer is nobody's partner")

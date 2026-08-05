@@ -64,6 +64,11 @@ type AvailabilityEntry struct {
 	// replied "none of these", which Replied still reports as an answer.
 	AvailableShiftIDs []string
 	CoveredBy         []string
+	// The Roles they hold on the roster, in priority order. Not a fact about the
+	// round — it is carried here so a reader can ask "which of these people
+	// could lead" without fetching the roster and joining it back. Empty for a
+	// volunteer the roster no longer knows, who still holds a working link.
+	Roles []string
 }
 
 // AvailabilityRound is a rota's round: how each of its shifts is looking, and
@@ -343,7 +348,7 @@ func buildForm(
 	volunteer, known := findVolunteer(volunteers, request.VolunteerID)
 	if known {
 		form.VolunteerName = volunteerName(volunteer)
-		form.GroupMembers = partnerNames(groupPartners(volunteers, volunteer, utils.IsActive))
+		form.GroupMembers = partnerNames(groupPartners(volunteers, volunteer, utils.IsActive), volunteerName)
 	} else {
 		// A volunteer dropped from the sheet mid-round still holds a working
 		// link; degrade to the id rather than 404 a link that was legitimately
@@ -440,11 +445,13 @@ func buildRound(
 		}
 
 		if volunteer, known := findVolunteer(volunteers, r.VolunteerID); known {
-			entry.VolunteerName = volunteerName(volunteer)
+			// The admin's own screen, so the short name — see displayName.
+			entry.VolunteerName = displayName(volunteer)
+			entry.Roles = volunteer.Roles
 			if !hasReplied {
 				entry.CoveredBy = partnerNames(groupPartners(volunteers, volunteer, func(other model.Volunteer) bool {
 					return replied[other.ID]
-				}))
+				}), displayName)
 			}
 		} else {
 			logger.Warn("Availability request for a volunteer no longer on the roster",

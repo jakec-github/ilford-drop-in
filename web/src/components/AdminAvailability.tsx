@@ -1,16 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
+import ResponseGrid from "./ResponseGrid";
 import { useAvailabilityRound } from "../hooks/useAvailabilityRound";
 import { useAvailabilitySend } from "../hooks/useAvailabilitySend";
-import type {
-  AvailabilityEntry,
-  AvailabilityGroup,
-  AvailabilityRound,
-  AvailabilitySend,
-  SendMode,
-  ShiftCoverage,
-} from "../types";
+import type { AvailabilityRound, AvailabilitySend, SendMode } from "../types";
 import "./AdminAvailability.css";
 
 // A send the admin has asked for but not yet given a deadline to. The deadline
@@ -29,286 +23,6 @@ function formatRange(round: AvailabilityRound): string {
       month: "short",
     });
   return `${format(round.start)} – ${format(round.end)}`;
-}
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-}
-
-// The short form for the availability chips, where the same dates repeat once
-// per group and the weekday is just noise.
-function formatShortDate(date: string): string {
-  return new Date(date).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-// One date's staffing, which is what this view is for: enough people, and
-// somebody allowed to lead.
-//
-// The delta carries the colour rather than the counts, because it is the thing
-// being scanned for — an admin reads down a column of signed numbers looking for
-// the negative ones. A shift that is exactly full stays neutral: it is fine, and
-// colouring it too would leave nothing standing out.
-function CoverageRow({ shift }: { shift: ShiftCoverage }) {
-  if (shift.closed) {
-    return (
-      <li className="cover-row cover-row--closed">
-        <span className="cover-date">{formatDate(shift.date)}</span>
-        <span className="cover-counts">Closed</span>
-      </li>
-    );
-  }
-
-  return (
-    <li className="cover-row">
-      <span className="cover-date">{formatDate(shift.date)}</span>
-      <span className="cover-counts">
-        {shift.available} available of {shift.needed} needed
-        {/* Without this an admin sees a date asking for fewer people than the
-            config says, with nothing to explain why. */}
-        {shift.pinned > 0 && (
-          <span className="cover-note"> · {shift.pinned} already pinned</span>
-        )}
-      </span>
-      <span className="cover-tags">
-        <span
-          className={`cover-tag ${
-            shift.delta < 0 ? "cover-tag--short" : "cover-tag--ok"
-          }`}
-        >
-          {shift.delta > 0 ? `+${shift.delta}` : shift.delta}
-        </span>
-        {/* A capped Role with Seats and nobody to fill them is short in a way
-            the delta cannot express: no number of ordinary volunteers gets a
-            shift a lead. The uncapped Role is left to the delta, which is the
-            same fact stated better. */}
-        {shift.roles
-          .filter((r) => r.capped && r.needed > 0 && r.available === 0)
-          .map((r) => (
-            <span key={r.role} className="cover-tag cover-tag--short">
-              No {r.role.toLowerCase()}
-            </span>
-          ))}
-      </span>
-    </li>
-  );
-}
-
-// The URL, the button that copies it, and whatever else can be done with one
-// person's link. The URL is shown in full as well as copied: copying fails
-// silently on an insecure origin or a locked-down browser, and an admin who can
-// read it can always select it by hand.
-function CopyableLink({
-  link,
-  actions,
-}: {
-  link: string;
-  actions?: ReactNode;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  return (
-    <div className="member-link">
-      <code className="member-link-url">{link}</code>
-      <Button
-        size="small"
-        onClick={() => {
-          void navigator.clipboard.writeText(link).then(
-            () => setCopied(true),
-            () => setCopied(false),
-          );
-        }}
-      >
-        {copied ? "Copied" : "Copy"}
-      </Button>
-      {actions}
-    </div>
-  );
-}
-
-// A name that gives up its owner's link when pressed. The name is the control
-// because the link is the only thing there is to do with one person — the answer
-// itself belongs to the group.
-//
-// Copying the link is how a round is distributed until sending is built, it is
-// the fallback when an email bounces, and it is how an admin answers on
-// somebody's behalf.
-//
-// It fills a whole wrapping flex row: the name, whatever labels it, and then the
-// link on a line of its own. label is passed in rather than rendered after this,
-// so that opening the link cannot push the label off the name's line.
-function NameLink({
-  name,
-  link,
-  label,
-  actions,
-}: {
-  name: string;
-  link: string;
-  label: ReactNode;
-  actions?: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        type="button"
-        className="name-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        {name}
-      </button>
-      {label}
-      {open && <CopyableLink link={link} actions={actions} />}
-    </>
-  );
-}
-
-// Where one person has got to, in the order the states matter. An answer settles
-// it. Failing that, a partner's answer covers them — the group has an answer, so
-// chasing them would be chasing one we already hold. Only then is silence worth
-// reporting, and it reads differently depending on whether they were ever
-// emailed: nobody has failed to reply to a link that was never sent.
-function memberNote(member: AvailabilityEntry): string {
-  if (member.replied) return "answered";
-  if (member.coveredBy.length > 0) {
-    return `covered by ${member.coveredBy.join(" and ")}`;
-  }
-  return member.sentAt === null ? "not sent" : "no reply";
-}
-
-// A button that mails one person their link again, for the email that bounced,
-// went to spam, or was deleted. It sits behind the same disclosure as the link
-// itself, because it is the other thing there is to do with one person.
-function ResendButton({
-  member,
-  onResend,
-}: {
-  member: AvailabilityEntry;
-  onResend: (member: AvailabilityEntry) => void;
-}) {
-  return (
-    <Button size="small" onClick={() => onResend(member)}>
-      {member.sentAt === null ? "Send" : "Resend"}
-    </Button>
-  );
-}
-
-// One person inside a group of several.
-function MemberRow({
-  member,
-  onResend,
-}: {
-  member: AvailabilityEntry;
-  onResend: (member: AvailabilityEntry) => void;
-}) {
-  return (
-    <li className="member">
-      <div className="member-head">
-        <NameLink
-          name={member.volunteerName}
-          link={member.link}
-          label={<span className="member-note">{memberNote(member)}</span>}
-          actions={<ResendButton member={member} onResend={onResend} />}
-        />
-      </div>
-    </li>
-  );
-}
-
-// One group's answer over the round's open dates.
-//
-// The group is the unit: its members are allocated together and one reply speaks
-// for all of them, so this is the row an admin chases. The dates are the group
-// rule already applied by the server, not a merge done here.
-//
-// Most volunteers are in no group and are therefore a group of one. Their name
-// is the group's name, so it is shown once, in the head, and there is no
-// member list under it repeating it.
-function GroupRow({
-  group,
-  shifts,
-  onResend,
-}: {
-  group: AvailabilityGroup;
-  shifts: ShiftCoverage[];
-  onResend: (member: AvailabilityEntry) => void;
-}) {
-  const available = new Set(group.availableShiftIds);
-  const alone = group.members.length === 1 ? group.members[0] : null;
-  // A group nobody has emailed is not a group that has failed to reply. On a
-  // freshly minted round that is every row, and calling them all "no reply"
-  // would report a problem that is really just the send not having happened.
-  const unsent = group.members.every((m) => m.sentAt === null);
-  const tag = group.replied ? (
-    <span className="group-tag group-tag--replied">Replied</span>
-  ) : (
-    <span className="group-tag">{unsent ? "Not sent" : "No reply"}</span>
-  );
-
-  return (
-    <li className="group">
-      <div className="group-head">
-        {alone ? (
-          <NameLink
-            name={group.name}
-            link={alone.link}
-            label={tag}
-            actions={<ResendButton member={alone} onResend={onResend} />}
-          />
-        ) : (
-          <>
-            <span className="group-name">{group.name}</span>
-            {tag}
-          </>
-        )}
-      </div>
-
-      {group.replied && (
-        <ul className="group-dates">
-          {shifts
-            .filter((shift) => !shift.closed)
-            .map((shift) => {
-              const yes = available.has(shift.id);
-              return (
-                // Colour and the strike carry the answer visually, but neither
-                // reaches a screen reader, so the label spells it out — the
-                // chips are the answer, not decoration on it.
-                <li
-                  key={shift.id}
-                  className={`group-date${yes ? " group-date--yes" : ""}`}
-                  aria-label={`${formatShortDate(shift.date)}: ${
-                    yes ? "available" : "not available"
-                  }`}
-                >
-                  {formatShortDate(shift.date)}
-                </li>
-              );
-            })}
-        </ul>
-      )}
-
-      {!alone && (
-        <ul className="members">
-          {group.members.map((member) => (
-            <MemberRow
-              key={member.volunteerId}
-              member={member}
-              onResend={onResend}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
 }
 
 // The deadline, asked for once per send.
@@ -439,9 +153,10 @@ function SendReport({
 // send everyone their link, then read whether the answers coming back can
 // actually staff it.
 //
-// Cover comes first and replies second, because "can I run this rota" is the
-// question being asked, and "who still owes me an answer" is only how it gets
-// fixed.
+// This component owns the round and the sending; reading it belongs to the grid.
+// The two questions the tab used to answer in two lists — "is this rota covered"
+// and "who still owes me an answer" — are one matrix now, because they are the
+// same question read in two directions.
 export default function AdminAvailability() {
   const { round, error, mintState, mint, reload } = useAvailabilityRound();
   const {
@@ -545,13 +260,6 @@ export default function AdminAvailability() {
             </div>
           )}
 
-          <h3 className="round-section">Cover</h3>
-          <ul className="cover">
-            {round.shifts.map((shift) => (
-              <CoverageRow key={shift.id} shift={shift} />
-            ))}
-          </ul>
-
           {total === 0 ? (
             <p className="round-message">
               Nobody has been asked yet. Starting a round gives every active
@@ -560,27 +268,21 @@ export default function AdminAvailability() {
           ) : (
             <>
               <h3 className="round-section">
-                Replies
+                Responses
                 <span className="round-progress">
-                  {replied} of {total} groups
+                  {replied} of {total} groups replied
                 </span>
               </h3>
-              <ul className="groups">
-                {round.groups.map((group) => (
-                  <GroupRow
-                    key={group.key}
-                    group={group}
-                    shifts={round.shifts}
-                    onResend={(member) =>
-                      setPending({
-                        mode: "resend",
-                        volunteerId: member.volunteerId,
-                        volunteerName: member.volunteerName,
-                      })
-                    }
-                  />
-                ))}
-              </ul>
+              <ResponseGrid
+                round={round}
+                onResend={(member) =>
+                  setPending({
+                    mode: "resend",
+                    volunteerId: member.volunteerId,
+                    volunteerName: member.volunteerName,
+                  })
+                }
+              />
             </>
           )}
         </>

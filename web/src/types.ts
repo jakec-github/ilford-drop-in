@@ -115,6 +115,10 @@ export interface AvailabilityEntry {
   submittedAt: string | null;
   availableShiftIds: string[];
   coveredBy: string[];
+  // The Roles they hold on the roster, in priority order — what the responses
+  // grid filters its rows by. Empty for a volunteer the roster has dropped
+  // since the round was minted; they keep a working link either way.
+  roles: Role[];
 }
 
 // Which emails a send covers, and what they say. The server owns the selection

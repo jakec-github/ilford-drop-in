@@ -34,6 +34,10 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 		assert.False(t, e.Replied)
 		assert.Contains(t, e.Link, "/availability/", "the link is the page a volunteer opens, not the endpoint behind it")
 	}
+	// The Roles ride along with the round, so a reader can ask which of these
+	// people could lead without fetching the roster and joining it back.
+	assert.Equal(t, []string{"Team lead", "Service volunteer"}, entryFor(t, round, "alice").Roles)
+	assert.Equal(t, []string{"Service volunteer"}, entryFor(t, round, "bob").Roles)
 
 	// Nobody has answered, so nothing is available for anything yet.
 	for _, s := range round.Shifts {

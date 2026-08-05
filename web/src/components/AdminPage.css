@@ -4,6 +4,13 @@
   padding: 2rem 1rem;
 }
 
+/* A tab whose content is a grid gets the desk it needs. The default width
+   stays for the rest: most admin tools are lists, and a list stretched across
+   a wide screen reads worse, not better. */
+.admin-page--wide {
+  max-width: 64rem;
+}
+
 /* The tab bar scrolls sideways rather than wrapping, so on a narrow phone the
    tabs stay on one line and keep reading as a single row of choices. */
 .admin-tabs {

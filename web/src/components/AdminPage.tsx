@@ -32,7 +32,7 @@ export default function AdminPage({ tab }: { tab: AdminTab }) {
   const { Panel } = tab;
 
   return (
-    <main className="admin-page">
+    <main className={tab.wide ? "admin-page admin-page--wide" : "admin-page"}>
       <h1>Admin</h1>
 
       <nav className="admin-tabs">
