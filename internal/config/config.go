@@ -36,13 +36,13 @@ type Preallocation struct {
 
 // RotaOverride defines overrides to apply when generating rotas.
 //
-// Closed is on its way out: it is a field on the Shift now (issue #132,
-// amending ADR 0001), and nothing reads this one but the one-off backfill that
-// copies it onto the rows. Both go in the next commit.
+// It has nothing to say about whether the drop-in runs on a date: Closed is a
+// field on the Shift, set by hand while the rota is unallocated (issue #132,
+// amending ADR 0001). A `closed` key left in a config file is now an unknown
+// key, which is warned about rather than rejected.
 type RotaOverride struct {
 	RRule          string          `yaml:"rrule" validate:"required"`
 	ShiftSize      *int            `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
-	Closed         bool            `yaml:"closed,omitempty"`
 	Preallocations []Preallocation `yaml:"preallocations,omitempty"`
 }
 

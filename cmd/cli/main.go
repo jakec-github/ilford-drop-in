@@ -58,8 +58,6 @@ Availability is collected and chased through the web app, not here.`,
 	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
-	// One-off, deleted in the next commit once every environment has run it.
-	rootCmd.AddCommand(newLazyCommand(commands.BackfillShiftClosedCmd))
 
 	// Not lazy, and deliberately not initialised: validate-config reads a file
 	// and nothing else, so it can vet a prod config from a laptop. It shadows
