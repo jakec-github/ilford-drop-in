@@ -189,10 +189,45 @@ func (m *mockStore) GetManualPreallocationByID(ctx context.Context, id string) (
 	return nil, nil, nil
 }
 
+// GetShiftByID resolves one shift and its rota's allocation state, from the
+// same set GetShiftsInRange serves.
+func (m *mockStore) GetShiftByID(ctx context.Context, id string) (*db.ShiftInRange, error) {
+	for _, s := range m.allShiftsInRange() {
+		if s.ID == id {
+			return &s, nil
+		}
+	}
+	return nil, nil
+}
+
+// SetShiftClosed writes the flag onto whichever backing slice holds the shift,
+// so a later listing reads back what a PATCH just wrote.
+func (m *mockStore) SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error) {
+	found := false
+	for i := range m.shiftsInRange {
+		if m.shiftsInRange[i].ID == shiftID || (m.shiftsInRange[i].ID == "" && m.shiftsInRange[i].Date == shiftID) {
+			m.shiftsInRange[i].Closed = closed
+			found = true
+		}
+	}
+	for i := range m.shifts {
+		if m.shifts[i].ID == shiftID {
+			m.shifts[i].Closed = closed
+			found = true
+		}
+	}
+	return found, nil
+}
+
 // WithRotaPreallocationLock hands the mock itself to the callback as the
 // transaction-bound store; lock semantics are covered by the db and services
 // integration tests.
 func (m *mockStore) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store db.PreallocationTxStore) error) error {
+	return fn(m)
+}
+
+// WithRotaShiftLock likewise, for the per-Shift edits.
+func (m *mockStore) WithRotaShiftLock(ctx context.Context, rotaIDs []string, fn func(store db.ShiftTxStore) error) error {
 	return fn(m)
 }
 
