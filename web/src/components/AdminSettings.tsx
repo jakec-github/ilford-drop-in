@@ -3,7 +3,13 @@ import type { ReactNode } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { useRoles } from "../hooks/useRoles";
-import type { ConfiguredRole, RoleColour, RoleEdit } from "../types";
+import { useRotaDefaults } from "../hooks/useRotaDefaults";
+import type {
+  ConfiguredRole,
+  RoleColour,
+  RoleEdit,
+  RotaDefaults,
+} from "../types";
 import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./AdminSettings.css";
 
@@ -36,6 +42,185 @@ function SettingsSection({
       </header>
       {children}
     </section>
+  );
+}
+
+// ShiftTimesForm is the shift-time half of the Rota Defaults: when the drop-in
+// starts, when it ends, and the zone those are read in. All three at once,
+// because a time of day means nothing without the zone it is read in.
+//
+// The time fields are native time inputs, which read and write the same 24-hour
+// "HH:MM" the server stores — so nothing here parses or formats a time, and a
+// phone offers its own picker.
+function ShiftTimesForm({
+  defaults,
+  onSave,
+  onClose,
+}: {
+  defaults: RotaDefaults;
+  onSave: (defaults: RotaDefaults) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [start, setStart] = useState(defaults.shiftStartTime);
+  const [end, setEnd] = useState(defaults.shiftEndTime);
+  const [timezone, setTimezone] = useState(defaults.shiftTimezone);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({
+        shiftStartTime: start,
+        shiftEndTime: end,
+        shiftTimezone: timezone.trim(),
+      });
+      onClose();
+    } catch (err: unknown) {
+      // The server's own message names the field that was wrong — "a shift has
+      // to end after it starts" is the whole explanation — so it is shown as-is
+      // and the form stays open on what was typed.
+      setError(
+        err instanceof Error ? err.message : "Failed to save the shift times",
+      );
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog title="Shift times" onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <label className="settings-field">
+          Starts
+          <input
+            type="time"
+            value={start}
+            autoFocus
+            onChange={(e) => setStart(e.target.value)}
+          />
+        </label>
+
+        <label className="settings-field">
+          Ends
+          <input
+            type="time"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </label>
+        <p className="settings-hint">
+          A shift ends the evening it starts, so the end has to be later than
+          the start.
+        </p>
+
+        <label className="settings-field">
+          Timezone
+          <input
+            type="text"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            placeholder="Europe/London"
+          />
+        </label>
+        <p className="settings-hint">
+          The zone the times above are read in. Leave it as Europe/London unless
+          the drop-in has moved.
+        </p>
+
+        {error && <p className="settings-error">{error}</p>}
+
+        <div className="settings-actions">
+          <Button onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={start === "" || end === "" || saving}>
+            {saving ? "Saving…" : "Save times"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+// RotaDefaultsSettings is the settings an admin keeps for the drop-in as a
+// whole. It holds the shift times today; the default Shape, the allocation
+// toggles and the Standing Preallocations join it here.
+//
+// Nothing seeds these, so "not set yet" is the state a new deployment is in
+// rather than a fault — and the caption says what that costs, because
+// allocation is the only thing it stops and nothing else on the screen will
+// mention it.
+function RotaDefaultsSettings() {
+  const { defaults, error, saveShiftTimes } = useRotaDefaults();
+  const [editing, setEditing] = useState(false);
+
+  const timesSet =
+    defaults !== null &&
+    defaults.shiftStartTime !== "" &&
+    defaults.shiftEndTime !== "";
+
+  return (
+    <SettingsSection
+      title="Rota Defaults"
+      blurb="What every rota starts from. When the drop-in runs, and the zone its times are read in."
+      action={
+        defaults && (
+          <Button size="small" onClick={() => setEditing(true)}>
+            Edit times
+          </Button>
+        )
+      }
+    >
+      {error && (
+        <p className="settings-error">Could not load the settings: {error}</p>
+      )}
+
+      {defaults === null && !error && (
+        <p className="settings-empty">Loading…</p>
+      )}
+
+      {defaults !== null && (
+        <>
+          <dl className="settings-facts">
+            <div className="settings-fact">
+              <dt>Shift times</dt>
+              <dd>
+                {timesSet ? (
+                  `${defaults.shiftStartTime} – ${defaults.shiftEndTime}`
+                ) : (
+                  <span className="settings-unset">Not set yet</span>
+                )}
+              </dd>
+            </div>
+            <div className="settings-fact">
+              <dt>Timezone</dt>
+              <dd>{defaults.shiftTimezone}</dd>
+            </div>
+          </dl>
+          {!timesSet && (
+            <p className="settings-caption">
+              A rota cannot be allocated until the shift times are set.
+              Everything else — the rota, availability, the calendar feed —
+              works without them.
+            </p>
+          )}
+        </>
+      )}
+
+      {editing && defaults && (
+        <ShiftTimesForm
+          defaults={defaults}
+          onSave={saveShiftTimes}
+          onClose={() => setEditing(false)}
+        />
+      )}
+    </SettingsSection>
   );
 }
 
@@ -309,8 +494,13 @@ function RolesSettings() {
 
 // AdminSettings is everything an admin decides about how the drop-in runs, as
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
-// of independent sections; Roles is the first, and Rota Defaults and Standing
-// Preallocations join it here.
+// of independent sections: the Rota Defaults the whole drop-in runs on, then
+// the Roles volunteers hold. Standing Preallocations join them here.
 export default function AdminSettings() {
-  return <RolesSettings />;
+  return (
+    <>
+      <RotaDefaultsSettings />
+      <RolesSettings />
+    </>
+  );
 }
