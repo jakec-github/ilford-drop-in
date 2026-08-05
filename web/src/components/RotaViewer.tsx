@@ -575,16 +575,18 @@ function ShiftRow({
         {/* Editing an unallocated shift means changing who is promised it —
             there is nobody on it to move around. */}
         {edit && !pending && (
-          <button
-            type="button"
-            className="shift-add shift-pin"
-            aria-label={`Pin someone to ${formatShiftDateLong(shift.date)}`}
-            onClick={edit.onPin}
-          >
-            + Pin
-          </button>
+          <div className="shift-actions">
+            <button
+              type="button"
+              className="shift-add shift-pin"
+              aria-label={`Pin someone to ${formatShiftDateLong(shift.date)}`}
+              onClick={edit.onPin}
+            >
+              + Pin
+            </button>
+            {closureButton}
+          </div>
         )}
-        {closureButton}
       </div>
     );
   } else {
