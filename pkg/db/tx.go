@@ -98,6 +98,24 @@ func (d *DB) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn
 	})
 }
 
+// ShiftTxStore is the transaction-bound view WithRotaShiftLock hands its
+// callback. Closing or reopening a Shift is an allocator input, so it is frozen
+// once the Rotation is allocated; reading that state and writing the flag under
+// one rota-row lock is what stops a close landing against a rota that was
+// allocated a moment earlier.
+type ShiftTxStore interface {
+	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
+	SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error)
+}
+
+// WithRotaShiftLock runs fn under the same rotation-row lock as WithRotaLock, so
+// per-Shift edits serialise against allocation of the rota they belong to.
+func (d *DB) WithRotaShiftLock(ctx context.Context, rotaIDs []string, fn func(store ShiftTxStore) error) error {
+	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
+		return fn(&rotaTx{tx: tx})
+	})
+}
+
 // rotaTx implements RotaChangeStore against the locking transaction.
 type rotaTx struct {
 	tx pgx.Tx
@@ -129,4 +147,8 @@ func (r *rotaTx) InsertManualPreallocation(ctx context.Context, mp ManualPreallo
 
 func (r *rotaTx) DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error) {
 	return deleteManualPreallocationByID(ctx, r.tx, id)
+}
+
+func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error) {
+	return setShiftClosed(ctx, r.tx, shiftID, closed)
 }

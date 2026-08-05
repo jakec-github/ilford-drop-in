@@ -18,6 +18,10 @@ type Shift struct {
 	ID     string // UUID
 	RotaID string // UUID
 	Date   string // DATE
+	// Closed is a date the drop-in does not run — a holiday closure. Set by
+	// hand while the rota is unallocated and false at mint; there is no stored
+	// list of known closure dates (issue #132, amending ADR 0001).
+	Closed bool
 }
 
 // AvailabilityRequest is a tokenised availability request: one volunteer's

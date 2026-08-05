@@ -137,6 +137,61 @@ func TestInsertAllocationsUnknownShiftIDFails(t *testing.T) {
 	assert.Empty(t, rotations[0].AllocatedDatetime, "the failed insert must not mark the rota allocated")
 }
 
+// TestShiftClosedRoundTrips checks the closed flag through every read that
+// carries it: a Shift is minted open, WithRotaShiftLock writes the flag, and
+// each of the three shift reads reports what was written (issue #132).
+func TestShiftClosedRoundTrips(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	shift := db.Shift{ID: uuid.New().String(), Date: "2026-12-27", RotaID: rota.ID}
+	require.NoError(t, database.InsertRotationAndShifts(ctx, rota, []db.Shift{shift}))
+
+	minted, err := database.GetShiftByID(ctx, shift.ID)
+	require.NoError(t, err)
+	require.NotNil(t, minted)
+	assert.False(t, minted.Closed, "a shift is minted open")
+	assert.False(t, minted.Allocated)
+
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		updated, err := tx.SetShiftClosed(ctx, shift.ID, true)
+		require.NoError(t, err)
+		assert.True(t, updated)
+		return nil
+	}))
+
+	byID, err := database.GetShiftByID(ctx, shift.ID)
+	require.NoError(t, err)
+	assert.True(t, byID.Closed)
+
+	byRota, err := database.GetShiftsByRotaID(ctx, rota.ID)
+	require.NoError(t, err)
+	require.Len(t, byRota, 1)
+	assert.True(t, byRota[0].Closed)
+
+	inRange, err := database.GetShiftsInRange(ctx, time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, inRange, 1)
+	assert.True(t, inRange[0].Closed)
+
+	byDate, err := database.GetShiftByDate(ctx, time.Date(2026, 12, 27, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.NotNil(t, byDate)
+	assert.True(t, byDate.Closed)
+}
+
+// TestGetShiftByIDUnknownReturnsNil keeps "no such shift" distinguishable from
+// a failure, which is what lets the close/reopen flow answer 404 rather than
+// 500 for an id that never existed.
+func TestGetShiftByIDUnknownReturnsNil(t *testing.T) {
+	database, _ := dbtest.New(t)
+
+	shift, err := database.GetShiftByID(context.Background(), uuid.New().String())
+	require.NoError(t, err)
+	assert.Nil(t, shift)
+}
+
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
 // shift.date UNIQUE constraint (issue #41, hazard B1): two rotas minting the
 // same shift date cannot both commit. The constraint exists for ADR 0001
