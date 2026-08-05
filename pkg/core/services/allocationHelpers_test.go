@@ -47,6 +47,8 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 
 // mockAllocateRotaStore implements AllocateRotaStore for testing
 type mockAllocateRotaStore struct {
+	testRoleStore
+
 	rotations                  []db.Rotation
 	shifts                     []db.Shift
 	availabilityRequests       []db.AvailabilityRequest
@@ -168,7 +170,7 @@ type mockVolClient struct {
 	listErr    error
 }
 
-func (m *mockVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+func (m *mockVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}

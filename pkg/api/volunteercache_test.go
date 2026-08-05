@@ -12,7 +12,7 @@ import (
 func TestVolunteerStore_EmptyBeforeSync(t *testing.T) {
 	store := NewVolunteerStore()
 
-	volunteers, err := store.ListVolunteers(apiTestCfg)
+	volunteers, err := store.ListVolunteers(apiTestCfg, model.Roles{})
 	require.NoError(t, err, "an unsynced store must serve empty, not error")
 	assert.Empty(t, volunteers)
 }
@@ -25,7 +25,7 @@ func TestVolunteerStore_ServesLastReplace(t *testing.T) {
 		{ID: "bob", DisplayName: "Bob"},
 	})
 
-	volunteers, err := store.ListVolunteers(apiTestCfg)
+	volunteers, err := store.ListVolunteers(apiTestCfg, model.Roles{})
 	require.NoError(t, err)
 	require.Len(t, volunteers, 2)
 	assert.Equal(t, "alice", volunteers[0].ID)
@@ -37,7 +37,7 @@ func TestVolunteerStore_ReplaceOverwritesWholesale(t *testing.T) {
 	store.Replace([]model.Volunteer{{ID: "alice"}, {ID: "bob"}})
 	store.Replace([]model.Volunteer{{ID: "carol"}})
 
-	volunteers, err := store.ListVolunteers(apiTestCfg)
+	volunteers, err := store.ListVolunteers(apiTestCfg, model.Roles{})
 	require.NoError(t, err)
 	require.Len(t, volunteers, 1, "a sync replaces the roster, it does not merge")
 	assert.Equal(t, "carol", volunteers[0].ID)

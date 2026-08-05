@@ -18,6 +18,7 @@ import (
 
 // AvailabilityStore defines the database operations the availability round needs.
 type AvailabilityStore interface {
+	RoleStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) (int, error)
@@ -131,7 +132,12 @@ func MintAvailabilityRound(
 		return nil, wrapf(ErrConflict, "rota %s is already allocated, so its availability links would not work", rota.ID)
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -163,7 +169,7 @@ func MintAvailabilityRound(
 		zap.Int("active_volunteers", len(active)),
 		zap.Int("requests_created", minted))
 
-	return buildRound(ctx, database, rota, volunteers, cfg, logger)
+	return buildRound(ctx, database, rota, volunteers, roles, cfg, logger)
 }
 
 // GetAvailabilityRound reads a rota's round back: who was asked, their link, and
@@ -185,12 +191,17 @@ func GetAvailabilityRound(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
 
-	return buildRound(ctx, database, rota, volunteers, cfg, logger)
+	return buildRound(ctx, database, rota, volunteers, roles, cfg, logger)
 }
 
 // GetAvailabilityForm resolves a volunteer's link to the form behind it.
@@ -324,7 +335,12 @@ func resolveToken(
 		return nil, nil, nil, nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -395,6 +411,7 @@ func buildRound(
 	database AvailabilityStore,
 	rota *db.Rotation,
 	volunteers []model.Volunteer,
+	roles model.Roles,
 	cfg *config.Config,
 	logger *zap.Logger,
 ) (*AvailabilityRound, error) {
@@ -477,7 +494,7 @@ func buildRound(
 
 	groups := buildAvailabilityGroups(entries, volunteersByID, shifts)
 
-	seats, err := buildShiftSeats(cfg, shifts, pins, logger)
+	seats, err := buildShiftSeats(cfg, roles, shifts, pins, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve shift seats: %w", err)
 	}
@@ -487,7 +504,7 @@ func buildRound(
 		RotaStart: rota.Start,
 		RotaEnd:   rota.End,
 		Allocated: rota.AllocatedDatetime != "",
-		Shifts:    buildCoverage(shifts, groups, seats, cfg.RoleTable(), volunteersByID),
+		Shifts:    buildCoverage(shifts, groups, seats, roles, volunteersByID),
 		Groups:    groups,
 	}, nil
 }

@@ -18,7 +18,13 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	volunteers, err := h.volunteers.ListVolunteers(h.cfg)
+	roles, err := services.RoleTable(r.Context(), h.store)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	volunteers, err := h.volunteers.ListVolunteers(h.cfg, roles)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -42,6 +48,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	calendar, err := services.BuildVolunteerCalendar(
 		services.FilterShiftsByVolunteer(shifts, volunteerID),
 		*volunteer,
+		roles,
 		h.cfg,
 	)
 	if err != nil {

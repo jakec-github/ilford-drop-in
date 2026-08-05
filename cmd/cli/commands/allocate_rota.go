@@ -89,8 +89,12 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 			// Each capped Role gets a column of its own, in priority order;
 			// the uncapped Role's holders share the Volunteers column, which
 			// is the one the shift's size is counted against.
+			roles, err := services.RoleTable(app.Ctx, app.Database)
+			if err != nil {
+				return err
+			}
 			cappedRoles := make([]string, 0)
-			for _, role := range app.Cfg.RoleTable().ByPriority() {
+			for _, role := range roles.ByPriority() {
 				if role.Capped() {
 					cappedRoles = append(cappedRoles, role.Name)
 				}

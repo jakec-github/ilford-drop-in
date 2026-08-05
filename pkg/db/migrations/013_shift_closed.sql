@@ -1,5 +1,12 @@
 -- Closed becomes a field on the Shift (issue #132, docs/allocation_journey_plan.md).
 --
+-- It shares the 013 ordinal with 013_role.sql, which landed on main while this
+-- was in review. The two are independent and the runner keys on the filename,
+-- so both apply, in name order. Renaming this one is what would break things:
+-- the backfill below has to be run against production from a commit predating
+-- that merge, which records *this* filename in schema_migrations, and a renamed
+-- copy would then re-run the ALTER and fail the next deploy.
+--
 -- ADR 0001 deliberately left `closed` config-derived — an rrule re-evaluated on
 -- every read — and said not to snapshot it without also building the close/open
 -- command. That command exists now, so the flag moves onto the row.

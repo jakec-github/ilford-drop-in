@@ -41,6 +41,11 @@ type mockStore struct {
 	pingErr                 error
 	getShiftsErr            error
 	getRotationsErr         error
+
+	// roles overrides apiTestRoles for a test that cares which Roles exist;
+	// rolesErr makes the read fail.
+	roles    []db.Role
+	rolesErr error
 }
 
 // allShiftsInRange is the canonical shift set the store would hold, each with an
@@ -370,16 +375,30 @@ type mockVolunteerClient struct {
 	calls      int
 }
 
-func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
 	m.calls++
 	return m.volunteers, m.err
 }
 
-// The two Roles S1 configures. Every endpoint that names a Role resolves it
-// against config, so a config without Roles is not a usable fixture.
-var apiTestRoles = []model.Role{
-	{Name: "Team lead", Max: intPtr(1), Priority: 1},
-	{Name: "Service volunteer", Priority: 2},
+// The two Roles S1 ships with. Every endpoint that names a Role resolves it
+// against the database, so the mock store serves these and a store that serves
+// none is not a usable fixture.
+var apiTestRoles = []db.Role{
+	{ID: "role-team-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
+	{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+}
+
+// ListRoles is on mockStore rather than a fixture of its own: every store
+// interface embeds services.RoleStore, so a mock that cannot answer this
+// satisfies none of them.
+func (m *mockStore) ListRoles(context.Context) ([]db.Role, error) {
+	if m.rolesErr != nil {
+		return nil, m.rolesErr
+	}
+	if m.roles != nil {
+		return m.roles, nil
+	}
+	return apiTestRoles, nil
 }
 
 func intPtr(i int) *int { return &i }
@@ -387,7 +406,6 @@ func intPtr(i int) *int { return &i }
 var apiTestCfg = &config.Config{
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
-	Roles:          apiTestRoles,
 }
 
 func testVolunteers() *mockVolunteerClient {

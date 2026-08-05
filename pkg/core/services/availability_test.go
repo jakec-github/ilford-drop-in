@@ -20,6 +20,8 @@ import (
 // behaviours the service leans on rather than mocking them away: minting skips a
 // volunteer who already holds a request, and reads take the newest generation.
 type mockAvailabilityStore struct {
+	testRoleStore
+
 	rotations   []db.Rotation
 	shifts      []db.Shift
 	requests    []db.AvailabilityRequest
@@ -154,12 +156,9 @@ func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 			{ID: "shift-3", RotaID: "rota-1", Date: "2026-08-16", Closed: true},
 		},
 	}
-	cfg := &config.Config{
-		// Coverage is counted per Role now, so a config without Roles describes
-		// a rota with no Seats and nothing to be short of.
-		Roles: testCfg.Roles,
-	}
-	return store, cfg
+	// Nothing left for the config to say about these shifts: the Roles that
+	// exist are rows now, and so is each shift's closure.
+	return store, &config.Config{}
 }
 
 // availabilityVolunteers is a roster with a two-person group (michael and emma),

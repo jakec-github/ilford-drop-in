@@ -17,6 +17,7 @@ import (
 
 // PublishRotaStore defines the database operations needed for publishing a rota
 type PublishRotaStore interface {
+	RoleStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
@@ -105,7 +106,11 @@ func PublishRota(
 
 	// Step 4: Fetch volunteers
 	logger.Debug("Fetching volunteers")
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -129,17 +134,16 @@ func PublishRota(
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, rotaAlterations, cfg.RoleTable().UncappedName())
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, rotaAlterations, roles.UncappedName())
 
 	// Step 6: Build the published rota rows, iterating the rota's shifts in date
 	// order and looking up each shift's effective allocations by id.
 	//
 	// The sheet gives each capped Role its own column and lists the uncapped
 	// Role's holders across the rest — the shape the "Team lead + volunteers"
-	// layout always had, now read off the configured Roles instead of two
-	// constants. An allocation naming a Role config does not know is listed with
+	// layout always had, now read off the Roles the app holds instead of two
+	// constants. An allocation naming a Role the app does not know is listed with
 	// the volunteers rather than dropped: it is somebody who worked the shift.
-	roles := cfg.RoleTable()
 	cappedRoleNames := make([]string, 0)
 	for _, role := range roles.ByPriority() {
 		if role.Capped() {

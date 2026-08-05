@@ -18,6 +18,8 @@ import (
 // records the requested lock and hands the mock itself to the callback as the
 // transaction-bound store.
 type mockChangeRotaStore struct {
+	testRoleStore
+
 	shifts      []db.Shift
 	allocations []db.Allocation
 	alterations []db.Alteration
@@ -87,7 +89,7 @@ type mockChangeRotaVolClient struct {
 	volunteers []model.Volunteer
 }
 
-func (m *mockChangeRotaVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+func (m *mockChangeRotaVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
 	return m.volunteers, nil
 }
 
@@ -103,17 +105,26 @@ func defaultVolunteers() *mockChangeRotaVolClient {
 	}
 }
 
-// testCfg configures the two Roles S1 ships with: one Team lead Seat ahead of
-// the uncapped Service volunteer. Every service that resolves a Role name reads
-// it from config now, so a config without Roles is not a usable fixture.
-var testCfg = &config.Config{
-	Roles: []model.Role{
-		{Name: "Team lead", Max: intPtr(1), Priority: 1},
-		{Name: "Service volunteer", Priority: 2},
-	},
+// testCfg is a config with nothing in it worth setting: Roles left config for
+// the database, and the services below take what they need from testRoleStore.
+var testCfg = &config.Config{}
+
+// testRoleStore serves the two Roles S1 ships with: one Team lead Seat ahead of
+// the uncapped Service volunteer. Every mock store in these tests embeds it,
+// since every store interface embeds RoleStore.
+type testRoleStore struct{}
+
+func (testRoleStore) ListRoles(context.Context) ([]db.Role, error) {
+	return []db.Role{
+		{ID: "role-team-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
+		{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+	}, nil
 }
 
-var testRoles = testCfg.RoleTable()
+var testRoles = model.NewRoles([]model.Role{
+	{ID: "role-team-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
+	{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+})
 
 func intPtr(i int) *int { return &i }
 

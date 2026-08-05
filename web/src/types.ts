@@ -1,6 +1,6 @@
 // Role is a job on a shift — "Team lead", "Service volunteer" — named exactly as
-// the server's config names it. The frontend matches on the name and never
-// enumerates the set: which Roles exist is configuration, and the API is the
+// the server names it. The frontend matches on the name and never enumerates
+// the set: which Roles exist is the server's to say, and the API is the
 // authority on it.
 export type Role = string;
 
@@ -44,9 +44,9 @@ export const ROLE_COLOURS: readonly RoleColour[] = [
   "slate",
 ];
 
-// ConfiguredRole is one of the Roles the server configures. This is the only
-// thing that tells the frontend which Roles exist — everywhere else a Role is
-// just its name.
+// ConfiguredRole is one of the Roles the server holds. This is the only thing
+// that tells the frontend which Roles exist — everywhere else a Role is just
+// its name.
 export interface ConfiguredRole {
   name: Role;
   colour: RoleColour;

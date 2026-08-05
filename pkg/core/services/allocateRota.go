@@ -91,7 +91,18 @@ func AllocateRota(
 		shiftIDs[i] = s.ID
 	}
 
-	allVolunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	// Allocation is the one path Roles are not optional on: every Seat the
+	// solver fills belongs to a Role, so with none there is nothing to solve.
+	// Incomplete settings block allocation and nothing else (ADR 0006).
+	if len(roles.ByPriority()) == 0 {
+		return nil, wrapf(ErrInvalidInput, "no roles are configured - add them on the settings screen before allocating")
+	}
+
+	allVolunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -132,7 +143,7 @@ func AllocateRota(
 		rotations,
 		targetRota,
 		convertToAllocatorVolunteers(allVolunteers),
-		cfg.RoleTable().UncappedName(),
+		roles.UncappedName(),
 		logger,
 	)
 	if err != nil {
@@ -162,7 +173,7 @@ func AllocateRota(
 	if err := checkPreallocationsResolve(manualPins, shifts, allocatorOverrides, activeIDs); err != nil {
 		return nil, err
 	}
-	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides, cfg.RoleTable())
+	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +188,7 @@ func AllocateRota(
 		allocatorOverrides,
 		historicalShifts,
 		cfg.MaxAllocationFrequency,
-		convertConfigRoles(cfg.Roles),
+		convertRoles(roles),
 		cfg.RequiresMale,
 	)
 	if err != nil {

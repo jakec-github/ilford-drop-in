@@ -19,6 +19,7 @@ import (
 
 // AllocateRotaStore defines the database operations needed for allocating a rota
 type AllocateRotaStore interface {
+	RoleStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
@@ -337,12 +338,13 @@ func buildHistoricalShifts(
 	return historicalShifts, nil
 }
 
-// convertConfigRoles lifts the configured Roles into the allocator's own type,
-// the same way volunteers and pins are lifted: the allocator keeps its own
-// vocabulary and does not import the domain package.
-func convertConfigRoles(roles []model.Role) []allocator.Role {
-	converted := make([]allocator.Role, 0, len(roles))
-	for _, role := range roles {
+// convertRoles lifts the Roles into the allocator's own type, in priority
+// order, the same way volunteers and pins are lifted: the allocator keeps its
+// own vocabulary and does not import the domain package.
+func convertRoles(roles model.Roles) []allocator.Role {
+	ordered := roles.ByPriority()
+	converted := make([]allocator.Role, 0, len(ordered))
+	for _, role := range ordered {
 		converted = append(converted, allocator.Role{
 			Name:     role.Name,
 			Max:      role.Max,

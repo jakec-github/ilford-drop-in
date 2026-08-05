@@ -106,8 +106,8 @@ Three things it is doing on purpose:
   is `go run ./cmd/cli -e prod validate-config <path>`, which reads the file and
   nothing else: no database, no Google. Run it on its own any time.
 - **The summary is the point.** "Valid" is not the same as "right" — a config
-  can parse and validate with every preallocation missing. The preallocation and
-  role counts are what to check against the change you meant to make.
+  can parse and validate with every preallocation missing. The preallocation
+  count is what to check against the change you meant to make.
 - **It recreates rather than restarts.** A restarted container keeps the mounts
   it already resolved, and a bare `docker compose up -d` is a no-op when the
   compose file has not changed, so neither reliably picks up a new config.
@@ -119,6 +119,28 @@ could not start the server at all, which is an outage over a file the operator
 had not touched. The warning appears in the app's logs and in this command's
 output — it is worth reading, because the other kind of unknown key is one that
 used to configure something and now configures nothing.
+
+## Domain settings
+
+The Roles the drop-in offers are **rows in the database**, not config (ADR
+0006). Nothing seeds them: the migration that created the table left it empty on
+purpose, so a database is in this state until somebody fills it, and the server
+warns at startup when it is. With no Roles nobody on the roster holds one and
+allocation refuses to run.
+
+Until the settings screen lands (#127) they are created with SQL. Against Neon's
+SQL editor or `psql`, this is the pair the config used to carry:
+
+```sql
+INSERT INTO role (id, name, max, priority, colour) VALUES
+  (gen_random_uuid(), 'Team lead', 1, 1, 'violet'),
+  (gen_random_uuid(), 'Service volunteer', NULL, 2, 'teal');
+```
+
+**Run this before or immediately after the deploy that carries the migration.**
+The names must match the roster sheet's `Roles` column exactly. A Role is
+permanent — there is no delete — so getting the name right the first time saves
+a rename, which the roster has to be edited to match.
 
 ## Operations
 

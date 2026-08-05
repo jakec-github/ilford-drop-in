@@ -18,6 +18,8 @@ import (
 // records the requested lock and hands the mock itself to the callback as the
 // transaction-bound store, mirroring the WithRotaLock mock in changeRota_test.
 type mockPreallocationStore struct {
+	testRoleStore
+
 	shifts      []db.Shift
 	allocated   map[string]bool // rota id → allocated
 	preallocs   []db.ManualPreallocation
@@ -107,7 +109,7 @@ type preallocVolClient struct {
 	volunteers []model.Volunteer
 }
 
-func (c *preallocVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+func (c *preallocVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
 	return c.volunteers, nil
 }
 
@@ -198,12 +200,12 @@ func TestAddPreallocation_RejectsMissingRole(t *testing.T) {
 	assert.Contains(t, err.Error(), "role is required")
 }
 
-func TestAddPreallocation_RejectsUnconfiguredRole(t *testing.T) {
+func TestAddPreallocation_RejectsUnknownRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Food collector"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "not a configured role")
+	assert.Contains(t, err.Error(), "not a known role")
 	assert.Empty(t, store.inserted)
 }
 
