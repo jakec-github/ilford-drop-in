@@ -319,7 +319,7 @@ func resolveToken(
 		return nil, nil, nil, nil, wrapf(ErrGone, "the rota for this link has already been allocated")
 	}
 
-	shifts, err := rotaAvailabilityShifts(ctx, database, cfg, rota.ID, logger)
+	shifts, err := rotaAvailabilityShifts(ctx, database, rota.ID)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -398,7 +398,7 @@ func buildRound(
 	cfg *config.Config,
 	logger *zap.Logger,
 ) (*AvailabilityRound, error) {
-	shifts, err := rotaAvailabilityShifts(ctx, database, cfg, rota.ID, logger)
+	shifts, err := rotaAvailabilityShifts(ctx, database, rota.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -493,14 +493,12 @@ func buildRound(
 }
 
 // rotaAvailabilityShifts reads a rota's shifts with their closed state, in date
-// order. Closed is resolved by isShiftClosed, the same check the publish and
-// list paths use, so a date shut on the rota page is shut on the form too.
+// order. Closed comes off the Shift row, so a date shut on the rota page is shut
+// on the form by construction rather than by two reads agreeing.
 func rotaAvailabilityShifts(
 	ctx context.Context,
 	database AvailabilityStore,
-	cfg *config.Config,
 	rotaID string,
-	logger *zap.Logger,
 ) ([]AvailabilityShift, error) {
 	shifts, err := database.GetShiftsByRotaID(ctx, rotaID)
 	if err != nil {
@@ -510,17 +508,12 @@ func rotaAvailabilityShifts(
 		return nil, fmt.Errorf("rota %s has no shifts", rotaID)
 	}
 
-	dates, err := utils.ShiftDatesFromShifts(shifts)
-	if err != nil {
-		return nil, err
-	}
-
 	out := make([]AvailabilityShift, 0, len(shifts))
 	for _, s := range shifts {
 		out = append(out, AvailabilityShift{
 			ID:     s.ID,
 			Date:   s.Date,
-			Closed: isShiftClosed(s.Date, cfg.RotaOverrides, dates, logger),
+			Closed: s.Closed,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })

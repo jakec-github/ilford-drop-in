@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -278,25 +277,24 @@ func TestListShifts_InvalidDateFilters(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
+// A closed shift is closed because its row says so, and it carries no assignees
+// even where allocations exist against it — the drop-in did not run that day.
 func TestListShifts_ClosedShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
-	cfg := &config.Config{
-		RotaOverrides: []config.RotaOverride{
-			// 2025-01-05 is the first Sunday of January 2025
-			{RRule: "FREQ=MONTHLY;BYDAY=1SU", Closed: true},
-		},
-	}
-
 	store := &mockListShiftsStore{
+		shifts: []db.ShiftInRange{
+			{Shift: db.Shift{Date: "2025-01-05", Closed: true}, Allocated: true},
+			{Shift: db.Shift{Date: "2025-01-12"}, Allocated: true},
+		},
 		allocations: []db.Allocation{
 			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
 			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
 		},
 	}
 
-	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), cfg, ListShiftsParams{}, logger)
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
 	require.NoError(t, err)
 	require.Len(t, shifts, 2)
 

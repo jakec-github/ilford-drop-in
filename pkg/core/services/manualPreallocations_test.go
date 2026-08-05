@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,20 +96,6 @@ func TestBuildManualPreallocationOverrides_TeamLeadAndCustom(t *testing.T) {
 	}, overrides[1].Preallocations)
 }
 
-func TestBuildManualPreallocationOverrides_ClosedByConfigDropsPin(t *testing.T) {
-	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
-	configOverrides := []allocator.ShiftOverride{
-		configOverride([]string{"2026-08-02"}, allocator.ShiftOverride{Closed: true}),
-	}
-	pins := []db.ManualPreallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-1"},
-	}
-
-	overrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, configOverrides, testRoles)
-	require.NoError(t, err)
-	assert.Empty(t, overrides, "a manual pin cannot reopen a config-closed date")
-}
-
 func TestBuildManualPreallocationOverrides_UnknownShiftFails(t *testing.T) {
 	pins := []db.ManualPreallocation{
 		{ID: "p1", ShiftID: "ghost", Role: "Service volunteer", VolunteerID: "vol-1"},
@@ -128,7 +113,7 @@ func TestCheckPreallocationsResolve_AllActive(t *testing.T) {
 	}
 	activeIDs := map[string]bool{"vol-1": true}
 
-	err := checkPreallocationsResolve(pins, dateByShiftID, nil, nil, activeIDs)
+	err := checkPreallocationsResolve(pins, openShiftRows(dateByShiftID), nil, activeIDs)
 	assert.NoError(t, err, "active volunteer and a custom entry both resolve")
 }
 
@@ -139,7 +124,7 @@ func TestCheckPreallocationsResolve_InactiveManualPin(t *testing.T) {
 	}
 	activeIDs := map[string]bool{"vol-1": true}
 
-	err := checkPreallocationsResolve(pins, dateByShiftID, nil, nil, activeIDs)
+	err := checkPreallocationsResolve(pins, openShiftRows(dateByShiftID), nil, activeIDs)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "manual pin")
 	assert.Contains(t, err.Error(), "2026-08-02")
@@ -147,7 +132,6 @@ func TestCheckPreallocationsResolve_InactiveManualPin(t *testing.T) {
 }
 
 func TestCheckPreallocationsResolve_InactiveConfigPin(t *testing.T) {
-	shiftDates := []time.Time{time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)}
 	configOverrides := []allocator.ShiftOverride{
 		configOverride([]string{"2026-08-02"}, allocator.ShiftOverride{
 			Preallocations: []allocator.Preallocation{
@@ -157,10 +141,40 @@ func TestCheckPreallocationsResolve_InactiveConfigPin(t *testing.T) {
 	}
 	activeIDs := map[string]bool{"vol-1": true}
 
-	err := checkPreallocationsResolve(nil, nil, configOverrides, shiftDates, activeIDs)
+	err := checkPreallocationsResolve(nil, openShiftRows(map[string]string{"shift-1": "2026-08-02"}), configOverrides, activeIDs)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "config pin")
 	assert.Contains(t, err.Error(), "stale")
+}
+
+// A stale pin on a closed shift is not reported: InitShifts strips it, so it
+// reaches nothing, and failing the whole rota over a pin with no effect would
+// leave an admin with nothing to fix but a shut date.
+func TestCheckPreallocationsResolve_SkipsClosedShifts(t *testing.T) {
+	shifts := []db.Shift{{ID: "shift-1", Date: "2026-08-02", Closed: true}}
+	pins := []db.ManualPreallocation{
+		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "gone"},
+	}
+	configOverrides := []allocator.ShiftOverride{
+		configOverride([]string{"2026-08-02"}, allocator.ShiftOverride{
+			Preallocations: []allocator.Preallocation{
+				{VolunteerID: "stale", Role: "Service volunteer"},
+			},
+		}),
+	}
+
+	err := checkPreallocationsResolve(pins, shifts, configOverrides, map[string]bool{"vol-1": true})
+	assert.NoError(t, err)
+}
+
+// openShiftRows turns a test's id→date map into open shift rows, which is what
+// checkPreallocationsResolve scopes itself by.
+func openShiftRows(dateByShiftID map[string]string) []db.Shift {
+	shifts := make([]db.Shift, 0, len(dateByShiftID))
+	for id, date := range dateByShiftID {
+		shifts = append(shifts, db.Shift{ID: id, Date: date})
+	}
+	return shifts
 }
 
 // TestAllocateRotaFailsOnStaleManualPin covers the pre-solve stale-pin guard end

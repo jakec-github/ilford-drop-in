@@ -82,10 +82,12 @@ func AllocateRota(
 	}
 	shiftIDByDate := make(map[string]string, len(shifts))
 	dateByShiftID := make(map[string]string, len(shifts))
+	closedByDate := make(map[string]bool, len(shifts))
 	shiftIDs := make([]string, len(shifts))
 	for i, s := range shifts {
 		shiftIDByDate[s.Date] = s.ID
 		dateByShiftID[s.ID] = s.Date
+		closedByDate[s.Date] = s.Closed
 		shiftIDs[i] = s.ID
 	}
 
@@ -100,12 +102,14 @@ func AllocateRota(
 
 	// Shift indices are the solver's vocabulary, and index i is the i-th date in
 	// order, so the shift ids availability is stored against are lined up the
-	// same way.
-	shiftDateStrings := make([]string, len(shiftDates))
+	// same way. Each spec carries the Shift's own Closed: the solver is told
+	// which days the drop-in does not run rather than working it out (#132).
+	shiftSpecs := make([]allocator.ShiftSpec, len(shiftDates))
 	orderedShiftIDs := make([]string, len(shiftDates))
 	for i, date := range shiftDates {
-		shiftDateStrings[i] = date.Format("2006-01-02")
-		orderedShiftIDs[i] = shiftIDByDate[shiftDateStrings[i]]
+		dateStr := date.Format("2006-01-02")
+		shiftSpecs[i] = allocator.ShiftSpec{Date: dateStr, Closed: closedByDate[dateStr]}
+		orderedShiftIDs[i] = shiftIDByDate[dateStr]
 	}
 
 	groupAvailability, err := fetchGroupAvailability(
@@ -155,7 +159,7 @@ func AllocateRota(
 	// Pre-solve stale-pin check: fail loudly, naming the pin, rather than letting
 	// an inactive/deleted preallocated volunteer surface as the solver's opaque
 	// ProblemError (covers config pins too, per ADR 0003).
-	if err := checkPreallocationsResolve(manualPins, dateByShiftID, allocatorOverrides, shiftDates, activeIDs); err != nil {
+	if err := checkPreallocationsResolve(manualPins, shifts, allocatorOverrides, activeIDs); err != nil {
 		return nil, err
 	}
 	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides, cfg.RoleTable())
@@ -168,7 +172,7 @@ func AllocateRota(
 	input, err := allocator.BuildCpsatInput(
 		allocatorVolunteers,
 		groupAvailability,
-		shiftDateStrings,
+		shiftSpecs,
 		cfg.DefaultShiftSize,
 		allocatorOverrides,
 		historicalShifts,

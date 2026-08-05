@@ -216,17 +216,23 @@ type ShiftOverride struct {
 	// ShiftSize overrides the default shift size (if set)
 	ShiftSize *int
 
-	// Closed indicates whether this shift should be marked as closed (no allocations)
-	Closed bool
-
 	// Preallocations are the pins this override contributes, each naming a Role.
 	Preallocations []Preallocation
 }
 
+// ShiftSpec is one minted shift as the solver's model receives it, before
+// anything is resolved: which date it falls on, and whether the drop-in runs
+// that day. Closed arrives here rather than being derived from an override
+// because it is a field on the Shift, set by hand (issue #132).
+type ShiftSpec struct {
+	Date   string
+	Closed bool
+}
+
 // InitShiftsInput contains the data needed to initialize shifts
 type InitShiftsInput struct {
-	// ShiftDates is the list of dates for shifts in the current rota
-	ShiftDates []string
+	// Shifts is the current rota's minted shifts, in date order
+	Shifts []ShiftSpec
 
 	// DefaultShiftSize is the default number of volunteers per shift
 	DefaultShiftSize int
@@ -247,48 +253,43 @@ type InitShiftsInput struct {
 //   - Preallocations unioned from every override applying to the date
 //   - AvailableGroups populated based on volunteer group availability
 //
-// Every override applying to a date contributes its pins; a closing override
-// wipes the lot. Pins used to be three separate fields with three merge rules —
-// the single team lead was last-one-wins where the two lists appended. They are
-// one list now, so appending is the only rule, and two overrides pinning the
-// same capped Role for one date are both kept rather than one silently
-// disappearing. The Role's ceiling is what catches that, in the solver.
+// Every override applying to a date contributes its pins. Pins used to be three
+// separate fields with three merge rules — the single team lead was
+// last-one-wins where the two lists appended. They are one list now, so
+// appending is the only rule, and two overrides pinning the same capped Role
+// for one date are both kept rather than one silently disappearing. The Role's
+// ceiling is what catches that, in the solver.
+//
+// A closed shift keeps neither pins nor available groups: nobody works a day
+// the drop-in is shut, whichever of the two sources promised them. Stripping
+// the pins here is also what the Python side's contract rests on — it refuses
+// an input pinning anyone to a closed shift.
 func InitShifts(input InitShiftsInput) ([]*Shift, error) {
-	shifts := make([]*Shift, len(input.ShiftDates))
+	shifts := make([]*Shift, len(input.Shifts))
 
-	for i, date := range input.ShiftDates {
+	for i, spec := range input.Shifts {
 		// Start with default shift size
 		shiftSize := input.DefaultShiftSize
 
 		var preallocations []Preallocation
 
-		// Track if shift is closed
-		isClosed := false
-
 		// Apply overrides for this date
 		for _, override := range input.Overrides {
-			if override.AppliesTo(date) {
+			if override.AppliesTo(spec.Date) {
 				// Override size if specified
 				if override.ShiftSize != nil {
 					shiftSize = *override.ShiftSize
 				}
 
-				// Add pre-allocated volunteers (only if not closed)
-				if !override.Closed {
-					preallocations = append(preallocations, override.Preallocations...)
-				}
-
-				// Mark as closed if any override marks it closed
-				if override.Closed {
-					isClosed = true
-					preallocations = nil
-				}
+				preallocations = append(preallocations, override.Preallocations...)
 			}
 		}
 
 		// Populate available groups for this shift (skip if closed)
 		availableGroups := make([]*VolunteerGroup, 0)
-		if !isClosed {
+		if spec.Closed {
+			preallocations = nil
+		} else {
 			for _, group := range input.VolunteerState.VolunteerGroups {
 				if group.IsAvailable(i) {
 					availableGroups = append(availableGroups, group)
@@ -297,13 +298,13 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		}
 
 		shifts[i] = &Shift{
-			Date:            date,
+			Date:            spec.Date,
 			Index:           i,
 			Size:            shiftSize,
 			AllocatedGroups: []*VolunteerGroup{},
 			MaleCount:       0, // Will be updated when groups are allocated
 			AvailableGroups: availableGroups,
-			Closed:          isClosed,
+			Closed:          spec.Closed,
 			Preallocations:  preallocations,
 		}
 	}

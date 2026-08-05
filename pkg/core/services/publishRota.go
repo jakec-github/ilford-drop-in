@@ -90,10 +90,6 @@ func PublishRota(
 	if len(shifts) == 0 {
 		return nil, fmt.Errorf("rota %s has no shifts", targetRota.ID)
 	}
-	shiftDates, err := utils.ShiftDatesFromShifts(shifts)
-	if err != nil {
-		return nil, err
-	}
 	shiftIDs := make([]string, len(shifts))
 	for i, s := range shifts {
 		shiftIDs[i] = s.ID
@@ -160,9 +156,6 @@ func PublishRota(
 		}
 		allocations := allocationsByShiftID[shift.ID]
 
-		// Check if this shift is closed
-		isClosed := isShiftClosed(shift.Date, cfg.RotaOverrides, shiftDates, logger)
-
 		row := sheetsclient.PublishedRotaRow{
 			Date:        shiftDate.Format("Mon Jan 02 2006"),
 			CappedRoles: map[string][]string{},
@@ -172,7 +165,7 @@ func PublishRota(
 		}
 
 		// A closed shift says so instead of carrying allocations
-		if isClosed {
+		if shift.Closed {
 			row.Closed = true
 			rows = append(rows, row)
 			continue
@@ -260,30 +253,4 @@ func findPreviousRotaTabTitle(rotations []db.Rotation, targetRota *db.Rotation, 
 		}
 	}
 	return ""
-}
-
-// isShiftClosed checks if a shift is marked as closed by any matching RotaOverride
-func isShiftClosed(dateStr string, overrides []config.RotaOverride, shiftDates []time.Time, logger *zap.Logger) bool {
-	for _, override := range overrides {
-		// Skip if not marked as closed
-		if !override.Closed {
-			continue
-		}
-
-		// Parse the RRule into a date matcher; the closed check warns and skips
-		// an unparseable rrule.
-		matches, err := utils.NewRRuleMatcher(override.RRule, shiftDates)
-		if err != nil {
-			logger.Warn("Failed to parse rrule for closed check",
-				zap.String("rrule", override.RRule),
-				zap.Error(err))
-			continue
-		}
-
-		if matches(dateStr) {
-			return true
-		}
-	}
-
-	return false
 }

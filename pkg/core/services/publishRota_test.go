@@ -367,6 +367,17 @@ func (m *mockSheetsClient) PublishRota(spreadsheetID string, publishedRota *shee
 	return m.publishRotaError
 }
 
+// closeShift marks one of a fixture's shifts closed by date, which is where
+// closure lives now — the config has nothing to say about it.
+func closeShift(shifts []db.Shift, date string) []db.Shift {
+	for i := range shifts {
+		if shifts[i].Date == date {
+			shifts[i].Closed = true
+		}
+	}
+	return shifts
+}
+
 func TestPublishRota_ClosedShifts(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
@@ -379,7 +390,7 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 				ShiftCount: 3,
 			},
 		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		shifts: closeShift(sundayShifts("rota-1", "2025-01-05", 3), "2025-01-12"),
 		allocations: []db.Allocation{
 			// Shift 1 - Jan 5 (open shift)
 			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
@@ -400,19 +411,9 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 		},
 	}
 
-	// Configure closed shift for Jan 12
-	cfg := &config.Config{
-		Roles: testCfg.Roles,
-		RotaOverrides: []config.RotaOverride{
-			{
-				RRule:  "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=12", // January 12 every year
-				Closed: true,
-			},
-		},
-	}
 	sheetsClient := &mockSheetsClient{}
 
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
+	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, testCfg, logger, "rota-1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 

@@ -45,6 +45,7 @@ type ShiftAssignee struct {
 // included (their rota has not been allocated yet), carrying Allocated=false and
 // no assignees.
 type Shift struct {
+	ID              string // UUID; how a client addresses the shift to change it
 	Date            string // YYYY-MM-DD
 	Closed          bool
 	Allocated       bool // rota's allocated_datetime is set; assignees are meaningful only when true
@@ -126,26 +127,14 @@ func ListShifts(
 	}
 
 	// The shift table drives which shifts appear (ADR 0001), whether or not the
-	// rota has been allocated. shiftsInRange is already date-ordered by the DB;
-	// parse the dates once to bound the rrule search window in isShiftClosed,
-	// dropping any shift whose date will not parse.
-	shiftDates := make([]time.Time, 0, len(shiftsInRange))
-	validShifts := make([]db.ShiftInRange, 0, len(shiftsInRange))
+	// rota has been allocated, and it is the authority on which of them are
+	// closed. shiftsInRange is already date-ordered by the DB.
+	shifts := make([]Shift, 0, len(shiftsInRange))
 	for _, s := range shiftsInRange {
-		date, err := time.Parse("2006-01-02", s.Date)
-		if err != nil {
-			logger.Warn("Skipping shift with unparseable date", zap.String("date", s.Date))
-			continue
-		}
-		shiftDates = append(shiftDates, date)
-		validShifts = append(validShifts, s)
-	}
-
-	shifts := make([]Shift, 0, len(validShifts))
-	for _, s := range validShifts {
 		shift := Shift{
+			ID:              s.ID,
 			Date:            s.Date,
-			Closed:          isShiftClosed(s.Date, cfg.RotaOverrides, shiftDates, logger),
+			Closed:          s.Closed,
 			Allocated:       s.Allocated,
 			AlterationCount: alterationCounts[s.ID],
 			LastChanged:     lastChanged[s.ID],

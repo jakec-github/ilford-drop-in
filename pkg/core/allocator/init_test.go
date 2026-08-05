@@ -245,21 +245,14 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create overrides - shift 1 is closed
-	overrides := []ShiftOverride{
-		{
-			AppliesTo: func(date string) bool {
-				return date == "2025-01-12" // Second shift
-			},
-			ShiftSize: nil,
-			Closed:    true,
-		},
-	}
-
+	// Shift 1 is closed — a field on the Shift, not something an override says.
 	input := InitShiftsInput{
-		ShiftDates:       []string{"2025-01-05", "2025-01-12", "2025-01-19"},
+		Shifts: []ShiftSpec{
+			{Date: "2025-01-05"},
+			{Date: "2025-01-12", Closed: true},
+			{Date: "2025-01-19"},
+		},
 		DefaultShiftSize: 4,
-		Overrides:        overrides,
 		VolunteerState:   volunteerState,
 	}
 
@@ -293,7 +286,8 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create override with preallocations on a closed shift
+	// Pins landing on a shift that is closed: the pins come from an override,
+	// the closure from the shift, and the shift wins.
 	overrides := []ShiftOverride{
 		{
 			AppliesTo: func(date string) bool {
@@ -304,12 +298,14 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 				{Custom: "John", Role: "Service volunteer"},
 				{Custom: "Jane", Role: "Service volunteer"},
 			},
-			Closed: true,
 		},
 	}
 
 	input := InitShiftsInput{
-		ShiftDates:       []string{"2025-01-05", "2025-01-12"},
+		Shifts: []ShiftSpec{
+			{Date: "2025-01-05", Closed: true},
+			{Date: "2025-01-12"},
+		},
 		DefaultShiftSize: 4,
 		Overrides:        overrides,
 		VolunteerState:   volunteerState,

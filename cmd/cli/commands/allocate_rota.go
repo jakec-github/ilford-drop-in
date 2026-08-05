@@ -73,7 +73,6 @@ func AllocateRotaCmd(app *AppContext) *cobra.Command {
 				fmt.Println("   • preallocations vs max frequency (a group preallocated to more shifts than the cap)")
 				fmt.Println("   • preallocations vs a Role's ceiling (more pins for a capped Role than it has Seats)")
 				fmt.Println("   • preallocations vs male required (every slot preallocated female, leaving no open slot for a male)")
-				fmt.Println("   • closed shifts (an override closing a shift that another override populates)")
 				return nil
 			}
 

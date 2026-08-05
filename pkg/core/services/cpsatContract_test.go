@@ -13,6 +13,16 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+// openShifts turns bare dates into specs for the ordinary case, where every
+// shift is open and only the closed ones are worth spelling out.
+func openShifts(dates ...string) []allocator.ShiftSpec {
+	specs := make([]allocator.ShiftSpec, len(dates))
+	for i, date := range dates {
+		specs[i] = allocator.ShiftSpec{Date: date}
+	}
+	return specs
+}
+
 // TestCpsatInputContractGolden pins the JSON field names of the Go->Python
 // contract. If this test breaks, pyallocator's serialization must change in
 // lockstep (see pyallocator/README.md).
@@ -135,7 +145,14 @@ func TestBuildCpsatInput(t *testing.T) {
 		// "Silent Bob" was never answered for: absent from the map, so their
 		// group must be discarded.
 	}
-	shiftDates := []string{"2026-07-13", "2026-07-20", "2026-07-27", "2026-08-03"}
+	// 2026-07-27 is closed, which is a fact about the Shift rather than
+	// anything an override says.
+	shiftSpecs := []allocator.ShiftSpec{
+		{Date: "2026-07-13"},
+		{Date: "2026-07-20"},
+		{Date: "2026-07-27", Closed: true},
+		{Date: "2026-08-03"},
+	}
 	size := 5
 	overrides := []allocator.ShiftOverride{
 		{
@@ -144,10 +161,6 @@ func TestBuildCpsatInput(t *testing.T) {
 			Preallocations: []allocator.Preallocation{
 				{Custom: "external_john", Role: "Service volunteer"},
 			},
-		},
-		{
-			AppliesTo: func(date string) bool { return date == "2026-07-27" },
-			Closed:    true,
 		},
 	}
 	historical := []*allocator.Shift{
@@ -165,7 +178,7 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftDates, 2, overrides, historical, 0.5, roles, true)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, historical, 0.5, roles, true)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
@@ -264,7 +277,7 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 	}
 
 	input, err := allocator.BuildCpsatInput(
-		volunteers, groupAvailability, []string{"2026-07-13"}, 4, nil,
+		volunteers, groupAvailability, openShifts("2026-07-13"), 4, nil,
 		historical, 1, roles, false)
 	require.NoError(t, err)
 
@@ -300,7 +313,12 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		// Ruth Grey answered, for nothing.
 		"Ruth Grey": {},
 	}
-	shiftDates := []string{"2026-07-13", "2026-07-20", "2026-07-27", "2026-08-03"}
+	shiftSpecs := []allocator.ShiftSpec{
+		{Date: "2026-07-13"},
+		{Date: "2026-07-20"},
+		{Date: "2026-07-27", Closed: true},
+		{Date: "2026-08-03"},
+	}
 
 	overrides := []allocator.ShiftOverride{
 		// Shift 0 pins one of the couple, a volunteer nobody answered for, and
@@ -315,10 +333,10 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 				{VolunteerID: "ghost", Role: "Service volunteer"},
 			},
 		},
-		// A closed shift keeps its pins stripped, so it implies nothing.
+		// Shift 2 is closed, so the pins landing on it are stripped and it
+		// implies nothing.
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-27" },
-			Closed:    true,
 			Preallocations: []allocator.Preallocation{
 				{VolunteerID: "silent", Role: "Service volunteer"},
 			},
@@ -331,7 +349,7 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftDates, 2, overrides, nil, 0.5, roles, true)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, nil, 0.5, roles, true)
 	require.NoError(t, err)
 
 	byKey := make(map[string]allocator.CpsatGroup, len(input.Groups))
@@ -374,7 +392,7 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	roles := []allocator.Role{{Name: "Service volunteer", Max: nil, Priority: 1}}
 
-	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, []string{"2026-07-13", "2026-07-20"}, 2, overrides, nil, 0.5, roles, false)
+	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, openShifts("2026-07-13", "2026-07-20"), 2, overrides, nil, 0.5, roles, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string][]int{"Alice Smith": {1}}, groupAvailability)
