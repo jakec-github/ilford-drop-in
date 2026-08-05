@@ -6,8 +6,11 @@ allocates volunteers to shifts, and publishes the resulting rota.
 ## Language
 
 **Shift**:
-A planned session of the drop-in on a specific date, minted by a Rotation. Exists
-independently of who is allocated to it. At most one Shift per date.
+A planned session of the drop-in, minted by a Rotation, running from a start to
+an end given as local time in the drop-in's own timezone. Exists independently
+of who is allocated to it. Its date is the date it starts, and there is at most
+one Shift per date. Times are descriptive, not an allocator input, so unlike a
+Shape they stay editable once the Rotation is allocated.
 _Avoid_: shift date (as identity), session
 
 **Shift View**:
@@ -26,8 +29,16 @@ holds the Roles they will do, and only a holder may be allocated to one, bar a
 Preallocation, which grants the Role it names for the one Shift it names. The
 job and the holding of it share one name; there is no separate notion of being
 qualified for a job you do not hold. A person fills at most one Role on a
-Shift, however many they hold.
+Shift, however many they hold. A Role has an identity of its own: its name is
+what the roster and past rotas record, but what a Shape asks for is the Role
+itself, so renaming one leaves both readable.
 _Avoid_: position, qualification, badge
+
+**Retired Role**:
+A Role that is no longer offered: absent from pickers and unaddable to any
+Shape, while every existing reference to it still resolves. Roles are retired,
+never deleted, so a past rota always reads as it was made.
+_Avoid_: deleted role, archived role
 
 **Seat**:
 One place on a Shift: one Role, at most one person.
@@ -37,6 +48,19 @@ Which Roles a Shift needs and how many Seats of each. Owned by the Shift and
 editable until its Rotation is allocated, fixed thereafter. Its counts are what
 the allocator fills up to, not minimums — Seats are routinely left empty.
 _Avoid_: shift size, template, structure
+
+**Rota Defaults**:
+The settings an Admin keeps for the drop-in as a whole — the Roles that exist,
+the default Shape, the default shift times, the Standing Preallocations and the
+Allocation Settings. They seed each new Rotation and its Shifts at definition;
+nothing copies them back afterwards, so editing them changes what the next rota
+starts from, never what an existing one holds.
+_Avoid_: config, template, preset
+
+**Allocation Settings**:
+Which of the optional allocator rules apply, and the values they need. Live and
+global rather than recorded per Rotation: an allocated rota is its Allocations,
+not the settings that produced them.
 
 **Allocation**:
 The assignment of one volunteer (or custom entry) to one Role on one Shift,
@@ -76,25 +100,25 @@ recorded, so a Shift absent from a response is a no; each response therefore
 states every open Shift it accepts, never a change since last time.
 
 **Closed**:
-A Shift on a date the drop-in does not run (e.g. a holiday closure). Currently
-declared by configured recurrence rules, not stored on the Shift.
-
-**Rota Override**:
-A configured recurrence rule that adjusts matching Shifts: marking them Closed,
-setting their Shape, or preallocating people.
+A Shift on a date the drop-in does not run (e.g. a holiday closure). Held on
+the Shift itself and set by hand. Being Closed is an allocator input, so it is
+editable only while the Rotation is unallocated.
 
 **Preallocation**:
 A person pinned to a specific Shift before Allocation runs, naming the Role
 they will fill and forcing the allocator to place them (their group included).
-Has two sources — Config and Manual — that union into one set. It records a
-decision already taken, so it settles both questions the allocator would
-otherwise ask of the roster: the pinned person is available for that Shift
-whatever they answered, and holds the Role it names for that Shift alone.
+It records a decision already taken, so it settles both questions the allocator
+would otherwise ask of the roster: the pinned person is available for that
+Shift whatever they answered, and holds the Role it names for that Shift alone.
+Every Preallocation is the same kind of thing however it came to exist, and an
+Admin may remove any of them.
 _Avoid_: pin (except as the informal verb, "pin to a Shift")
 
-**Config Preallocation**:
-A Preallocation declared by a Rota Override's recurrence rule. Authoritative:
-a Manual Preallocation can never remove or replace it.
+**Standing Preallocation**:
+A Preallocation an Admin expects to make every rota, kept in Rota Defaults and
+used to seed real ones when a Rotation is defined. It is a convenience at
+definition, not a standing fact: once seeded, the Preallocations it made are
+ordinary and outlive any later change to it.
 
 **Admin**:
 A trusted person authorised to manage the rota and volunteer data, identified
@@ -103,7 +127,12 @@ Admin is a live fact about the allowlist, not a property of a credential. All
 other visitors are anonymous; there are no other authenticated roles.
 _Avoid_: user, staff
 
-**Manual Preallocation**:
-A Preallocation set ad hoc on a single Shift, editable only while the Shift's
-Rotation is unallocated. Add-only — it can force a person on but never suppress
-a Config Preallocation.
+**Draft Rota Allocation**:
+A speculative allocation of a whole unallocated Rotation, replaced entire each
+time it is solved and shown only to Admins. Named for the rota because that is
+its scope: it is made of draft Allocations, but it is never partial, and no
+single one of them means anything on its own. It becomes the rota only when an
+Admin allocates, which re-solves and commits only if the result still matches
+what they were shown.
+_Avoid_: draft allocation (that is one of its seats), speculative allocation,
+provisional rota, preview

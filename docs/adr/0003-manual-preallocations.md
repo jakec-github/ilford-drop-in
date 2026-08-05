@@ -1,6 +1,13 @@
 # Manual preallocations: an add-only layer over config
 
-Status: accepted
+Status: accepted; partly superseded by [ADR 0008](0008-draft-allocations.md)
+and [ADR 0006](0006-domain-settings-in-the-app.md)
+
+> Config Preallocations no longer exist (ADR 0006), so the two-source union and
+> the rule that config is authoritative are gone: there is one kind of
+> Preallocation and an admin may remove any of them. Add-only survives — there
+> is still no "forbid" primitive, and ADR 0008 records why one was rejected
+> again when Draft Rota Allocations made the want for it obvious.
 
 Preallocation — pinning a person to a shift so the allocator must place them —
 already existed, but only as a property of a **Rota Override** (a config
