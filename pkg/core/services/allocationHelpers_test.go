@@ -45,9 +45,26 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 	return shifts
 }
 
+// testRotaDefaultsStore answers with the settings a configured drop-in has —
+// the evening session the real one runs — unless a test sets rotaDefaults to
+// say otherwise, which is how the settings-are-incomplete cases are written.
+type testRotaDefaultsStore struct {
+	rotaDefaults *db.RotaDefaults
+}
+
+func (s testRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefaults, error) {
+	if s.rotaDefaults != nil {
+		return *s.rotaDefaults, nil
+	}
+	return db.RotaDefaults{
+		ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Europe/London",
+	}, nil
+}
+
 // mockAllocateRotaStore implements AllocateRotaStore for testing
 type mockAllocateRotaStore struct {
 	testRoleStore
+	testRotaDefaultsStore
 
 	rotations                  []db.Rotation
 	shifts                     []db.Shift

@@ -49,6 +49,55 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 	}, nil
 }
 
+// checkSettingsAllowAllocation refuses when the drop-in's settings are too
+// incomplete to allocate against, naming what is missing.
+//
+// This is where the rule from ADR 0006 is enforced: incomplete settings block
+// allocation and **nothing else**. The rota still renders, availability still
+// works, and the calendar feed still answers — because a value nobody has
+// filled in yet is the ordinary first state of a deployment, not a fault, and
+// the site should not fall over on it. Allocation is the exception because it
+// is the one act that turns the settings into a rota people are told to turn up
+// for: a rota allocated against times nobody has chosen is one nobody can be
+// given the hours of.
+//
+// It reads the settings itself rather than taking them, so a caller cannot
+// allocate by forgetting to check.
+func checkSettingsAllowAllocation(ctx context.Context, store RotaDefaultsStore) error {
+	defaults, err := RotaDefaults(ctx, store)
+	if err != nil {
+		return err
+	}
+
+	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
+		return wrapf(ErrInvalidInput,
+			"the drop-in's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
+			joinWithAnd(missing), plural(len(missing), "has", "have"))
+	}
+
+	return nil
+}
+
+// joinWithAnd lists what is missing the way a sentence does, so the refusal
+// reads as a sentence rather than as a dump of field names.
+func joinWithAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+	}
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // ShiftTimeParams is the shift-time settings as an admin states them: a start,
 // an end and the zone they are read in. All three together, because they are
 // one form and one idea — a start with no end describes nothing.
