@@ -21,14 +21,13 @@ gmailSender: 'dev@example.com'
 # golden template git worktrees clone from, and Postgres refuses to clone a
 # database with a connection open on it. scripts/dev-stack.sh creates this one
 # if it is missing; migrations run on connect. The rota is still empty — the
-# only thing seeded is the Roles, which the server does in dev mode
-# (internal/devmode) because they are rows now rather than a key in this file.
+# only things seeded are the Roles and the Rota Defaults, which the server does
+# in dev mode (internal/devmode) because they are rows now rather than keys in
+# this file.
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslmode=disable'
 
 maxAllocationFrequency: 0.34
 defaultShiftSize: 4
-shiftStartTime: '19:30'
-shiftEndTime: '21:30'
 requiresMale: true
 
 server:

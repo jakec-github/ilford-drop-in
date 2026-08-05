@@ -102,6 +102,16 @@ func run(env string, portOverride int) error {
 			logger.Info("DEV MODE: seeded roles", zap.Int("count", seeded))
 		}
 
+		// Same reason as the Roles: nothing else sets them, and a dev stack
+		// that cannot allocate a rota is not the usable app it promises.
+		seededDefaults, err := devmode.SeedRotaDefaults(ctx, database)
+		if err != nil {
+			return fmt.Errorf("failed to seed dev rota defaults: %w", err)
+		}
+		if seededDefaults {
+			logger.Info("DEV MODE: seeded rota defaults")
+		}
+
 		syncVolunteers = func(ctx context.Context) error {
 			roles, err := services.RoleTable(ctx, database)
 			if err != nil {

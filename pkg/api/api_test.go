@@ -463,10 +463,7 @@ var apiTestRotaDefaults = db.RotaDefaults{
 	ShiftTimezone:  "Europe/London",
 }
 
-var apiTestCfg = &config.Config{
-	ShiftStartTime: "19:30",
-	ShiftEndTime:   "21:30",
-}
+var apiTestCfg = &config.Config{}
 
 func testVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{

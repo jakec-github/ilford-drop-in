@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
@@ -98,39 +97,13 @@ type Config struct {
 	// than because anyone will.
 	RequiresMale     bool           `yaml:"requiresMale"`
 	DefaultShiftSize int            `yaml:"defaultShiftSize" validate:"required,min=1"`
-	ShiftStartTime   string         `yaml:"shiftStartTime" validate:"required,datetime=15:04"`
-	ShiftEndTime     string         `yaml:"shiftEndTime" validate:"required,datetime=15:04"`
-	ShiftTimezone    string         `yaml:"shiftTimezone,omitempty" validate:"omitempty,timezone"`
 	Server           *ServerConfig  `yaml:"server,omitempty"`
 	DevMode          *DevModeConfig `yaml:"devMode,omitempty"`
-}
-
-// DefaultShiftTimezone is used when shiftTimezone is not set in the config
-const DefaultShiftTimezone = "Europe/London"
-
-// ShiftTimes returns the absolute start and end times of the shift on the
-// given date ("2006-01-02"), interpreted in the configured timezone.
-func (c *Config) ShiftTimes(dateStr string) (start, end time.Time, err error) {
-	tz := c.ShiftTimezone
-	if tz == "" {
-		tz = DefaultShiftTimezone
-	}
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("failed to load shift timezone %q: %w", tz, err)
-	}
-
-	start, err = time.ParseInLocation("2006-01-02 15:04", dateStr+" "+c.ShiftStartTime, loc)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse shift start for %q: %w", dateStr, err)
-	}
-
-	end, err = time.ParseInLocation("2006-01-02 15:04", dateStr+" "+c.ShiftEndTime, loc)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse shift end for %q: %w", dateStr, err)
-	}
-
-	return start, end, nil
+	// shiftStartTime, shiftEndTime and shiftTimezone used to live here. They
+	// are Rota Defaults now, edited on the Settings screen (ADR 0006, #128):
+	// when the drop-in runs is an admin's decision, not an operator's, and it
+	// should not take a redeploy. A config file still carrying them warns and
+	// is otherwise ignored, like any key this build does not know.
 }
 
 var validate *validator.Validate

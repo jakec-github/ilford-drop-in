@@ -159,15 +159,12 @@ maxAllocationFrequency: 0.34                  # >0 and ≤1: max share of shifts
 defaultShiftSize: 4                           # volunteers per shift (excluding team lead)
 requiresMale: true                            # every open shift needs a male allocated, or a seat left open
 
-# The jobs volunteers hold are NOT configured here. Roles are rows in the
-# database (ADR 0006), created by the app rather than by this file. A `roles:`
+# Neither the jobs volunteers hold nor when the drop-in runs are configured
+# here. Roles and Rota Defaults — the default shift start, end and timezone —
+# are rows in the database (ADR 0006), set on the Settings screen rather than in
+# this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:` or `shiftTimezone:`
 # key left over from an older config is ignored with a warning — see "Creating
 # the Roles" below.
-
-# Shift times (24h HH:MM)
-shiftStartTime: '19:30'
-shiftEndTime: '21:30'
-shiftTimezone: 'Europe/London'               # optional; defaults to Europe/London
 
 # HTTP server (required to run the web server)
 server:
@@ -232,6 +229,20 @@ references one can dangle. Renaming one is allowed, but the roster names Roles
 by string, so the sheet needs the same edit; the server warns on every sync
 about a Role nobody holds and a roster value it does not know, which is what a
 half-finished rename looks like.
+
+### Setting the shift times
+
+When the drop-in runs is set on the same screen, under **Rota Defaults**: a
+start time, an end time and the timezone they are read in. Like the Roles, no
+migration seeds them.
+
+Until they are set, allocation refuses and names what is missing. Nothing else
+is gated: the rota renders without an hour against each date, and a volunteer's
+calendar subscription shows each shift as an all-day event until the times
+arrive.
+
+A shift has to end the evening it starts — a session running past midnight is
+refused rather than stored as one ending before it began.
 
 A key the app does not recognise — a typo, or an option since renamed — is
 warned about by name and then ignored. It does not fail the load: the same file

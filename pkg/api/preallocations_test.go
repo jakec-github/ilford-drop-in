@@ -260,8 +260,6 @@ func TestListPreallocationsEndpoint_ConfigPins(t *testing.T) {
 		{ID: "pin-1", ShiftID: "s2", Role: "Service volunteer", VolunteerID: "bob"},
 	}
 	cfg := &config.Config{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
 		RotaOverrides: []config.RotaOverride{{
 			RRule: "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=11",
 			Preallocations: []config.Preallocation{

@@ -8,13 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-var calendarTestCfg = &config.Config{
+// The settings a configured drop-in has: the evening session the real one runs.
+var calendarTestDefaults = model.RotaDefaults{
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
+	ShiftTimezone:  "Europe/London",
 }
 
 func calendarTestVolunteer() model.Volunteer {
@@ -31,7 +32,7 @@ func TestBuildVolunteerCalendar_Basic(t *testing.T) {
 		},
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "BEGIN:VCALENDAR")
@@ -64,7 +65,7 @@ func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
 		{Date: "2026-07-13"}, // BST (UTC+1)
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "DTSTART:20260112T193000Z")
@@ -82,13 +83,13 @@ func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
 		},
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (Team lead)")
 
 	// The same shift from Bob's perspective is not a team-lead event
 	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Roles: []string{"Service volunteer"}}
-	out, err = BuildVolunteerCalendar(shifts, bob, testRoles, calendarTestCfg)
+	out, err = BuildVolunteerCalendar(shifts, bob, testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 	assert.NotContains(t, out, "(Team lead)")
 	assert.NotContains(t, out, "(Service volunteer)",
@@ -101,7 +102,7 @@ func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {
 		{Date: "2026-01-12", AlterationCount: 3, LastChanged: changed},
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 	assert.Contains(t, out, "SEQUENCE:3")
 	assert.Contains(t, out, "DTSTAMP:20260102T103000Z")
@@ -113,16 +114,16 @@ func TestBuildVolunteerCalendar_StableAcrossRenders(t *testing.T) {
 		{Date: "2026-01-19", AlterationCount: 1, LastChanged: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)},
 	}
 
-	first, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	first, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
-	second, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	second, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 
 	assert.Equal(t, first, second, "repeated renders must be byte-identical so polling clients see no phantom changes")
 }
 
 func TestBuildVolunteerCalendar_EmptyShifts(t *testing.T) {
-	out, err := BuildVolunteerCalendar(nil, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	out, err := BuildVolunteerCalendar(nil, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 	assert.Contains(t, out, "BEGIN:VCALENDAR")
 	assert.NotContains(t, out, "BEGIN:VEVENT")
@@ -131,6 +132,39 @@ func TestBuildVolunteerCalendar_EmptyShifts(t *testing.T) {
 
 func TestBuildVolunteerCalendar_InvalidShiftDate(t *testing.T) {
 	shifts := []Shift{{Date: "not-a-date"}}
-	_, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
+	_, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	assert.Error(t, err)
+}
+
+// A drop-in whose shift times an admin has not set yet still has a calendar.
+// The day is known and the hours are not, so each shift is an all-day event —
+// incomplete settings block allocation and nothing else (ADR 0006), and a
+// subscription that has already been added to somebody's phone is not something
+// to break while an admin fills a form in.
+func TestBuildVolunteerCalendar_ShiftTimesNotSet(t *testing.T) {
+	shifts := []Shift{{Date: "2026-01-12"}}
+
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, model.RotaDefaults{})
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "UID:alice-2026-01-12@ilford-drop-in")
+	assert.Contains(t, out, "DTSTART;VALUE=DATE:20260112")
+	// DTEND is exclusive for an all-day event, so the day after is what makes
+	// it one day long.
+	assert.Contains(t, out, "DTEND;VALUE=DATE:20260113")
+	assert.NotContains(t, out, "DTSTART:2026")
+	// The zone still falls back, so a client is not left guessing.
+	assert.Contains(t, out, "X-WR-TIMEZONE:Europe/London")
+}
+
+// Half-filled settings are as unusable as empty ones: a start with no end
+// describes nothing, so the shift is drawn as a day rather than as a shift
+// running until midnight.
+func TestBuildVolunteerCalendar_HalfSetShiftTimes(t *testing.T) {
+	shifts := []Shift{{Date: "2026-01-12"}}
+
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles,
+		model.RotaDefaults{ShiftStartTime: "19:30"})
+	require.NoError(t, err)
+	assert.Contains(t, out, "DTSTART;VALUE=DATE:20260112")
 }
