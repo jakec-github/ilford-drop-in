@@ -1,12 +1,5 @@
 -- Closed becomes a field on the Shift (issue #132, docs/allocation_journey_plan.md).
 --
--- It shares the 013 ordinal with 013_role.sql, which landed on main while this
--- was in review. The two are independent and the runner keys on the filename,
--- so both apply, in name order. Renaming this one is what would break things:
--- the backfill below has to be run against production from a commit predating
--- that merge, which records *this* filename in schema_migrations, and a renamed
--- copy would then re-run the ALTER and fail the next deploy.
---
 -- ADR 0001 deliberately left `closed` config-derived — an rrule re-evaluated on
 -- every read — and said not to snapshot it without also building the close/open
 -- command. That command exists now, so the flag moves onto the row.
@@ -20,6 +13,6 @@ ALTER TABLE shift ADD COLUMN closed BOOLEAN NOT NULL DEFAULT FALSE;
 -- The existing shifts are NOT backfilled here. Which of them the config's
 -- closed rrules matched could not be worked out in SQL — it needed the rrule
 -- library and the config file — so it was done by `cli backfillShiftClosed`,
--- run once against each environment from the commit that added it, and deleted
--- at the end of the same PR along with the config key it read. It is in git
+-- run once against each environment and then deleted along with the config key
+-- it read, in the commit after the one that reintroduced it. It is in git
 -- history if an environment is ever restored from a backup predating this.
