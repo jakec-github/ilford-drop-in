@@ -43,19 +43,34 @@ func groupPartners(volunteers []model.Volunteer, v model.Volunteer, matching fun
 	return partners
 }
 
-// partnerNames names a set of group partners for display.
-func partnerNames(partners []model.Volunteer) []string {
+// partnerNames names a set of group partners for display, with whichever of the
+// two namings below suits the screen they are going to.
+func partnerNames(partners []model.Volunteer, naming func(model.Volunteer) string) []string {
 	names := make([]string, 0, len(partners))
 	for _, p := range partners {
-		names = append(names, volunteerName(p))
+		names = append(names, naming(p))
 	}
 	return names
 }
 
-// volunteerName is the full name — first plus last — which is how both the
-// volunteer's form and the admin roster address someone. Not the display name:
-// a wrong name is how a volunteer notices a forwarded link, and the shortest
-// unambiguous form is a weaker signal than the whole thing.
+// volunteerName is the full name — first plus last — which is how anything
+// addressed to the volunteer themselves names them: their form, and the emails
+// carrying their link. A wrong name is how somebody notices a forwarded link,
+// and the shortest unambiguous form is a weaker signal than the whole thing.
 func volunteerName(v model.Volunteer) string {
 	return strings.TrimSpace(v.FirstName + " " + v.LastName)
+}
+
+// displayName is the shortest form that still identifies someone — how the rota
+// and the volunteer list name them, and so how the admin's view of a round does
+// too. An admin reading a grid of thirty rows already knows who these people
+// are; the surname is width spent on nothing.
+//
+// Falls back to the full name, which is also what the sheet client falls back to
+// when a first name is not unique enough to stand alone.
+func displayName(v model.Volunteer) string {
+	if v.DisplayName == "" {
+		return volunteerName(v)
+	}
+	return v.DisplayName
 }

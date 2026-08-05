@@ -311,7 +311,7 @@ func TestRoundGroupsTheRoster(t *testing.T) {
 	require.Len(t, updated.Groups, 2, "the pair is one group, Aaliyah is a group of one")
 
 	smiths := groupOf(t, updated, "smiths")
-	assert.Equal(t, "Emma Williams & Michael Smith", smiths.Name)
+	assert.Equal(t, "Emma & Michael", smiths.Name)
 	assert.True(t, smiths.Replied)
 	assert.Equal(t, []string{"shift-1"}, smiths.AvailableShiftIDs)
 	require.Len(t, smiths.Members, 2)
@@ -320,7 +320,7 @@ func TestRoundGroupsTheRoster(t *testing.T) {
 	assert.False(t, aaliyah.Replied, "silence is not an answer")
 	assert.Empty(t, aaliyah.AvailableShiftIDs)
 	require.Len(t, aaliyah.Members, 1)
-	assert.Equal(t, "Aaliyah Khan", aaliyah.Members[0].VolunteerName)
+	assert.Equal(t, "Aaliyah", aaliyah.Members[0].VolunteerName)
 	assert.NotEmpty(t, aaliyah.Members[0].Token, "every member keeps their own link")
 }
 
@@ -350,4 +350,38 @@ func TestRoundEntriesCarryTheRolesTheyHold(t *testing.T) {
 	volunteers.volunteers = volunteers.volunteers[:2]
 	updated := readRound(t, store, volunteers, cfg)
 	assert.Empty(t, groupOf(t, updated, "individual:aaliyah").Members[0].Roles)
+}
+
+// TestRoundNamesPeopleAsTheRotaDoes: the round is an admin screen, and every
+// other admin screen — the rota, the volunteer list — calls someone by their
+// display name. A grid of full names is a grid whose first column is wider than
+// the dates it exists to show.
+//
+// The volunteer's own form and the emails keep the full name: a wrong name is
+// how somebody notices a forwarded link, and the shortest unambiguous form is a
+// weaker signal than the whole thing.
+func TestRoundNamesPeopleAsTheRotaDoes(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	round := mintRound(t, store, volunteers, cfg)
+
+	assert.Equal(t, "Emma & Michael", groupOf(t, round, "smiths").Name)
+	assert.Equal(t, "Aaliyah", groupOf(t, round, "individual:aaliyah").Members[0].VolunteerName)
+
+	// Covered-by names the partner who answered, in the same breath as the
+	// members around it, so it is named the same way.
+	answer(t, store, volunteers, cfg, round, "michael", "shift-1")
+	updated := readRound(t, store, volunteers, cfg)
+	for _, member := range groupOf(t, updated, "smiths").Members {
+		if member.VolunteerName == "Emma" {
+			assert.Equal(t, []string{"Michael"}, member.CoveredBy)
+		}
+	}
+
+	// The form still says the whole thing.
+	form, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(),
+		tokenFor(t, round, "michael"))
+	require.NoError(t, err)
+	assert.Equal(t, "Michael Smith", form.VolunteerName)
+	assert.Equal(t, []string{"Emma Williams"}, form.GroupMembers)
 }
