@@ -11,7 +11,8 @@
 ALTER TABLE shift ADD COLUMN closed BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- The existing shifts are NOT backfilled here. Which of them the config's
--- closed rrules match cannot be worked out in SQL — it needs the rrule library
--- and the config file — so it is done by `cli backfill-shift-closed`, run once
--- against each environment before the config field is deleted. Every shift is
--- open until it has run.
+-- closed rrules matched could not be worked out in SQL — it needed the rrule
+-- library and the config file — so it was done by `cli backfillShiftClosed`,
+-- run once against each environment from the commit that added it, and deleted
+-- at the end of the same PR along with the config key it read. It is in git
+-- history if an environment is ever restored from a backup predating this.

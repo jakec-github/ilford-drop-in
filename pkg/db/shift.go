@@ -152,14 +152,6 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 	return &s, nil
 }
 
-// SetShiftClosed writes a shift's closed flag outside any rota lock and without
-// the frozen-after-allocation guard. It exists for the one-off closed backfill,
-// which has to stamp allocated rotas too; every other route to the flag goes
-// through WithRotaShiftLock and dies with the backfill.
-func (d *DB) SetShiftClosed(ctx context.Context, id string, closed bool) (bool, error) {
-	return setShiftClosed(ctx, d.pool, id, closed)
-}
-
 // setShiftClosed writes a shift's closed flag, reporting whether a row matched.
 // It carries no freeze check of its own: the caller holds the rota's row lock
 // and has already established that the rota is unallocated.
