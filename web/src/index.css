@@ -6,9 +6,29 @@
   --accent: #aa3bff;
   --accent-bg: rgba(170, 59, 255, 0.1);
 
-  /* Chip role colours: the colour a person wears on a shift. */
-  --role-lead: #aa3bff;
-  --role-volunteer: #0b8a6f;
+  /* The Role palette: the colour a person wears on a shift. A Role names one
+     of these tokens in the server's config, and the API reports the token —
+     what it looks like is this file's decision, in both themes. Every value is
+     verified at 4.5:1 against the background it is drawn on, which is the bar
+     for normal text: role chips are 13px/600, pinned chips 12px, roster tags
+     11px, so none of them qualify as large. */
+  --role-violet: #a233f5;
+  --role-teal: #0a8168;
+  --role-blue: #1d68c7;
+  --role-indigo: #4f46e5;
+  --role-cyan: #0e7490;
+  --role-green: #3f7d1f;
+  --role-amber: #8a6100;
+  --role-orange: #b4400c;
+  --role-rose: #c02a51;
+  --role-pink: #b01f8f;
+  --role-brown: #7c5237;
+  --role-slate: #53616f;
+
+  /* Green for "this went well" — a saved form, a synced roster, an answered
+     shift. Nothing to do with the Role palette, which is why it has its own
+     name: a Role recoloured must not repaint every success message. */
+  --positive: #0a8168;
 
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
 
@@ -27,9 +47,65 @@
     --border: #2e303a;
     --accent: #c084fc;
     --accent-bg: rgba(192, 132, 252, 0.15);
-    --role-lead: #c084fc;
-    --role-volunteer: #2dd4a7;
+
+    --role-violet: #c084fc;
+    --role-teal: #2dd4a7;
+    --role-blue: #7cb2f8;
+    --role-indigo: #a5b4fc;
+    --role-cyan: #4dd6f0;
+    --role-green: #9bd66a;
+    --role-amber: #f0b445;
+    --role-orange: #fb923c;
+    --role-rose: #fb7196;
+    --role-pink: #f472c8;
+    --role-brown: #d1a184;
+    --role-slate: #b6bec9;
+
+    --positive: #2dd4a7;
   }
+}
+
+/* Role colours reach an element as a data attribute, because the token is
+   configuration: the frontend cannot know the Role names, so it cannot have a
+   rule per Role. It can have one per token, and the closed palette is what
+   makes that a fixed list. Setting --role-colour rather than --chip directly
+   leaves each component free to say what it does with it, and to have its own
+   answer for a Role the server has not named a colour for. */
+[data-role-colour="violet"] {
+  --role-colour: var(--role-violet);
+}
+[data-role-colour="teal"] {
+  --role-colour: var(--role-teal);
+}
+[data-role-colour="blue"] {
+  --role-colour: var(--role-blue);
+}
+[data-role-colour="indigo"] {
+  --role-colour: var(--role-indigo);
+}
+[data-role-colour="cyan"] {
+  --role-colour: var(--role-cyan);
+}
+[data-role-colour="green"] {
+  --role-colour: var(--role-green);
+}
+[data-role-colour="amber"] {
+  --role-colour: var(--role-amber);
+}
+[data-role-colour="orange"] {
+  --role-colour: var(--role-orange);
+}
+[data-role-colour="rose"] {
+  --role-colour: var(--role-rose);
+}
+[data-role-colour="pink"] {
+  --role-colour: var(--role-pink);
+}
+[data-role-colour="brown"] {
+  --role-colour: var(--role-brown);
+}
+[data-role-colour="slate"] {
+  --role-colour: var(--role-slate);
 }
 
 body {

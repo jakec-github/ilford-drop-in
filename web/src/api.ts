@@ -4,18 +4,20 @@ import type {
   AvailabilityLinkFailure,
   AvailabilityRound,
   AvailabilitySend,
+  ConfiguredRole,
   DefinedRota,
   NewPreallocation,
   PersonRef,
   Preallocation,
   PreallocationSource,
+  RoleColour,
   RotaChange,
   RotaShift,
   SendMode,
   SendOutcome,
   Volunteer,
 } from "./types";
-import { SERVICE_VOLUNTEER_ROLE } from "./types";
+import { ROLE_COLOURS, SERVICE_VOLUNTEER_ROLE } from "./types";
 
 interface ApiAssignee {
   volunteerId?: string;
@@ -132,6 +134,35 @@ export async function fetchRota(): Promise<RotaShift[]> {
   }
   const data = (await res.json()) as ListShiftsResponse;
   return data.shifts.map(toRotaShift);
+}
+
+interface ApiRole {
+  name: string;
+  colour: string;
+}
+
+interface ListRolesResponse {
+  roles: ApiRole[];
+}
+
+// fetchRoles returns the configured Roles, highest priority first. Public, like
+// the rota: the chips it colours are on a page nobody has to log in to see.
+//
+// An unrecognised colour is dropped rather than passed through — a token this
+// build has no rule for would set a chip's colour to nothing at all, where the
+// default at least renders. That can only happen against a newer server, which
+// is exactly when falling back quietly is worth more than being precise.
+export async function fetchRoles(): Promise<ConfiguredRole[]> {
+  const res = await fetch("/api/roles");
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load roles"));
+  }
+  const data = (await res.json()) as ListRolesResponse;
+  return data.roles
+    .filter((r): r is { name: string; colour: RoleColour } =>
+      (ROLE_COLOURS as readonly string[]).includes(r.colour),
+    )
+    .map((r) => ({ name: r.name, colour: r.colour }));
 }
 
 interface ApiPreallocation {

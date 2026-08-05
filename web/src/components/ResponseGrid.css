@@ -125,7 +125,7 @@ thead .grid-name-cell,
 }
 
 .grid-num--ok {
-  color: var(--role-volunteer);
+  color: var(--positive);
 }
 
 .grid-num--short {
@@ -137,7 +137,7 @@ thead .grid-name-cell,
    colour; unavailable is a dot rather than a cross, so a row of them reads as
    an answered "no" without shouting. */
 .grid-cell--yes {
-  color: var(--role-volunteer);
+  color: var(--positive);
 }
 
 .grid-row + .grid-row th,
@@ -190,8 +190,8 @@ a.grid-name:hover {
    reply" stays neutral: on a fresh round that is every row, and colouring it
    would turn the whole list red for a round nobody has had time to answer. */
 .grid-tag--replied {
-  border-color: var(--role-volunteer);
-  color: var(--role-volunteer);
+  border-color: var(--positive);
+  color: var(--positive);
 }
 
 /* The disclosure: one person's links, spanning the whole width under their

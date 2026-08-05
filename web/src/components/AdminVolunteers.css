@@ -27,7 +27,7 @@
 }
 
 .volunteers-sync-caption--ok {
-  color: var(--role-volunteer);
+  color: var(--positive);
 }
 
 .volunteers-sync-caption--error {
@@ -132,14 +132,13 @@
   white-space: nowrap;
 }
 
-/* Team leads take the rota's lead colour, so a lead looks like a lead wherever
-   they appear. Every other Role stays neutral: the uncapped one is most of the
-   roster, so colouring it too would tell the eye nothing and drown out the
-   leads. Every tag is still labelled — the colour is emphasis, not information,
-   which is why a Role added to the config needs no rule of its own. */
-.roster-tag--role[data-role="Team lead"] {
-  border-color: var(--role-lead);
-  color: var(--role-lead);
+/* A Role tag wears the Role's configured colour, so a lead looks like a lead
+   wherever they appear and two Roles never read as the same job. The colour is
+   still emphasis rather than information — every tag is labelled — so a Role
+   whose colour has not arrived falls back to the neutral tag it was. */
+.roster-tag--role {
+  border-color: var(--role-colour, var(--border));
+  color: var(--role-colour, var(--text));
 }
 
 /* Set in caps so it reads as a status rather than as another attribute of the
