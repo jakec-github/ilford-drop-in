@@ -32,6 +32,11 @@ type availabilityEntryResponse struct {
 	SubmittedAt       string   `json:"submittedAt,omitempty"`
 	AvailableShiftIDs []string `json:"availableShiftIds"`
 	CoveredBy         []string `json:"coveredBy,omitempty"`
+	// The Roles they hold on the roster, in priority order — what makes a round
+	// filterable by Role without a second request. Always a list, never null:
+	// a volunteer the roster has dropped holds none, and that is a fact about
+	// them rather than a missing field.
+	Roles []string `json:"roles"`
 }
 
 // availabilityGroupResponse is a round at the grain allocation happens at. The
@@ -249,6 +254,7 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 				Replied:           e.Replied,
 				AvailableShiftIDs: e.AvailableShiftIDs,
 				CoveredBy:         e.CoveredBy,
+				Roles:             heldRoles(e.Roles),
 			}
 			if !e.SubmittedAt.IsZero() {
 				member.SubmittedAt = e.SubmittedAt.UTC().Format(time.RFC3339)

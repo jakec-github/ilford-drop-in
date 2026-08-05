@@ -64,6 +64,11 @@ type AvailabilityEntry struct {
 	// replied "none of these", which Replied still reports as an answer.
 	AvailableShiftIDs []string
 	CoveredBy         []string
+	// The Roles they hold on the roster, in priority order. Not a fact about the
+	// round — it is carried here so a reader can ask "which of these people
+	// could lead" without fetching the roster and joining it back. Empty for a
+	// volunteer the roster no longer knows, who still holds a working link.
+	Roles []string
 }
 
 // AvailabilityRound is a rota's round: how each of its shifts is looking, and
@@ -441,6 +446,7 @@ func buildRound(
 
 		if volunteer, known := findVolunteer(volunteers, r.VolunteerID); known {
 			entry.VolunteerName = volunteerName(volunteer)
+			entry.Roles = volunteer.Roles
 			if !hasReplied {
 				entry.CoveredBy = partnerNames(groupPartners(volunteers, volunteer, func(other model.Volunteer) bool {
 					return replied[other.ID]

@@ -323,3 +323,31 @@ func TestRoundGroupsTheRoster(t *testing.T) {
 	assert.Equal(t, "Aaliyah Khan", aaliyah.Members[0].VolunteerName)
 	assert.NotEmpty(t, aaliyah.Members[0].Token, "every member keeps their own link")
 }
+
+// TestRoundEntriesCarryTheRolesTheyHold: the responses grid filters its rows by
+// Role, and a Role is a fact about the roster, not about the round. Carrying it
+// on the entry is what keeps the server the authority on who holds what — the
+// alternative is every client fetching the roster and joining it back.
+//
+// A volunteer no longer on the roster holds no Roles here, which is the same
+// answer allocation gives: there is nobody to ask.
+func TestRoundEntriesCarryTheRolesTheyHold(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	round := mintRound(t, store, volunteers, cfg)
+
+	aaliyah := groupOf(t, round, "individual:aaliyah")
+	assert.Equal(t, []string{"Team lead", "Service volunteer"}, aaliyah.Members[0].Roles,
+		"in the roster's own order, which is priority order")
+
+	smiths := groupOf(t, round, "smiths")
+	for _, member := range smiths.Members {
+		assert.Equal(t, []string{"Service volunteer"}, member.Roles)
+	}
+
+	// Dropping someone from the roster mid-round leaves their link working and
+	// their row in place, so the round must still build — with no Roles on it.
+	volunteers.volunteers = volunteers.volunteers[:2]
+	updated := readRound(t, store, volunteers, cfg)
+	assert.Empty(t, groupOf(t, updated, "individual:aaliyah").Members[0].Roles)
+}
