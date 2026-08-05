@@ -22,10 +22,7 @@ export interface AdminTab {
 // so a new admin tool is one entry here plus its panel component.
 export const ADMIN_TABS: AdminTab[] = [
   { path: "/admin/volunteers", label: "Volunteers", Panel: AdminVolunteers },
-  // The path stays /admin/config: it is what the tab has answered to since the
-  // admin area had one, and renaming it would break every link anybody has to
-  // it for the sake of a word.
-  { path: "/admin/config", label: "Settings", Panel: AdminSettings },
+  { path: "/admin/settings", label: "Settings", Panel: AdminSettings },
   {
     path: "/admin/availability",
     label: "Availability",
