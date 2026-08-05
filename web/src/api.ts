@@ -145,7 +145,7 @@ interface ListRolesResponse {
   roles: ApiRole[];
 }
 
-// fetchRoles returns the configured Roles, highest priority first. Public, like
+// fetchRoles returns the Roles the drop-in offers, highest priority first. Public, like
 // the rota: the chips it colours are on a page nobody has to log in to see.
 //
 // An unrecognised colour is dropped rather than passed through — a token this

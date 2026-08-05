@@ -214,10 +214,16 @@ verdict that something works.
 
 ## What you can actually see
 
-The database starts **empty**. Shifts you can seed yourself (see
-[Define a rota](#define-a-rota)) and so can availability answers (see
-[Collect availability](#collect-availability)); allocation itself you cannot,
-since the web server does not expose it. So:
+The database starts **empty** but for its Roles. Roles are rows rather than
+config (ADR 0006) and nothing else creates them yet, so the server seeds Team
+lead and Service volunteer on first start in dev mode — the two the sample
+roster in `test_data/volunteers.csv` names, without which nobody holds anything.
+It is a seed and not a reset: edit or add a Role by hand and it survives a
+restart.
+
+Shifts you can seed yourself (see [Define a rota](#define-a-rota)) and so can
+availability answers (see [Collect availability](#collect-availability));
+allocation itself you cannot, since the web server does not expose it. So:
 
 | Works | |
 | --- | --- |

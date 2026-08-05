@@ -159,28 +159,10 @@ maxAllocationFrequency: 0.34                  # >0 and ≤1: max share of shifts
 defaultShiftSize: 4                           # volunteers per shift (excluding team lead)
 requiresMale: true                            # every open shift needs a male allocated, or a seat left open
 
-# The jobs volunteers hold. Config is authoritative: these names are what the
-# values in the roster's 'Roles' column and every preallocation are matched
-# against, and they are the options the column's dropdown should offer.
-# max is the ceiling — how many of that role a shift may ever hold; omit it for
-# no ceiling. Exactly one role must be uncapped, and it is that role's seats
-# defaultShiftSize buys. priority orders the filling of seats.
-# colour is what the role is drawn in on the rota and the roster. It names one
-# of twelve palette tokens rather than a colour value, because the app owns
-# what each looks like in light and dark mode:
-#   violet  teal  blue  indigo  cyan  green
-#   amber   orange  rose  pink   brown  slate
-# Omit it and the role gets slate, so an uncoloured role looks unstyled rather
-# than borrowing a colour somebody chose deliberately. Give every role its own
-# token: two roles sharing one is legal and unreadable.
-roles:
-  - name: 'Team lead'
-    max: 1
-    priority: 1
-    colour: 'violet'
-  - name: 'Service volunteer'
-    priority: 2
-    colour: 'teal'
+# The jobs volunteers hold are NOT configured here. Roles are rows in the
+# database (ADR 0006), created by the app rather than by this file. A `roles:`
+# key left over from an older config is ignored with a warning — see "Creating
+# the Roles" below.
 
 # Shift times (24h HH:MM)
 shiftStartTime: '19:30'
@@ -198,7 +180,8 @@ server:
 rotaOverrides:
   - rrule: 'FREQ=MONTHLY;BYDAY=3SU'            # third Sunday monthly
     # Each preallocation pins one volunteer (volunteerID) or one custom entry
-    # (custom) to a role named above.
+    # (custom) to a role. The name has to match a Role in the database; this
+    # file cannot check that, so allocation is where a typo shows up.
     preallocations:
       - custom: 'Custom allocation'
         role: 'Service volunteer'
@@ -208,6 +191,43 @@ rotaOverrides:
 The `test` suffix in the filename matches the `-e test` / `-env test` flag you
 pass at runtime. Config files are also searched for in your home directory if
 not found in the repo root.
+
+### Creating the Roles
+
+Roles live in the database, and no migration seeds them: a fresh database has
+none, which means nobody on the roster holds a Role and allocation refuses to
+run. The server says so at startup.
+
+The credential-free dev stack (`scripts/dev-stack.sh start`) seeds its own, so
+this only applies to a database you point a `test` or `prod` config at. Until
+the settings screen lands, create them with SQL — this is the pair the app
+shipped with:
+
+```sql
+INSERT INTO role (id, name, max, priority, colour) VALUES
+  (gen_random_uuid(), 'Team lead', 1, 1, 'violet'),
+  (gen_random_uuid(), 'Service volunteer', NULL, 2, 'teal');
+```
+
+The names have to match the values in the roster sheet's `Roles` column
+exactly, and should be the options that column's dropdown offers. `max` is the
+ceiling — how many of that Role a shift may ever hold; `NULL` is no ceiling, and
+it is the uncapped Role's seats that `defaultShiftSize` buys. `priority` orders
+the filling of seats. `colour` names one of twelve palette tokens rather than a
+colour value, because the app owns what each looks like in light and dark mode:
+
+```
+violet  teal    blue  indigo  cyan   green
+amber   orange  rose  pink    brown  slate
+```
+
+Give every Role its own token: two Roles sharing one is legal and unreadable.
+
+A Role is permanent — there is no delete and no retire, so nothing that
+references one can dangle. Renaming one is allowed, but the roster names Roles
+by string, so the sheet needs the same edit; the server warns on every sync
+about a Role nobody holds and a roster value it does not know, which is what a
+half-finished rename looks like.
 
 A key the app does not recognise — a typo, or an option since renamed — is
 warned about by name and then ignored. It does not fail the load: the same file
