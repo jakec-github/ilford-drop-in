@@ -1,6 +1,7 @@
 package sheetsclient
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -9,9 +10,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// Expected column names in volunteers sheet. Roles are not among them: they
-// arrive as `<name> - Role` tick columns discovered from the header, so that
-// configuring a new Role needs a new column and no code change.
+// Expected column names in volunteers sheet.
 var volunteerFields = []string{
 	"Unique ID",
 	"First name",
@@ -20,12 +19,15 @@ var volunteerFields = []string{
 	"Sex/Gender",
 	"Email",
 	"Group key",
+	"Roles",
 }
 
-// roleColumnSuffix marks a header cell as a Role tick-box column. The legacy
-// `Role` dropdown does not carry it, so the two can sit side by side while the
-// sheet is migrated.
-const roleColumnSuffix = " - Role"
+// roleSeparator splits the Roles cell. A Sheets multi-select dropdown packs the
+// chips someone picked into one string joined by this, quoting any value that
+// holds the separator or a quotation mark and doubling the quotation marks
+// inside — the CSV rules. heldRoles reads it as such, so a Role name may hold
+// either character and still come back whole.
+const roleSeparator = ','
 
 // noGroupValue is what the Group key dropdown holds for a volunteer in no
 // group. A Sheets dropdown cannot be unset, so `None` is the only way to say
@@ -34,15 +36,6 @@ const roleColumnSuffix = " - Role"
 // artefact — out of the domain entirely. Compared lower-cased and trimmed,
 // since a dropdown's label is not guaranteed to keep its capitalisation.
 const noGroupValue = "none"
-
-// tickValues are the cell contents that count as a ticked box, compared
-// lower-cased and trimmed. A Sheets tick-box writes TRUE; the rest are what
-// people type by hand.
-var tickValues = map[string]bool{
-	"true": true,
-	"yes":  true,
-	"✓":    true,
-}
 
 // ListVolunteers retrieves and parses volunteers from the configured spreadsheet
 func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
@@ -117,11 +110,11 @@ func ComputeDisplayNames(volunteers []model.Volunteer) {
 // Sheets API here, and a CSV export in dev mode (internal/devmode). Both go
 // through this parser so the column contract is defined once.
 //
-// The Roles a volunteer holds come from `<name> - Role` tick columns matched
-// against the configured Roles, so the sheet and the config can drift without
-// the roster failing to load: a column naming a Role config does not have is
-// ignored, and a configured Role with no column is simply held by nobody. Both
-// are warned about, because both are usually a half-finished edit.
+// The Roles a volunteer holds come from one `Roles` cell, whose values are
+// matched against the configured Roles. Config stays authoritative: a value
+// naming a Role config does not have is warned about and skipped rather than
+// failing the roster, because it is usually a half-finished edit and the rest
+// of the cell is still good.
 func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer, error) {
 	if len(raw) < 1 {
 		return nil, fmt.Errorf("no header row found")
@@ -144,8 +137,6 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 		}
 		fieldIndexes[field] = index
 	}
-
-	roleIndexes := findRoleColumns(headerRow, roles)
 
 	// Helper to get field value from row
 	getField := func(field string, row []interface{}) string {
@@ -177,7 +168,7 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 			ID:        getField("Unique ID", row),
 			FirstName: firstName,
 			LastName:  getField("Last name", row),
-			Roles:     heldRoles(row, roles, roleIndexes),
+			Roles:     heldRoles(getField("Roles", row), roles),
 			Status:    getField("Status", row),
 			Gender:    getField("Sex/Gender", row),
 			Email:     getField("Email", row),
@@ -199,58 +190,67 @@ func groupKey(cell string) string {
 	return cell
 }
 
-// findRoleColumns maps each configured Role to the column holding its ticks,
-// warning about either side of a mismatch between the sheet and the config.
-func findRoleColumns(headerRow []interface{}, roles model.Roles) map[string]int {
-	indexes := make(map[string]int)
+// heldRoles reads one volunteer's Roles cell, returning the Roles they hold in
+// priority order — so the first is the one a caller showing a single Role
+// wants, whatever order the chips were picked in. Duplicates collapse for the
+// same reason: the answer is a set.
+func heldRoles(cell string, roles model.Roles) []string {
+	picked := make(map[string]bool)
 
-	for i, cell := range headerRow {
-		header, ok := cell.(string)
-		if !ok {
+	for _, value := range splitRoleCell(cell) {
+		// The dropdown writes no padding, but a hand-typed cell has whatever
+		// someone typed. A Role whose name only differs by its surrounding
+		// space is not a case worth keeping over that.
+		value = strings.TrimSpace(value)
+		if value == "" {
 			continue
 		}
-		header = strings.TrimSpace(header)
-		if !strings.HasSuffix(header, roleColumnSuffix) {
+		if _, known := roles.ByName(value); !known {
+			slog.Warn("volunteer sheet names a Role no configured Role matches; ignoring it",
+				"role", value)
 			continue
 		}
-
-		name := strings.TrimSpace(strings.TrimSuffix(header, roleColumnSuffix))
-		if _, known := roles.ByName(name); !known {
-			slog.Warn("volunteer sheet has a Role column no configured Role matches; ignoring it",
-				"column", header, "role", name)
-			continue
-		}
-		indexes[name] = i
+		picked[value] = true
 	}
 
-	for _, role := range roles.ByPriority() {
-		if _, found := indexes[role.Name]; !found {
-			slog.Warn("configured Role has no column in the volunteer sheet; nobody holds it",
-				"role", role.Name, "expectedColumn", role.Name+roleColumnSuffix)
-		}
-	}
-
-	return indexes
-}
-
-// heldRoles reads one volunteer's ticks, returning the Roles they hold in
-// priority order.
-func heldRoles(row []interface{}, roles model.Roles, roleIndexes map[string]int) []string {
 	var held []string
-
 	for _, role := range roles.ByPriority() {
-		index, found := roleIndexes[role.Name]
-		if !found || index >= len(row) {
-			continue
-		}
-		cell, ok := row[index].(string)
-		if !ok {
-			continue
-		}
-		if tickValues[strings.ToLower(strings.TrimSpace(cell))] {
+		if picked[role.Name] {
 			held = append(held, role.Name)
 		}
 	}
 
 	return held
+}
+
+// splitRoleCell unpacks a multi-select cell into the values it holds. The cell
+// is a single CSV record, so `encoding/csv` is the parser rather than a
+// hand-rolled one: it is the same escaping, and getting quoting subtly wrong is
+// how a Role named `Kitchen, hot food` silently becomes two Roles nobody holds.
+//
+// LazyQuotes because a cell is hand-editable: quoting the dropdown would never
+// have written should cost the values it mangles, not the whole roster. What
+// survives is matched against config anyway, and anything that does not match
+// is warned about there.
+func splitRoleCell(cell string) []string {
+	if strings.TrimSpace(cell) == "" {
+		return nil
+	}
+
+	reader := csv.NewReader(strings.NewReader(cell))
+	reader.Comma = roleSeparator
+	// Sheets is not consistent about a space after the separator, and a quoted
+	// value must still be read as quoted when one is there.
+	reader.TrimLeadingSpace = true
+	reader.LazyQuotes = true
+	reader.FieldsPerRecord = -1
+
+	values, err := reader.Read()
+	if err != nil {
+		slog.Warn("could not read the Roles cell in the volunteer sheet; ignoring it",
+			"cell", cell, "error", err)
+		return nil
+	}
+
+	return values
 }

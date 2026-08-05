@@ -138,6 +138,19 @@ func TestValidate_Roles(t *testing.T) {
 	}
 }
 
+// Nothing in a Role name needs escaping at this end. The roster packs the Roles
+// someone holds into one cell and quotes whatever needs quoting, so a name may
+// hold the separator or a quotation mark and still be read back exactly.
+func TestValidate_RoleNamesMayHoldPunctuation(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Roles = []model.Role{
+		{Name: `Kitchen, hot food`, Max: intPtr(1), Priority: 1},
+		{Name: `The "spare pair"`, Priority: 2},
+	}
+
+	require.NoError(t, Validate(cfg))
+}
+
 // Every preallocation names one subject and one configured Role — the check
 // that stops a typo becoming a pin the solver silently drops.
 func TestValidate_Preallocations(t *testing.T) {
