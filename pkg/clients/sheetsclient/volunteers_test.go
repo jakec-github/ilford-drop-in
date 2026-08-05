@@ -88,6 +88,101 @@ func TestParseVolunteers_RolesCellShapes(t *testing.T) {
 	}
 }
 
+// A multi-select cell is not merely comma-joined: Sheets quotes any value
+// holding a comma or a quotation mark, and doubles the quotation marks inside
+// one. So the cell is a CSV record of exactly one row, and reading it as
+// anything less loses names that are perfectly legal to configure.
+func TestParseVolunteers_RolesCellQuoting(t *testing.T) {
+	// Two Roles whose names need the escaping, either side of one that does not.
+	roles := model.NewRoles([]model.Role{
+		{Name: `Kitchen, hot food`, Max: intPtr(1), Priority: 1},
+		{Name: `The "spare pair"`, Max: intPtr(1), Priority: 2},
+		{Name: "Service volunteer", Priority: 3},
+	})
+
+	tests := []struct {
+		name  string
+		cell  string
+		roles []string
+	}{
+		{
+			name:  "quoted because it holds the separator",
+			cell:  `"Kitchen, hot food"`,
+			roles: []string{`Kitchen, hot food`},
+		},
+		{
+			name:  "doubled quotation marks",
+			cell:  `"The ""spare pair"""`,
+			roles: []string{`The "spare pair"`},
+		},
+		{
+			name:  "quoted alongside unquoted",
+			cell:  `Service volunteer, "Kitchen, hot food"`,
+			roles: []string{`Kitchen, hot food`, "Service volunteer"},
+		},
+		{
+			name:  "every value quoted",
+			cell:  `"Kitchen, hot food", "The ""spare pair""", "Service volunteer"`,
+			roles: []string{`Kitchen, hot food`, `The "spare pair"`, "Service volunteer"},
+		},
+		{
+			name:  "no space after the separator",
+			cell:  `"Kitchen, hot food","Service volunteer"`,
+			roles: []string{`Kitchen, hot food`, "Service volunteer"},
+		},
+		{
+			// Nobody may hold a Role that is only half a name, which is what
+			// splitting on the raw commas would produce.
+			name:  "not split inside the quotes",
+			cell:  `"Kitchen, hot food"`,
+			roles: []string{`Kitchen, hot food`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := [][]any{
+				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", tc.cell),
+			}
+
+			volunteers, err := ParseVolunteers(raw, roles)
+			require.NoError(t, err)
+			require.Len(t, volunteers, 1)
+			assert.Equal(t, tc.roles, volunteers[0].Roles)
+		})
+	}
+}
+
+// A cell nobody picked through the dropdown can hold anything a person typed,
+// including quoting the dropdown would never have written. Read what can be
+// read rather than failing the roster over it.
+func TestParseVolunteers_RolesCellMalformedQuoting(t *testing.T) {
+	tests := []struct {
+		name  string
+		cell  string
+		roles []string
+	}{
+		{"unclosed quote", `"Team lead`, []string{"Team lead"}},
+		{"stray quote in a bare value", `Team lead", Service volunteer`, []string{"Service volunteer"}},
+		{"quoted then trailing text", `"Team lead"x`, nil},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := [][]any{
+				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", tc.cell),
+			}
+
+			volunteers, err := ParseVolunteers(raw, twoRoles())
+			require.NoError(t, err)
+			require.Len(t, volunteers, 1)
+			assert.Equal(t, tc.roles, volunteers[0].Roles)
+		})
+	}
+}
+
 // A value config does not name is a sheet the config has not caught up with —
 // or a typo in a hand-edited cell. Skip it rather than failing the roster, and
 // keep the rest of the cell.

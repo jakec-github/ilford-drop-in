@@ -33,8 +33,7 @@ requiresMale: true
 # The jobs volunteers hold. These names are matched against the values in the
 # roster's 'Roles' column and against every preallocation, so they have to agree
 # with test_data/volunteers.csv. Exactly one role may be uncapped — its seats
-# are what defaultShiftSize buys. A name may not contain a comma: that is what
-# separates the Roles in a volunteer's cell.
+# are what defaultShiftSize buys.
 roles:
   - name: 'Team lead'
     max: 1

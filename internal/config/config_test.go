@@ -91,16 +91,6 @@ func TestValidate_Roles(t *testing.T) {
 			wantErr: `roles[1] repeats the name "Team lead"`,
 		},
 		{
-			// The roster's Roles cell is one comma-joined string, so a name
-			// holding a comma is a Role nobody could ever be read as holding.
-			name: "name containing the roster's separator",
-			roles: []model.Role{
-				{Name: "Team lead", Max: intPtr(1), Priority: 1},
-				{Name: "Kitchen, hot food", Priority: 2},
-			},
-			wantErr: `roles[1] ("Kitchen, hot food") contains a comma`,
-		},
-		{
 			name: "duplicate priority",
 			roles: []model.Role{
 				{Name: "Team lead", Max: intPtr(1), Priority: 1},
@@ -146,6 +136,19 @@ func TestValidate_Roles(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+// Nothing in a Role name needs escaping at this end. The roster packs the Roles
+// someone holds into one cell and quotes whatever needs quoting, so a name may
+// hold the separator or a quotation mark and still be read back exactly.
+func TestValidate_RoleNamesMayHoldPunctuation(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Roles = []model.Role{
+		{Name: `Kitchen, hot food`, Max: intPtr(1), Priority: 1},
+		{Name: `The "spare pair"`, Priority: 2},
+	}
+
+	require.NoError(t, Validate(cfg))
 }
 
 // Every preallocation names one subject and one configured Role — the check

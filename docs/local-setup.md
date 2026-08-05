@@ -113,6 +113,17 @@ leads and serves reads `Team lead, Service volunteer`. Anything the config does
 not name is warned about in the logs and ignored, so a typo costs one person one
 role rather than failing the whole sync.
 
+Role names can hold commas and quotation marks: Sheets writes the cell by the
+CSV rules, quoting any value that needs it and doubling the quotation marks
+inside one, and that is how the cell is read back. Nothing needs escaping by
+hand — configure the name you want and pick it from the dropdown.
+
+| Roles configured | The cell reads |
+| --- | --- |
+| `Team lead`, `Service volunteer` | `Team lead, Service volunteer` |
+| `Kitchen, hot food` | `"Kitchen, hot food"` |
+| `The "spare pair"` | `"The ""spare pair"""` |
+
 Set the column up as a **multi-select dropdown** so the values can't be
 mistyped: select the column, **Insert → Dropdown**, add one option per
 configured role, and turn on multiple selections in the rule's advanced options.
@@ -150,8 +161,7 @@ requiresMale: true                            # every open shift needs a male al
 
 # The jobs volunteers hold. Config is authoritative: these names are what the
 # values in the roster's 'Roles' column and every preallocation are matched
-# against, and they are the options the column's dropdown should offer. A name
-# may not contain a comma — that is what separates the roles in a cell.
+# against, and they are the options the column's dropdown should offer.
 # max is the ceiling — how many of that role a shift may ever hold; omit it for
 # no ceiling. Exactly one role must be uncapped, and it is that role's seats
 # defaultShiftSize buys. priority orders the filling of seats.

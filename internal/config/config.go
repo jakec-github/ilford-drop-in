@@ -386,13 +386,6 @@ func validateRoles(roles []model.Role) error {
 		}
 		seenNames[role.Name] = true
 
-		// The volunteer sheet holds the Roles someone does in one multi-select
-		// cell, which is a comma-joined string. A comma in a name would split
-		// it into two Roles neither of which exists, so nobody could hold it.
-		if strings.Contains(role.Name, ",") {
-			return fmt.Errorf("roles[%d] (%q) contains a comma; the volunteer sheet separates Roles with one", i, role.Name)
-		}
-
 		if seenPriorities[role.Priority] {
 			return fmt.Errorf("roles[%d] (%s) repeats priority %d", i, role.Name, role.Priority)
 		}

@@ -92,12 +92,13 @@ ADR exists.
 
 - **The roster holds Roles in one `Roles` column.** A multi-select dropdown
   listing the configured Role names, so a value cannot be mistyped and what a
-  volunteer does is one cell to read rather than a row to scan across. The cell
-  is **comma-joined**, which is what such a dropdown writes: a list by
-  convention rather than by structure, so the parser trims each value and
-  `config.Validate` refuses a Role name containing a comma. Config remains
-  authoritative for which Roles exist — a value config does not name warns and
-  is skipped, keeping the rest of the cell.
+  volunteer does is one cell to read rather than a row to scan across. Sheets
+  packs the chips into the cell **by the CSV rules** — comma-joined, quoting any
+  value holding a comma or a quotation mark, doubling the quotation marks inside
+  one — so the cell is read with `encoding/csv` rather than split on commas. A
+  Role name may therefore hold either character, and nothing in config needs
+  escaping. Config remains authoritative for which Roles exist: a value config
+  does not name warns and is skipped, keeping the rest of the cell.
 
   *Amended 2026-08-05 (#121). The superseded shape (S1, #89)* was one
   `<name> - Role` tick-box column per Role, discovered by header suffix. Its

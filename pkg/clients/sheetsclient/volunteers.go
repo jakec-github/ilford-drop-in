@@ -1,6 +1,7 @@
 package sheetsclient
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -21,11 +22,12 @@ var volunteerFields = []string{
 	"Roles",
 }
 
-// roleSeparator splits the Roles cell. A Sheets multi-select dropdown holds the
-// chips someone picked as one joined string, so the cell is a list by
-// convention only — hence the trimming in heldRoles, and the rule in
-// `config.Validate` that no Role name may contain this character.
-const roleSeparator = ","
+// roleSeparator splits the Roles cell. A Sheets multi-select dropdown packs the
+// chips someone picked into one string joined by this, quoting any value that
+// holds the separator or a quotation mark and doubling the quotation marks
+// inside — the CSV rules. heldRoles reads it as such, so a Role name may hold
+// either character and still come back whole.
+const roleSeparator = ','
 
 // noGroupValue is what the Group key dropdown holds for a volunteer in no
 // group. A Sheets dropdown cannot be unset, so `None` is the only way to say
@@ -195,10 +197,11 @@ func groupKey(cell string) string {
 func heldRoles(cell string, roles model.Roles) []string {
 	picked := make(map[string]bool)
 
-	for _, value := range strings.Split(cell, roleSeparator) {
+	for _, value := range splitRoleCell(cell) {
+		// The dropdown writes no padding, but a hand-typed cell has whatever
+		// someone typed. A Role whose name only differs by its surrounding
+		// space is not a case worth keeping over that.
 		value = strings.TrimSpace(value)
-		// A cell holding nothing splits to one empty value, and a hand-edited
-		// one can have empties between separators.
 		if value == "" {
 			continue
 		}
@@ -218,4 +221,36 @@ func heldRoles(cell string, roles model.Roles) []string {
 	}
 
 	return held
+}
+
+// splitRoleCell unpacks a multi-select cell into the values it holds. The cell
+// is a single CSV record, so `encoding/csv` is the parser rather than a
+// hand-rolled one: it is the same escaping, and getting quoting subtly wrong is
+// how a Role named `Kitchen, hot food` silently becomes two Roles nobody holds.
+//
+// LazyQuotes because a cell is hand-editable: quoting the dropdown would never
+// have written should cost the values it mangles, not the whole roster. What
+// survives is matched against config anyway, and anything that does not match
+// is warned about there.
+func splitRoleCell(cell string) []string {
+	if strings.TrimSpace(cell) == "" {
+		return nil
+	}
+
+	reader := csv.NewReader(strings.NewReader(cell))
+	reader.Comma = roleSeparator
+	// Sheets is not consistent about a space after the separator, and a quoted
+	// value must still be read as quoted when one is there.
+	reader.TrimLeadingSpace = true
+	reader.LazyQuotes = true
+	reader.FieldsPerRecord = -1
+
+	values, err := reader.Read()
+	if err != nil {
+		slog.Warn("could not read the Roles cell in the volunteer sheet; ignoring it",
+			"cell", cell, "error", err)
+		return nil
+	}
+
+	return values
 }
