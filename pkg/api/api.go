@@ -102,6 +102,9 @@ const apiPrefix = "/api"
 func (h *Handler) Routes() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /shifts", h.handleListShifts)
+	// Public alongside the rota: it is what tells a client which Roles exist
+	// and what each is drawn in, and the rota names Roles on every chip.
+	api.HandleFunc("GET /roles", h.handleListRoles)
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people
