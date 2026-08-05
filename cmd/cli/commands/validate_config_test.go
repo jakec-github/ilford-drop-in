@@ -24,8 +24,6 @@ databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
 gmailUserID: "user@example.com"
 maxAllocationFrequency: 0.34
 defaultShiftSize: 4
-shiftStartTime: "19:30"
-shiftEndTime: "21:30"
 requiresMale: true
 rotaOverrides:
   - rrule: "FREQ=MONTHLY;BYDAY=3SU"

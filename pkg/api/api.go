@@ -23,6 +23,8 @@ type Store interface {
 	services.ListShiftsStore
 	services.PreallocationStore
 	services.RoleWriteStore
+	services.RotaDefaultsStore
+	services.RotaDefaultsWriteStore
 	services.SetShiftClosedStore
 	// Ping reports whether the database is reachable, for GET /health.
 	Ping(ctx context.Context) error
@@ -115,6 +117,13 @@ func (h *Handler) Routes() http.Handler {
 	api.HandleFunc("GET /roles", h.handleListRoles)
 	api.Handle("POST /roles", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateRole)))
 	api.Handle("PUT /roles/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleUpdateRole)))
+	// The settings record, admin-only on both verbs. Unlike the Roles beside it
+	// on the same screen, nothing a logged-out visitor sees needs it: the shift
+	// times already reach the public on GET /shifts, and the sections joining
+	// this one are an admin's business. PUT, because the shift times are one
+	// form stated whole.
+	api.Handle("GET /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaDefaults)))
+	api.Handle("PUT /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people

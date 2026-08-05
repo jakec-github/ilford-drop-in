@@ -11,8 +11,13 @@ import (
 type shiftResponse struct {
 	// ID is how a client addresses one shift to change it. Dates are the
 	// external language everywhere else, but identity is the UUID (ADR 0001).
-	ID        string             `json:"id"`
-	Date      string             `json:"date"`
+	ID   string `json:"id"`
+	Date string `json:"date"`
+	// Start and End are the moments the shift runs between, read from the
+	// drop-in's settings. Empty when an admin has not set the shift times yet:
+	// the date is still known, and a rota that says which day but not which
+	// hour is better than one that will not load. Incomplete settings block
+	// allocation and nothing else (ADR 0006).
 	Start     string             `json:"start"`
 	End       string             `json:"end"`
 	Closed    bool               `json:"closed"`
@@ -44,12 +49,24 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read once for the whole listing rather than per shift: it is one row, and
+	// every shift in a rota runs at the same time of day.
+	defaults, err := services.RotaDefaults(r.Context(), h.store)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
 	resp := listShiftsResponse{Shifts: make([]shiftResponse, 0, len(shifts))}
 	for _, shift := range shifts {
-		start, end, err := h.cfg.ShiftTimes(shift.Date)
-		if err != nil {
-			h.writeServiceError(w, err)
-			return
+		var start, end string
+		if defaults.HasShiftTimes() {
+			startAt, endAt, err := defaults.ShiftTimes(shift.Date)
+			if err != nil {
+				h.writeServiceError(w, err)
+				return
+			}
+			start, end = startAt.Format(time.RFC3339), endAt.Format(time.RFC3339)
 		}
 
 		assignees := make([]assigneeResponse, 0, len(shift.Assignees))
@@ -66,8 +83,8 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		resp.Shifts = append(resp.Shifts, shiftResponse{
 			ID:        shift.ID,
 			Date:      shift.Date,
-			Start:     start.Format(time.RFC3339),
-			End:       end.Format(time.RFC3339),
+			Start:     start,
+			End:       end,
 			Closed:    shift.Closed,
 			Allocated: shift.Allocated,
 			Assignees: assignees,

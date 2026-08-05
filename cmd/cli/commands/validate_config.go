@@ -60,8 +60,11 @@ devMode block is only permitted under "dev".`,
 			fmt.Fprintf(out, "  overrides:  %s, with %s\n",
 				plural(len(cfg.RotaOverrides), "rota override"),
 				plural(countPreallocations(cfg), "preallocation"))
-			fmt.Fprintf(out, "  shifts:     %s–%s, %d seats by default\n",
-				cfg.ShiftStartTime, cfg.ShiftEndTime, cfg.DefaultShiftSize)
+			// When a shift runs is not here any more: it is a Rota Default, set
+			// on the Settings screen and read from the database (ADR 0006), so
+			// this command — which opens the file and nothing else — cannot
+			// report it and should not pretend to.
+			fmt.Fprintf(out, "  shifts:     %d seats by default\n", cfg.DefaultShiftSize)
 			fmt.Fprintf(out, "  server:     %s\n", describeServer(cfg))
 			if cfg.DevMode != nil {
 				fmt.Fprintf(out, "  devMode:    ON — roster from %s, login as %s\n",

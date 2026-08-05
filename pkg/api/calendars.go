@@ -45,11 +45,21 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// When the drop-in runs is a setting an admin keeps, so a change to it
+	// reaches every subscriber on their next poll rather than at the next
+	// deploy. Settings nobody has filled in yield all-day events rather than a
+	// failure — a subscription is not a feature to gate on them.
+	defaults, err := services.RotaDefaults(r.Context(), h.store)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
 	calendar, err := services.BuildVolunteerCalendar(
 		services.FilterShiftsByVolunteer(shifts, volunteerID),
 		*volunteer,
 		roles,
-		h.cfg,
+		defaults,
 	)
 	if err != nil {
 		h.writeServiceError(w, err)

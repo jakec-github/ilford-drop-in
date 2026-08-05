@@ -13,6 +13,7 @@ import type {
   RoleColour,
   RoleEdit,
   RotaChange,
+  RotaDefaults,
   RotaShift,
   SendMode,
   SendOutcome,
@@ -218,6 +219,39 @@ export async function updateRole(id: string, role: RoleEdit): Promise<void> {
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to save the role"));
   }
+}
+
+// fetchRotaDefaults reads the settings record. Admin-only: nothing a logged-out
+// visitor sees needs it, unlike the Roles beside it on the same screen.
+export async function fetchRotaDefaults(): Promise<RotaDefaults> {
+  const res = await fetch("/api/rota-defaults");
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(res, "Failed to load the rota defaults"),
+    );
+  }
+  return (await res.json()) as RotaDefaults;
+}
+
+// saveShiftTimeDefaults writes the default shift start, end and timezone. All
+// three go at once because they are one form and one idea: a time of day means
+// nothing without the zone it is read in.
+//
+// Resolves with what was stored rather than with nothing, because the server
+// fills in a timezone an admin left blank and the form should show what it
+// actually holds.
+export async function saveShiftTimeDefaults(
+  defaults: RotaDefaults,
+): Promise<RotaDefaults> {
+  const res = await fetch("/api/rota-defaults", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(defaults),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to save the shift times"));
+  }
+  return (await res.json()) as RotaDefaults;
 }
 
 interface ApiPreallocation {

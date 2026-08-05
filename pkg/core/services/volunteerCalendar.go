@@ -2,10 +2,10 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	ics "github.com/arran4/golang-ical"
 
-	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
@@ -19,22 +19,21 @@ const calendarRefreshInterval = "PT6H"
 // volunteer and date so clients update events in place rather than
 // duplicating them, SEQUENCE increases with each alteration to the shift, and
 // DTSTAMP only changes when the shift changes.
-func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, cfg *config.Config) (string, error) {
+//
+// The times come from the settings an admin keeps rather than from the config
+// file (ADR 0006), so a change to when the drop-in runs reaches every
+// subscriber on their next poll instead of at the next deploy.
+func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, defaults model.RotaDefaults) (string, error) {
 	cal := ics.NewCalendar()
 	cal.SetProductId("-//ilford-drop-in//EN")
 	cal.SetCalscale("GREGORIAN")
 	cal.SetMethod(ics.MethodPublish)
 	cal.SetXWRCalName("Ilford Drop-In — " + volunteer.DisplayName)
-	cal.SetXWRTimezone(config.DefaultShiftTimezone)
+	cal.SetXWRTimezone(defaults.Timezone())
 	cal.SetRefreshInterval(calendarRefreshInterval)
 	cal.SetXPublishedTTL(calendarRefreshInterval)
 
 	for _, shift := range shifts {
-		start, end, err := cfg.ShiftTimes(shift.Date)
-		if err != nil {
-			return "", fmt.Errorf("failed to compute times for shift %s: %w", shift.Date, err)
-		}
-
 		// The Role is worth naming in the summary only when it says something
 		// the event does not already: being on the shift *is* the uncapped
 		// Role, so "(Service volunteer)" on every entry would be noise.
@@ -50,14 +49,16 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 		}
 
 		event := cal.AddEvent(fmt.Sprintf("%s-%s@ilford-drop-in", volunteer.ID, shift.Date))
-		event.SetStartAt(start)
-		event.SetEndAt(end)
+		stamp, err := setEventDates(event, shift.Date, defaults)
+		if err != nil {
+			return "", err
+		}
 		event.SetSummary(summary)
 		event.SetSequence(shift.AlterationCount)
 		// DTSTAMP must only churn when the shift actually changes; unaltered
-		// shifts fall back to their own start time
+		// shifts fall back to their own start.
 		if shift.LastChanged.IsZero() {
-			event.SetDtStampTime(start)
+			event.SetDtStampTime(stamp)
 		} else {
 			event.SetDtStampTime(shift.LastChanged)
 		}
@@ -65,4 +66,34 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 
 	// RFC 5545 requires CRLF line endings regardless of platform
 	return cal.Serialize(ics.WithNewLineWindows), nil
+}
+
+// setEventDates gives one event its span and reports the moment DTSTAMP falls
+// back to for an unaltered shift.
+//
+// A drop-in whose shift times an admin has not set yet gets an all-day event on
+// the date. That is the honest rendering — the day is known and the hours are
+// not — and it keeps the promise that incomplete settings block allocation and
+// nothing else: a volunteer's subscription still works, and gains its hours the
+// moment the settings are filled in.
+func setEventDates(event *ics.VEvent, date string, defaults model.RotaDefaults) (time.Time, error) {
+	if !defaults.HasShiftTimes() {
+		day, err := time.Parse("2006-01-02", date)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to read the date of shift %s: %w", date, err)
+		}
+		event.SetAllDayStartAt(day)
+		// DTEND is exclusive for an all-day event: the day after is what makes
+		// it one day long rather than none.
+		event.SetAllDayEndAt(day.AddDate(0, 0, 1))
+		return day, nil
+	}
+
+	start, end, err := defaults.ShiftTimes(date)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to compute times for shift %s: %w", date, err)
+	}
+	event.SetStartAt(start)
+	event.SetEndAt(end)
+	return start, nil
 }

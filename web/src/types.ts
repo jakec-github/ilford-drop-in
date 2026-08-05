@@ -77,6 +77,24 @@ export interface RoleEdit {
   colour: RoleColour;
 }
 
+// RotaDefaults is what an admin has decided about how the drop-in as a whole
+// runs: one live, global record edited on the Settings screen. It holds the
+// shift times today; the default Shape, the allocation toggles and the Standing
+// Preallocations join it later.
+//
+// Times are 24-hour "HH:MM" — the same thing an <input type="time"> reads and
+// writes — not timestamps: a time of day is not a moment until it is read
+// against a date. Empty means an admin has not set it, which is where every
+// deployment starts and is a state the screen renders rather than an error.
+export interface RotaDefaults {
+  shiftStartTime: string;
+  shiftEndTime: string;
+  // An IANA zone name. Never empty: the server answers with the default when an
+  // admin has not chosen one, so there is one answer to what zone the drop-in
+  // runs in.
+  shiftTimezone: string;
+}
+
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
 // entry. Role is the role held on this shift, not the volunteer's intrinsic
 // role. Group is the volunteer's group key, or null for custom/ungrouped.

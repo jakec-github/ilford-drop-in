@@ -102,6 +102,10 @@ func AllocateRota(
 		return nil, wrapf(ErrInvalidInput, "no roles are configured - add them on the settings screen before allocating")
 	}
 
+	if err := checkSettingsAllowAllocation(ctx, database); err != nil {
+		return nil, err
+	}
+
 	allVolunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)

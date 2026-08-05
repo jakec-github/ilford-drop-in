@@ -47,6 +47,14 @@ type mockStore struct {
 	roles    []db.Role
 	rolesErr error
 
+	// rotaDefaults overrides apiTestRotaDefaults for a test that cares what an
+	// admin has set — chiefly one about settings nobody has filled in, which is
+	// where every deployment starts. rotaDefaultsErr makes the read fail.
+	rotaDefaults         *db.RotaDefaults
+	rotaDefaultsErr      error
+	savedRotaDefaults    []db.RotaDefaults
+	rotaDefaultsWriteErr error
+
 	insertedRoles []db.Role
 	updatedRoles  []db.Role
 	// roleWriteErr is what the database says to a Role write —
@@ -425,12 +433,37 @@ func (m *mockStore) UpdateRole(_ context.Context, role db.Role) (bool, error) {
 	return !m.roleMissing, nil
 }
 
+func (m *mockStore) GetRotaDefaults(context.Context) (db.RotaDefaults, error) {
+	if m.rotaDefaultsErr != nil {
+		return db.RotaDefaults{}, m.rotaDefaultsErr
+	}
+	if m.rotaDefaults != nil {
+		return *m.rotaDefaults, nil
+	}
+	return apiTestRotaDefaults, nil
+}
+
+func (m *mockStore) SaveRotaDefaults(_ context.Context, defaults db.RotaDefaults) error {
+	if m.rotaDefaultsWriteErr != nil {
+		return m.rotaDefaultsWriteErr
+	}
+	m.savedRotaDefaults = append(m.savedRotaDefaults, defaults)
+	m.rotaDefaults = &defaults
+	return nil
+}
+
 func intPtr(i int) *int { return &i }
 
-var apiTestCfg = &config.Config{
+// apiTestRotaDefaults is the settings a configured drop-in has: the evening
+// session the real one runs. Every endpoint that renders a time reads these, so
+// they are the fixture rather than a per-test setup.
+var apiTestRotaDefaults = db.RotaDefaults{
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
+	ShiftTimezone:  "Europe/London",
 }
+
+var apiTestCfg = &config.Config{}
 
 func testVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
