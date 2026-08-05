@@ -147,14 +147,15 @@ thead .grid-name-cell,
   border-top: 1px solid var(--border);
 }
 
-.grid-row--open .grid-name-cell,
 .grid-row--open .grid-cell {
   background: var(--accent-bg);
 }
 
-.grid-row--open .grid-name-cell {
-  /* The sticky cell paints over the row's tint unless it carries it too. */
-  background-image: linear-gradient(var(--accent-bg), var(--accent-bg));
+/* The name cell has to be named more specifically than the rule that gives the
+   sticky column its opaque background, or that one wins and the open row's
+   tint stops at the first date. */
+.response-grid .grid-row--open th.grid-name-cell {
+  background-color: var(--accent-bg);
 }
 
 .grid-toggle {
