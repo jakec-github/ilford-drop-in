@@ -46,6 +46,14 @@ type mockStore struct {
 	// rolesErr makes the read fail.
 	roles    []db.Role
 	rolesErr error
+
+	insertedRoles []db.Role
+	updatedRoles  []db.Role
+	// roleWriteErr is what the database says to a Role write —
+	// db.ErrDuplicateRoleName for a name already taken, anything else for a
+	// failure. roleMissing makes an update report that no row matched.
+	roleWriteErr error
+	roleMissing  bool
 }
 
 // allShiftsInRange is the canonical shift set the store would hold, each with an
@@ -399,6 +407,22 @@ func (m *mockStore) ListRoles(context.Context) ([]db.Role, error) {
 		return m.roles, nil
 	}
 	return apiTestRoles, nil
+}
+
+func (m *mockStore) InsertRole(_ context.Context, role db.Role) error {
+	if m.roleWriteErr != nil {
+		return m.roleWriteErr
+	}
+	m.insertedRoles = append(m.insertedRoles, role)
+	return nil
+}
+
+func (m *mockStore) UpdateRole(_ context.Context, role db.Role) (bool, error) {
+	if m.roleWriteErr != nil {
+		return false, m.roleWriteErr
+	}
+	m.updatedRoles = append(m.updatedRoles, role)
+	return !m.roleMissing, nil
 }
 
 func intPtr(i int) *int { return &i }

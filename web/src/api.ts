@@ -11,13 +11,18 @@ import type {
   Preallocation,
   PreallocationSource,
   RoleColour,
+  RoleEdit,
   RotaChange,
   RotaShift,
   SendMode,
   SendOutcome,
   Volunteer,
 } from "./types";
-import { ROLE_COLOURS, SERVICE_VOLUNTEER_ROLE } from "./types";
+import {
+  DEFAULT_ROLE_COLOUR,
+  ROLE_COLOURS,
+  SERVICE_VOLUNTEER_ROLE,
+} from "./types";
 
 interface ApiAssignee {
   volunteerId?: string;
@@ -139,7 +144,10 @@ export async function fetchRota(): Promise<RotaShift[]> {
 }
 
 interface ApiRole {
+  id: string;
   name: string;
+  max: number | null;
+  priority: number;
   colour: string;
 }
 
@@ -147,24 +155,69 @@ interface ListRolesResponse {
   roles: ApiRole[];
 }
 
+// An unrecognised colour falls back to the default rather than being passed
+// through — a token this build has no rule for would set a chip's colour to
+// nothing at all, where the default at least renders. That can only happen
+// against a newer server, which is exactly when falling back quietly is worth
+// more than being precise. The Role itself survives: dropping it would hide a
+// Role from the settings screen, and a Role nobody can see is one nobody can
+// fix.
+function toConfiguredRole(role: ApiRole): ConfiguredRole {
+  return {
+    id: role.id,
+    name: role.name,
+    max: role.max,
+    priority: role.priority,
+    colour: (ROLE_COLOURS as readonly string[]).includes(role.colour)
+      ? (role.colour as RoleColour)
+      : DEFAULT_ROLE_COLOUR,
+  };
+}
+
 // fetchRoles returns the Roles the drop-in offers, highest priority first. Public, like
 // the rota: the chips it colours are on a page nobody has to log in to see.
-//
-// An unrecognised colour is dropped rather than passed through — a token this
-// build has no rule for would set a chip's colour to nothing at all, where the
-// default at least renders. That can only happen against a newer server, which
-// is exactly when falling back quietly is worth more than being precise.
 export async function fetchRoles(): Promise<ConfiguredRole[]> {
   const res = await fetch("/api/roles");
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load roles"));
   }
   const data = (await res.json()) as ListRolesResponse;
-  return data.roles
-    .filter((r): r is { name: string; colour: RoleColour } =>
-      (ROLE_COLOURS as readonly string[]).includes(r.colour),
-    )
-    .map((r) => ({ name: r.name, colour: r.colour }));
+  return data.roles.map(toConfiguredRole);
+}
+
+// createRole adds a Role. Admin-only, and the server mints the id: it is what
+// every later reference is written against, so nothing outside the server
+// chooses it.
+//
+// Resolves with nothing. The created Role comes back, but the caller re-reads
+// the listing rather than splicing it in — the order Roles come back in is the
+// order their seats are filled, which is the server's to decide.
+export async function createRole(role: RoleEdit): Promise<void> {
+  const res = await fetch("/api/roles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(role),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to create the role"));
+  }
+}
+
+// updateRole rewrites one Role, addressed by the id it was created with. Every
+// editable field goes at once, so a null max says "no ceiling" rather than
+// "leave the ceiling alone".
+//
+// There is no deleteRole, and there will not be one: a Role is permanent so
+// that nothing referencing it can dangle (ADR 0006).
+export async function updateRole(id: string, role: RoleEdit): Promise<void> {
+  const res = await fetch(`/api/roles/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(role),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to save the role"));
+  }
 }
 
 interface ApiPreallocation {

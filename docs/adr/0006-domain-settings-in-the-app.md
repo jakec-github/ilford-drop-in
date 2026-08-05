@@ -80,5 +80,5 @@ part of the system most expected to change.
 
 - `validate_config` shrinks to checking deployment keys.
 
-- The admin area gains a settings screen, which the stubbed `/admin/config` tab
-  has been holding a place for.
+- The admin area gains a settings screen, which the stubbed Config tab has been
+  holding a place for. It took the tab's place at `/admin/settings` in #127.

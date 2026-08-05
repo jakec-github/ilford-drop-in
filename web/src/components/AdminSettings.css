@@ -1,0 +1,208 @@
+/* Each settings section is its own card, so a later one can be added without
+   touching the ones already here. The heading and the section's one action sit
+   on the same line: the action belongs to the section, not to the list under
+   it, and a list that grows would otherwise push its own button off screen. */
+.settings-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.settings-section-head h2 {
+  margin: 0;
+}
+
+/* The action keeps its words on one line: "New role" broken over two reads as
+   two buttons at a glance, and the blurb beside it is what should give way. */
+.settings-section-head > .button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.settings-blurb {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+}
+
+.settings-empty,
+.settings-caption {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.settings-caption {
+  margin-top: 0.75rem;
+}
+
+.settings-error {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--role-rose);
+}
+
+.roles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Name, then its facts, then the one action. The name column is fixed rather
+   than fluid so the facts line up down the list — an admin comparing ceilings
+   and priorities is reading a column, not a sentence. */
+.role-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.role-row:first-child {
+  border-top: none;
+}
+
+.role-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--role-colour, var(--text-h));
+}
+
+.role-facts {
+  display: flex;
+  flex: none;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-fact {
+  min-width: 5.5rem;
+  text-align: right;
+}
+
+/* The desk is the design target for admin tools, but the facts are the first
+   thing to give: on a phone they drop under the name rather than squeezing it
+   to nothing. */
+@media (max-width: 30rem) {
+  .role-row {
+    flex-wrap: wrap;
+  }
+
+  .role-name {
+    flex-basis: 100%;
+  }
+
+  .role-facts {
+    flex: 1 1 auto;
+  }
+
+  .role-fact {
+    text-align: left;
+  }
+}
+
+.settings-field {
+  display: block;
+  margin-bottom: 0.875rem;
+  font-size: 0.875rem;
+}
+
+.settings-field input[type="text"],
+.settings-field input[type="number"] {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  /* 16px keeps iOS Safari from zooming the page on focus. */
+  font: 16px/1.4 var(--sans);
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.settings-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-hint {
+  margin: -0.625rem 0 0.875rem;
+  font-size: 0.8125rem;
+}
+
+/* The one thing this app cannot fix on its own: the roster names Roles by
+   string, so a rename here is only half the edit. Loud enough to be read
+   before the save, not so loud it reads as a refusal — renaming is allowed. */
+.settings-warning {
+  margin: -0.5rem 0 0.875rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  border-radius: 6px;
+}
+
+.settings-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-inline: 0;
+  padding: 0;
+  border: none;
+}
+
+.settings-swatches legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+/* The radio itself is the accessible control and stays in the accessibility
+   tree; what is drawn is the swatch beside it. Checked state is carried by the
+   border rather than by colour alone, so it survives being looked at by
+   somebody who cannot tell two tokens apart. */
+.settings-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.25rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.settings-swatch:has(input:checked) {
+  border-color: var(--role-colour);
+  color: var(--text-h);
+}
+
+.settings-swatch:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-swatch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.settings-swatch-dot {
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  background: var(--role-colour);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}

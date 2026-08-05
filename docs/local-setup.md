@@ -199,21 +199,20 @@ none, which means nobody on the roster holds a Role and allocation refuses to
 run. The server says so at startup.
 
 The credential-free dev stack (`scripts/dev-stack.sh start`) seeds its own, so
-this only applies to a database you point a `test` or `prod` config at. Until
-the settings screen lands, create them with SQL — this is the pair the app
-shipped with:
+this only applies to a database you point a `test` or `prod` config at. Create
+them on **Admin → Settings**, which needs nothing but an admin login. The pair
+the app shipped with is:
 
-```sql
-INSERT INTO role (id, name, max, priority, colour) VALUES
-  (gen_random_uuid(), 'Team lead', 1, 1, 'violet'),
-  (gen_random_uuid(), 'Service volunteer', NULL, 2, 'teal');
-```
+| Name | Most per shift | Priority | Colour |
+| --- | --- | --- | --- |
+| Team lead | 1 | 1 | violet |
+| Service volunteer | no limit | 2 | teal |
 
 The names have to match the values in the roster sheet's `Roles` column
-exactly, and should be the options that column's dropdown offers. `max` is the
-ceiling — how many of that Role a shift may ever hold; `NULL` is no ceiling, and
-it is the uncapped Role's seats that `defaultShiftSize` buys. `priority` orders
-the filling of seats. `colour` names one of twelve palette tokens rather than a
+exactly, and should be the options that column's dropdown offers. The ceiling is
+how many of that Role a shift may ever hold; leaving it blank is no ceiling, and
+it is the uncapped Role's seats that `defaultShiftSize` buys. Priority orders
+the filling of seats. Colour is one of twelve palette tokens rather than a
 colour value, because the app owns what each looks like in light and dark mode:
 
 ```
@@ -222,6 +221,11 @@ amber   orange  rose  pink    brown  slate
 ```
 
 Give every Role its own token: two Roles sharing one is legal and unreadable.
+
+A Role is permanent — the screen offers no delete and no retire, so that nothing
+referencing a Role can dangle. Renaming is allowed, and is the one edit the app
+cannot finish on its own: the roster sheet holds Roles by name, so it needs the
+same edit or nobody holds that Role any more.
 
 A Role is permanent — there is no delete and no retire, so nothing that
 references one can dangle. Renaming one is allowed, but the roster names Roles

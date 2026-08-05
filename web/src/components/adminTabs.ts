@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import AdminAvailability from "./AdminAvailability";
 import AdminRota from "./AdminRota";
+import AdminSettings from "./AdminSettings";
 import AdminVolunteers from "./AdminVolunteers";
 
 // A tab is one admin route. Tabs without a Panel are stubs: the route and the
@@ -21,7 +22,7 @@ export interface AdminTab {
 // so a new admin tool is one entry here plus its panel component.
 export const ADMIN_TABS: AdminTab[] = [
   { path: "/admin/volunteers", label: "Volunteers", Panel: AdminVolunteers },
-  { path: "/admin/config", label: "Config" },
+  { path: "/admin/settings", label: "Settings", Panel: AdminSettings },
   {
     path: "/admin/availability",
     label: "Availability",

@@ -128,19 +128,21 @@ purpose, so a database is in this state until somebody fills it, and the server
 warns at startup when it is. With no Roles nobody on the roster holds one and
 allocation refuses to run.
 
-Until the settings screen lands (#127) they are created with SQL. Against Neon's
-SQL editor or `psql`, this is the pair the config used to carry:
+They are created on **Admin → Settings**, which is reachable as soon as an admin
+can log in — no SQL and no deploy. This is the pair the config used to carry:
 
-```sql
-INSERT INTO role (id, name, max, priority, colour) VALUES
-  (gen_random_uuid(), 'Team lead', 1, 1, 'violet'),
-  (gen_random_uuid(), 'Service volunteer', NULL, 2, 'teal');
-```
+| Name | Most per shift | Priority | Colour |
+| --- | --- | --- | --- |
+| Team lead | 1 | 1 | violet |
+| Service volunteer | no limit | 2 | teal |
 
-**Run this before or immediately after the deploy that carries the migration.**
+**Do it as soon as the deploy carrying the migration is up.** Everything that
+resolves a Role by name is unhappy until then, allocation loudest.
+
 The names must match the roster sheet's `Roles` column exactly. A Role is
-permanent — there is no delete — so getting the name right the first time saves
-a rename, which the roster has to be edited to match.
+permanent — there is no delete and no retire — so getting the name right the
+first time saves a rename, which the roster has to be edited to match; the
+screen says as much at the point of rename.
 
 ## Operations
 
