@@ -1,0 +1,277 @@
+/* The responses grid. Desktop first: this is an admin tool for comparing dates
+   against each other, so it is laid out at the width that comparison needs and
+   scrolls sideways on a phone rather than reflowing into one column. */
+
+.grid-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+}
+
+.grid-chip {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.grid-chip--on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* Hugs the table rather than the panel: the columns are sized by their
+   content, so a box stretched to the full width of a desk would be mostly
+   border. It still scrolls when the desk is narrower than the rota is long. */
+.grid-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.response-grid {
+  border-collapse: collapse;
+  /* Not width:100% — the columns are sized by their content, and stretching
+     them over a wide screen would put a hand's width between a name and its
+     first tick. */
+  font-size: 0.8125rem;
+}
+
+.response-grid th,
+.response-grid td {
+  padding: 0.375rem 0.5rem;
+  font-weight: 400;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* One date per column, its weekday over its number. */
+.grid-date {
+  display: table-cell;
+  min-width: 3.75rem;
+  color: var(--text-h);
+  line-height: 1.25;
+}
+
+.grid-date-day,
+.grid-date-note {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--text);
+}
+
+/* A closed date is not a date that is short of people, so its whole column
+   dims out of the way of the ones that are. */
+.grid-date--closed,
+.grid-cell--closed {
+  opacity: 0.5;
+}
+
+/* The name column stays put while the dates scroll under it: a reader who has
+   scrolled to the last date still needs to know whose row they are on, and a
+   grid of ticks with no row labels is not a grid at all.
+   Qualified by element so it outweighs the centring above, which is for the
+   cells this column names. */
+.response-grid th.grid-name-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-right: 1rem;
+  text-align: left;
+  background: var(--bg);
+  color: var(--text-h);
+  /* On a phone a group of three names is wider than the screen, so it wraps
+     and the row gets taller. Taller rows are the cheaper price: the whole
+     column pinned open would leave the dates unreachable behind it. */
+  max-width: 11rem;
+  white-space: normal;
+}
+
+@media (min-width: 48rem) {
+  .response-grid th.grid-name-cell {
+    min-width: 12rem;
+    max-width: none;
+    white-space: nowrap;
+  }
+}
+
+/* The stats block and the rows it describes are one table, so the seam between
+   them is drawn rather than left to a gap. */
+.grid-stats th,
+.grid-stats td {
+  color: var(--text-h);
+}
+
+.grid-stats {
+  border-bottom: 2px solid var(--border);
+}
+
+thead .grid-name-cell,
+.grid-stats .grid-name-cell {
+  font-size: 0.75rem;
+}
+
+.response-grid thead th {
+  border-bottom: 1px solid var(--border);
+  vertical-align: bottom;
+}
+
+.grid-num--ok {
+  color: var(--role-volunteer);
+}
+
+.grid-num--short {
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+/* The answer itself. Available is the state being scanned for, so it takes the
+   colour; unavailable is a dot rather than a cross, so a row of them reads as
+   an answered "no" without shouting. */
+.grid-cell--yes {
+  color: var(--role-volunteer);
+}
+
+.grid-row + .grid-row th,
+.grid-row + .grid-row td,
+.grid-details + .grid-row th,
+.grid-details + .grid-row td {
+  border-top: 1px solid var(--border);
+}
+
+.grid-row--open .grid-name-cell,
+.grid-row--open .grid-cell {
+  background: var(--accent-bg);
+}
+
+.grid-row--open .grid-name-cell {
+  /* The sticky cell paints over the row's tint unless it carries it too. */
+  background-image: linear-gradient(var(--accent-bg), var(--accent-bg));
+}
+
+.grid-toggle {
+  padding: 0;
+  margin-right: 0.375rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.grid-name {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a.grid-name:hover {
+  text-decoration: underline;
+}
+
+.grid-tag {
+  margin-left: 0.5rem;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  color: var(--text);
+}
+
+/* Answered is the state an admin is scanning for, so it takes a colour. "No
+   reply" stays neutral: on a fresh round that is every row, and colouring it
+   would turn the whole list red for a round nobody has had time to answer. */
+.grid-tag--replied {
+  border-color: var(--role-volunteer);
+  color: var(--role-volunteer);
+}
+
+/* The disclosure: one person's links, spanning the whole width under their
+   row. It is left-aligned and wraps, unlike everything else in the table. */
+.grid-details td {
+  padding: 0.25rem 0.75rem 0.75rem;
+  text-align: left;
+  white-space: normal;
+  background: var(--accent-bg);
+}
+
+.members {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Held to a readable width: the rest of the table is as wide as the rota is
+     long, and a link stretched to match would be unreadable. */
+  max-width: 34rem;
+}
+
+.member + .member {
+  margin-top: 0.5rem;
+}
+
+.member-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+
+.member-name {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a.member-name:hover {
+  text-decoration: underline;
+}
+
+.member-note {
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+/* The link and its buttons. The URL always wraps rather than scrolls, because
+   an admin whose browser refused to copy needs to be able to read it. */
+.member-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.member-link-url {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}
+
+/* Read by a screen reader, never shown: the ticks, colours and dashes above
+   carry the answer visually and none of them reach one. */
+.grid-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .grid-num--short {
+    color: #f87171;
+  }
+}

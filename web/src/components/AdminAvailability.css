@@ -16,9 +16,8 @@
   font-size: 0.75rem;
 }
 
-/* The two questions the tab answers, each with its heading. The count rides on
-   the heading rather than taking a line of its own, so the sections stay
-   compact on a phone. */
+/* The heading over the grid, with its count riding on the same line rather
+   than taking one of its own. */
 .round-section {
   display: flex;
   align-items: baseline;
@@ -46,218 +45,6 @@
   border-radius: 6px;
   color: #b91c1c;
   background: rgba(185, 28, 28, 0.1);
-}
-
-.cover,
-.groups {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-/* One date per row. The tags pull right, so the deltas line up in a column that
-   can be read down; on a narrow phone the row wraps and they drop below. */
-.cover-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.5rem;
-  padding: 0.625rem 0.875rem;
-  font-size: 0.8125rem;
-}
-
-.cover-row + .cover-row,
-.group + .group {
-  border-top: 1px solid var(--border);
-}
-
-.cover-date {
-  flex: 0 0 6.5rem;
-  color: var(--text-h);
-}
-
-.cover-counts {
-  flex: 1 1 11rem;
-}
-
-.cover-note {
-  font-size: 0.75rem;
-}
-
-/* A closed date is not a date that is short of people, so it carries no numbers
-   at all and dims out of the way of the ones that are. */
-.cover-row--closed {
-  opacity: 0.6;
-}
-
-.cover-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-left: auto;
-}
-
-.cover-tag {
-  padding: 0.0625rem 0.375rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 0.6875rem;
-  white-space: nowrap;
-}
-
-.cover-tag--ok {
-  border-color: var(--role-volunteer);
-  color: var(--role-volunteer);
-}
-
-.cover-tag--short {
-  border-color: #b91c1c;
-  color: #b91c1c;
-}
-
-@media (prefers-color-scheme: dark) {
-  .cover-tag--short {
-    border-color: #f87171;
-    color: #f87171;
-  }
-
-  .round-message--error {
-    border-color: rgba(248, 113, 113, 0.35);
-    color: #f87171;
-    background: rgba(248, 113, 113, 0.12);
-  }
-}
-
-.group {
-  padding: 0.75rem 0.875rem;
-}
-
-.group-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.group-name {
-  color: var(--text-h);
-}
-
-.group-tag {
-  padding: 0.0625rem 0.375rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 0.6875rem;
-  white-space: nowrap;
-}
-
-/* Answered is the state an admin is scanning for, so it takes a colour. "No
-   reply" stays neutral: on a fresh round that is every row, and colouring it
-   would turn the whole list red for a round nobody has had time to answer. */
-.group-tag--replied {
-  border-color: var(--role-volunteer);
-  color: var(--role-volunteer);
-}
-
-/* The group's answer, one chip per open date. Every date is listed whether the
-   group said yes or not, so the chips line up down the list and a gap reads as a
-   gap rather than having to be inferred from what is missing. */
-.group-dates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin: 0.5rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.group-date {
-  padding: 0.0625rem 0.375rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 0.6875rem;
-  white-space: nowrap;
-  opacity: 0.5;
-  text-decoration: line-through;
-}
-
-.group-date--yes {
-  border-color: var(--role-volunteer);
-  color: var(--role-volunteer);
-  opacity: 1;
-  text-decoration: none;
-}
-
-.members {
-  margin: 0.5rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.member + .member {
-  margin-top: 0.25rem;
-}
-
-.member-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.375rem;
-}
-
-/* The name is the control: pressing it reveals the link. Styled as a link
-   because it sits inside running text, but it stays a button, so it is reachable
-   by keyboard and announced as one.
-
-   It inherits its size, since the same control names a group of one in the head
-   and a member in the list below. */
-.name-toggle {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: var(--accent);
-  text-align: left;
-  cursor: pointer;
-}
-
-.member .name-toggle {
-  font-size: 0.8125rem;
-}
-
-.name-toggle:hover {
-  text-decoration: underline;
-}
-
-.member-note {
-  font-size: 0.75rem;
-}
-
-/* The link and its copy button. The full basis drops it onto its own line
-   beneath the name that revealed it, whichever wrapping row that name sits in.
-   On a phone the URL then takes a line above the button; from a tablet up they
-   sit together. The URL always wraps rather than scrolls, because an admin who
-   cannot copy needs to be able to read it. */
-.member-link {
-  display: flex;
-  flex: 1 1 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0.375rem 0 0.125rem;
-}
-
-.member-link-url {
-  flex: 1 1 14rem;
-  min-width: 0;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 0.6875rem;
-  overflow-wrap: anywhere;
 }
 
 /* The two round-level sends, under the caption rather than up in the header
@@ -348,5 +135,11 @@
   .send-report-error,
   .send-failures {
     color: #f87171;
+  }
+
+  .round-message--error {
+    border-color: rgba(248, 113, 113, 0.35);
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.12);
   }
 }

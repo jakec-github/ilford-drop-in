@@ -21,8 +21,12 @@ does not apply to you.
 - State: view-local by default; context only for app-global concerns (auth).
   Server data behind per-resource hooks — views never call `fetch` directly.
   No state library; if server caching ever earns a dependency, TanStack Query.
-- Design: Mobile first for rota page. Admin tools must be usable on mobile but
-  can work better on desktop
+- Design: volunteer-facing pages (the rota, the availability form) are mobile
+  first — a volunteer reads them on a phone. Admin tools are **desktop first**:
+  they must stay usable on a phone, but where the two conflict, design for the
+  desk. An admin tool comparing several things at once (the responses grid) is
+  allowed to be wider than a phone and scroll sideways; do not fold it into one
+  column to avoid that. `admin-page--wide` on a tab widens the shell for one.
 
 # Maintainer & agent operations
 
