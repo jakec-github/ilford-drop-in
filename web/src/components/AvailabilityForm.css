@@ -142,7 +142,7 @@
 }
 
 .availability-message--ok {
-  color: var(--role-volunteer);
+  color: var(--positive);
 }
 
 .availability-message--error {

@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import Button from "../ui/Button";
+import type { RoleColourOf } from "../hooks/useRoles";
+import { useRoles } from "../hooks/useRoles";
 import { useVolunteers, type SyncState } from "../hooks/useVolunteers";
 import type { Volunteer } from "../types";
 import "./AdminVolunteers.css";
@@ -93,21 +95,27 @@ function Count({
 //
 // Not being active is one of those exceptions, so it is tagged as well as dimmed —
 // the tag is what carries the state to a screen reader, which cannot see dimming.
-function RosterRow({ volunteer }: { volunteer: Volunteer }) {
+function RosterRow({
+  volunteer,
+  colourOf,
+}: {
+  volunteer: Volunteer;
+  colourOf: RoleColourOf;
+}) {
   return (
     <li
       className={`roster-row${volunteer.active ? "" : " roster-row--inactive"}`}
     >
       <span className="roster-name">{volunteer.fullName}</span>
       <span className="roster-tags">
-        {/* Every Role held, not just the lead one: a roster row should say what
-            somebody will actually do. The lead keeps its own colour, which is
-            the one Role name the frontend still knows by heart. */}
+        {/* Every Role held, not just the lead one: a roster row should say
+            what somebody will actually do. Each wears its configured colour,
+            so a Role looks the same here as it does on the rota. */}
         {volunteer.roles.map((role) => (
           <span
             key={role}
             className="roster-tag roster-tag--role"
-            data-role={role}
+            data-role-colour={colourOf(role) ?? undefined}
           >
             {role}
           </span>
@@ -131,6 +139,9 @@ function RosterRow({ volunteer }: { volunteer: Volunteer }) {
 // an occasional maintenance action, not the point of the page.
 export default function AdminVolunteers() {
   const { volunteers, error, syncState, sync } = useVolunteers();
+  // A Role wears its configured colour here as well as on the rota, so a lead
+  // looks like a lead wherever they appear.
+  const { colourOf } = useRoles();
   const counts = useMemo(
     () => (volunteers ? countRoster(volunteers) : null),
     [volunteers],
@@ -189,7 +200,7 @@ export default function AdminVolunteers() {
           </p>
           <ul className="roster">
             {volunteers.map((v) => (
-              <RosterRow key={v.id} volunteer={v} />
+              <RosterRow key={v.id} volunteer={v} colourOf={colourOf} />
             ))}
           </ul>
         </>

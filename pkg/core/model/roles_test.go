@@ -52,6 +52,37 @@ func TestRoles_Uncapped(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// A Role's colour is what the frontend paints its chips with, so every Role the
+// table hands out has one — a config that names none still gets an answer.
+func TestNewRoles_DefaultsTheColour(t *testing.T) {
+	roles := NewRoles([]Role{
+		{Name: "Team lead", Max: ptr(1), Priority: 1, Colour: ColourViolet},
+		{Name: "Service volunteer", Priority: 2},
+	})
+
+	lead, ok := roles.ByName("Team lead")
+	require.True(t, ok)
+	assert.Equal(t, ColourViolet, lead.Colour)
+
+	volunteer, ok := roles.ByName("Service volunteer")
+	require.True(t, ok)
+	assert.Equal(t, DefaultRoleColour, volunteer.Colour,
+		"an uncoloured Role is visibly unstyled rather than borrowing another Role's colour")
+
+	assert.Equal(t, DefaultRoleColour, roles.ByPriority()[1].Colour)
+}
+
+// The palette is closed: the app owns the values, so contrast in both themes
+// stays a decision this repo has made.
+func TestValidRoleColour(t *testing.T) {
+	assert.True(t, ValidRoleColour(ColourViolet))
+	assert.True(t, ValidRoleColour(DefaultRoleColour))
+	assert.False(t, ValidRoleColour("puce"))
+	assert.False(t, ValidRoleColour("#a233f5"), "hex is not a palette token")
+	assert.False(t, ValidRoleColour("Violet"), "tokens are matched exactly")
+	assert.False(t, ValidRoleColour(""), "an unset colour is defaulted, not validated as a token")
+}
+
 // The zero Roles is what a caller with no config in scope holds; it must answer
 // rather than panic.
 func TestRoles_ZeroValue(t *testing.T) {

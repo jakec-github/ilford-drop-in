@@ -124,6 +124,24 @@ func TestValidate_Roles(t *testing.T) {
 			},
 			wantErr: "exactly one role must be uncapped",
 		},
+		{
+			// The palette is closed, so a colour outside it is a typo caught
+			// here rather than a Role that renders in nothing at all.
+			name: "colour outside the palette",
+			roles: []model.Role{
+				{Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "puce"},
+				{Name: "Service volunteer", Priority: 2},
+			},
+			wantErr: `roles[0] (Team lead) has colour "puce"`,
+		},
+		{
+			name: "colour given as hex",
+			roles: []model.Role{
+				{Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "#a233f5"},
+				{Name: "Service volunteer", Priority: 2},
+			},
+			wantErr: "one of violet, teal, blue",
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,6 +167,19 @@ func TestValidate_RoleNamesMayHoldPunctuation(t *testing.T) {
 	}
 
 	require.NoError(t, Validate(cfg))
+}
+
+// A colour is optional: the palette has a default, so no existing config has to
+// be edited to keep validating.
+func TestValidate_RoleColourIsOptional(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Roles = []model.Role{
+		{Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet},
+		{Name: "Service volunteer", Priority: 2},
+	}
+
+	require.NoError(t, Validate(cfg))
+	assert.Equal(t, model.DefaultRoleColour, cfg.RoleTable().ByPriority()[1].Colour)
 }
 
 // Every preallocation names one subject and one configured Role — the check
@@ -249,6 +280,7 @@ roles:
   - name: "Team lead"
     max: 1
     priority: 1
+    colour: "violet"
   - name: "Service volunteer"
     priority: 2
 rotaOverrides:
@@ -270,6 +302,8 @@ rotaOverrides:
 	assert.Equal(t, 1, *cfg.Roles[0].Max)
 	assert.Equal(t, "Service volunteer", cfg.Roles[1].Name)
 	assert.Nil(t, cfg.Roles[1].Max, "the uncapped role carries no ceiling")
+	assert.Equal(t, model.ColourViolet, cfg.Roles[0].Colour)
+	assert.Empty(t, cfg.Roles[1].Colour, "an unset colour stays unset until the table defaults it")
 
 	require.Len(t, cfg.RotaOverrides[0].Preallocations, 2)
 	assert.Equal(t, Preallocation{VolunteerID: "vol-1", Role: "Team lead"}, cfg.RotaOverrides[0].Preallocations[0])

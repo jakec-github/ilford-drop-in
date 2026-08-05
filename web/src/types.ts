@@ -4,12 +4,53 @@
 // authority on it.
 export type Role = string;
 
-// The two Role names S1 ships with. Nothing tells the frontend which Roles are
-// configured yet, so the pickers that offer one, and the styling that gives the
-// lead its own colour, name them here. S3 adds an endpoint reporting the
-// configured Roles and these go.
+// The two Role names S1 ships with. The pickers that offer a Role still name
+// them here; the styling no longer does — a Role's colour comes from the server
+// (see ConfiguredRole). S3 turns the pickers over to the same source and these
+// go.
 export const TEAM_LEAD_ROLE = "Team lead";
 export const SERVICE_VOLUNTEER_ROLE = "Service volunteer";
+
+// RoleColour is a palette token, not a colour value: the server says which
+// token a Role wears and index.css says what the token looks like in each
+// theme. The set is closed so that contrast in both themes is a decision this
+// repo has made rather than one a config editor makes by accident.
+export type RoleColour =
+  | "violet"
+  | "teal"
+  | "blue"
+  | "indigo"
+  | "cyan"
+  | "green"
+  | "amber"
+  | "orange"
+  | "rose"
+  | "pink"
+  | "brown"
+  | "slate";
+
+export const ROLE_COLOURS: readonly RoleColour[] = [
+  "violet",
+  "teal",
+  "blue",
+  "indigo",
+  "cyan",
+  "green",
+  "amber",
+  "orange",
+  "rose",
+  "pink",
+  "brown",
+  "slate",
+];
+
+// ConfiguredRole is one of the Roles the server configures. This is the only
+// thing that tells the frontend which Roles exist — everywhere else a Role is
+// just its name.
+export interface ConfiguredRole {
+  name: Role;
+  colour: RoleColour;
+}
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
 // entry. Role is the role held on this shift, not the volunteer's intrinsic

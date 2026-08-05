@@ -14,6 +14,64 @@ type Role struct {
 	Max *int `yaml:"max,omitempty"`
 	// Priority orders the filling of Seats when people are scarce, lowest first.
 	Priority int `yaml:"priority"`
+	// Colour is the palette token this Role is drawn in — see RoleColours. Empty
+	// in config; NewRoles fills it in, so every Role the lookup table hands out
+	// carries one.
+	Colour string `yaml:"colour,omitempty"`
+}
+
+// The palette a Role's colour is chosen from. Named tokens rather than free-form
+// hex because the app owns the values: each token has a light and a dark value,
+// both verified at 4.5:1 against their background, so contrast stays a decision
+// made here rather than one a config editor makes by accident. `web/src/index.css`
+// holds the values; when Role authoring moves into the app, these are the
+// swatches a picker offers.
+const (
+	ColourViolet = "violet"
+	ColourTeal   = "teal"
+	ColourBlue   = "blue"
+	ColourIndigo = "indigo"
+	ColourCyan   = "cyan"
+	ColourGreen  = "green"
+	ColourAmber  = "amber"
+	ColourOrange = "orange"
+	ColourRose   = "rose"
+	ColourPink   = "pink"
+	ColourBrown  = "brown"
+	ColourSlate  = "slate"
+)
+
+// DefaultRoleColour is what a Role configured without one is drawn in. Slate is
+// deliberately the dullest token in the palette: an uncoloured Role should look
+// unstyled rather than collide with a Role somebody chose a colour for.
+const DefaultRoleColour = ColourSlate
+
+// RoleColours is the palette, in the order a picker would offer it.
+var RoleColours = []string{
+	ColourViolet,
+	ColourTeal,
+	ColourBlue,
+	ColourIndigo,
+	ColourCyan,
+	ColourGreen,
+	ColourAmber,
+	ColourOrange,
+	ColourRose,
+	ColourPink,
+	ColourBrown,
+	ColourSlate,
+}
+
+// ValidRoleColour reports whether a colour names a palette token. An empty
+// colour is not one: it means "unset", which NewRoles fills in rather than
+// validating.
+func ValidRoleColour(colour string) bool {
+	for _, c := range RoleColours {
+		if c == colour {
+			return true
+		}
+	}
+	return false
 }
 
 // Capped reports whether the Role has a ceiling.
@@ -29,11 +87,22 @@ type Roles struct {
 
 // NewRoles builds the lookup table from configured Roles in any order. It does
 // not validate them; `config.Validate` owns the rules (unique names, unique
-// priorities, exactly one uncapped Role).
+// priorities, exactly one uncapped Role, a colour the palette names).
+//
+// It does fill in an unset colour, so every Role read back out of the table has
+// one. Defaulting here rather than at config load means a caller building the
+// table straight from Roles — a test, the CLI — gets the same answer as the
+// server.
 func NewRoles(roles []Role) Roles {
 	ordered := make([]Role, len(roles))
 	copy(ordered, roles)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Priority < ordered[j].Priority })
+
+	for i := range ordered {
+		if ordered[i].Colour == "" {
+			ordered[i].Colour = DefaultRoleColour
+		}
+	}
 
 	byName := make(map[string]Role, len(ordered))
 	for _, r := range ordered {

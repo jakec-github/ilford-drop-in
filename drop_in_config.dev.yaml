@@ -38,8 +38,10 @@ roles:
   - name: 'Team lead'
     max: 1
     priority: 1
+    colour: 'violet'
   - name: 'Service volunteer'
     priority: 2
+    colour: 'teal'
 
 server:
   port: 8080

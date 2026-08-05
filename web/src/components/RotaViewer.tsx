@@ -10,6 +10,8 @@ import type {
 } from "../types";
 import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
 import { usePreallocations } from "../hooks/usePreallocations";
+import type { RoleColourOf } from "../hooks/useRoles";
+import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
 import type { AssigneeChange } from "./RotaEditDialogs";
@@ -242,6 +244,7 @@ interface RowEdit {
 
 function Chip({
   assignee,
+  colourOf,
   selected,
   label,
   className,
@@ -253,6 +256,7 @@ function Chip({
   onDrop,
 }: {
   assignee: Assignee;
+  colourOf: RoleColourOf;
   selected: boolean;
   // Overrides the accessible name, which is otherwise the chip's text. Editing
   // turns a chip into a control that does something to the person named on it,
@@ -281,11 +285,13 @@ function Chip({
     <button
       type="button"
       className={cls}
-      // The Role is an attribute rather than a class: role names are
-      // configuration, so `role-${name}` would mint class names no stylesheet
-      // has a rule for. Chips are neutral by default and the CSS names the one
-      // Role it colours.
-      data-role={assignee.role}
+      // The colour is an attribute rather than a class, and the Role's palette
+      // token rather than its name: role names are configuration, so
+      // `role-${name}` would mint class names no stylesheet has a rule for,
+      // while the palette is closed and index.css has a rule per token. A Role
+      // the server does not name — one retired since this rota was allocated —
+      // gets no attribute and the chip's own default.
+      data-role-colour={colourOf(assignee.role) ?? undefined}
       aria-label={label}
       draggable={draggable}
       // aria-disabled rather than disabled: the chip stays focusable, so
@@ -409,10 +415,12 @@ function pinTitle(pin: Preallocation): string {
 function PreallocationList({
   date,
   pins,
+  colourOf,
   onUnpin,
 }: {
   date: string;
   pins: Preallocation[];
+  colourOf: RoleColourOf;
   // Absent unless editing is on. Offered per pin, since a config pin in the
   // same list has no row behind it to remove.
   onUnpin?: (pin: Preallocation) => void;
@@ -429,7 +437,7 @@ function PreallocationList({
             // person from both sources, which the source keeps apart.
             key={`${pin.source}/${pin.volunteerId ?? pin.name}`}
             className={`prealloc-chip ${pin.custom ? "custom" : "volunteer"}`}
-            data-role={pin.role}
+            data-role-colour={colourOf(pin.role) ?? undefined}
             title={pinTitle(pin)}
           >
             {pin.name}
@@ -469,6 +477,7 @@ function PreallocationList({
 function ShiftRow({
   shift,
   pins,
+  colourOf,
   selectedName,
   onSelectName,
   edit,
@@ -477,6 +486,7 @@ function ShiftRow({
   // Everyone already pinned to this shift. Only ever non-empty for an admin
   // looking at a shift whose rota has not been allocated.
   pins: Preallocation[];
+  colourOf: RoleColourOf;
   selectedName: string;
   onSelectName: (name: string) => void;
   edit: RowEdit | null;
@@ -522,6 +532,7 @@ function ShiftRow({
           <PreallocationList
             date={shift.date}
             pins={pins}
+            colourOf={colourOf}
             // While someone is being carried the page narrows to placing them,
             // the same way the Add buttons go away: an unallocated shift is not
             // a destination, so its pins are only there to be read.
@@ -552,6 +563,7 @@ function ShiftRow({
               <Chip
                 key={key}
                 assignee={a}
+                colourOf={colourOf}
                 selected={a.name === selectedName}
                 onClick={() => handleClick(a.name)}
               />
@@ -575,6 +587,7 @@ function ShiftRow({
             <Chip
               key={key}
               assignee={a}
+              colourOf={colourOf}
               selected={a.name === selectedName}
               className={picked ? "lifted" : ""}
               draggable
@@ -716,6 +729,11 @@ export default function RotaViewer({
   // handles and Add buttons the server would now refuse. Everything the editing
   // mode renders hangs off this, so losing isAdmin takes all of it away at once.
   const editing = isAdmin && editRequested;
+
+  // What each Role is drawn in. Public, and fetched whoever is looking: the
+  // chips are the rota. A failure leaves every chip in the default colour,
+  // which is a rota that reads fine, so it is not reported here.
+  const { colourOf } = useRoles();
 
   // The roster is only needed to add someone, and it is admin-only, so it is
   // not fetched until an admin turns editing on.
@@ -1215,6 +1233,7 @@ export default function RotaViewer({
             key={shift.date}
             shift={shift}
             pins={pinsByDate.get(shift.date) ?? []}
+            colourOf={colourOf}
             selectedName={selectedName}
             onSelectName={setSelectedName}
             edit={editing ? rowEdit(shift) : null}
@@ -1270,8 +1289,7 @@ export default function RotaViewer({
           leadPinnedBy={
             (pinsByDate.get(dialog.date) ?? []).find(
               (p) => p.role === TEAM_LEAD_ROLE,
-            )
-              ?.source ?? null
+            )?.source ?? null
           }
           pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
           busy={saving}

@@ -189,8 +189,8 @@
 }
 
 .calendar-copy.failed {
-  color: var(--role-lead);
-  border-color: color-mix(in srgb, var(--role-lead) 50%, var(--border));
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   background: var(--bg);
 }
 
@@ -303,16 +303,12 @@
   color: var(--chip);
 }
 
-/* Role names are configuration, so the chip's Role is a data attribute and the
-   default colour has to stand on its own — a Role added to the config gets a
-   readable chip without a stylesheet change. Team lead is the one name spelled
-   out here, because a lead looking like a lead is the point. */
+/* The Role's colour comes from the server as a palette token, which index.css
+   turns into --role-colour. The fallback is what a chip wears when no token
+   reached it: the roles are still loading, or the rota names a Role the config
+   no longer does. */
 .prealloc-chip {
-  --chip: var(--role-volunteer);
-}
-
-.prealloc-chip[data-role="Team lead"] {
-  --chip: var(--role-lead);
+  --chip: var(--role-colour, var(--role-slate));
 }
 
 /* Matching .chip: volunteers are rounded pills, custom entries squared tags. */
@@ -372,7 +368,7 @@
 .rota-notice {
   margin: 0 0 12px;
   font-size: 13px;
-  color: var(--role-lead);
+  color: var(--accent);
 }
 
 /* Chips: colour = role held on this shift. Outlined by default, light fill on
@@ -380,10 +376,11 @@
    clickable on the public rota and are the handle for every edit on the admin
    one, so they have to be reachable by keyboard either way. */
 .chip {
-  /* Role names are configuration, so the Role is a data attribute and the
-     default has to stand on its own — a Role added to the config gets a
-     readable chip without a stylesheet change. */
-  --chip: var(--role-volunteer);
+  /* The Role's colour comes from the server as a palette token, which
+     index.css turns into --role-colour. The fallback is what a chip wears when
+     no token reached it: the roles are still loading, or the rota names a Role
+     the config no longer does. */
+  --chip: var(--role-colour, var(--role-slate));
   position: relative;
   display: inline-block;
   padding: 3px 10px;
@@ -398,12 +395,6 @@
   /* The drag handle is the chip itself; without this a drag starts by
      selecting the name instead. */
   user-select: none;
-}
-
-/* The one Role name spelled out in CSS, because a lead looking like a lead is
-   the point. */
-.chip[data-role="Team lead"] {
-  --chip: var(--role-lead);
 }
 
 /* Volunteers are rounded pills; custom (manual) entries are squared tags. */
@@ -535,7 +526,7 @@
 
 .shift-error {
   font-size: 13px;
-  color: var(--role-lead);
+  color: var(--accent);
 }
 
 /* Group membership: a small corner dot, one stable colour per group. The ring
