@@ -189,7 +189,7 @@ func run(env string, portOverride int) error {
 	if roles, err := services.RoleTable(ctx, database); err != nil {
 		logger.Warn("Failed to read roles at startup", zap.Error(err))
 	} else if len(roles.ByPriority()) == 0 {
-		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run")
+		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the admin settings screen")
 	}
 
 	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, logger)
