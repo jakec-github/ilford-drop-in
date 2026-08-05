@@ -1,30 +1,30 @@
-Unique ID,First name,Last name,Team lead - Role,Service volunteer - Role,Status,Sex/Gender,Email,Group key,Junk Column
-XYZ,Emma,Welder,TRUE,TRUE,Active,Female,youremail+sarah.johnson@gmail.com,Group A,Random Data
-ABC,Michael,Smith,FALSE,TRUE,Active,Male,youremail+michael.smith@gmail.com,Group A,Ignore This
-DEF,Emma,Williams,FALSE,TRUE,Active,Female,youremail+emma.williams@gmail.com,Group B,Test Value
-GHI,James,Brown,FALSE,TRUE,Active,Male,youremail+james.brown@gmail.com,,Some Junk
-JKL,Olivia,Jones,FALSE,TRUE,Active,Female,youremail+olivia.jones@gmail.com,,Data Here
-MNO,William,Garcia,TRUE,TRUE,Active,Male,youremail+william.garcia@gmail.com,Group B,Whatever
-PQR,Ava,Martinez,FALSE,TRUE,Active,Female,youremail+ava.martinez@gmail.com,,Stuff
-BCD,Isabella,Hernandez,TRUE,TRUE,Active,Female,youremail+isabella.hernandez@gmail.com,,Data
-HIJ,Mia,Wilson,FALSE,TRUE,Active,Female,youremail+mia.wilson@gmail.com,,Random
-NOP,Charlotte,Thomas,FALSE,TRUE,Active,Female,youremail+charlotte.thomas@gmail.com,,Here
-TUV,Amelia,Moore,FALSE,TRUE,Active,Female,youremail+amelia.moore@gmail.com,,Value
-LMN,Abigail,White,FALSE,TRUE,Active,Female,youremail+abigail.white@gmail.com,,GHI
-EGH,Sebastian,Walker,FALSE,TRUE,Active,Male,youremail+sebastian.walker@gmail.com,,Test
-GIJ,Sofia,Young,FALSE,TRUE,Active,Female,youremail+sofia.young@gmail.com,,Data
-ILM,Ella,King,FALSE,TRUE,Active,Female,youremail+ella.king@gmail.com,Group C,Words
-LOP,John,Torres,FALSE,TRUE,Active,Male,youremail+matthew.torres@gmail.com,,Entry
-MPQ,Grace,Nguyen,TRUE,TRUE,Active,Female,youremail+grace.nguyen@gmail.com,,Field
-PST,Henry,Green,FALSE,TRUE,Active,Male,youremail+henry.green@gmail.com,,More
-SVW,Zoey,Baker,FALSE,TRUE,Active,Female,youremail+zoey.baker@gmail.com,,Point
-TWX,Leo,Hall,FALSE,TRUE,Inactive,Male,youremail+leo.hall@gmail.com,,Test
-UXY,Lily,Rivera,FALSE,TRUE,On Leave,Female,youremail+lily.rivera@gmail.com,,Value
-WAB,Luna,Mitchell,FALSE,TRUE,Active,Female,youremail+luna.mitchell@gmail.com,Group C,Text
-XBC,Gabriel,Roberts,FALSE,TRUE,Maybe Active,Male,youremail+gabriel.roberts@gmail.com,,Word
-YCD,Layla,Carter,FALSE,TRUE,INACTIVE,Female,youremail+layla.carter@gmail.com,,Sample
-AEF,Hannah,Evans,TRUE,TRUE,Suspended,Female,youremail+hannah.evans@gmail.com,,Data
-BFG,Samuel,Turner,FALSE,TRUE,Active,Male,youremail+samuel.turner@gmail.com,,Info
-DHI,Joseph,Parker,FALSE,TRUE,Pending,Male,youremail+joseph.parker@gmail.com,,Text
-EIJ,Aaliyah,Collins,FALSE,TRUE,Active,Female,youremail+aaliyah.collins@gmail.com,Group C,Word
-FJK,John,Edwards,TRUE,TRUE,Active,Male,youremail+john.edwards@gmail.com,,Sample
+Unique ID,First name,Last name,Roles,Status,Sex/Gender,Email,Group key,Junk Column
+XYZ,Emma,Welder,"Team lead, Service volunteer",Active,Female,youremail+sarah.johnson@gmail.com,Group A,Random Data
+ABC,Michael,Smith,Service volunteer,Active,Male,youremail+michael.smith@gmail.com,Group A,Ignore This
+DEF,Emma,Williams,Service volunteer,Active,Female,youremail+emma.williams@gmail.com,Group B,Test Value
+GHI,James,Brown,Service volunteer,Active,Male,youremail+james.brown@gmail.com,,Some Junk
+JKL,Olivia,Jones,Service volunteer,Active,Female,youremail+olivia.jones@gmail.com,,Data Here
+MNO,William,Garcia,"Team lead, Service volunteer",Active,Male,youremail+william.garcia@gmail.com,Group B,Whatever
+PQR,Ava,Martinez,Service volunteer,Active,Female,youremail+ava.martinez@gmail.com,,Stuff
+BCD,Isabella,Hernandez,"Team lead, Service volunteer",Active,Female,youremail+isabella.hernandez@gmail.com,,Data
+HIJ,Mia,Wilson,Service volunteer,Active,Female,youremail+mia.wilson@gmail.com,,Random
+NOP,Charlotte,Thomas,Service volunteer,Active,Female,youremail+charlotte.thomas@gmail.com,,Here
+TUV,Amelia,Moore,Service volunteer,Active,Female,youremail+amelia.moore@gmail.com,,Value
+LMN,Abigail,White,Service volunteer,Active,Female,youremail+abigail.white@gmail.com,,GHI
+EGH,Sebastian,Walker,Service volunteer,Active,Male,youremail+sebastian.walker@gmail.com,,Test
+GIJ,Sofia,Young,Service volunteer,Active,Female,youremail+sofia.young@gmail.com,,Data
+ILM,Ella,King,Service volunteer,Active,Female,youremail+ella.king@gmail.com,Group C,Words
+LOP,John,Torres,Service volunteer,Active,Male,youremail+matthew.torres@gmail.com,,Entry
+MPQ,Grace,Nguyen,"Team lead, Service volunteer",Active,Female,youremail+grace.nguyen@gmail.com,,Field
+PST,Henry,Green,Service volunteer,Active,Male,youremail+henry.green@gmail.com,,More
+SVW,Zoey,Baker,Service volunteer,Active,Female,youremail+zoey.baker@gmail.com,,Point
+TWX,Leo,Hall,Service volunteer,Inactive,Male,youremail+leo.hall@gmail.com,,Test
+UXY,Lily,Rivera,Service volunteer,On Leave,Female,youremail+lily.rivera@gmail.com,,Value
+WAB,Luna,Mitchell,Service volunteer,Active,Female,youremail+luna.mitchell@gmail.com,Group C,Text
+XBC,Gabriel,Roberts,Service volunteer,Maybe Active,Male,youremail+gabriel.roberts@gmail.com,,Word
+YCD,Layla,Carter,Service volunteer,INACTIVE,Female,youremail+layla.carter@gmail.com,,Sample
+AEF,Hannah,Evans,"Team lead, Service volunteer",Suspended,Female,youremail+hannah.evans@gmail.com,,Data
+BFG,Samuel,Turner,Service volunteer,Active,Male,youremail+samuel.turner@gmail.com,,Info
+DHI,Joseph,Parker,Service volunteer,Pending,Male,youremail+joseph.parker@gmail.com,,Text
+EIJ,Aaliyah,Collins,Service volunteer,Active,Female,youremail+aaliyah.collins@gmail.com,Group C,Word
+FJK,John,Edwards,"Team lead, Service volunteer",Active,Male,youremail+john.edwards@gmail.com,,Sample

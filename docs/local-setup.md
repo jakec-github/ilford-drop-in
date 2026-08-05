@@ -102,11 +102,22 @@ Put the roster on a tab (e.g. `volunteers`) whose name you'll set as
 these column names (order doesn't matter; extra columns are ignored):
 
 ```
-Unique ID | First name | Last name | Role | Status | Sex/Gender | Email | Group key
+Unique ID | First name | Last name | Roles | Status | Sex/Gender | Email | Group key
 ```
 
-`Role` must be a valid role (e.g. `Team lead`, `Service volunteer`) or the sync
-fails. Rows with an empty `First name` are skipped.
+Rows with an empty `First name` are skipped.
+
+`Roles` holds the jobs that volunteer does — the roles named in your config
+([§4](#4-configuration-file)) — as a comma-separated list, so someone who both
+leads and serves reads `Team lead, Service volunteer`. Anything the config does
+not name is warned about in the logs and ignored, so a typo costs one person one
+role rather than failing the whole sync.
+
+Set the column up as a **multi-select dropdown** so the values can't be
+mistyped: select the column, **Insert → Dropdown**, add one option per
+configured role, and turn on multiple selections in the rule's advanced options.
+Editing a cell then gives you chips to pick from, and Sheets stores what you
+pick as the comma-separated string above.
 
 **Seed data:** `test_data/volunteers.csv` is a ready-made sample roster with the
 correct headers — paste it into the sheet. The sample emails use Gmail
@@ -138,7 +149,9 @@ defaultShiftSize: 4                           # volunteers per shift (excluding 
 requiresMale: true                            # every open shift needs a male allocated, or a seat left open
 
 # The jobs volunteers hold. Config is authoritative: these names are what the
-# roster's ' - Role' tick columns and every preallocation are matched against.
+# values in the roster's 'Roles' column and every preallocation are matched
+# against, and they are the options the column's dropdown should offer. A name
+# may not contain a comma — that is what separates the roles in a cell.
 # max is the ceiling — how many of that role a shift may ever hold; omit it for
 # no ceiling. Exactly one role must be uncapped, and it is that role's seats
 # defaultShiftSize buys. priority orders the filling of seats.
@@ -284,7 +297,8 @@ building `pyallocator/.venv` first if it is not there yet.
 | `failed to load config` | File must be named `drop_in_config.test.yaml` in the repo root (or home dir); check every required field is present. |
 | `failed to load service account` / `web OAuth client config` | The server needs `serviceAccount.test.json` and `oauthClientWeb.test.json` in the repo root. |
 | `missing required field in header` | The volunteer sheet header row must contain the exact column names in [§3](#volunteer-sheet-format). |
-| `invalid role for volunteer` | A `Role` cell isn't a recognised role. |
+| `volunteer sheet names a Role no configured Role matches` (warning) | A value in a `Roles` cell isn't one of the roles in your config. The volunteer loads without it. |
+| Nobody gets allocated to a role | Check the `Roles` column actually names it — a role nobody holds has no one to fill its seats. |
 | Empty rota page | Run `./cli -e test defineRota 12` to create shifts. |
 | Empty roster / `failed to fetch volunteers` | Share the volunteer sheet with the service account email; check `volunteerSheetID` and `serviceVolunteersTab`. |
 | OAuth loops or missing scopes | Delete `~/.ilford-drop-in/tokens/token-test.json` and re-run to re-authorise. |

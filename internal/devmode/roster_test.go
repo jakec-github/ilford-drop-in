@@ -15,7 +15,7 @@ import (
 // points at, so it is the fixture worth testing against.
 const repoCSV = "../../test_data/volunteers.csv"
 
-// twoRoles is the pair of Roles the sample roster ticks.
+// twoRoles is the pair of Roles the sample roster names.
 func twoRoles() model.Roles {
 	max := 1
 	return model.NewRoles([]model.Role{
@@ -38,6 +38,8 @@ func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
 	require.True(t, ok, "expected the first data row to be loaded")
 	assert.Equal(t, "Emma", lead.FirstName)
 	assert.Equal(t, "Welder", lead.LastName)
+	// Two Roles in one cell, which the CSV has to quote because they are comma
+	// separated — the same shape a multi-select cell arrives in from Sheets.
 	assert.Equal(t, []string{"Team lead", "Service volunteer"}, lead.Roles)
 	assert.Equal(t, "Active", lead.Status)
 	assert.Equal(t, "Female", lead.Gender)
@@ -67,7 +69,7 @@ func TestLoadVolunteers_MissingFile(t *testing.T) {
 func TestLoadVolunteers_MissingColumn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "roster.csv")
 	require.NoError(t, os.WriteFile(path, []byte(
-		"Unique ID,First name,Last name,Role,Status,Sex/Gender,Email\nABC,Michael,Smith,Service volunteer,Active,Male,m@example.com\n",
+		"Unique ID,First name,Last name,Roles,Status,Sex/Gender,Email\nABC,Michael,Smith,Service volunteer,Active,Male,m@example.com\n",
 	), 0644))
 
 	_, err := LoadVolunteers(path, twoRoles())
@@ -80,7 +82,7 @@ func TestLoadVolunteers_RaggedRows(t *testing.T) {
 	// blank; the sheet path tolerates them, so this one must too.
 	path := filepath.Join(t.TempDir(), "roster.csv")
 	require.NoError(t, os.WriteFile(path, []byte(
-		"Unique ID,First name,Last name,Role,Status,Sex/Gender,Email,Group key\nABC,Michael,Smith,Service volunteer,Active\n",
+		"Unique ID,First name,Last name,Roles,Status,Sex/Gender,Email,Group key\nABC,Michael,Smith,Service volunteer,Active\n",
 	), 0644))
 
 	volunteers, err := LoadVolunteers(path, twoRoles())

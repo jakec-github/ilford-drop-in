@@ -9,9 +9,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// Expected column names in volunteers sheet. Roles are not among them: they
-// arrive as `<name> - Role` tick columns discovered from the header, so that
-// configuring a new Role needs a new column and no code change.
+// Expected column names in volunteers sheet.
 var volunteerFields = []string{
 	"Unique ID",
 	"First name",
@@ -20,12 +18,14 @@ var volunteerFields = []string{
 	"Sex/Gender",
 	"Email",
 	"Group key",
+	"Roles",
 }
 
-// roleColumnSuffix marks a header cell as a Role tick-box column. The legacy
-// `Role` dropdown does not carry it, so the two can sit side by side while the
-// sheet is migrated.
-const roleColumnSuffix = " - Role"
+// roleSeparator splits the Roles cell. A Sheets multi-select dropdown holds the
+// chips someone picked as one joined string, so the cell is a list by
+// convention only — hence the trimming in heldRoles, and the rule in
+// `config.Validate` that no Role name may contain this character.
+const roleSeparator = ","
 
 // noGroupValue is what the Group key dropdown holds for a volunteer in no
 // group. A Sheets dropdown cannot be unset, so `None` is the only way to say
@@ -34,15 +34,6 @@ const roleColumnSuffix = " - Role"
 // artefact — out of the domain entirely. Compared lower-cased and trimmed,
 // since a dropdown's label is not guaranteed to keep its capitalisation.
 const noGroupValue = "none"
-
-// tickValues are the cell contents that count as a ticked box, compared
-// lower-cased and trimmed. A Sheets tick-box writes TRUE; the rest are what
-// people type by hand.
-var tickValues = map[string]bool{
-	"true": true,
-	"yes":  true,
-	"✓":    true,
-}
 
 // ListVolunteers retrieves and parses volunteers from the configured spreadsheet
 func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
@@ -117,11 +108,11 @@ func ComputeDisplayNames(volunteers []model.Volunteer) {
 // Sheets API here, and a CSV export in dev mode (internal/devmode). Both go
 // through this parser so the column contract is defined once.
 //
-// The Roles a volunteer holds come from `<name> - Role` tick columns matched
-// against the configured Roles, so the sheet and the config can drift without
-// the roster failing to load: a column naming a Role config does not have is
-// ignored, and a configured Role with no column is simply held by nobody. Both
-// are warned about, because both are usually a half-finished edit.
+// The Roles a volunteer holds come from one `Roles` cell, whose values are
+// matched against the configured Roles. Config stays authoritative: a value
+// naming a Role config does not have is warned about and skipped rather than
+// failing the roster, because it is usually a half-finished edit and the rest
+// of the cell is still good.
 func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer, error) {
 	if len(raw) < 1 {
 		return nil, fmt.Errorf("no header row found")
@@ -144,8 +135,6 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 		}
 		fieldIndexes[field] = index
 	}
-
-	roleIndexes := findRoleColumns(headerRow, roles)
 
 	// Helper to get field value from row
 	getField := func(field string, row []interface{}) string {
@@ -177,7 +166,7 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 			ID:        getField("Unique ID", row),
 			FirstName: firstName,
 			LastName:  getField("Last name", row),
-			Roles:     heldRoles(row, roles, roleIndexes),
+			Roles:     heldRoles(getField("Roles", row), roles),
 			Status:    getField("Status", row),
 			Gender:    getField("Sex/Gender", row),
 			Email:     getField("Email", row),
@@ -199,55 +188,31 @@ func groupKey(cell string) string {
 	return cell
 }
 
-// findRoleColumns maps each configured Role to the column holding its ticks,
-// warning about either side of a mismatch between the sheet and the config.
-func findRoleColumns(headerRow []interface{}, roles model.Roles) map[string]int {
-	indexes := make(map[string]int)
+// heldRoles reads one volunteer's Roles cell, returning the Roles they hold in
+// priority order — so the first is the one a caller showing a single Role
+// wants, whatever order the chips were picked in. Duplicates collapse for the
+// same reason: the answer is a set.
+func heldRoles(cell string, roles model.Roles) []string {
+	picked := make(map[string]bool)
 
-	for i, cell := range headerRow {
-		header, ok := cell.(string)
-		if !ok {
+	for _, value := range strings.Split(cell, roleSeparator) {
+		value = strings.TrimSpace(value)
+		// A cell holding nothing splits to one empty value, and a hand-edited
+		// one can have empties between separators.
+		if value == "" {
 			continue
 		}
-		header = strings.TrimSpace(header)
-		if !strings.HasSuffix(header, roleColumnSuffix) {
+		if _, known := roles.ByName(value); !known {
+			slog.Warn("volunteer sheet names a Role no configured Role matches; ignoring it",
+				"role", value)
 			continue
 		}
-
-		name := strings.TrimSpace(strings.TrimSuffix(header, roleColumnSuffix))
-		if _, known := roles.ByName(name); !known {
-			slog.Warn("volunteer sheet has a Role column no configured Role matches; ignoring it",
-				"column", header, "role", name)
-			continue
-		}
-		indexes[name] = i
+		picked[value] = true
 	}
 
-	for _, role := range roles.ByPriority() {
-		if _, found := indexes[role.Name]; !found {
-			slog.Warn("configured Role has no column in the volunteer sheet; nobody holds it",
-				"role", role.Name, "expectedColumn", role.Name+roleColumnSuffix)
-		}
-	}
-
-	return indexes
-}
-
-// heldRoles reads one volunteer's ticks, returning the Roles they hold in
-// priority order.
-func heldRoles(row []interface{}, roles model.Roles, roleIndexes map[string]int) []string {
 	var held []string
-
 	for _, role := range roles.ByPriority() {
-		index, found := roleIndexes[role.Name]
-		if !found || index >= len(row) {
-			continue
-		}
-		cell, ok := row[index].(string)
-		if !ok {
-			continue
-		}
-		if tickValues[strings.ToLower(strings.TrimSpace(cell))] {
+		if picked[role.Name] {
 			held = append(held, role.Name)
 		}
 	}

@@ -29,11 +29,11 @@ func row(cells ...string) []any {
 	return widened
 }
 
-func TestParseVolunteers_RoleColumnsFoundBySuffix(t *testing.T) {
+func TestParseVolunteers_RolesFromOneColumn(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Team lead - Role", "Service volunteer - Role"),
-		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "Group A", "TRUE", "TRUE"),
-		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "", "FALSE", "TRUE"),
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "Group A", "Team lead, Service volunteer"),
+		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "", "Service volunteer"),
 	}
 
 	volunteers, err := ParseVolunteers(raw, twoRoles())
@@ -50,61 +50,51 @@ func TestParseVolunteers_RoleColumnsFoundBySuffix(t *testing.T) {
 	assert.True(t, volunteers[1].Holds("Service volunteer"))
 }
 
-// The legacy Role dropdown does not carry the suffix, so it is left alone and
-// the two can sit side by side while the ticks are filled in.
-func TestParseVolunteers_LegacyRoleColumnIsIgnored(t *testing.T) {
-	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Role", "Status", "Sex/Gender", "Email", "Group key", "Team lead - Role", "Service volunteer - Role"),
-		row("XYZ", "Emma", "Welder", "Team lead", "Active", "Female", "emma@example.com", "", "", "TRUE"),
-	}
-
-	volunteers, err := ParseVolunteers(raw, twoRoles())
-	require.NoError(t, err)
-	require.Len(t, volunteers, 1)
-
-	// The dropdown says Team lead; only the ticks count.
-	assert.Equal(t, []string{"Service volunteer"}, volunteers[0].Roles)
-}
-
-func TestParseVolunteers_TickTruthiness(t *testing.T) {
+// What a multi-select cell holds is a spreadsheet's idea of a list, not a
+// parser's: the separator is whatever the UI wrote, the spacing is not
+// guaranteed, and a hand-edited cell can hold anything a person typed.
+func TestParseVolunteers_RolesCellShapes(t *testing.T) {
 	tests := []struct {
-		cell string
-		held bool
+		name  string
+		cell  string
+		roles []string
 	}{
-		{"TRUE", true},
-		{"true", true},
-		{" True ", true},
-		{"yes", true},
-		{"YES", true},
-		{"✓", true},
-		{"FALSE", false},
-		{"false", false},
-		{"no", false},
-		{"", false},
-		{"maybe", false},
+		{"empty", "", nil},
+		{"blank", "   ", nil},
+		{"one", "Team lead", []string{"Team lead"}},
+		{"two", "Team lead, Service volunteer", []string{"Team lead", "Service volunteer"}},
+		{"no spacing", "Team lead,Service volunteer", []string{"Team lead", "Service volunteer"}},
+		{"loose spacing", "  Team lead ,  Service volunteer  ", []string{"Team lead", "Service volunteer"}},
+		// Order in the cell is the order chips were picked; priority order is
+		// what comes back either way.
+		{"reversed", "Service volunteer, Team lead", []string{"Team lead", "Service volunteer"}},
+		{"empty item", "Team lead, , Service volunteer", []string{"Team lead", "Service volunteer"}},
+		{"trailing separator", "Team lead,", []string{"Team lead"}},
+		{"repeated", "Team lead, Team lead", []string{"Team lead"}},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.cell, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			raw := [][]any{
-				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Team lead - Role"),
+				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
 				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", tc.cell),
 			}
 
 			volunteers, err := ParseVolunteers(raw, twoRoles())
 			require.NoError(t, err)
 			require.Len(t, volunteers, 1)
-			assert.Equal(t, tc.held, volunteers[0].Holds("Team lead"))
+			assert.Equal(t, tc.roles, volunteers[0].Roles)
 		})
 	}
 }
 
-// A ` - Role` column config does not name is a sheet the config has not caught
-// up with: ignore it rather than failing the whole roster.
-func TestParseVolunteers_UnknownRoleColumnIsIgnored(t *testing.T) {
+// A value config does not name is a sheet the config has not caught up with —
+// or a typo in a hand-edited cell. Skip it rather than failing the roster, and
+// keep the rest of the cell.
+func TestParseVolunteers_UnknownRoleValueIsSkipped(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Service volunteer - Role", "Food collector - Role"),
-		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "TRUE", "TRUE"),
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "Food collector, Service volunteer"),
 	}
 
 	volunteers, err := ParseVolunteers(raw, twoRoles())
@@ -113,12 +103,13 @@ func TestParseVolunteers_UnknownRoleColumnIsIgnored(t *testing.T) {
 	assert.Equal(t, []string{"Service volunteer"}, volunteers[0].Roles)
 }
 
-// The other way round: a configured Role nobody can be ticked for. Nobody holds
-// it, which is legal but worth a warning.
-func TestParseVolunteers_ConfiguredRoleWithNoColumn(t *testing.T) {
+// The columns Roles used to live in. Neither the pre-S1 `Role` dropdown nor the
+// S1 `<name> - Role` ticks are read any more; leaving them on the sheet must
+// change nothing.
+func TestParseVolunteers_RetiredRoleColumnsAreIgnored(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Service volunteer - Role"),
-		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "TRUE"),
+		row("Unique ID", "First name", "Last name", "Role", "Status", "Sex/Gender", "Email", "Group key", "Roles", "Team lead - Role", "Service volunteer - Role"),
+		row("XYZ", "Emma", "Welder", "Team lead", "Active", "Female", "emma@example.com", "", "Service volunteer", "TRUE", "TRUE"),
 	}
 
 	volunteers, err := ParseVolunteers(raw, twoRoles())
@@ -127,19 +118,18 @@ func TestParseVolunteers_ConfiguredRoleWithNoColumn(t *testing.T) {
 	assert.Equal(t, []string{"Service volunteer"}, volunteers[0].Roles)
 }
 
-// A roster with no tick columns at all parses; everyone simply holds nothing.
-// This is the state of the sheet the moment before the ticks are added, and
-// failing on it would make the migration impossible to stage.
-func TestParseVolunteers_NoRoleColumns(t *testing.T) {
+// Roles is a required column like any other: a roster without it would load
+// with nobody holding anything and allocate nothing, which is worse than
+// failing.
+func TestParseVolunteers_MissingRolesColumn(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Role", "Status", "Sex/Gender", "Email", "Group key"),
-		row("XYZ", "Emma", "Welder", "Team lead", "Active", "Female", "emma@example.com", ""),
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", ""),
 	}
 
-	volunteers, err := ParseVolunteers(raw, twoRoles())
-	require.NoError(t, err)
-	require.Len(t, volunteers, 1)
-	assert.Empty(t, volunteers[0].Roles)
+	_, err := ParseVolunteers(raw, twoRoles())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Roles")
 }
 
 // The Group key column is a dropdown, and a dropdown cannot be unset: `None` is
@@ -164,8 +154,8 @@ func TestParseVolunteers_NoneGroupKeyIsNormalised(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.cell, func(t *testing.T) {
 			raw := [][]any{
-				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key"),
-				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", tc.cell),
+				row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", tc.cell, "Service volunteer"),
 			}
 
 			volunteers, err := ParseVolunteers(raw, twoRoles())
@@ -180,9 +170,9 @@ func TestParseVolunteers_NoneGroupKeyIsNormalised(t *testing.T) {
 // group of two — the bug normalising at the boundary fixes.
 func TestParseVolunteers_NoneIsNotAGroup(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key"),
-		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "None"),
-		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "None"),
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "None", "Service volunteer"),
+		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "None", "Service volunteer"),
 	}
 
 	volunteers, err := ParseVolunteers(raw, twoRoles())
@@ -194,8 +184,8 @@ func TestParseVolunteers_NoneIsNotAGroup(t *testing.T) {
 
 func TestParseVolunteers_MissingRequiredColumn(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email"),
-		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com"),
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Roles"),
+		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "Service volunteer"),
 	}
 
 	_, err := ParseVolunteers(raw, twoRoles())
@@ -203,11 +193,11 @@ func TestParseVolunteers_MissingRequiredColumn(t *testing.T) {
 	assert.Contains(t, err.Error(), "Group key")
 }
 
-// Short rows are routine in hand-edited exports; a missing tick cell is not a
-// tick.
+// Short rows are routine in hand-edited exports; a row that stops before the
+// Roles column holds no Roles.
 func TestParseVolunteers_RaggedRows(t *testing.T) {
 	raw := [][]any{
-		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Team lead - Role", "Service volunteer - Role"),
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
 		row("XYZ", "Emma", "Welder", "Active"),
 	}
 

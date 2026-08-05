@@ -3,7 +3,9 @@
 Status: accepted. Amended 2026-08-02: Tracks removed before implementation —
 see "Tracks, considered and dropped". Amended 2026-08-04: a Preallocation
 grants the Role it names for that one Shift (#109) — see "Eligibility is exact
-match on a held Role".
+match on a held Role". Amended 2026-08-05: the roster holds Roles in one
+multi-select column, not one column per Role (#121) — see "The roster holds
+Roles in one `Roles` column".
 
 Two hardcoded roles (`RoleTeamLead`, `RoleVolunteer`) are being replaced by
 configured **Roles**. A Role is a job on a Shift; a volunteer **holds** the
@@ -25,7 +27,7 @@ ADR exists.
   ordinary volunteers) because it recreates the very split it was meant to
   solve: role names would mean "pool" in one place and "job" in another, and
   every eligibility question needs two lookups. The cost is real and accepted —
-  a broadly-open Role must be ticked per volunteer, and a deputy Role means
+  a broadly-open Role must be named per volunteer, and a deputy Role means
   saying who will actually deputise. That is arguably the truer statement:
   not every team lead wants the deputy job.
 
@@ -43,7 +45,7 @@ ADR exists.
 
 - **No "open to all" shortcut.** Tempting, and always slightly wrong: it is not
   true that anyone on the roster may deputise, because the roster includes
-  people who only ever collect food. Breadth costs ticks.
+  people who only ever collect food. Breadth costs an entry per person.
 
 - **One Role per person per Shift.** A person fills exactly one Seat, whichever
   Roles they hold. This is what stops the same person being both Team lead and
@@ -88,14 +90,25 @@ ADR exists.
   recomputed from config on every read, so editing config silently rewrites what
   a *past* shift asked for; enumerated Seats make that visible and wrong.
 
-- **The roster holds Roles in `<name> - Role` tick-box columns.** Discovered by
-  suffix, so the sheet's many unread columns stay invisible and a data-validated
-  tick cannot be mistyped. The name leads rather than trails because that is
-  what a human scanning the header row is looking for — narrow tick columns
-  truncate, and `Team lead - Role` truncates to something still readable where
-  `Role - Team lead` does not. Config remains authoritative for which Roles
-  exist: a ` - Role` column config does not name warns and does nothing, and a
-  configured Role no column supplies warns too.
+- **The roster holds Roles in one `Roles` column.** A multi-select dropdown
+  listing the configured Role names, so a value cannot be mistyped and what a
+  volunteer does is one cell to read rather than a row to scan across. The cell
+  is **comma-joined**, which is what such a dropdown writes: a list by
+  convention rather than by structure, so the parser trims each value and
+  `config.Validate` refuses a Role name containing a comma. Config remains
+  authoritative for which Roles exist — a value config does not name warns and
+  is skipped, keeping the rest of the cell.
+
+  *Amended 2026-08-05 (#121). The superseded shape (S1, #89)* was one
+  `<name> - Role` tick-box column per Role, discovered by header suffix. Its
+  premise was that a Sheets dropdown could hold only one value, so a single cell
+  could not say "Team lead *and* Service volunteer". That was simply wrong —
+  multi-select dropdowns exist — and with the premise gone the design was pure
+  cost: a header column per Role, a manual sheet edit before anyone could hold a
+  new one, and Roles spread across a row where the columns were narrow enough to
+  truncate. Retiring it also retires the warning for a configured Role no column
+  supplies: there is no column to be missing, and "nobody holds this Role" is
+  not a thing the header can show any more.
 
 - **Male cover stays a Shift-level rule, not a general attribute system.** A
   `requiresMale` flag in config; every open Shift must have a male allocated or
@@ -124,7 +137,7 @@ ADR exists.
 - **`defaultShiftSize` and `RotaOverride.shiftSize` retire** in favour of a
   default Shape and Shape overrides. Size was only ever a one-Role Shape.
 
-- **Migration is not one tick per volunteer.** Today a team lead is only a team
+- **Migration is not one Role per volunteer.** Today a team lead is only a team
   lead on the roster, yet the allocator routinely places non-designated leads
   in ordinary seats. Every team lead must therefore hold *both* Team lead and
   Service volunteer, or they vanish from ordinary Seats.
