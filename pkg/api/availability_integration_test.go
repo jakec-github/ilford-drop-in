@@ -21,6 +21,7 @@ import (
 // the latest-generation read agree with each other.
 func TestAvailabilityLoopIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
@@ -146,6 +147,7 @@ func leadCoverage(t *testing.T, shift availabilityCoverageResponse) availability
 // hides a dead token behind a 200.
 func TestAvailabilityLinkOpensThePage(t *testing.T) {
 	database, _ := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())

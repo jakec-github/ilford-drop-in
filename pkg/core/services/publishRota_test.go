@@ -57,7 +57,7 @@ func TestPublishRota_Success(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	// Call PublishRota
@@ -112,7 +112,7 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -154,7 +154,7 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -181,7 +181,7 @@ func TestPublishRota_RotaNotFound(t *testing.T) {
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	// Try to publish non-existent rota
@@ -204,7 +204,7 @@ func TestPublishRota_NoAllocations(t *testing.T) {
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -244,7 +244,7 @@ func TestPublishRota_MissingVolunteer(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -278,7 +278,7 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	// Call with empty rotaID to trigger default behavior
@@ -305,7 +305,7 @@ func TestPublishRota_NoRotations(t *testing.T) {
 	}
 
 	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "")
@@ -316,6 +316,8 @@ func TestPublishRota_NoRotations(t *testing.T) {
 
 // mockPublishRotaStore implements PublishRotaStore for testing
 type mockPublishRotaStore struct {
+	testRoleStore
+
 	rotations   []db.Rotation
 	shifts      []db.Shift
 	allocations []db.Allocation
@@ -402,7 +404,6 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 
 	// Configure closed shift for Jan 12
 	cfg := &config.Config{
-		Roles: testCfg.Roles,
 		RotaOverrides: []config.RotaOverride{
 			{
 				RRule:  "FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=12", // January 12 every year
@@ -472,7 +473,7 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
@@ -511,7 +512,7 @@ func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{Roles: testCfg.Roles}
+	cfg := &config.Config{}
 	sheetsClient := &mockSheetsClient{}
 
 	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")

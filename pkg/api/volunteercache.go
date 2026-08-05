@@ -27,9 +27,10 @@ func NewVolunteerStore() *volunteerStore {
 
 // ListVolunteers returns the roster loaded by the last sync (or the startup
 // populate). Before either has run it returns an empty slice (not an error):
-// read paths degrade to no volunteers rather than failing. The cfg argument is
-// unused — kept to satisfy services.VolunteerClient.
-func (s *volunteerStore) ListVolunteers(_ *config.Config) ([]model.Volunteer, error) {
+// read paths degrade to no volunteers rather than failing. The cfg and roles
+// arguments are unused — kept to satisfy services.VolunteerClient, and the
+// Roles a volunteer holds were resolved by the sync that filled this cache.
+func (s *volunteerStore) ListVolunteers(_ *config.Config, _ model.Roles) ([]model.Volunteer, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.cached, nil

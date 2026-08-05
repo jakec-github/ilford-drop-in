@@ -16,7 +16,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
 
@@ -89,10 +88,6 @@ type Config struct {
 	GmailUserID            string         `yaml:"gmailUserID" validate:"required"`
 	GmailSender            string         `yaml:"gmailSender,omitempty"`
 	MaxAllocationFrequency float64        `yaml:"maxAllocationFrequency" validate:"required,gt=0,lte=1"`
-	// Roles are the jobs volunteers hold. Config is authoritative for which
-	// Roles exist: the roster, pins and the solver all resolve against this
-	// list. Validated in Validate, not by tags — the rules are cross-field.
-	Roles []model.Role `yaml:"roles"`
 	// RequiresMale demands that every open Shift either has a male allocated or
 	// leaves a Seat open, so one can be added by hand afterwards. Today's
 	// behaviour is unconditional; the flag exists so it can be turned off rather
@@ -108,18 +103,6 @@ type Config struct {
 
 // DefaultShiftTimezone is used when shiftTimezone is not set in the config
 const DefaultShiftTimezone = "Europe/London"
-
-// RoleTable indexes the configured Roles for lookup by name and by priority.
-// Everything that has to resolve a Role name — the roster, pins, the solver
-// contract — goes through this rather than reading the slice. A nil Config
-// yields the empty table, which answers every query with "no such Role" rather
-// than panicking on a caller that holds no config.
-func (c *Config) RoleTable() model.Roles {
-	if c == nil {
-		return model.Roles{}
-	}
-	return model.NewRoles(c.Roles)
-}
 
 // ShiftTimes returns the absolute start and end times of the shift on the
 // given date ("2006-01-02"), interpreted in the configured timezone.
@@ -335,23 +318,21 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// The rules below are cross-field — uniqueness across a slice, a Role name
-	// resolving against another part of the config — which validator.v10 tags
-	// cannot express, so they run here.
-	if err := validateRoles(cfg.Roles); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
-	}
-
-	roles := cfg.RoleTable()
-
-	// Validate rrule syntax for each override, reusing the shared parser so
-	// rrule parsing lives in exactly one place.
+	// The rules below are cross-field — a pin naming exactly one subject, an
+	// rrule that parses — which validator.v10 tags cannot express, so they run
+	// here.
+	//
+	// A pin's Role is no longer among them. Roles left config for the database
+	// in ticket #126 (ADR 0006), and this function deliberately touches nothing
+	// but the file it was handed: scripts/deploy-config.sh runs it from a laptop
+	// against a production config, which is only safe because it connects to
+	// nothing.
 	for i, override := range cfg.RotaOverrides {
 		if _, err := utils.ParseRRule(override.RRule); err != nil {
 			return fmt.Errorf("invalid rrule in rotaOverrides[%d]: %w", i, err)
 		}
 		for j, pin := range override.Preallocations {
-			if err := validatePreallocation(pin, roles); err != nil {
+			if err := validatePreallocation(pin); err != nil {
 				return fmt.Errorf("invalid preallocation in rotaOverrides[%d].preallocations[%d]: %w", i, j, err)
 			}
 		}
@@ -360,72 +341,16 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
-// validateRoles enforces the rules that make the configured Roles usable as a
-// lookup table: names and priorities identify a Role, so they must be unique,
-// and a ceiling of zero would configure a Role nobody can ever fill.
-//
-// Exactly one Role may be uncapped, because a Shift's size is spent on that
-// Role's Seats — with two, `shiftSize` would not say how many of each. Slice 2
-// replaces `shiftSize` with a per-Shift Shape naming its own counts, and lifts
-// this restriction with it.
-func validateRoles(roles []model.Role) error {
-	if len(roles) == 0 {
-		return fmt.Errorf("at least one role must be configured")
-	}
-
-	seenNames := make(map[string]bool, len(roles))
-	seenPriorities := make(map[int]bool, len(roles))
-	var uncapped []string
-
-	for i, role := range roles {
-		if role.Name == "" {
-			return fmt.Errorf("roles[%d] has no name", i)
-		}
-		if seenNames[role.Name] {
-			return fmt.Errorf("roles[%d] repeats the name %q", i, role.Name)
-		}
-		seenNames[role.Name] = true
-
-		if seenPriorities[role.Priority] {
-			return fmt.Errorf("roles[%d] (%s) repeats priority %d", i, role.Name, role.Priority)
-		}
-		seenPriorities[role.Priority] = true
-
-		// Empty is allowed and means "no preference": the lookup table gives it
-		// the default. Anything else has to name a palette token, since the
-		// values behind the tokens are the app's to choose.
-		if role.Colour != "" && !model.ValidRoleColour(role.Colour) {
-			return fmt.Errorf("roles[%d] (%s) has colour %q; use one of %s, or omit it for %s",
-				i, role.Name, role.Colour, strings.Join(model.RoleColours, ", "), model.DefaultRoleColour)
-		}
-
-		if role.Capped() && *role.Max < 1 {
-			return fmt.Errorf("roles[%d] (%s) has max %d; omit max for no ceiling", i, role.Name, *role.Max)
-		}
-		if !role.Capped() {
-			uncapped = append(uncapped, role.Name)
-		}
-	}
-
-	if len(uncapped) != 1 {
-		return fmt.Errorf("exactly one role must be uncapped (no max), found %d: %v", len(uncapped), uncapped)
-	}
-
-	return nil
-}
-
-// validatePreallocation checks a config pin names one subject and a Role that
-// exists. Whether the volunteer holds that Role is a roster question, checked
-// where the roster is in scope.
-func validatePreallocation(pin Preallocation, roles model.Roles) error {
+// validatePreallocation checks a config pin names one subject and a Role. That
+// the Role exists is not checked here — Roles are rows in the database now, and
+// this validation runs with nothing connected. The allocation path resolves the
+// name against the Roles the app holds and fails there if it does not.
+func validatePreallocation(pin Preallocation) error {
 	if (pin.VolunteerID == "") == (pin.Custom == "") {
 		return fmt.Errorf("set exactly one of volunteerID and custom")
 	}
 	if pin.Role == "" {
 		return fmt.Errorf("role is required")
-	}
-	if _, ok := roles.ByName(pin.Role); !ok {
-		return fmt.Errorf("role %q is not a configured role", pin.Role)
 	}
 	return nil
 }

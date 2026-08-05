@@ -17,6 +17,8 @@ import (
 
 // mockHistoricalStore implements ViewHistoricalResponsesStore
 type mockHistoricalStore struct {
+	testRoleStore
+
 	rotations          []db.Rotation
 	requests           []db.AvailabilityRequest
 	generations        map[string]db.AvailabilityGeneration // keyed by request id
@@ -75,7 +77,7 @@ type mockHistoricalVolClient struct {
 	listErr    error
 }
 
-func (m *mockHistoricalVolClient) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+func (m *mockHistoricalVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}

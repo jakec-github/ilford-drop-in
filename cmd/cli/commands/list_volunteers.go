@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
 // ListVolunteersCmd creates the listVolunteers command
@@ -13,8 +15,15 @@ func ListVolunteersCmd(app *AppContext) *cobra.Command {
 		Short: "List all volunteers from the volunteer sheet",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The roster names the Roles a volunteer holds as strings, so the
+			// Roles the app knows have to be read before it can be parsed.
+			roles, err := services.RoleTable(app.Ctx, app.Database)
+			if err != nil {
+				return err
+			}
+
 			// Fetch volunteers
-			volunteers, err := app.SheetsClient.ListVolunteers(app.Cfg)
+			volunteers, err := app.SheetsClient.ListVolunteers(app.Cfg, roles)
 			if err != nil {
 				return fmt.Errorf("failed to list volunteers: %w", err)
 			}

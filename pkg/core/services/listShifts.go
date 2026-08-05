@@ -21,6 +21,7 @@ import (
 // not a second date scan), and supply the effective assignees for shifts whose
 // rota has been allocated.
 type ListShiftsStore interface {
+	RoleStore
 	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
@@ -93,7 +94,12 @@ func ListShifts(
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -107,7 +113,7 @@ func ListShifts(
 	for _, a := range allocations {
 		allocationsByShiftID[a.ShiftID] = append(allocationsByShiftID[a.ShiftID], a)
 	}
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, alterations, cfg.RoleTable().UncappedName())
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, alterations, roles.UncappedName())
 
 	alterationCounts := make(map[string]int)
 	lastChanged := make(map[string]time.Time)
@@ -155,7 +161,7 @@ func ListShifts(
 		// unallocated shift has none. Closed shifts also carry none, mirroring
 		// publishRota.
 		if shift.Allocated && !shift.Closed {
-			shift.Assignees = buildAssignees(allocationsByShiftID[s.ID], volunteersByID, cfg.RoleTable(), logger)
+			shift.Assignees = buildAssignees(allocationsByShiftID[s.ID], volunteersByID, roles, logger)
 		}
 
 		shifts = append(shifts, shift)

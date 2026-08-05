@@ -57,7 +57,6 @@ devMode block is only permitted under "dev".`,
 
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s is a valid %s config\n", path, env)
-			fmt.Fprintf(out, "  roles:      %s\n", describeRoles(cfg))
 			fmt.Fprintf(out, "  overrides:  %s, with %s\n",
 				plural(len(cfg.RotaOverrides), "rota override"),
 				plural(countPreallocations(cfg), "preallocation"))
@@ -80,24 +79,6 @@ devMode block is only permitted under "dev".`,
 			return nil
 		},
 	}
-}
-
-// describeRoles lists the Roles in the order their Seats are filled, since that
-// ordering is configured by a priority number an operator cannot read off the
-// file at a glance. The colour is shown for the same reason, and because a Role
-// that names none is reported as the default it will actually be drawn in
-// rather than as a blank.
-func describeRoles(cfg *config.Config) string {
-	roles := cfg.RoleTable().ByPriority()
-	described := make([]string, 0, len(roles))
-	for _, role := range roles {
-		ceiling := "uncapped"
-		if role.Capped() {
-			ceiling = fmt.Sprintf("max %d", *role.Max)
-		}
-		described = append(described, fmt.Sprintf("%s (%s, %s)", role.Name, ceiling, role.Colour))
-	}
-	return strings.Join(described, ", ")
 }
 
 func describeServer(cfg *config.Config) string {

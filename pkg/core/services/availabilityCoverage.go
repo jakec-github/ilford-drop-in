@@ -109,6 +109,7 @@ type shiftSeats struct {
 // over one bad rule in the config would be the wrong trade here.
 func buildShiftSeats(
 	cfg *config.Config,
+	roles model.Roles,
 	shifts []AvailabilityShift,
 	pins []db.ManualPreallocation,
 	logger *zap.Logger,
@@ -148,13 +149,13 @@ func buildShiftSeats(
 	for _, s := range shifts {
 		dateByShiftID[s.ID] = s.Date
 	}
-	manualOverrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, overrides, cfg.RoleTable())
+	manualOverrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, overrides, roles)
 	if err != nil {
 		return nil, err
 	}
 	overrides = append(overrides, manualOverrides...)
 
-	roles := convertConfigRoles(cfg.Roles)
+	allocatorRoles := convertRoles(roles)
 
 	seats := make(map[string]shiftSeats, len(shifts))
 	for _, shift := range shifts {
@@ -176,7 +177,7 @@ func buildShiftSeats(
 		}
 
 		shape := make(map[string]int)
-		for _, seat := range allocator.ShiftShape(size, roles) {
+		for _, seat := range allocator.ShiftShape(size, allocatorRoles) {
 			shape[seat.Role] = seat.Count
 		}
 

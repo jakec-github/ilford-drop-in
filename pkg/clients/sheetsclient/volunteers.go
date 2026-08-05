@@ -37,8 +37,10 @@ const roleSeparator = ','
 // since a dropdown's label is not guaranteed to keep its capitalisation.
 const noGroupValue = "none"
 
-// ListVolunteers retrieves and parses volunteers from the configured spreadsheet
-func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
+// ListVolunteers retrieves and parses volunteers from the configured
+// spreadsheet, keeping only the Roles named in the Roles table the caller read
+// from the database.
+func (c *Client) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
 	// Get raw data from spreadsheet
 	values, err := c.GetValues(cfg.VolunteerSheetID, cfg.ServiceVolunteersTab)
 	if err != nil {
@@ -50,7 +52,7 @@ func (c *Client) ListVolunteers(cfg *config.Config) ([]model.Volunteer, error) {
 	}
 
 	// Parse volunteers
-	volunteers, err := ParseVolunteers(values, cfg.RoleTable())
+	volunteers, err := ParseVolunteers(values, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse volunteers: %w", err)
 	}
@@ -111,10 +113,16 @@ func ComputeDisplayNames(volunteers []model.Volunteer) {
 // through this parser so the column contract is defined once.
 //
 // The Roles a volunteer holds come from one `Roles` cell, whose values are
-// matched against the configured Roles. Config stays authoritative: a value
-// naming a Role config does not have is warned about and skipped rather than
+// matched against the Roles the app knows. The app stays authoritative: a value
+// naming a Role it does not have is warned about and skipped rather than
 // failing the roster, because it is usually a half-finished edit and the rest
 // of the cell is still good.
+//
+// The sheet and the app own half the name contract each — the app owns which
+// Roles exist, the sheet owns who holds them — so the two warnings this raises
+// are the standing check on a rename (ADR 0006). Renaming a Role in the app and
+// not in the sheet shows up as both: the sheet names a Role nothing matches,
+// and the renamed Role is held by nobody.
 func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer, error) {
 	if len(raw) < 1 {
 		return nil, fmt.Errorf("no header row found")
@@ -178,7 +186,30 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 		volunteers = append(volunteers, volunteer)
 	}
 
+	warnUnheldRoles(volunteers, roles)
+
 	return volunteers, nil
+}
+
+// warnUnheldRoles reports a Role nobody on the roster holds. On its own that is
+// only unusual — a Role can be created before anyone is given it — but it is
+// also exactly what a Role renamed in the app and not in the sheet looks like,
+// and the app cannot tell the two apart. It says so once per roster read rather
+// than per volunteer.
+func warnUnheldRoles(volunteers []model.Volunteer, roles model.Roles) {
+	held := make(map[string]bool)
+	for _, v := range volunteers {
+		for _, name := range v.Roles {
+			held[name] = true
+		}
+	}
+
+	for _, role := range roles.ByPriority() {
+		if !held[role.Name] {
+			slog.Warn("no volunteer on the roster holds this Role; check the roster's Roles column if it was renamed",
+				"role", role.Name)
+		}
+	}
 }
 
 // groupKey reads one volunteer's Group key cell, returning the empty string for
@@ -206,7 +237,7 @@ func heldRoles(cell string, roles model.Roles) []string {
 			continue
 		}
 		if _, known := roles.ByName(value); !known {
-			slog.Warn("volunteer sheet names a Role no configured Role matches; ignoring it",
+			slog.Warn("volunteer sheet names a Role the app does not know; ignoring it",
 				"role", value)
 			continue
 		}

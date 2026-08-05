@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
 // volunteerResponse is one entry of the roster. The fields mirror the assignee
@@ -55,7 +57,16 @@ func heldRoles(roles []string) []string {
 // since stopped, and a picker that silently omits people is harder to explain
 // than one that greys them out.
 func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
-	volunteers, err := h.volunteers.ListVolunteers(h.cfg)
+	// The Roles are read even though the server's roster client is a cache that
+	// ignores them: the client behind the interface is not this handler's
+	// business, and a client that does parse a roster needs them.
+	roles, err := services.RoleTable(r.Context(), h.store)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	volunteers, err := h.volunteers.ListVolunteers(h.cfg, roles)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return

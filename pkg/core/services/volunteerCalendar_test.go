@@ -13,7 +13,6 @@ import (
 )
 
 var calendarTestCfg = &config.Config{
-	Roles:          testCfg.Roles,
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
 }
@@ -32,7 +31,7 @@ func TestBuildVolunteerCalendar_Basic(t *testing.T) {
 		},
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "BEGIN:VCALENDAR")
@@ -65,7 +64,7 @@ func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
 		{Date: "2026-07-13"}, // BST (UTC+1)
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "DTSTART:20260112T193000Z")
@@ -83,13 +82,13 @@ func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
 		},
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
 	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (Team lead)")
 
 	// The same shift from Bob's perspective is not a team-lead event
 	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Roles: []string{"Service volunteer"}}
-	out, err = BuildVolunteerCalendar(shifts, bob, calendarTestCfg)
+	out, err = BuildVolunteerCalendar(shifts, bob, testRoles, calendarTestCfg)
 	require.NoError(t, err)
 	assert.NotContains(t, out, "(Team lead)")
 	assert.NotContains(t, out, "(Service volunteer)",
@@ -102,7 +101,7 @@ func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {
 		{Date: "2026-01-12", AlterationCount: 3, LastChanged: changed},
 	}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
 	assert.Contains(t, out, "SEQUENCE:3")
 	assert.Contains(t, out, "DTSTAMP:20260102T103000Z")
@@ -114,16 +113,16 @@ func TestBuildVolunteerCalendar_StableAcrossRenders(t *testing.T) {
 		{Date: "2026-01-19", AlterationCount: 1, LastChanged: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)},
 	}
 
-	first, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	first, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
-	second, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	second, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
 
 	assert.Equal(t, first, second, "repeated renders must be byte-identical so polling clients see no phantom changes")
 }
 
 func TestBuildVolunteerCalendar_EmptyShifts(t *testing.T) {
-	out, err := BuildVolunteerCalendar(nil, calendarTestVolunteer(), calendarTestCfg)
+	out, err := BuildVolunteerCalendar(nil, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	require.NoError(t, err)
 	assert.Contains(t, out, "BEGIN:VCALENDAR")
 	assert.NotContains(t, out, "BEGIN:VEVENT")
@@ -132,6 +131,6 @@ func TestBuildVolunteerCalendar_EmptyShifts(t *testing.T) {
 
 func TestBuildVolunteerCalendar_InvalidShiftDate(t *testing.T) {
 	shifts := []Shift{{Date: "not-a-date"}}
-	_, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), calendarTestCfg)
+	_, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestCfg)
 	assert.Error(t, err)
 }

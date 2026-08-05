@@ -20,6 +20,8 @@ import (
 // behaviours the service leans on rather than mocking them away: minting skips a
 // volunteer who already holds a request, and reads take the newest generation.
 type mockAvailabilityStore struct {
+	testRoleStore
+
 	rotations   []db.Rotation
 	shifts      []db.Shift
 	requests    []db.AvailabilityRequest
@@ -154,9 +156,6 @@ func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 		},
 	}
 	cfg := &config.Config{
-		// Coverage is counted per Role now, so a config without Roles describes
-		// a rota with no Seats and nothing to be short of.
-		Roles: testCfg.Roles,
 		RotaOverrides: []config.RotaOverride{
 			// 16 August, the rota's last date.
 			{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=16", Closed: true},

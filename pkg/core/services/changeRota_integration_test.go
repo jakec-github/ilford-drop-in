@@ -57,6 +57,7 @@ func alterationsForRota(t *testing.T, database *db.DB, rotaID string) []db.Alter
 // alteration and fails with ErrConflict instead of adding the volunteer twice.
 func TestChangeRotaConcurrentIdenticalAdds(t *testing.T) {
 	database, _ := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rotaID := seedAllocatedRota(t, database)
 
@@ -107,6 +108,7 @@ func TestChangeRotaConcurrentIdenticalAdds(t *testing.T) {
 // have read.
 func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 	database, dbURL := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	// An unallocated rota with one shift

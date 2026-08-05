@@ -19,6 +19,7 @@ import (
 // concurrent changes (and allocations) of the same rota serialise instead of
 // both validating against the same pre-state (issue #41, hazards H1 and H2).
 type ChangeRotaStore interface {
+	RoleStore
 	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
 	WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store db.RotaChangeStore) error) error
 }
@@ -78,13 +79,16 @@ func ChangeRota(
 		return nil, wrapf(ErrInvalidInput, "--reason is required")
 	}
 
-	roles := cfg.RoleTable()
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateRole(params, roles); err != nil {
 		return nil, err
 	}
 
 	// Step 1b: Fetch volunteers and validate IDs
-	volunteers, err := volunteerClient.ListVolunteers(cfg)
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
