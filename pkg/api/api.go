@@ -22,6 +22,7 @@ type Store interface {
 	services.DefineRotaStore
 	services.ListShiftsStore
 	services.PreallocationStore
+	services.RoleWriteStore
 	services.SetShiftClosedStore
 	// Ping reports whether the database is reachable, for GET /health.
 	Ping(ctx context.Context) error
@@ -107,8 +108,13 @@ func (h *Handler) Routes() http.Handler {
 	// not: closing one is an allocator input, and the rota is solved around it.
 	api.Handle("PATCH /shifts/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleUpdateShift)))
 	// Public alongside the rota: it is what tells a client which Roles exist
-	// and what each is drawn in, and the rota names Roles on every chip.
+	// and what each is drawn in, and the rota names Roles on every chip. The
+	// writes beside it are admin-only — which Roles exist is a decision about
+	// how the drop-in runs — and there is no DELETE, because a Role is
+	// permanent (ADR 0006).
 	api.HandleFunc("GET /roles", h.handleListRoles)
+	api.Handle("POST /roles", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateRole)))
+	api.Handle("PUT /roles/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleUpdateRole)))
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people
