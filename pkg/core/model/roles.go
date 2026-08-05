@@ -4,20 +4,24 @@ import "sort"
 
 // Role is a job on a Shift — Team lead, Service volunteer, Food collector. A
 // volunteer holds the Roles they will do, and only a holder may be allocated to
-// one. Roles are configured rather than hardcoded; the yaml tags are here so
-// `internal/config` can unmarshal straight into the domain type instead of
-// maintaining a parallel struct.
+// one. Roles are rows in the database rather than hardcoded or configured
+// (ADR 0006), and permanent: once created a Role always exists, so no reference
+// to one can dangle.
 type Role struct {
-	Name string `yaml:"name"`
+	// ID is the identity other tables reference, so renaming a Role never
+	// breaks a reference. Empty on a Role built by a test or a caller with no
+	// database in scope, which cares only about the name.
+	ID   string
+	Name string
 	// Max is the ceiling — how many of this Role a Shift may ever hold, however
 	// its Shape is edited. Nil means uncapped.
-	Max *int `yaml:"max,omitempty"`
+	Max *int
 	// Priority orders the filling of Seats when people are scarce, lowest first.
-	Priority int `yaml:"priority"`
-	// Colour is the palette token this Role is drawn in — see RoleColours. Empty
-	// in config; NewRoles fills it in, so every Role the lookup table hands out
-	// carries one.
-	Colour string `yaml:"colour,omitempty"`
+	Priority int
+	// Colour is the palette token this Role is drawn in — see RoleColours. May
+	// be empty on the way in; NewRoles fills it in, so every Role the lookup
+	// table hands out carries one.
+	Colour string
 }
 
 // The palette a Role's colour is chosen from. Named tokens rather than free-form
@@ -77,21 +81,22 @@ func ValidRoleColour(colour string) bool {
 // Capped reports whether the Role has a ceiling.
 func (r Role) Capped() bool { return r.Max != nil }
 
-// Roles is the configured set of Roles: ordered by priority, indexed by name.
-// The zero value is an empty set, which answers every query rather than
-// panicking — callers with no config in scope hold one.
+// Roles is the set of Roles the drop-in offers: ordered by priority, indexed by
+// name. The zero value is an empty set, which answers every query rather than
+// panicking — callers with no Roles in scope hold one.
 type Roles struct {
 	ordered []Role
 	byName  map[string]Role
 }
 
-// NewRoles builds the lookup table from configured Roles in any order. It does
-// not validate them; `config.Validate` owns the rules (unique names, unique
-// priorities, exactly one uncapped Role, a colour the palette names).
+// NewRoles builds the lookup table from Roles in any order. It does not
+// validate them: the database holds the rules it can (a unique name, a positive
+// max), and a table built from a set that breaks the rest still answers rather
+// than failing a read path nobody could fix from.
 //
 // It does fill in an unset colour, so every Role read back out of the table has
-// one. Defaulting here rather than at config load means a caller building the
-// table straight from Roles — a test, the CLI — gets the same answer as the
+// one. Defaulting here rather than at the read means a caller building the
+// table straight from Roles — a test, a seed — gets the same answer as the
 // server.
 func NewRoles(roles []Role) Roles {
 	ordered := make([]Role, len(roles))
@@ -112,8 +117,8 @@ func NewRoles(roles []Role) Roles {
 	return Roles{ordered: ordered, byName: byName}
 }
 
-// ByName looks a Role up by its configured name. Names are matched exactly:
-// the roster, the config and the solver all speak the same string.
+// ByName looks a Role up by name. Names are matched exactly: the roster, the
+// stored Roles and the solver all speak the same string.
 func (r Roles) ByName(name string) (Role, bool) {
 	role, ok := r.byName[name]
 	return role, ok
@@ -126,8 +131,8 @@ func (r Roles) ByPriority() []Role {
 	return ordered
 }
 
-// UncappedName is the name of the uncapped Role, or "" where none is
-// configured. It is what anything unlabelled falls back to: an alteration
+// UncappedName is the name of the uncapped Role, or "" where none exists. It
+// is what anything unlabelled falls back to: an alteration
 // written before Roles were data, or a volunteer joining a shift in nobody's
 // place.
 func (r Roles) UncappedName() string {
@@ -138,8 +143,10 @@ func (r Roles) UncappedName() string {
 	return role.Name
 }
 
-// Uncapped returns the single Role with no ceiling — the one whose Seats a
-// Shift's size is spent on. Config permits exactly one in S1.
+// Uncapped returns the first Role with no ceiling — the one whose Seats a
+// Shift's size is spent on. Slice 4 replaces `defaultShiftSize` with a
+// per-Shift Shape naming its own counts, after which a second uncapped Role is
+// meaningful; until then the first is the answer.
 func (r Roles) Uncapped() (Role, bool) {
 	for _, role := range r.ordered {
 		if !role.Capped() {
