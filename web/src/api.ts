@@ -28,6 +28,7 @@ interface ApiAssignee {
 }
 
 interface ApiShift {
+  id: string;
   date: string;
   start: string;
   end: string;
@@ -88,6 +89,7 @@ function toVolunteer(v: ApiVolunteer): Volunteer {
 
 function toRotaShift(shift: ApiShift): RotaShift {
   return {
+    id: shift.id,
     date: shift.date,
     closed: shift.closed,
     allocated: shift.allocated,
@@ -324,6 +326,32 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to change the rota"));
+  }
+}
+
+// setShiftClosed closes or reopens one shift, which is a change to what
+// allocation will do rather than to a rota that has been run. It resolves on
+// success and throws the server's own message otherwise — a 409 says the rota
+// has already been allocated, which is exactly what the admin needs to read.
+//
+// Like createAlteration it returns nothing: the caller re-reads the rota, since
+// closing a shift changes what else is shown against it.
+export async function setShiftClosed(
+  shiftId: string,
+  closed: boolean,
+): Promise<void> {
+  const res = await fetch(`/api/shifts/${encodeURIComponent(shiftId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ closed }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(
+        res,
+        closed ? "Failed to close the shift" : "Failed to reopen the shift",
+      ),
+    );
   }
 }
 

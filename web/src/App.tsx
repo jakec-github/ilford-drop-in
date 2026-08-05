@@ -63,7 +63,7 @@ function Header() {
 // reveals shifts whose rota has not been allocated yet, and unlocks editing.
 function HomeView() {
   const { email } = useAuth();
-  const { shifts, error, change } = useRota();
+  const { shifts, error, change, setClosed } = useRota();
 
   if (error) {
     return <p className="app-status">Could not load the rota: {error}</p>;
@@ -76,6 +76,7 @@ function HomeView() {
       rotaShifts={shifts}
       isAdmin={email !== null}
       onChange={change}
+      onSetClosed={setClosed}
     />
   );
 }
