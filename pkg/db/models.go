@@ -22,6 +22,17 @@ type Shift struct {
 	// hand while the rota is unallocated and false at mint; there is no stored
 	// list of known closure dates (issue #132, amending ADR 0001).
 	Closed bool
+	// StartAt and EndAt are when the session runs, spelled
+	// "2006-01-02T15:04:05". They are local wall-clock times in the drop-in's
+	// own zone — TIMESTAMP
+	// without time zone, carrying no offset, because a Shift's start is a fact
+	// about Ilford rather than an instant on a global timeline (ADR 0007).
+	//
+	// Both are empty or neither is, which the database enforces. Empty means a
+	// Shift minted before the drop-in's default times were set; Date is still
+	// the authoritative source for every reader until #134 moves them over.
+	StartAt string // TIMESTAMP, empty string if NULL
+	EndAt   string // TIMESTAMP, empty string if NULL
 }
 
 // AvailabilityRequest is a tokenised availability request: one volunteer's

@@ -81,3 +81,42 @@ func TestHasShiftTimes(t *testing.T) {
 	assert.True(t, defaults.HasShiftTimes())
 	assert.Empty(t, defaults.MissingShiftTimes())
 }
+
+// A Shift's own start and end are wall-clock, so they carry no zone at all —
+// the same 19:30 on a winter date and a summer date spell the same timestamp,
+// where ShiftTimes gives two different moments (ADR 0007).
+func TestShiftTimestampsAreWallClock(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+
+	start, end, err := defaults.ShiftTimestamps("2026-01-12")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-01-12T19:30:00", start)
+	assert.Equal(t, "2026-01-12T21:30:00", end)
+
+	start, end, err = defaults.ShiftTimestamps("2026-07-13")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-13T19:30:00", start)
+	assert.Equal(t, "2026-07-13T21:30:00", end)
+}
+
+// The zone setting cannot move a Shift's stated times, because they are not a
+// moment: it is the calendar feed's job to turn them into one.
+func TestShiftTimestampsIgnoreTheZone(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Pacific/Auckland"}
+
+	start, _, err := defaults.ShiftTimestamps("2026-07-13")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-13T19:30:00", start)
+}
+
+// Unset settings and an unreadable date are refused the same way ShiftTimes
+// refuses them: a caller with no times to write must not write half of them.
+func TestShiftTimestampsRefuses(t *testing.T) {
+	var unset model.RotaDefaults
+	_, _, err := unset.ShiftTimestamps("2026-07-13")
+	assert.Error(t, err)
+
+	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+	_, _, err = defaults.ShiftTimestamps("13/07/2026")
+	assert.Error(t, err)
+}
