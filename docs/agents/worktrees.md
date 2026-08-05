@@ -5,15 +5,30 @@ once without treading on each other. A git worktree gives each one its own
 files; this page covers the parts git does not copy — credentials, config, node
 modules, ports and the database.
 
-Worktrees live on the maintainer's machine alongside the primary checkout.
-Docker, Postgres, the Go module cache, the OAuth token cache and the CP-SAT
-venv are all **shared**; everything below is what is **not**.
+Worktrees live inside the primary checkout, under a gitignored `.worktrees/`,
+so the whole project stays in one directory rather than scattering siblings
+across `~/code/projects`. Docker, Postgres, the Go module cache, the OAuth token
+cache and the CP-SAT venv are all **shared**; everything below is what is
+**not**.
+
+Nesting a checkout inside a checkout is safe here, and deliberately so:
+
+- `.gitignore` has `/.worktrees/`, so the primary checkout's `git status` stays
+  clean.
+- `go build ./...`, `go vet ./...` and `go test ./...` skip them — Go excludes
+  any subdirectory carrying its own `go.mod` from the parent module's `./...`.
+  Ripgrep skips them because it honours `.gitignore`; `scripts/check.sh` runs
+  pytest and bun against explicit paths, so neither walks the root.
+- `git clean -xfd` skips them too: it refuses to delete a directory another git
+  repository manages, printing `Skipping repository .worktrees/<slug>`. Only
+  `git clean -xffd` — the double `-f` — will remove them, and it leaves stale
+  registrations behind for `git worktree prune`. Do not run it in this repo.
 
 ## Creating one
 
 ```bash
-git worktree add ../ilford-<slug> -b issue-<n>-<slug> main
-cd ../ilford-<slug>
+git worktree add .worktrees/<slug> -b issue-<n>-<slug> main
+cd .worktrees/<slug>
 scripts/worktree-init.sh
 ```
 
@@ -122,10 +137,13 @@ worktree list rather than a registry, so removing the tree frees it.
 The equivalent by hand, if you would rather see each step:
 
 ```bash
-cd ../ilford-drop-in                      # back to the primary checkout
-git worktree remove ../ilford-<slug>
+cd ../..                                  # back to the primary checkout
+git worktree remove .worktrees/<slug>
 scripts/test-db.sh drop ilford_wt_<slug>
 ```
+
+The empty `.worktrees/<slug>` parent is left behind either way; it costs
+nothing.
 
 Removing a worktree without dropping its database leaves the database behind —
 it is the one piece git knows nothing about. To find any that have accumulated,
@@ -141,6 +159,12 @@ disk, and dropping the wrong one costs work.
 
 ## Notes
 
+- Worktrees made before this layout sit next to the checkout as
+  `../ilford-<slug>`. Relocate one from the primary checkout, with nothing
+  running inside it, using
+  `git worktree move ../ilford-<slug> .worktrees/<slug>`. Its database survives:
+  both names fold to `ilford_wt_<slug>`, since `db_name_for` drops the leading
+  `ilford`.
 - `scripts/worktree-init.sh` and `scripts/test-db.sh` assume macOS with
   OrbStack, matching the machine these worktrees run on.
 - `go mod download` needs nothing: the module cache is shared.

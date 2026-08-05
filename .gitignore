@@ -44,6 +44,11 @@ __pycache__/
 # Per-worktree environment written by scripts/worktree-init.sh
 .worktree.env
 
+# Worktrees live inside the checkout that owns them (docs/agents/worktrees.md).
+# Each one carries its own go.mod, so `go build ./...` skips it; `git clean -xfd`
+# skips it too, refusing to remove a directory another git repository manages.
+/.worktrees/
+
 # Droplet address for scripts/deploy-config.sh. Not a secret, but it is the
 # maintainer's box rather than the repo's business.
 .deploy.env

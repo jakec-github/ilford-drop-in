@@ -48,8 +48,9 @@ BASE_WEB_PORT=5173
 MAX_OFFSET=5
 
 # The database name comes from the worktree's directory name, folded to a plain
-# identifier and with the "ilford" the conventional name starts with dropped:
-# ../ilford-issue-61 becomes ilford_wt_issue_61, not ilford_wt_ilford_issue_61.
+# identifier and with a leading "ilford" dropped: .worktrees/issue-61 becomes
+# ilford_wt_issue_61, and so does an older ../ilford-issue-61 alongside the
+# checkout, rather than ilford_wt_ilford_issue_61.
 db_name_for() {
     local slug
     slug="$(basename "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | sed 's/^_*//; s/_*$//; s/^ilford_//')"
@@ -96,7 +97,7 @@ fi
 
 if [[ "$REPO_ROOT" == "$PRIMARY_ROOT" ]]; then
     echo "This is the primary checkout, not a worktree — nothing to set up." >&2
-    echo "Create a worktree first:  git worktree add ../ilford-<name> -b <branch>" >&2
+    echo "Create a worktree first:  git worktree add .worktrees/<name> -b <branch>" >&2
     echo "(--orphans works from here, and lists databases left behind by removed worktrees.)" >&2
     exit 1
 fi

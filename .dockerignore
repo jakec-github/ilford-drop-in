@@ -22,3 +22,7 @@ pyallocator/
 test_data/
 docs/
 deploy/
+
+# Worktrees are whole checkouts of this repo, node_modules and all; without this
+# the context carries one copy each (docs/agents/worktrees.md).
+.worktrees/
