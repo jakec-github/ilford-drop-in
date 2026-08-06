@@ -50,8 +50,9 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 
 	// The times each minted shift will run at come from the settings. Unset
 	// settings are not a refusal here: incomplete settings block allocation and
-	// nothing else (ADR 0006), so the shifts are minted without times and
-	// shift.date carries them as it did before (#133, expand phase).
+	// nothing else (ADR 0006), so the shifts are minted without times. Such a
+	// shift still has its date, from the column the migrate phase keeps for
+	// exactly these rows, and renders as a day with no hours until #135.
 	defaults, err := RotaDefaults(ctx, database)
 	if err != nil {
 		return nil, err
