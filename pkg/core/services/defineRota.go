@@ -48,14 +48,24 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 
 	logger.Debug("Defining new rota", zap.Int("shift_count", shiftCount))
 
-	// The times each minted shift will run at come from the settings. Unset
-	// settings are not a refusal here: incomplete settings block allocation and
-	// nothing else (ADR 0006), so the shifts are minted without times. Such a
-	// shift still has its date, from the column the migrate phase keeps for
-	// exactly these rows, and renders as a day with no hours until #135.
+	// The times each minted shift will run at come from the settings, and
+	// nothing can be minted without them: a Shift's date is the date of its
+	// start, so a Shift with no start is not a Shift with unknown hours, it is
+	// a Shift on no day at all (issue #135, ADR 0007).
+	//
+	// This is the second path incomplete settings block, alongside allocation,
+	// and it is a narrowing of ADR 0006's "allocation and nothing else". The
+	// reason is the same one that made allocation the exception: defining a rota
+	// is an act that creates something people are told to turn up to, not a page
+	// that renders. Everything that only reads still reads.
 	defaults, err := RotaDefaults(ctx, database)
 	if err != nil {
 		return nil, err
+	}
+	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
+		return nil, wrapf(ErrInvalidInput,
+			"the drop-in's settings are incomplete - %s %s not been set; fill them in on the settings screen before defining a rota",
+			joinWithAnd(missing), plural(len(missing), "has", "have"))
 	}
 
 	// Fetch all existing rotations
@@ -109,14 +119,9 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	for i := 0; i < shiftCount; i++ {
 		date := startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
 
-		// Both times or neither: a start with no end describes nothing, and
-		// the database refuses it.
-		var startAt, endAt string
-		if defaults.HasShiftTimes() {
-			startAt, endAt, err = defaults.ShiftTimestamps(date)
-			if err != nil {
-				return nil, fmt.Errorf("failed to derive shift times for %s: %w", date, err)
-			}
+		startAt, endAt, err := defaults.ShiftTimestamps(date)
+		if err != nil {
+			return nil, fmt.Errorf("failed to derive shift times for %s: %w", date, err)
 		}
 
 		shifts[i] = db.Shift{
