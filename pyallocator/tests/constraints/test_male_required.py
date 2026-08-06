@@ -125,9 +125,10 @@ def test_preallocations_filling_every_seat_with_females_is_infeasible():
 
 
 def test_rule_off_allows_a_shift_with_no_male_and_no_open_seat():
-    # The same input, with requiresMale off: the constraint does nothing.
-    inp = dataclasses.replace(_every_seat_female(), requires_male=False)
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    # The same input with male cover switched off. Off now means the
+    # constraint is not in the run's list at all, rather than in the list
+    # and reading a flag to decide it has nothing to do (issue #130).
+    out = solve_with(_every_seat_female(), [preallocations.CONSTRAINT])
     assert out.success
     assert set(allocations_by_shift(out)[0]) == {"leads", "f1"}
 

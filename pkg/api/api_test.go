@@ -58,10 +58,11 @@ type mockStore struct {
 	// rotaDefaults overrides apiTestRotaDefaults for a test that cares what an
 	// admin has set — chiefly one about settings nobody has filled in, which is
 	// where every deployment starts. rotaDefaultsErr makes the read fail.
-	rotaDefaults         *db.RotaDefaults
-	rotaDefaultsErr      error
-	savedRotaDefaults    []db.RotaDefaults
-	rotaDefaultsWriteErr error
+	rotaDefaults            *db.RotaDefaults
+	rotaDefaultsErr         error
+	savedRotaDefaults       []db.RotaDefaults
+	savedAllocationSettings []string
+	rotaDefaultsWriteErr    error
 
 	insertedRoles []db.Role
 	updatedRoles  []db.Role
@@ -490,6 +491,23 @@ func (m *mockStore) SaveRotaDefaults(_ context.Context, defaults db.RotaDefaults
 	}
 	m.savedRotaDefaults = append(m.savedRotaDefaults, defaults)
 	m.rotaDefaults = &defaults
+	return nil
+}
+
+func (m *mockStore) SaveAllocationSettings(_ context.Context, settings string) error {
+	if m.rotaDefaultsWriteErr != nil {
+		return m.rotaDefaultsWriteErr
+	}
+	m.savedAllocationSettings = append(m.savedAllocationSettings, settings)
+
+	// Saving a section writes through to what the next read sees, as the real
+	// store does — the settings screen reloads nothing after a save.
+	updated := apiTestRotaDefaults
+	if m.rotaDefaults != nil {
+		updated = *m.rotaDefaults
+	}
+	updated.AllocationSettings = settings
+	m.rotaDefaults = &updated
 	return nil
 }
 

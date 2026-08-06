@@ -43,6 +43,9 @@ type RotaDefaults struct {
 	// ShiftTimezone is an IANA zone name. Empty means unset, and reads as
 	// DefaultShiftTimezone.
 	ShiftTimezone string
+	// AllocationSettings is which optional allocator rules apply. The zero
+	// value means every rule off, which is where a deployment starts.
+	AllocationSettings AllocationSettings
 }
 
 // Timezone is the zone the shift times are read in: the one an admin chose, or

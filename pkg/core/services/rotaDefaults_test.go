@@ -16,10 +16,20 @@ import (
 // A store that holds the settings record in memory, so a test can assert on
 // what reached the database as well as on what came back.
 type stubRotaDefaultsStore struct {
-	defaults db.RotaDefaults
-	readErr  error
-	writeErr error
-	saved    []db.RotaDefaults
+	defaults        db.RotaDefaults
+	readErr         error
+	writeErr        error
+	saved           []db.RotaDefaults
+	savedAllocation []string
+}
+
+func (s *stubRotaDefaultsStore) SaveAllocationSettings(_ context.Context, settings string) error {
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	s.savedAllocation = append(s.savedAllocation, settings)
+	s.defaults.AllocationSettings = settings
+	return nil
 }
 
 func (s *stubRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefaults, error) {
@@ -145,4 +155,112 @@ func TestSaveShiftTimeDefaultsSurfacesAWriteFailure(t *testing.T) {
 	_, err := SaveShiftTimeDefaults(context.Background(), store, shiftTimeParams(), zap.NewNop())
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidInput)
+}
+
+// The allocation settings are stored as a JSON document, and reading them is
+// what turns it back into answers the domain can act on (issue #130).
+func TestRotaDefaultsReadsTheAllocationSettings(t *testing.T) {
+	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
+		AllocationSettings: `{"enabled":{"no_back_to_back":true,"male_required":false},"maxFrequency":0.34}`,
+	}}
+
+	defaults, err := RotaDefaults(context.Background(), store)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"no_back_to_back"}, defaults.AllocationSettings.EnabledConstraints())
+	assert.Equal(t, 0.34, defaults.AllocationSettings.MaxFrequency)
+}
+
+// A document this build cannot read is not allowed to take the settings screen
+// down with it: it reads as no answers, which is a state the screen renders and
+// an admin can fix by saving the section (ADR 0006 — never an error).
+func TestRotaDefaultsToleratesUnreadableAllocationSettings(t *testing.T) {
+	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
+		ShiftStartTime:     "19:30",
+		AllocationSettings: `{"enabled":"all of them"}`,
+	}}
+
+	defaults, err := RotaDefaults(context.Background(), store)
+	require.NoError(t, err)
+
+	assert.Empty(t, defaults.AllocationSettings.EnabledConstraints())
+	assert.Equal(t, "19:30", defaults.ShiftStartTime, "the rest of the record still reads")
+}
+
+// Saving writes the answers as a document and reports what now stands, so the
+// screen shows what was stored rather than what was typed.
+func TestSaveAllocationSettings(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+
+	settings, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
+		Enabled:      map[string]bool{"max_frequency": true, "no_back_to_back": true},
+		MaxFrequency: 0.5,
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"max_frequency", "no_back_to_back"}, settings.EnabledConstraints())
+	assert.Equal(t, 0.5, settings.MaxFrequency)
+
+	require.Len(t, store.savedAllocation, 1)
+	assert.JSONEq(t,
+		`{"enabled":{"max_frequency":true,"no_back_to_back":true},"maxFrequency":0.5}`,
+		store.savedAllocation[0])
+}
+
+// An answer for a rule this build does not have is not stored. It would mean
+// nothing to anything that later read it, and the reply says what was kept so
+// a client working from an older list can see what happened.
+func TestSaveAllocationSettingsDropsUnknownRules(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+
+	settings, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
+		Enabled: map[string]bool{"male_required": true, "phase_of_the_moon": true},
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"male_required"}, settings.EnabledConstraints())
+	require.Len(t, store.savedAllocation, 1)
+	assert.NotContains(t, store.savedAllocation[0], "phase_of_the_moon")
+}
+
+// The one rule that carries a value cannot be switched on without one. Refused
+// at the point of saving, where an admin can see the box they left empty.
+func TestSaveAllocationSettingsRefusesAnEnabledFrequencyWithNoValue(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+
+	_, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
+		Enabled: map[string]bool{"max_frequency": true},
+	}, zap.NewNop())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Empty(t, store.savedAllocation, "a refused save writes nothing")
+}
+
+func TestSaveAllocationSettingsRefusesAFrequencyOutOfRange(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+
+	for _, frequency := range []float64{-0.1, 0, 1.5} {
+		_, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
+			Enabled:      map[string]bool{"max_frequency": true},
+			MaxFrequency: frequency,
+		}, zap.NewNop())
+		assert.ErrorIs(t, err, ErrInvalidInput, "frequency %v", frequency)
+	}
+}
+
+// A value left over from when the rule was on is stored as given rather than
+// refused: with the rule off it constrains nothing, and blanking it would lose
+// what an admin would want back when they switch the rule on again.
+func TestSaveAllocationSettingsKeepsTheValueWhenTheRuleIsOff(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+
+	settings, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
+		Enabled:      map[string]bool{"max_frequency": false},
+		MaxFrequency: 0.34,
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Empty(t, settings.EnabledConstraints())
+	assert.Equal(t, 0.34, settings.MaxFrequency)
 }

@@ -154,17 +154,17 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?ssl
 gmailUserID: 'me'
 gmailSender: 'your-email@gmail.com'          # optional
 
-# Allocation settings
-maxAllocationFrequency: 0.34                  # >0 and ≤1: max share of shifts per volunteer
+# Allocation
 defaultShiftSize: 4                           # volunteers per shift (excluding team lead)
-requiresMale: true                            # every open shift needs a male allocated, or a seat left open
 
-# Neither the jobs volunteers hold nor when the drop-in runs are configured
-# here. Roles and Rota Defaults — the default shift start, end and timezone —
-# are rows in the database (ADR 0006), set on the Settings screen rather than in
-# this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:` or
-# `preallocations:` key left over from an older config is ignored with a
-# warning — see "Creating the Roles" below.
+# What the drop-in decides about itself is not configured here. The Roles
+# volunteers hold, the Rota Defaults (the default shift start, end and
+# timezone) and the Allocation Settings (which optional allocator rules apply,
+# and the share of a rota one volunteer may work) are rows in the database
+# (ADR 0006), set on the Settings screen rather than in this file. A `roles:`,
+# `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:`, `maxAllocationFrequency:`,
+# `requiresMale:` or `preallocations:` key left over from an older config is
+# ignored with a warning — see "Creating the Roles" below.
 
 # HTTP server (required to run the web server)
 server:
@@ -239,6 +239,22 @@ arrive.
 
 A shift has to end the evening it starts — a session running past midnight is
 refused rather than stored as one ending before it began.
+
+### Choosing the allocation rules
+
+**Admin → Settings → Allocation rules** is which of the optional allocator
+rules apply: a cap on how often one person works (a switch and a share of the
+rota), male cover, no back-to-back shifts, and at most one shift a month. Like
+the Roles and the shift times, nothing seeds them, and a rule nobody has
+switched on is off — so a fresh database allocates with none of them.
+
+The rules that make a rota a rota — availability, seat capacity, grouping,
+closed shifts, preallocations — are not listed and cannot be switched off.
+
+`maxAllocationFrequency` and `requiresMale` used to be config keys. They are
+these settings now (ADR 0006): both were an admin's decision rather than an
+operator's, and male cover was two halves of one idea in two places. A config
+still carrying them is warned about and otherwise ignored.
 
 A key the app does not recognise — a typo, or an option since renamed — is
 warned about by name and then ignored. It does not fail the load: the same file

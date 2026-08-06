@@ -18,7 +18,7 @@ VALID_INPUT = {
         {"name": "Team lead", "max": 1, "priority": 1},
         {"name": "Service volunteer", "max": None, "priority": 2},
     ],
-    "requires_male": True,
+    "enabled_constraints": ["male_required"],
     "shifts": [
         {
             "index": 0,
@@ -76,7 +76,7 @@ VALID_INPUT = {
 def test_parse_valid_input():
     parsed = parse_input(VALID_INPUT)
     assert parsed.max_allocation_count == 4
-    assert parsed.requires_male
+    assert parsed.enabled_constraints == ("male_required",)
     assert [r.name for r in parsed.roles] == ["Team lead", "Service volunteer"]
     assert parsed.roles[0].max == 1
     assert parsed.roles[1].max is None
