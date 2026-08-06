@@ -226,6 +226,110 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	assert.Equal(t, 2, rotations[0].ShiftCount, "winning rota's shifts must be untouched")
 }
 
+// TestShiftDateComesFromStartAt pins the migrate phase (issue #134, ADR 0007):
+// a Shift's date is the date of its start, not the date column. Every shift
+// here is written with a date column that deliberately disagrees with its
+// start — a row no writer produces, and one that can only be written while the
+// column still exists, which is exactly what makes this phase checkable.
+//
+// The two shifts are ordered one way by the column and the other way by their
+// starts, so ordering alone catches a read that has not moved over.
+func TestShiftDateComesFromStartAt(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	later := db.Shift{
+		ID:      uuid.New().String(),
+		Date:    "2026-08-02",
+		RotaID:  rota.ID,
+		StartAt: "2026-08-16T19:30:00",
+		EndAt:   "2026-08-16T21:30:00",
+	}
+	earlier := db.Shift{
+		ID:      uuid.New().String(),
+		Date:    "2026-08-09",
+		RotaID:  rota.ID,
+		StartAt: "2026-08-09T19:30:00",
+		EndAt:   "2026-08-09T21:30:00",
+	}
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{later, earlier}, nil))
+
+	byRota, err := database.GetShiftsByRotaID(ctx, rota.ID)
+	require.NoError(t, err)
+	require.Len(t, byRota, 2)
+	assert.Equal(t, []string{"2026-08-09", "2026-08-16"},
+		[]string{byRota[0].Date, byRota[1].Date}, "dates and order both follow start_at")
+
+	inRange, err := database.GetShiftsInRange(ctx, time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, inRange, 2)
+	assert.Equal(t, []string{"2026-08-09", "2026-08-16"},
+		[]string{inRange[0].Date, inRange[1].Date})
+
+	// Bounding the range covers only the derived date: the later shift's own
+	// column says 2 August, which is outside this window.
+	bounded, err := database.GetShiftsInRange(ctx,
+		time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Len(t, bounded, 1)
+	assert.Equal(t, later.ID, bounded[0].ID)
+
+	byID, err := database.GetShiftByID(ctx, later.ID)
+	require.NoError(t, err)
+	require.NotNil(t, byID)
+	assert.Equal(t, "2026-08-16", byID.Date)
+
+	// The lookup that resolves a date to its shift answers on the start's date
+	// and is silent on the column's.
+	found, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, later.ID, found.ID)
+
+	missing, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	assert.Nil(t, missing, "the date column is not what a date resolves against")
+
+	// A rotation's span is derived from its shifts, so it moves with them.
+	rotations, err := database.GetRotations(ctx)
+	require.NoError(t, err)
+	require.Len(t, rotations, 1)
+	assert.Equal(t, "2026-08-09", rotations[0].Start)
+	assert.Equal(t, "2026-08-16", rotations[0].End)
+}
+
+// A Shift minted before an admin set the drop-in's shift times has no start to
+// take a date from, and falls back to the column until #135 drops it. This is
+// the ordinary state of a deployment whose settings are still empty — the point
+// of the migrate phase keeping the column is that these rows keep working.
+func TestShiftDateFallsBackToColumnWhenUntimed(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	shift := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil))
+
+	byID, err := database.GetShiftByID(ctx, shift.ID)
+	require.NoError(t, err)
+	require.NotNil(t, byID)
+	assert.Equal(t, "2026-08-09", byID.Date)
+
+	found, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, shift.ID, found.ID)
+
+	inRange, err := database.GetShiftsInRange(ctx,
+		time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Len(t, inRange, 1)
+	assert.Equal(t, "2026-08-09", inRange[0].Date)
+}
+
 // TestShiftTimesRoundTrip checks a Shift's own start and end through every read
 // that carries them (issue #133). They are wall-clock local times, so what goes
 // in is what comes back with no zone applied to it anywhere — the test runs

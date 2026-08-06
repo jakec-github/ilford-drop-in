@@ -12,7 +12,7 @@ import (
 // invariant that a rotation always has at least one shift.
 func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT r.id, MIN(s.date), MAX(s.date), COUNT(*), r.allocated_datetime
+		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.allocated_datetime
 		FROM rotation r
 		JOIN shift s ON s.rota_id = r.id
 		GROUP BY r.id
