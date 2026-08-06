@@ -103,9 +103,15 @@ func (d *DB) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn
 // once the Rotation is allocated; reading that state and writing the flag under
 // one rota-row lock is what stops a close landing against a rota that was
 // allocated a moment earlier.
+//
+// Times are here for the opposite reason. They are not frozen — they are
+// descriptive, not an allocator input (ADR 0007) — but a single edit may move
+// both, and one transaction is what stops a rejected time change leaving a
+// closure behind it committed.
 type ShiftTxStore interface {
 	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
 	SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error)
+	SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error)
 }
 
 // WithRotaShiftLock runs fn under the same rotation-row lock as WithRotaLock, so
@@ -151,4 +157,8 @@ func (r *rotaTx) DeletePreallocationByID(ctx context.Context, id string) (bool, 
 
 func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error) {
 	return setShiftClosed(ctx, r.tx, shiftID, closed)
+}
+
+func (r *rotaTx) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
+	return setShiftTimes(ctx, r.tx, shiftID, startAt, endAt)
 }

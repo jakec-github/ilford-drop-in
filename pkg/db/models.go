@@ -17,10 +17,10 @@ type Rotation struct {
 type Shift struct {
 	ID     string // UUID
 	RotaID string // UUID
-	// Date is the day the session runs, "2006-01-02". On the way out it is
-	// derived from StartAt rather than stored (shiftDateExpr, ADR 0007); on the
-	// way in it still writes the column that #135 drops. Nothing above this
-	// package can tell the difference, which is what makes the swap safe.
+	// Date is the day the session runs, "2006-01-02". It is derived from
+	// StartAt rather than stored (shiftDateExpr, ADR 0007), so it is an answer
+	// this package gives and never one it takes: a writer states StartAt and
+	// the date follows. Setting it on the way in is ignored.
 	Date string
 	// Closed is a date the drop-in does not run — a holiday closure. Set by
 	// hand while the rota is unallocated and false at mint; there is no stored
@@ -28,15 +28,14 @@ type Shift struct {
 	Closed bool
 	// StartAt and EndAt are when the session runs, spelled
 	// "2006-01-02T15:04:05". They are local wall-clock times in the drop-in's
-	// own zone — TIMESTAMP
-	// without time zone, carrying no offset, because a Shift's start is a fact
-	// about Ilford rather than an instant on a global timeline (ADR 0007).
+	// own zone — TIMESTAMP without time zone, carrying no offset, because a
+	// Shift's start is a fact about Ilford rather than an instant on a global
+	// timeline (ADR 0007).
 	//
-	// Both are empty or neither is, which the database enforces. Empty means a
-	// Shift minted before the drop-in's default times were set: it still has a
-	// Date, from the column, and #135 is where that state stops being reachable.
-	StartAt string // TIMESTAMP, empty string if NULL
-	EndAt   string // TIMESTAMP, empty string if NULL
+	// Every Shift has both. A Shift with no start would have no Date either,
+	// which is what issue #135 made impossible when it dropped the stored copy.
+	StartAt string // TIMESTAMP
+	EndAt   string // TIMESTAMP
 }
 
 // AvailabilityRequest is a tokenised availability request: one volunteer's
