@@ -320,9 +320,22 @@ export type AvailabilityLinkFailure = "not-found" | "gone";
 
 export interface RotaShift {
   // How a change to this shift is addressed. The rota reads in dates, but a
-  // close or reopen is a change to the entity, which is keyed by id.
+  // close, a reopen or a change of hours is a change to the entity, which is
+  // keyed by id.
   id: string;
   date: string;
+  // When the shift runs, as the shift itself holds it: local wall-clock time in
+  // the drop-in's own zone, "2026-02-02T19:30:00", with no offset on the end.
+  //
+  // The missing offset is the point, so these are never fed to `new Date()`.
+  // The drop-in runs at 19:30 in Ilford, and that is what the rota says to a
+  // volunteer reading it from anywhere — where an instant would be redrawn as
+  // their own evening, which is not when to turn up.
+  //
+  // date is the date of start; the server derives one from the other, so they
+  // cannot disagree.
+  start: string;
+  end: string;
   // closed is a date the drop-in does not run — a holiday closure, set by hand
   // on the shift itself. Frozen once the rota is allocated.
   closed: boolean;
