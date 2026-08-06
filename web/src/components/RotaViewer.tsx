@@ -403,24 +403,22 @@ function swapBlockedReason(
   return `${assignee.name} is already on ${formatShiftDateLong(pending.date)}`;
 }
 
-// What a pin means and, where it can be changed at all, where. Config pins are
-// the answer to "why is this person already here" on a rota nobody has run yet,
-// and the answer is not somewhere this UI can reach.
+// What a pin means. There is one kind, whether an admin made it here or a
+// Standing Preallocation seeded it when the rota was defined, so there is one
+// thing to say about it.
 function pinTitle(pin: Preallocation): string {
   // Naming the uncapped Role would be noise — being pinned to a shift already
   // means being pinned to one of its ordinary Seats.
   const role =
     pin.role === SERVICE_VOLUNTEER_ROLE ? "" : ` as ${pin.role.toLowerCase()}`;
-  return pin.source === "config"
-    ? `${pin.name} is pinned${role} by the rota config, and will be placed here when the rota is allocated. Changing it means editing the config.`
-    : `${pin.name} is pinned${role} to this shift, and will be placed here when the rota is allocated.`;
+  return `${pin.name} is pinned${role} to this shift, and will be placed here when the rota is allocated.`;
 }
 
 // PreallocationList shows who allocation is already committed to placing on a
 // shift it has not run for yet. Not chips: nothing here can be dragged or
 // searched for — these people are not on the rota, they are promised to it. The
-// one thing that can be done to a pin is taking it off, and only where it came
-// from somewhere this UI can reach.
+// one thing that can be done to a pin is taking it off, and every pin can be
+// taken off.
 function PreallocationList({
   date,
   pins,
@@ -430,8 +428,7 @@ function PreallocationList({
   date: string;
   pins: Preallocation[];
   colourOf: RoleColourOf;
-  // Absent unless editing is on. Offered per pin, since a config pin in the
-  // same list has no row behind it to remove.
+  // Absent unless editing is on.
   onUnpin?: (pin: Preallocation) => void;
 }) {
   return (
@@ -442,16 +439,13 @@ function PreallocationList({
       <ul className="prealloc-list" aria-labelledby={`pinned-${date}`}>
         {pins.map((pin) => (
           <li
-            // Two pins on one shift can share a name only if they are the same
-            // person from both sources, which the source keeps apart.
-            key={`${pin.source}/${pin.volunteerId ?? pin.name}`}
+            key={pin.id}
             className={`prealloc-chip ${pin.custom ? "custom" : "volunteer"}`}
             data-role-colour={colourOf(pin.role) ?? undefined}
             title={pinTitle(pin)}
           >
             {pin.name}
-            <span className="prealloc-source">{pin.source}</span>
-            {onUnpin && pin.id !== null && (
+            {onUnpin && (
               <button
                 type="button"
                 className="prealloc-unpin"
@@ -1354,14 +1348,12 @@ export default function RotaViewer({
           dateLabel={formatShiftDateLong(dialog.date)}
           volunteers={pinnableTo(dialog.date)}
           volunteersError={volunteersError}
-          // Config holds the team-lead slot outright and a manual lead pin
-          // takes it, so either kind rules out a second — but the dialog says
-          // different things about them, so it is told which.
-          leadPinnedBy={
-            (pinsByDate.get(dialog.date) ?? []).find(
-              (p) => p.role === TEAM_LEAD_ROLE,
-            )?.source ?? null
-          }
+          // A shift has one team-lead Seat, so a lead already pinned there
+          // rules out a second — and it can be given up from here, whichever
+          // way it came to be made.
+          leadPinned={(pinsByDate.get(dialog.date) ?? []).some(
+            (p) => p.role === TEAM_LEAD_ROLE,
+          )}
           pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
           busy={saving}
           onCancel={() => setDialog(null)}

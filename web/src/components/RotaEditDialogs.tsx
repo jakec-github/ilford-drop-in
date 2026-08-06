@@ -4,11 +4,10 @@ import Dialog from "../ui/Dialog";
 import type {
   Assignee,
   PersonRef,
-  PreallocationSource,
   Role,
   Volunteer,
 } from "../types";
-import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
+import { CUSTOM_CHOICE, SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
 import "./RotaEditDialogs.css";
 
 // The Role to offer for a volunteer before the admin says otherwise: the
@@ -114,11 +113,6 @@ export function ConfirmChangeDialog({
     </Dialog>
   );
 }
-
-// The roster option standing for "not one of these people". Custom entries
-// cover a visiting group or anyone else who is not a synced volunteer; they
-// have no id, so the rota carries their name as typed.
-const CUSTOM_CHOICE = "custom";
 
 // What AssigneeDialog is being used for. Both cases pick a person and a reason;
 // they differ in where the incoming person's role comes from.
@@ -314,7 +308,7 @@ export function PinDialog({
   dateLabel,
   volunteers,
   volunteersError,
-  leadPinnedBy,
+  leadPinned,
   pinnedNames,
   busy,
   onCancel,
@@ -325,15 +319,12 @@ export function PinDialog({
   // can be pinned to this shift.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
-  // Where this shift's single team-lead slot is already spoken for, and by
-  // which source; null when it is free. Both sources rule out a second lead —
-  // config holds the slot outright, a manual one is a 409 — but only one of
-  // them can be given up from here, so the two cannot be flattened into a
-  // boolean without the dialog offering a way out that does not exist.
-  leadPinnedBy: PreallocationSource | null;
+  // Whether this shift's single team-lead slot is already spoken for. A second
+  // lead is a 409, and the way out is to remove the pin that holds it — which
+  // an admin can do for any of them (issue #131).
+  leadPinned: boolean;
   // Everyone already pinned here, by the name shown. A custom entry has no id —
-  // its text is its identity — so repeating one is a pin that would change
-  // nothing, and the two sources refuse it in different ways.
+  // its text is its identity — so repeating one is a pin that would be refused.
   pinnedNames: string[];
   busy: boolean;
   onCancel: () => void;
@@ -359,7 +350,7 @@ export function PinDialog({
   // is not already at its ceiling. Team lead's ceiling is one in S1, so one pin
   // is the whole of it; S3 reads real ceilings from the server.
   const canChooseRole =
-    (chosen?.roles.includes(TEAM_LEAD_ROLE) ?? false) && leadPinnedBy === null;
+    (chosen?.roles.includes(TEAM_LEAD_ROLE) ?? false) && !leadPinned;
 
   function handleChoice(value: string) {
     setChoice(value);
@@ -424,9 +415,9 @@ export function PinDialog({
           </label>
         )}
 
-        {/* Said before the pin is attempted rather than after: a repeat of a
-            manual entry is refused, and a repeat of a config one is dropped at
-            allocation, so it would otherwise look like it had worked. */}
+        {/* Said before the pin is attempted rather than after: a repeat is
+            refused by the server, and there is no reason to make an admin find
+            that out by pressing the button. */}
         {duplicateName && (
           <p className="rota-edit-note">
             {trimmedName} is already pinned to {dateLabel}.
@@ -446,17 +437,14 @@ export function PinDialog({
           </label>
         )}
 
-        {/* Says where the lead slot went as well as that it is gone: a config
-            pin is not something this dialog can tell the admin to undo, so
-            offering the same "remove it first" for both would send them looking
-            for a button that is deliberately not there. */}
-        {chosen?.roles.includes(TEAM_LEAD_ROLE) && leadPinnedBy !== null && (
+        {/* Says what happens instead as well as that the slot is gone, and how
+            to get it back: every pin can be removed, so there is always a way
+            through. */}
+        {chosen?.roles.includes(TEAM_LEAD_ROLE) && leadPinned && (
           <p className="rota-edit-note">
             {dateLabel} already has a team lead pinned, so {chosen.name} is
-            pinned as a service volunteer.{" "}
-            {leadPinnedBy === "config"
-              ? "That pin comes from the rota config; changing who leads means editing the config."
-              : "To pin a different lead, remove that pin first."}
+            pinned as a service volunteer. To pin a different lead, remove that
+            pin first.
           </p>
         )}
 
