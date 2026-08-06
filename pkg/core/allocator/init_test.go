@@ -244,6 +244,33 @@ func testShape() []Seat {
 	}
 }
 
+// A Shift owns its Shape, so two Shifts of one rota may ask for different
+// things and the solver is told so (issue #137). Before this, every Shift of a
+// rota was handed one Shape and there was no way to say otherwise.
+func TestInitShifts_EachShiftKeepsItsOwnShape(t *testing.T) {
+	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+		Volunteers:        []Volunteer{{ID: "v1", FirstName: "Alice", LastName: "Smith"}},
+		GroupAvailability: map[string][]int{"Alice Smith": {0, 1}},
+	})
+	require.NoError(t, err)
+
+	quiet := []Seat{{Role: "Service volunteer", Count: 2}}
+	busy := []Seat{{Role: "Team lead", Count: 1}, {Role: "Service volunteer", Count: 6}}
+
+	shifts, err := InitShifts(InitShiftsInput{
+		Shifts: []ShiftSpec{
+			{Date: "2025-01-05", Shape: quiet},
+			{Date: "2025-01-12", Shape: busy},
+		},
+		VolunteerState: volunteerState,
+	})
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+
+	assert.Equal(t, quiet, shifts[0].Shape)
+	assert.Equal(t, busy, shifts[1].Shape)
+}
+
 func TestInitShifts_ClosedShifts(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
@@ -258,11 +285,10 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 	// Shift 1 is closed — a field on the Shift, not something an override says.
 	input := InitShiftsInput{
 		Shifts: []ShiftSpec{
-			{Date: "2025-01-05"},
-			{Date: "2025-01-12", Closed: true},
-			{Date: "2025-01-19"},
+			{Date: "2025-01-05", Shape: testShape()},
+			{Date: "2025-01-12", Shape: testShape(), Closed: true},
+			{Date: "2025-01-19", Shape: testShape()},
 		},
-		DefaultShape:   testShape(),
 		VolunteerState: volunteerState,
 	}
 
@@ -278,7 +304,7 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 	// Shift 1 should be closed
 	assert.True(t, shifts[1].Closed, "Shift 1 should be marked as closed")
 	assert.Empty(t, shifts[1].AvailableGroups, "Closed shift should have no available groups")
-	assert.Equal(t, testShape(), shifts[1].Shape, "Closed shift still asks for the default Shape")
+	assert.Equal(t, testShape(), shifts[1].Shape, "Closed shift still carries the Shape it was minted with")
 
 	// Shift 2 should be open
 	assert.False(t, shifts[2].Closed)
@@ -312,10 +338,9 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 
 	input := InitShiftsInput{
 		Shifts: []ShiftSpec{
-			{Date: "2025-01-05", Closed: true},
-			{Date: "2025-01-12"},
+			{Date: "2025-01-05", Shape: testShape(), Closed: true},
+			{Date: "2025-01-12", Shape: testShape()},
 		},
-		DefaultShape:   testShape(),
 		Overrides:      overrides,
 		VolunteerState: volunteerState,
 	}

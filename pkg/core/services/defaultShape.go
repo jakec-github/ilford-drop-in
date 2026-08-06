@@ -18,11 +18,11 @@ import (
 // rota with one Role, every other Role's count being its ceiling by
 // construction.
 //
-// It is read on the two paths that ask what a Shift needs: allocation, which
-// solves for the Seats, and the availability round, which reports whether the
-// answers coming in can fill them. Both read it live, because until Shifts own
-// their own Shapes (#137) there is nowhere else for a Shift's Shape to come
-// from.
+// It is read at one moment only: defining a rota, which copies it onto every
+// Shift it mints as Seats of that Shift's own (issue #137). Nothing that asks
+// what an existing Shift needs comes here — allocation and the availability
+// round read the Shift's stored Shape — which is what makes editing this
+// setting change the next rota rather than every rota ever made.
 
 // DefaultShapeStore reads the default Shape. Roles come with it because a Seat
 // is stored against a Role id and is only legible as a Role.
@@ -64,23 +64,43 @@ func DefaultShape(ctx context.Context, store DefaultShapeStore) (model.Shape, er
 		return nil, fmt.Errorf("failed to read the default shape: %w", err)
 	}
 
-	return resolveShape(rows, roles)
+	return resolveShape(storedSeats(rows), roles, "the default shape")
+}
+
+// storedSeat is one stored Seat as either Shape table holds it: a Role id and a
+// count. `default_shape` and `shift_requirement` are the same two columns one
+// level apart, and turning either into a model.Shape is the same work, so they
+// meet here rather than having a resolver each.
+type storedSeat struct {
+	RoleID string
+	Seats  int
+}
+
+// storedSeats reads the default Shape's rows as the pair of columns both Shape
+// tables share.
+func storedSeats(rows []db.DefaultShapeSeat) []storedSeat {
+	seats := make([]storedSeat, 0, len(rows))
+	for _, row := range rows {
+		seats = append(seats, storedSeat{RoleID: row.RoleID, Seats: row.Seats})
+	}
+	return seats
 }
 
 // resolveShape turns stored Seats into the domain's Shape, in the order the
-// Seats are filled.
+// Seats are filled. `owner` names whose Shape it is, so a failure says which
+// one.
 //
 // A Seat naming a Role the table does not hold fails rather than being skipped.
 // The foreign key makes it unreachable, and Roles are permanent so it cannot
 // arrive by deletion — but a Shape quietly missing a Seat is a rota quietly
 // short of people, which is the failure mode this whole table exists to rule
 // out.
-func resolveShape(rows []db.DefaultShapeSeat, roles model.Roles) (model.Shape, error) {
+func resolveShape(rows []storedSeat, roles model.Roles, owner string) (model.Shape, error) {
 	shape := make(model.Shape, 0, len(rows))
 	for _, row := range rows {
 		role, ok := roles.ByID(row.RoleID)
 		if !ok {
-			return nil, fmt.Errorf("the default shape names role %s, which does not exist", row.RoleID)
+			return nil, fmt.Errorf("%s names role %s, which does not exist", owner, row.RoleID)
 		}
 		shape = append(shape, model.Seat{Role: role, Count: row.Seats})
 	}
@@ -106,8 +126,7 @@ func resolveShape(rows []db.DefaultShapeSeat, roles model.Roles) (model.Shape, e
 //
 // Nothing this validates is about a rota that exists. Editing the settings
 // changes what the *next* rota starts from; the Shifts of a rota already
-// defined are untouched by it, which is what #137 makes true of the storage as
-// well as of the wording.
+// defined hold their own copy and are untouched by it (issue #137).
 func SaveDefaultShape(
 	ctx context.Context,
 	store DefaultShapeWriteStore,
@@ -154,7 +173,7 @@ func SaveDefaultShape(
 
 	logger.Info("Default shape saved", zap.Int("roles", len(rows)))
 
-	return resolveShape(rows, roles)
+	return resolveShape(storedSeats(rows), roles, "the default shape")
 }
 
 // convertShape renders a Shape as the Seats the solver receives. A Seat names

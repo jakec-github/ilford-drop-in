@@ -73,6 +73,10 @@ type mockStore struct {
 	savedShapes   [][]db.DefaultShapeSeat
 	shapeWriteErr error
 
+	// shiftRequirements is what defining wrote onto each Shift, keyed by shift
+	// id: the Shapes those Shifts now own, whatever the settings say later.
+	shiftRequirements map[string][]db.ShiftRequirement
+
 	insertedRoles []db.Role
 	updatedRoles  []db.Role
 	// roleWriteErr is what the database says to a Role write —
@@ -157,7 +161,7 @@ func (m *mockStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 // InsertDefinedRota records the write and makes it visible to subsequent reads,
 // deriving the rotation's span from its shifts as the real store does (ADR 0001)
 // so a second define lands after the first.
-func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error {
+func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
@@ -173,7 +177,41 @@ func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation
 	m.insertedShifts = append(m.insertedShifts, shifts...)
 	m.manualPreallocations = append(m.manualPreallocations, preallocations...)
 	m.insertedPreallocations = append(m.insertedPreallocations, preallocations...)
+	if m.shiftRequirements == nil {
+		m.shiftRequirements = make(map[string][]db.ShiftRequirement)
+	}
+	for _, seat := range requirements {
+		m.shiftRequirements[seat.ShiftID] = append(m.shiftRequirements[seat.ShiftID], seat)
+	}
 	return nil
+}
+
+// GetShiftShapes answers with what defining wrote, falling back to the Shape
+// this deployment states for a Shift no define in the test minted — the shifts
+// most fixtures set up by hand. A Shift owns its Shape, so this is a read of the
+// Shift rather than of the settings (issue #137).
+func (m *mockStore) GetShiftShapes(_ context.Context, shiftIDs []string) (map[string][]db.ShiftRequirement, error) {
+	if m.shapeErr != nil {
+		return nil, m.shapeErr
+	}
+	shapes := make(map[string][]db.ShiftRequirement, len(shiftIDs))
+	for _, id := range shiftIDs {
+		if stored, minted := m.shiftRequirements[id]; minted {
+			shapes[id] = stored
+			continue
+		}
+		if m.noShape {
+			continue
+		}
+		seats := m.defaultShape
+		if seats == nil {
+			seats = apiTestDefaultShape
+		}
+		for _, seat := range seats {
+			shapes[id] = append(shapes[id], db.ShiftRequirement{ShiftID: id, RoleID: seat.RoleID, Seats: seat.Seats})
+		}
+	}
+	return shapes, nil
 }
 
 func (m *mockStore) GetStandingPreallocations(context.Context) ([]db.StandingPreallocation, error) {

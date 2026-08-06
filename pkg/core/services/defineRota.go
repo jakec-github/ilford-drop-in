@@ -28,14 +28,15 @@ type RotaResult struct {
 // DefineRotaStore defines the database operations needed for defining a rota.
 // Defining a rota is where the Rota Defaults are spent, so it reads all of them:
 // the shift times, because minting a Shift means deciding when it runs (ADR
-// 0007), and the Standing Preallocations, which name a Role by id while the pins
+// 0007), the default Shape, which each Shift is minted with a copy of (issue
+// #137), and the Standing Preallocations, which name a Role by id while the pins
 // they seed record its name.
 type DefineRotaStore interface {
 	RotaDefaultsStore
-	RoleStore
+	DefaultShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
-	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error
+	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error
 }
 
 // DefineRota creates a new rota with the specified number of shifts
@@ -56,6 +57,20 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	defaults, err := RotaDefaults(ctx, database)
 	if err != nil {
 		return nil, err
+	}
+
+	// The Shape each minted Shift will ask for. Unlike the times, an unset one
+	// *is* a refusal here: a Shift's times stay editable after it is minted,
+	// but its Shape is fixed at define until #138, so a rota minted without one
+	// could never be allocated and could never be fixed either. The one moment
+	// the Shape is spent is the one moment worth stopping at.
+	shape, err := DefaultShape(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if len(shape) == 0 {
+		return nil, wrapf(ErrInvalidInput,
+			"the default shape has not been set, so there is nothing for these shifts to ask for; state it on the settings screen before defining a rota")
 	}
 
 	// Fetch all existing rotations
@@ -133,6 +148,22 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	// which derives both ends from the shift rows.
 	rotation.End = shifts[len(shifts)-1].Date
 
+	// Copy the default Shape onto every Shift. From here it is this Shift's
+	// Shape and nothing else's: editing the setting changes what the *next* rota
+	// starts from, and cannot reach back into a rota already defined. That is
+	// the whole of issue #137 in three lines, and the reason the copy is made
+	// here rather than being resolved from the settings on every read.
+	requirements := make([]db.ShiftRequirement, 0, len(shifts)*len(shape))
+	for _, s := range shifts {
+		for _, seat := range shape {
+			requirements = append(requirements, db.ShiftRequirement{
+				ShiftID: s.ID,
+				RoleID:  seat.Role.ID,
+				Seats:   seat.Count,
+			})
+		}
+	}
+
 	// Spend the Rota Defaults: the Standing Preallocations become ordinary
 	// Preallocations on the Shifts their rules land on. Defining is the only
 	// moment they are read, which is what makes them a convenience rather than a
@@ -151,9 +182,9 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 		return nil, err
 	}
 
-	// Insert the rotation, its shifts and its seeded pins atomically, so a rota
-	// can never exist half-formed.
-	if err := database.InsertDefinedRota(ctx, rotation, shifts, preallocations); err != nil {
+	// Insert the rotation, its shifts, their Shapes and its seeded pins
+	// atomically, so a rota can never exist half-formed.
+	if err := database.InsertDefinedRota(ctx, rotation, shifts, preallocations, requirements); err != nil {
 		return nil, fmt.Errorf("failed to insert rotation and shifts: %w", err)
 	}
 

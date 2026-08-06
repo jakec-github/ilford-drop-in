@@ -116,16 +116,31 @@ func AllocateRota(
 
 	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
 
+	// What each Shift asks for, read from the Shift itself rather than
+	// recomputed from the settings (#137): a rota is allocated against the Shape
+	// it was defined with, whatever the settings have been edited to since. The
+	// gate refuses a rota with an open Shift asking for nobody.
+	shapes, err := shapesForAllocation(ctx, database, shifts)
+	if err != nil {
+		return nil, err
+	}
+
 	// Shift indices are the solver's vocabulary, and index i is the i-th date in
 	// order, so the shift ids availability is stored against are lined up the
-	// same way. Each spec carries the Shift's own Closed: the solver is told
-	// which days the drop-in does not run rather than working it out (#132).
+	// same way. Each spec carries the Shift's own Shape and Closed: the solver
+	// is told what each day asks for and which days the drop-in does not run,
+	// rather than working either out (#132, #137).
 	shiftSpecs := make([]allocator.ShiftSpec, len(shiftDates))
 	orderedShiftIDs := make([]string, len(shiftDates))
 	for i, date := range shiftDates {
 		dateStr := date.Format("2006-01-02")
-		shiftSpecs[i] = allocator.ShiftSpec{Date: dateStr, Closed: closedByDate[dateStr]}
-		orderedShiftIDs[i] = shiftIDByDate[dateStr]
+		shiftID := shiftIDByDate[dateStr]
+		shiftSpecs[i] = allocator.ShiftSpec{
+			Date:   dateStr,
+			Shape:  convertShape(shapes[shiftID]),
+			Closed: closedByDate[dateStr],
+		}
+		orderedShiftIDs[i] = shiftID
 	}
 
 	groupAvailability, err := fetchGroupAvailability(
@@ -153,15 +168,6 @@ func AllocateRota(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build historical shifts: %w", err)
-	}
-
-	// What each Shift asks for. Every Shift of the rota asks for the same thing
-	// — the Shape in the Rota Defaults — until Shifts own their own Shapes
-	// (#137). The settings gate above has already refused an empty one, so this
-	// cannot be a rota asking for nobody.
-	shape, err := DefaultShape(ctx, database)
-	if err != nil {
-		return nil, err
 	}
 
 	// Preallocations (issue #39): each pin becomes a synthetic exact-date
@@ -193,7 +199,6 @@ func AllocateRota(
 		allocatorVolunteers,
 		groupAvailability,
 		shiftSpecs,
-		convertShape(shape),
 		allocatorOverrides,
 		historicalShifts,
 		settings.AllocationSettings,

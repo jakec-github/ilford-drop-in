@@ -134,7 +134,6 @@ func BuildCpsatInput(
 	volunteers []Volunteer,
 	groupAvailability map[string][]int,
 	shiftSpecs []ShiftSpec,
-	defaultShape []Seat,
 	overrides []ShiftOverride,
 	historicalShifts []*Shift,
 	allocationSettings model.AllocationSettings,
@@ -144,16 +143,15 @@ func BuildCpsatInput(
 		return nil, fmt.Errorf("no uncapped role configured: the solver reports a shift's size as its uncapped Role's Seats, and there is no such Role")
 	}
 
-	// InitShifts gives each shift the default Shape and resolves its
-	// preallocations from the overrides, carrying each shift's own Closed
-	// through. AvailableGroups isn't part of the contract (Python derives
-	// availability from groups), so an empty state suffices.
+	// InitShifts resolves each shift's preallocations from the overrides,
+	// carrying its own Shape and Closed through. AvailableGroups isn't part of
+	// the contract (Python derives availability from groups), so an empty state
+	// suffices.
 	//
 	// It runs first because the pins it resolves settle availability for the
 	// shifts they name, and InitVolunteerGroups discards a group with none.
 	initialised, err := InitShifts(InitShiftsInput{
 		Shifts:         shiftSpecs,
-		DefaultShape:   defaultShape,
 		Overrides:      overrides,
 		VolunteerState: &VolunteerState{VolunteerGroups: []*VolunteerGroup{}},
 	})

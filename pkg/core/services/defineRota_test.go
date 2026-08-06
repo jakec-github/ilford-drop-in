@@ -14,19 +14,36 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+// testDefaultShape is the Shape these tests define rotas against — one Team
+// lead and four Service volunteers, against the Roles testRoleStore holds. Most
+// of them are not about the Shape and simply need one, since a rota cannot be
+// defined without.
+var testDefaultShape = []db.DefaultShapeSeat{
+	{RoleID: "role-team-lead", Seats: 1},
+	{RoleID: "role-service-volunteer", Seats: 4},
+}
+
 // mockDB implements a test double for db.DB
 type mockDB struct {
 	testRoleStore
 
-	rotations       []db.Rotation
-	standing        []db.StandingPreallocation
-	defaults        db.RotaDefaults
+	rotations []db.Rotation
+	standing  []db.StandingPreallocation
+	defaults  db.RotaDefaults
+	// shape is the default Shape this deployment has stated. Nil is one that
+	// has stated none, which is a refusal rather than a smaller rota.
+	shape           []db.DefaultShapeSeat
 	insertedRotas   []*db.Rotation
 	insertedShifts  [][]db.Shift
 	insertedPins    [][]db.Preallocation
+	insertedSeats   [][]db.ShiftRequirement
 	getRotationsErr error
 	defaultsErr     error
 	insertErr       error
+}
+
+func (m *mockDB) GetDefaultShape(ctx context.Context) ([]db.DefaultShapeSeat, error) {
+	return m.shape, nil
 }
 
 func (m *mockDB) GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error) {
@@ -47,19 +64,21 @@ func (m *mockDB) GetStandingPreallocations(ctx context.Context) ([]db.StandingPr
 	return m.standing, nil
 }
 
-func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error {
+func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
 	m.insertedRotas = append(m.insertedRotas, rotation)
 	m.insertedShifts = append(m.insertedShifts, shifts)
 	m.insertedPins = append(m.insertedPins, preallocations)
+	m.insertedSeats = append(m.insertedSeats, requirements)
 	return nil
 }
 
 func TestDefineRota_NoExistingRotations(t *testing.T) {
 	mock := &mockDB{
 		rotations: []db.Rotation{},
+		shape:     testDefaultShape,
 	}
 
 	logger := zap.NewNop()
@@ -108,6 +127,7 @@ func TestDefineRota_NoExistingRotations(t *testing.T) {
 func TestDefineRota_WithExistingRotations(t *testing.T) {
 	existingStart := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC) // Sunday, Jan 5, 2025
 	mock := &mockDB{
+		shape: testDefaultShape,
 		rotations: []db.Rotation{
 			{
 				ID:         "existing-1",
@@ -151,6 +171,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	// lands on its opening shift and on nothing else in a four-shift run.
 	existingEnd := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC) // Sunday before 2 August
 	mock := &mockDB{
+		shape: testDefaultShape,
 		rotations: []db.Rotation{
 			{ID: "existing", Start: "2026-07-05", End: existingEnd.Format("2006-01-02"), ShiftCount: 4},
 		},
@@ -177,7 +198,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 // No Standing Preallocations is the ordinary state of a deployment nobody has
 // configured, not a reason to refuse a rota.
 func TestDefineRota_NoStandingPreallocations(t *testing.T) {
-	mock := &mockDB{}
+	mock := &mockDB{shape: testDefaultShape}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
 	require.NoError(t, err)
@@ -186,7 +207,7 @@ func TestDefineRota_NoStandingPreallocations(t *testing.T) {
 }
 
 func TestDefineRota_InvalidShiftCount(t *testing.T) {
-	mock := &mockDB{}
+	mock := &mockDB{shape: testDefaultShape}
 	logger := zap.NewNop()
 	ctx := context.Background()
 
@@ -272,6 +293,7 @@ func TestNextSunday(t *testing.T) {
 // July reads the same as one in January.
 func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
 	mock := &mockDB{
+		shape: testDefaultShape,
 		defaults: db.RotaDefaults{
 			ShiftStartTime: "19:30",
 			ShiftEndTime:   "21:30",
@@ -298,7 +320,7 @@ func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
 // shifts are minted without times, which is tolerable while the date column
 // survives to carry those rows' dates — #135 is where it stops being.
 func TestDefineRota_UnsetDefaultsMintUntimedShifts(t *testing.T) {
-	mock := &mockDB{}
+	mock := &mockDB{shape: testDefaultShape}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
 	require.NoError(t, err)
@@ -311,10 +333,50 @@ func TestDefineRota_UnsetDefaultsMintUntimedShifts(t *testing.T) {
 	}
 }
 
+// Defining a rota is where a Shift gets its Shape: the default Shape, copied
+// onto every Shift as Seats of its own (issue #137). From here the settings can
+// be edited freely and this rota still asks for what it was minted asking for.
+func TestDefineRota_WritesTheDefaultShapeOntoEveryShift(t *testing.T) {
+	mock := &mockDB{shape: testDefaultShape}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 3)
+	require.NoError(t, err)
+	require.Len(t, result.Shifts, 3)
+
+	require.Len(t, mock.insertedSeats, 1)
+	var expected []db.ShiftRequirement
+	for _, s := range result.Shifts {
+		expected = append(expected,
+			db.ShiftRequirement{ShiftID: s.ID, RoleID: "role-team-lead", Seats: 1},
+			db.ShiftRequirement{ShiftID: s.ID, RoleID: "role-service-volunteer", Seats: 4},
+		)
+	}
+	assert.Equal(t, expected, mock.insertedSeats[0])
+}
+
+// A deployment that has not stated a default Shape cannot define a rota.
+//
+// This is stricter than the shift times above, and deliberately so. A Shift's
+// times stay editable after it is minted; its Shape is frozen at define until
+// #138 lands, so minting Shapeless Shifts would produce a rota that can never be
+// allocated and can never be fixed. Refusing at the one moment the Shape is
+// spent is the difference between an admin filling in a setting and an admin
+// stuck with a rota nothing will accept.
+func TestDefineRota_RefusesWithNoDefaultShape(t *testing.T) {
+	mock := &mockDB{}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "default shape")
+	assert.Empty(t, mock.insertedRotas, "nothing is written when there is no shape to mint against")
+}
+
 // Settings that cannot be read are a fault rather than an empty answer, so the
 // rota is not minted half-timed on the back of one.
 func TestDefineRota_SettingsReadFails(t *testing.T) {
-	mock := &mockDB{defaultsErr: errors.New("boom")}
+	mock := &mockDB{shape: testDefaultShape, defaultsErr: errors.New("boom")}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
 	assert.Error(t, err)

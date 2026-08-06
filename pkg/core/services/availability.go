@@ -18,10 +18,10 @@ import (
 
 // AvailabilityStore defines the database operations the availability round needs.
 type AvailabilityStore interface {
-	RoleStore
 	// The round reports whether the answers coming in can staff the rota, which
-	// is a question about the Seats each Shift asks for.
-	DefaultShapeStore
+	// is a question about the Seats each Shift asks for — its own stored Shape,
+	// not the settings the settings screen currently holds (issue #137).
+	ShiftShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) (int, error)
@@ -497,11 +497,11 @@ func buildRound(
 
 	groups := buildAvailabilityGroups(entries, volunteersByID, shifts)
 
-	shape, err := DefaultShape(ctx, database)
+	shapes, err := ShiftShapes(ctx, database, shiftIDs)
 	if err != nil {
 		return nil, err
 	}
-	seats, err := buildShiftSeats(shape, shifts, pins)
+	seats, err := buildShiftSeats(shapes, shifts, pins)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve shift seats: %w", err)
 	}

@@ -105,7 +105,7 @@ func TestInsertDefinedRotaWritesSeededPreallocations(t *testing.T) {
 		ID: uuid.New().String(), ShiftID: shift.ID, Role: "Service volunteer", CustomValue: "St John's team",
 	}
 
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}, nil))
 
 	pins, err := database.GetPreallocationsByShiftIDs(ctx, []string{shift.ID})
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestInsertDefinedRotaRollsBackOnABadPin(t *testing.T) {
 		ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "Service volunteer", VolunteerID: "alice",
 	}
 
-	require.Error(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}))
+	require.Error(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}, nil))
 
 	rotations, err := database.GetRotations(ctx)
 	require.NoError(t, err)

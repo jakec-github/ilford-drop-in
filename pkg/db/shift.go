@@ -204,16 +204,22 @@ func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (boo
 	return tag.RowsAffected() > 0, nil
 }
 
-// InsertDefinedRota inserts a rotation, all of its minted shifts, and the
-// Preallocations its Standing Preallocations seeded, in a single transaction —
-// so a rotation can never exist without its shifts, and a rota can never be
-// defined with only some of the pins an admin was promised.
+// InsertDefinedRota inserts a rotation, all of its minted shifts, the Shapes
+// those shifts ask for and the Preallocations its Standing Preallocations
+// seeded, in a single transaction — so a rotation can never exist without its
+// shifts, a shift can never exist without the Shape it was minted with, and a
+// rota can never be defined with only some of the pins an admin was promised.
+//
+// The Shapes arrive as their own argument rather than on each Shift because
+// they are read on their own too (GetShiftShapes): most readers of a Shift do
+// not care what it asks for, and one that carried a Shape only on the way in
+// would be a struct whose field means something different in each direction.
 //
 // Concurrency (issue #41, hazard B1): the shift.date UNIQUE constraint is what
 // makes concurrent runs safe — two rotas minting the same date cannot both
 // commit, and the losing transaction writes nothing. Any change that relaxes
 // that constraint must introduce a replacement guard here.
-func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation) error {
+func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation, requirements []ShiftRequirement) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -249,6 +255,12 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	}
 	if err := results.Close(); err != nil {
 		return fmt.Errorf("failed to close shift batch: %w", err)
+	}
+
+	// A handful of Seats per Shift, so one at a time and named on failure for
+	// the same reason the pins below are.
+	if err := insertShiftRequirements(ctx, tx, requirements); err != nil {
+		return err
 	}
 
 	// Written one at a time rather than batched: there are a handful at most,

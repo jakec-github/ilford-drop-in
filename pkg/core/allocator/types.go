@@ -102,8 +102,8 @@ type Shift struct {
 	Index int
 
 	// Shape is the Seats this shift asks for, in the order they are filled. It
-	// is an input: InitShifts sets it from the default Shape, and the solver
-	// contract sends it.
+	// is an input: InitShifts carries it through from the shift's own spec, and
+	// the solver contract sends it.
 	Shape []Seat
 
 	// Size is the ordinary-volunteer target the *solver* reports back — the

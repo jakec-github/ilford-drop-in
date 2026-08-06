@@ -70,7 +70,7 @@ func readRound(t *testing.T, store *mockAvailabilityStore, volunteers *mockVolun
 // not a no — it is simply not an answer.
 func TestCoverageCountsOnlyRespondingGroups(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(2)
+	store.shape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -95,7 +95,7 @@ func TestCoverageCountsOnlyRespondingGroups(t *testing.T) {
 // is carried by the one who has, exactly as the allocator will carry them.
 func TestCoverageIgnoresASilentPartner(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(2)
+	store.shape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -116,7 +116,7 @@ func TestCoverageIgnoresASilentPartner(t *testing.T) {
 // She is not counted twice for the shift, because she can only take one of them.
 func TestCoverageReportsTeamLeadCover(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(2)
+	store.shape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -144,7 +144,7 @@ func TestCoverageReportsTeamLeadCover(t *testing.T) {
 // solve cannot deliver.
 func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(4)
+	store.shape = shapeOfSize(4)
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, cfg)
 
@@ -157,11 +157,29 @@ func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
 	assert.Equal(t, 4, first.Roles[1].Seats, "the uncapped Role takes the shift's size")
 }
 
+// The round reports each Shift against its own stored Shape (issue #137), not
+// against one Shape shared by the rota. A quiet week asking for two and a busy
+// one asking for six are two different questions, and the page has to ask each
+// of them the way the solve will.
+func TestCoverageReadsEachShiftsOwnShape(t *testing.T) {
+	store, cfg := availabilityFixture()
+	store.shiftShapes = map[string][]db.DefaultShapeSeat{
+		"shift-1": shapeOfSize(2),
+		"shift-2": shapeOfSize(6),
+	}
+	volunteers := availabilityVolunteers()
+	mintRound(t, store, volunteers, cfg)
+
+	round := readRound(t, store, volunteers, cfg)
+	assert.Equal(t, 2, coverageOf(t, round, "2026-08-02").Needed)
+	assert.Equal(t, 6, coverageOf(t, round, "2026-08-09").Needed)
+}
+
 // TestCoverageReportsTheDelta is the number an admin is really after: how far
 // short of a full shift the answers so far leave them.
 func TestCoverageReportsTheDelta(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(3)
+	store.shape = shapeOfSize(3)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -180,7 +198,7 @@ func TestCoverageReportsTheDelta(t *testing.T) {
 // the `shiftSize` on a rota override both left in issue #129.
 func TestCoverageReadsTheDefaultShape(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = []db.DefaultShapeSeat{
+	store.shape = []db.DefaultShapeSeat{
 		{RoleID: "role-team-lead", Seats: 1},
 		{RoleID: "role-service-volunteer", Seats: 6},
 	}
@@ -200,7 +218,7 @@ func TestCoverageReadsTheDefaultShape(t *testing.T) {
 // capped Role its ceiling whether it was wanted or not.
 func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = []db.DefaultShapeSeat{
+	store.shape = []db.DefaultShapeSeat{
 		{RoleID: "role-service-volunteer", Seats: 3},
 	}
 	volunteers := availabilityVolunteers()
@@ -219,7 +237,7 @@ func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
 // shift as a person better off than it is.
 func TestCoverageSubtractsPreallocations(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(4)
+	store.shape = shapeOfSize(4)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -252,7 +270,7 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 // already has.
 func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(2)
+	store.shape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, cfg)
 
@@ -274,7 +292,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 // a permanent red mark on a round that is fine.
 func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(3)
+	store.shape = shapeOfSize(3)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1")
@@ -294,7 +312,7 @@ func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {
 // will not be allocated.
 func TestCoverageSkipsVolunteersWhoHaveStopped(t *testing.T) {
 	store, cfg := availabilityFixture()
-	store.defaultShape = shapeOfSize(2)
+	store.shape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1")

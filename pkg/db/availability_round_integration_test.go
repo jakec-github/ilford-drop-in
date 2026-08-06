@@ -26,7 +26,7 @@ func roundFixture(t *testing.T, database *db.DB) (rotaID string, shiftIDs []stri
 		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-09"},
 		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-16"},
 	}
-	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, shifts, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, shifts, nil, nil))
 
 	for _, s := range shifts {
 		shiftIDs = append(shiftIDs, s.ID)

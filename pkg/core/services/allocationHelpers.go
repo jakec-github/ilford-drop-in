@@ -18,9 +18,8 @@ import (
 
 // AllocateRotaStore defines the database operations needed for allocating a rota
 type AllocateRotaStore interface {
-	RoleStore
 	RotaDefaultsStore
-	DefaultShapeStore
+	ShiftShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
