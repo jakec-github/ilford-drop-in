@@ -70,7 +70,7 @@ func readRound(t *testing.T, store *mockAvailabilityStore, volunteers *mockVolun
 // not a no — it is simply not an answer.
 func TestCoverageCountsOnlyRespondingGroups(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 2
+	store.defaultShape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -95,7 +95,7 @@ func TestCoverageCountsOnlyRespondingGroups(t *testing.T) {
 // is carried by the one who has, exactly as the allocator will carry them.
 func TestCoverageIgnoresASilentPartner(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 2
+	store.defaultShape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -116,7 +116,7 @@ func TestCoverageIgnoresASilentPartner(t *testing.T) {
 // She is not counted twice for the shift, because she can only take one of them.
 func TestCoverageReportsTeamLeadCover(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 2
+	store.defaultShape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -144,7 +144,7 @@ func TestCoverageReportsTeamLeadCover(t *testing.T) {
 // solve cannot deliver.
 func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 4
+	store.defaultShape = shapeOfSize(4)
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, cfg)
 
@@ -161,7 +161,7 @@ func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
 // short of a full shift the answers so far leave them.
 func TestCoverageReportsTheDelta(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 3
+	store.defaultShape = shapeOfSize(3)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -174,25 +174,43 @@ func TestCoverageReportsTheDelta(t *testing.T) {
 	assert.Equal(t, -1, first.Delta, "two people for a shift of three is one short")
 }
 
-// TestCoverageTakesShiftSizeFromTheOverrides: a date the config sizes
-// differently is a different question, and the last matching override wins —
-// which is how InitShifts applies them, so the number an admin reads here is the
-// number the allocator will work to.
-func TestCoverageTakesShiftSizeFromTheOverrides(t *testing.T) {
+// TestCoverageReadsTheDefaultShape: what a shift needs is the Shape an admin
+// stated in the settings, Role by Role — the same Shape allocation sends the
+// solver. A config file has nothing left to say about it: `defaultShiftSize` and
+// the `shiftSize` on a rota override both left in issue #129.
+func TestCoverageReadsTheDefaultShape(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 2
-	four, six := 4, 6
-	cfg.RotaOverrides = append(cfg.RotaOverrides,
-		// 2 August only.
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", ShiftSize: &four},
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", ShiftSize: &six},
-	)
+	store.defaultShape = []db.DefaultShapeSeat{
+		{RoleID: "role-team-lead", Seats: 1},
+		{RoleID: "role-service-volunteer", Seats: 6},
+	}
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, cfg)
 
 	round := readRound(t, store, volunteers, cfg)
-	assert.Equal(t, 6, coverageOf(t, round, "2026-08-02").Needed, "the last matching override wins")
-	assert.Equal(t, 2, coverageOf(t, round, "2026-08-09").Needed, "an unmatched date keeps the default")
+	first := coverageOf(t, round, "2026-08-02")
+	assert.Equal(t, 6, first.Needed, "the uncapped Role's Seats are the headline number")
+	assert.Equal(t, 1, roleCoverageOf(t, first, "Team lead").Seats)
+	assert.Equal(t, 6, coverageOf(t, round, "2026-08-09").Needed,
+		"every shift of a rota asks for the same thing")
+}
+
+// A Role the Shape does not name has no Seats, so nobody is chased for it. That
+// is a Shape an admin can state now — the derivation this replaced gave every
+// capped Role its ceiling whether it was wanted or not.
+func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
+	store, cfg := availabilityFixture()
+	store.defaultShape = []db.DefaultShapeSeat{
+		{RoleID: "role-service-volunteer", Seats: 3},
+	}
+	volunteers := availabilityVolunteers()
+	mintRound(t, store, volunteers, cfg)
+
+	round := readRound(t, store, volunteers, cfg)
+	first := coverageOf(t, round, "2026-08-02")
+	assert.Equal(t, 0, roleCoverageOf(t, first, "Team lead").Seats)
+	assert.Equal(t, 0, roleCoverageOf(t, first, "Team lead").Needed)
+	assert.Equal(t, 3, first.Needed)
 }
 
 // TestCoverageSubtractsPreallocations: a pinned seat is already filled. The seat
@@ -201,7 +219,7 @@ func TestCoverageTakesShiftSizeFromTheOverrides(t *testing.T) {
 // shift as a person better off than it is.
 func TestCoverageSubtractsPreallocations(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 4
+	store.defaultShape = shapeOfSize(4)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
@@ -234,7 +252,7 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 // already has.
 func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 2
+	store.defaultShape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, cfg)
 
@@ -256,7 +274,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 // a permanent red mark on a round that is fine.
 func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 3
+	store.defaultShape = shapeOfSize(3)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1")
@@ -276,7 +294,7 @@ func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {
 // will not be allocated.
 func TestCoverageSkipsVolunteersWhoHaveStopped(t *testing.T) {
 	store, cfg := availabilityFixture()
-	cfg.DefaultShiftSize = 2
+	store.defaultShape = shapeOfSize(2)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1")

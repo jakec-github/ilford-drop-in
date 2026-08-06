@@ -22,10 +22,8 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
 gmailUserID: "user@example.com"
-defaultShiftSize: 4
 rotaOverrides:
   - rrule: "FREQ=MONTHLY;BYDAY=3SU"
-    shiftSize: 6
 `
 
 // runValidateConfig executes the command the way main.go wires it: under a root
@@ -82,6 +80,21 @@ func TestValidateConfigCmd_LegacyRolesKeyIsReportedNotRejected(t *testing.T) {
 
 	assert.Contains(t, out, "1 unknown key")
 	assert.Contains(t, out, "roles")
+}
+
+// `defaultShiftSize` and the `shiftSize` on a rota override left config for the
+// database in ticket #129 — what a Shift asks for is the default Shape now — so
+// a deployed file still carrying them validates, and the summary is where an
+// operator finds out they configure nothing.
+func TestValidateConfigCmd_LegacyShiftSizeKeysAreReportedNotRejected(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+"defaultShiftSize: 4\n")
+
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "1 unknown key")
+	assert.Contains(t, out, "defaultShiftSize")
+	assert.Contains(t, out, "1 rota override")
 }
 
 // An unknown key is reported, not rejected — it may be one another build knows.

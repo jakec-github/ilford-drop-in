@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
@@ -21,6 +20,7 @@ import (
 type AllocateRotaStore interface {
 	RoleStore
 	RotaDefaultsStore
+	DefaultShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
@@ -186,39 +186,12 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 	return allocations, nil
 }
 
-// convertRotaOverrides converts config.RotaOverride to allocator.ShiftOverride.
-// RRule strings are parsed and converted to date-matching functions;
-// shiftDates provides the actual date range for the rota, which may span years.
-//
-// An override says only how big a Shift is now. Config Preallocations were
-// deleted in issue #131 — the pins an admin expects to make every rota are
-// Standing Preallocations, held in the Rota Defaults, and they seed ordinary
-// Preallocations when the rota is defined rather than being resolved afresh on
-// every read.
-func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []time.Time, logger *zap.Logger) ([]allocator.ShiftOverride, error) {
-	result := make([]allocator.ShiftOverride, 0, len(configOverrides))
-
-	for i, override := range configOverrides {
-		// Parse the RRule into a date matcher; allocation fails hard on an
-		// unparseable rrule.
-		appliesTo, err := utils.NewRRuleMatcher(override.RRule, shiftDates)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse rrule for override %d: %w", i, err)
-		}
-
-		result = append(result, allocator.ShiftOverride{
-			AppliesTo: appliesTo,
-			ShiftSize: override.ShiftSize,
-		})
-
-		logger.Debug("Converted override",
-			zap.Int("index", i),
-			zap.String("rrule", override.RRule),
-			zap.Bool("has_shift_size", override.ShiftSize != nil))
-	}
-
-	return result, nil
-}
+// `rotaOverrides` in the config file no longer converts to anything. Everything
+// an override could say has moved into the app: closures are a field on the
+// Shift (#132), the pins an admin expects to make every rota are Standing
+// Preallocations (#131), and the shift size it could adjust is the default
+// Shape (#129). The key itself, and the rrule validation behind it, are deleted
+// in #136 — the tidy-up that could only happen once all three had landed.
 
 // buildHistoricalShifts fetches allocations from the previous rota, applies that
 // rota's alterations (covers/swaps) so history reflects who actually worked, and

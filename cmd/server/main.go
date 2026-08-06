@@ -102,6 +102,17 @@ func run(env string, portOverride int) error {
 			logger.Info("DEV MODE: seeded roles", zap.Int("count", seeded))
 		}
 
+		// What those Roles are asked for, which is the other half of a rota the
+		// dev stack can allocate. It runs after the Roles because a Seat names
+		// one by id.
+		seededShape, err := devmode.SeedDefaultShape(ctx, database)
+		if err != nil {
+			return fmt.Errorf("failed to seed the dev default shape: %w", err)
+		}
+		if seededShape {
+			logger.Info("DEV MODE: seeded the default shape")
+		}
+
 		// Same reason as the Roles: nothing else sets them, and a dev stack
 		// that cannot allocate a rota is not the usable app it promises.
 		seededDefaults, err := devmode.SeedRotaDefaults(ctx, database)

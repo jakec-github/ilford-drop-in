@@ -19,6 +19,7 @@ import (
 type Store interface {
 	services.AvailabilityStore
 	services.ChangeRotaStore
+	services.DefaultShapeWriteStore
 	services.DefineRotaStore
 	services.ListShiftsStore
 	services.PreallocationStore
@@ -118,16 +119,20 @@ func (h *Handler) Routes() http.Handler {
 	api.HandleFunc("GET /roles", h.handleListRoles)
 	api.Handle("POST /roles", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateRole)))
 	api.Handle("PUT /roles/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleUpdateRole)))
-	// The settings record, admin-only on both verbs. Unlike the Roles beside it
-	// on the same screen, nothing a logged-out visitor sees needs it: the shift
+	// The settings record, admin-only throughout. Unlike the Roles beside it on
+	// the same screen, nothing a logged-out visitor sees needs it: the shift
 	// times already reach the public on GET /shifts, and the sections joining
-	// this one are an admin's business. PUT, because the shift times are one
-	// form stated whole.
+	// this one are an admin's business.
+	//
+	// One GET for the record and a PUT per section, each named. The screen
+	// draws every section from the one read; a section is written whole — the
+	// times are one idea, a Shape has no partial edit, and the toggles are one
+	// list — but the record is not, because a save of one section must not
+	// blank another, and a single PUT on the record would be exactly the
+	// endpoint that could.
 	api.Handle("GET /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaDefaults)))
-	api.Handle("PUT /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
-	// The allocation settings are a section of the same record, saved on their
-	// own so an edit to one section cannot blank another. GET is the record's,
-	// above: the screen draws every section from one read.
+	api.Handle("PUT /rota-defaults/shift-times", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
+	api.Handle("PUT /rota-defaults/shape", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveDefaultShape)))
 	api.Handle("PUT /rota-defaults/allocation-settings", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveAllocationSettings)))
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))

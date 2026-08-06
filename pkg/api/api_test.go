@@ -64,6 +64,15 @@ type mockStore struct {
 	savedAllocationSettings []string
 	rotaDefaultsWriteErr    error
 
+	// defaultShape overrides apiTestDefaultShape for a test that cares what a
+	// Shift asks for; noShape is a drop-in nobody has stated a Shape for, which
+	// is where every deployment starts.
+	defaultShape  []db.DefaultShapeSeat
+	noShape       bool
+	shapeErr      error
+	savedShapes   [][]db.DefaultShapeSeat
+	shapeWriteErr error
+
 	insertedRoles []db.Role
 	updatedRoles  []db.Role
 	// roleWriteErr is what the database says to a Role write —
@@ -494,6 +503,29 @@ func (m *mockStore) SaveRotaDefaults(_ context.Context, defaults db.RotaDefaults
 	return nil
 }
 
+func (m *mockStore) GetDefaultShape(context.Context) ([]db.DefaultShapeSeat, error) {
+	if m.shapeErr != nil {
+		return nil, m.shapeErr
+	}
+	if m.noShape {
+		return nil, nil
+	}
+	if m.defaultShape != nil {
+		return m.defaultShape, nil
+	}
+	return apiTestDefaultShape, nil
+}
+
+func (m *mockStore) SaveDefaultShape(_ context.Context, shape []db.DefaultShapeSeat) error {
+	if m.shapeWriteErr != nil {
+		return m.shapeWriteErr
+	}
+	m.savedShapes = append(m.savedShapes, shape)
+	m.defaultShape = shape
+	m.noShape = len(shape) == 0
+	return nil
+}
+
 func (m *mockStore) SaveAllocationSettings(_ context.Context, settings string) error {
 	if m.rotaDefaultsWriteErr != nil {
 		return m.rotaDefaultsWriteErr
@@ -528,6 +560,13 @@ var apiTestDefaults = model.RotaDefaults{
 	ShiftStartTime: apiTestRotaDefaults.ShiftStartTime,
 	ShiftEndTime:   apiTestRotaDefaults.ShiftEndTime,
 	ShiftTimezone:  apiTestRotaDefaults.ShiftTimezone,
+}
+
+// apiTestDefaultShape is what a configured drop-in's Shifts ask for, against the
+// Roles apiTestRoles holds: one lead and four others.
+var apiTestDefaultShape = []db.DefaultShapeSeat{
+	{RoleID: "role-team-lead", Seats: 1},
+	{RoleID: "role-service-volunteer", Seats: 4},
 }
 
 var apiTestCfg = &config.Config{}

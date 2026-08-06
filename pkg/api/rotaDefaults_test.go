@@ -31,6 +31,17 @@ func shiftTimesOf(t *testing.T, rec *httptest.ResponseRecorder) struct {
 	return body
 }
 
+// defaultShapeOf reads the Shape part of a settings response, for the same
+// reason shiftTimesOf reads the times: a test says which section it means.
+func defaultShapeOf(t *testing.T, rec *httptest.ResponseRecorder) []seatResponse {
+	t.Helper()
+	var body struct {
+		DefaultShape []seatResponse `json:"defaultShape"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	return body.DefaultShape
+}
+
 func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	store := &mockStore{}
 
@@ -43,13 +54,20 @@ func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	assert.Equal(t, "19:30", body.ShiftStartTime)
 	assert.Equal(t, "21:30", body.ShiftEndTime)
 	assert.Equal(t, "Europe/London", body.ShiftTimezone)
+
+	// Each Seat carries the Role's name as well as its id: the id is what an
+	// edit names, the name is what an admin reads.
+	assert.Equal(t, []seatResponse{
+		{RoleID: "role-team-lead", Role: "Team lead", Count: 1},
+		{RoleID: "role-service-volunteer", Role: "Service volunteer", Count: 4},
+	}, defaultShapeOf(t, rec))
 }
 
 // Settings nobody has filled in are a state to render, not an error: the times
 // come back empty so the screen can say they are unset, and the zone falls back
 // so the form has something to start on.
 func TestGetRotaDefaultsEndpointUnset(t *testing.T) {
-	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{}, noShape: true}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", adminCookie())
 
@@ -58,6 +76,7 @@ func TestGetRotaDefaultsEndpointUnset(t *testing.T) {
 	body := shiftTimesOf(t, rec)
 	assert.Empty(t, body.ShiftStartTime)
 	assert.Empty(t, body.ShiftEndTime)
+	assert.Empty(t, defaultShapeOf(t, rec))
 	assert.Equal(t, "Europe/London", body.ShiftTimezone)
 }
 
@@ -69,15 +88,19 @@ func TestRotaDefaultsEndpointIsAdminOnly(t *testing.T) {
 	rec := doRequest(t, handler, http.MethodGet, "/api/rota-defaults", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults",
+	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/shift-times",
 		`{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":"Europe/London"}`)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+
+	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/shape",
+		`{"seats":[{"roleId":"role-team-lead","count":1}]}`)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func TestSaveRotaDefaultsEndpoint(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults",
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
 		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, adminCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -98,7 +121,7 @@ func TestSaveRotaDefaultsEndpoint(t *testing.T) {
 func TestSaveRotaDefaultsEndpointFillsInTheZone(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults",
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
 		`{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":""}`, adminCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -121,7 +144,7 @@ func TestSaveRotaDefaultsEndpointRejectsBadInput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults", request, adminCookie())
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times", request, adminCookie())
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Empty(t, store.savedRotaDefaults)
@@ -238,4 +261,82 @@ func TestSaveAllocationSettingsIsAdminOnly(t *testing.T) {
 		"/api/rota-defaults/allocation-settings", `{"enabled":{}}`)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// Saving the Shape answers with the whole settings record, so the screen holds
+// one thing after a save of any section rather than stitching answers together.
+func TestSaveDefaultShapeEndpoint(t *testing.T) {
+	store := &mockStore{noShape: true}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
+		`{"seats":[{"roleId":"role-team-lead","count":1},{"roleId":"role-service-volunteer","count":6}]}`,
+		adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Len(t, store.savedShapes, 1)
+	assert.Equal(t, []db.DefaultShapeSeat{
+		{RoleID: "role-team-lead", Seats: 1},
+		{RoleID: "role-service-volunteer", Seats: 6},
+	}, store.savedShapes[0])
+	assert.Equal(t, []seatResponse{
+		{RoleID: "role-team-lead", Role: "Team lead", Count: 1},
+		{RoleID: "role-service-volunteer", Role: "Service volunteer", Count: 6},
+	}, defaultShapeOf(t, rec))
+	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime,
+		"the times are in the answer too - it is the whole record")
+}
+
+// A Role dropped from the list is a Role the Shape no longer asks for, and an
+// empty list is a Shape that asks for nothing — the only way to say either.
+func TestSaveDefaultShapeEndpointEmpties(t *testing.T) {
+	store := &mockStore{}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
+		`{"seats":[]}`, adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Len(t, store.savedShapes, 1)
+	assert.Empty(t, store.savedShapes[0])
+	assert.Empty(t, defaultShapeOf(t, rec))
+}
+
+// Saving one section leaves the others alone — the store is told about this
+// section only.
+func TestSaveDefaultShapeLeavesTheShiftTimesAlone(t *testing.T) {
+	store := &mockStore{}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
+		`{"seats":[{"roleId":"role-team-lead","count":1}]}`, adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Empty(t, store.savedRotaDefaults, "the shift-time section is not written")
+	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
+}
+
+// An admin's mistake is a 400 carrying the service's message, chief among them
+// a Shape asking for more of a Role than a Shift may ever hold.
+func TestSaveDefaultShapeEndpointRejectsBadInput(t *testing.T) {
+	cases := map[string]string{
+		"over the ceiling":    `{"seats":[{"roleId":"role-team-lead","count":2}]}`,
+		"no seats":            `{"seats":[{"roleId":"role-team-lead","count":0}]}`,
+		"unknown role":        `{"seats":[{"roleId":"role-nobody","count":1}]}`,
+		"the same role twice": `{"seats":[{"roleId":"role-team-lead","count":1},{"roleId":"role-team-lead","count":1}]}`,
+		"unknown field":       `{"seats":[{"roleId":"role-team-lead","seats":1}]}`,
+		"not json":            `nonsense`,
+	}
+
+	for name, request := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := &mockStore{}
+
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape", request, adminCookie())
+
+			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			assert.Empty(t, store.savedShapes)
+
+			var body map[string]string
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+			assert.NotEmpty(t, body["error"], "the message is shown beside the field")
+		})
+	}
 }

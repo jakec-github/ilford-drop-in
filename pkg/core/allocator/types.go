@@ -53,28 +53,12 @@ type Seat struct {
 	Count int
 }
 
-// ShiftShape turns a shift size into its Seats, in priority order. Each capped
-// Role asks for its ceiling and the uncapped Role takes the size, which is what
-// the size has always meant: leads sat outside it, everyone else inside.
-//
-// This is the one derivation of a Shift's Shape. The solver contract builds its
-// input from it, and the availability view reads it to say how many Seats of
-// each Role a shift still has to fill — the two must agree, or the page
-// promises staffing the solve will not deliver.
-//
-// S2 gives shifts their own editable Shape and this derivation goes; nothing
-// above it changes when that happens.
-func ShiftShape(size int, roles []Role) []Seat {
-	shape := make([]Seat, 0, len(roles))
-	for _, role := range sortedByPriority(roles) {
-		count := size
-		if role.Max != nil {
-			count = *role.Max
-		}
-		shape = append(shape, Seat{Role: role.Name, Count: count})
-	}
-	return shape
-}
+// A Shift's Shape is no longer derived. It used to be computed from a single
+// size and the Roles' ceilings — every capped Role asked for exactly its
+// ceiling, and the uncapped one took the size — which is the only Shape that
+// arithmetic could ever produce. The Seats are stated now, in the Rota Defaults
+// an admin edits on the Settings screen (issue #129, ADR 0006), and they reach
+// this package already resolved.
 
 // Preallocation pins one volunteer, or one custom entry, to a Role on a Shift
 // before the solve. Exactly one of VolunteerID and Custom is set.
@@ -117,7 +101,14 @@ type Shift struct {
 	// Index in the Shifts array (for quick reference)
 	Index int
 
-	// Size is the target number of volunteers for this shift
+	// Shape is the Seats this shift asks for, in the order they are filled. It
+	// is an input: InitShifts sets it from the default Shape, and the solver
+	// contract sends it.
+	Shape []Seat
+
+	// Size is the ordinary-volunteer target the *solver* reports back — the
+	// Seats of the uncapped Role — set by CpsatOutputToShifts. It is not an
+	// input: what a shift asks for is Shape.
 	Size int
 
 	// AllocatedGroups tracks which volunteer groups have been assigned

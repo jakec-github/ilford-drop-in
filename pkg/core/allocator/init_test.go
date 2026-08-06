@@ -234,6 +234,16 @@ func TestInitVolunteerGroups_AppliesGroupAvailabilityVerbatim(t *testing.T) {
 	assert.Equal(t, []int{1, 2}, volunteerState.VolunteerGroups[0].AvailableShiftIndices)
 }
 
+// The Seats a test's shifts ask for: the pair of Roles the app ships with, one
+// lead and four others. Stated rather than derived, which is the whole of what
+// changed in issue #129.
+func testShape() []Seat {
+	return []Seat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 4},
+	}
+}
+
 func TestInitShifts_ClosedShifts(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
@@ -252,8 +262,8 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 			{Date: "2025-01-12", Closed: true},
 			{Date: "2025-01-19"},
 		},
-		DefaultShiftSize: 4,
-		VolunteerState:   volunteerState,
+		DefaultShape:   testShape(),
+		VolunteerState: volunteerState,
 	}
 
 	shifts, err := InitShifts(input)
@@ -263,12 +273,12 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 	// Shift 0 should be open
 	assert.False(t, shifts[0].Closed)
 	assert.NotEmpty(t, shifts[0].AvailableGroups, "Open shift should have available groups")
-	assert.Equal(t, 4, shifts[0].Size)
+	assert.Equal(t, testShape(), shifts[0].Shape)
 
 	// Shift 1 should be closed
 	assert.True(t, shifts[1].Closed, "Shift 1 should be marked as closed")
 	assert.Empty(t, shifts[1].AvailableGroups, "Closed shift should have no available groups")
-	assert.Equal(t, 4, shifts[1].Size, "Closed shift should still have default size")
+	assert.Equal(t, testShape(), shifts[1].Shape, "Closed shift still asks for the default Shape")
 
 	// Shift 2 should be open
 	assert.False(t, shifts[2].Closed)
@@ -293,7 +303,6 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 			AppliesTo: func(date string) bool {
 				return date == "2025-01-05"
 			},
-			ShiftSize: nil,
 			Preallocations: []Preallocation{ // Should be ignored
 				{Custom: "John", Role: "Service volunteer"},
 				{Custom: "Jane", Role: "Service volunteer"},
@@ -306,9 +315,9 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 			{Date: "2025-01-05", Closed: true},
 			{Date: "2025-01-12"},
 		},
-		DefaultShiftSize: 4,
-		Overrides:        overrides,
-		VolunteerState:   volunteerState,
+		DefaultShape:   testShape(),
+		Overrides:      overrides,
+		VolunteerState: volunteerState,
 	}
 
 	shifts, err := InitShifts(input)

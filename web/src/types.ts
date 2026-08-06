@@ -91,10 +91,19 @@ export interface RoleEdit {
 export interface ShiftTimes {
   shiftStartTime: string;
   shiftEndTime: string;
-  // An IANA zone name. Never empty: the server answers with the default when an
-  // admin has not chosen one, so there is one answer to what zone the drop-in
-  // runs in.
+  // An IANA zone name. Never empty on the way out of the server: it answers
+  // with the default when an admin has not chosen one, so there is one answer
+  // to what zone the drop-in runs in.
   shiftTimezone: string;
+}
+
+// ShapeSeat is one line of a Shape: this many places of one Role. roleId is what
+// an edit names; role is the name an admin reads, and what a colour is keyed on
+// elsewhere.
+export interface ShapeSeat {
+  roleId: string;
+  role: Role;
+  count: number;
 }
 
 // SwitchableConstraint is one optional allocator rule, as the server offers it.
@@ -124,6 +133,10 @@ export interface AllocationSettings {
 // The settings record as the screen reads it: the answers, plus the rules the
 // allocation answers are about.
 export interface RotaDefaults extends ShiftTimes {
+  // What every shift asks for, in the order its Seats are filled. Empty means
+  // an admin has not stated one — the state every deployment starts in, and the
+  // one thing that stops a rota being allocated without saying anything else.
+  defaultShape: ShapeSeat[];
   allocationSettings: AllocationSettings;
   switchableConstraints: SwitchableConstraint[];
 }
