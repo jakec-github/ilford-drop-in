@@ -3,6 +3,8 @@ package allocator
 import (
 	"fmt"
 	"sort"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
 // This file defines the JSON contract between the Go CLI and the Python
@@ -71,9 +73,13 @@ type CpsatHistoricalShift struct {
 
 // CpsatInput is the full problem sent to Python on stdin.
 type CpsatInput struct {
-	MaxAllocationCount int                    `json:"max_allocation_count"`
-	Roles              []CpsatRole            `json:"roles"`
-	RequiresMale       bool                   `json:"requires_male"`
+	MaxAllocationCount int         `json:"max_allocation_count"`
+	Roles              []CpsatRole `json:"roles"`
+	// EnabledConstraints names the optional solver rules this run applies —
+	// the admin's Allocation Settings, in registry order. Python applies
+	// exactly these on top of its fundamentals and holds no default list of
+	// its own (ADR 0006, issue #130); a name it does not know it ignores.
+	EnabledConstraints []string               `json:"enabled_constraints"`
 	Shifts             []CpsatShift           `json:"shifts"`
 	Groups             []CpsatGroup           `json:"groups"`
 	HistoricalShifts   []CpsatHistoricalShift `json:"historical_shifts"`
@@ -131,9 +137,8 @@ func BuildCpsatInput(
 	defaultShiftSize int,
 	overrides []ShiftOverride,
 	historicalShifts []*Shift,
-	maxAllocationFrequency float64,
+	allocationSettings model.AllocationSettings,
 	roles []Role,
-	requiresMale bool,
 ) (*CpsatInput, error) {
 	if _, ok := uncappedRole(roles); !ok {
 		return nil, fmt.Errorf("no uncapped role configured: a shift's size has no Seats to be spent on")
@@ -166,9 +171,9 @@ func BuildCpsatInput(
 	}
 
 	input := &CpsatInput{
-		MaxAllocationCount: int(float64(len(shiftSpecs)) * maxAllocationFrequency),
+		MaxAllocationCount: allocationSettings.MaxAllocationCount(len(shiftSpecs)),
 		Roles:              contractRoles(roles),
-		RequiresMale:       requiresMale,
+		EnabledConstraints: allocationSettings.EnabledConstraints(),
 		Shifts:             make([]CpsatShift, len(initialised)),
 		Groups:             make([]CpsatGroup, len(volunteerState.VolunteerGroups)),
 		HistoricalShifts:   make([]CpsatHistoricalShift, len(historicalShifts)),

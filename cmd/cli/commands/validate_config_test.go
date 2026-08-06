@@ -22,9 +22,7 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
 gmailUserID: "user@example.com"
-maxAllocationFrequency: 0.34
 defaultShiftSize: 4
-requiresMale: true
 rotaOverrides:
   - rrule: "FREQ=MONTHLY;BYDAY=3SU"
     shiftSize: 6

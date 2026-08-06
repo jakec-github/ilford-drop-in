@@ -125,6 +125,10 @@ func (h *Handler) Routes() http.Handler {
 	// form stated whole.
 	api.Handle("GET /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaDefaults)))
 	api.Handle("PUT /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
+	// The allocation settings are a section of the same record, saved on their
+	// own so an edit to one section cannot blank another. GET is the record's,
+	// above: the screen draws every section from one read.
+	api.Handle("PUT /rota-defaults/allocation-settings", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveAllocationSettings)))
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people

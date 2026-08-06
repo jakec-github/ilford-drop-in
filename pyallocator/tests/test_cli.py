@@ -26,7 +26,7 @@ def shape(size: int) -> list[dict]:
 VALID_INPUT = {
     "max_allocation_count": 1,
     "roles": ROLES,
-    "requires_male": True,
+    "enabled_constraints": ["male_required"],
     "shifts": [{"index": 0, "date": "2026-07-13", "shape": shape(2)}],
     "groups": [
         {

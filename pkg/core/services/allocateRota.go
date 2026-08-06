@@ -102,7 +102,8 @@ func AllocateRota(
 		return nil, wrapf(ErrInvalidInput, "no roles are configured - add them on the settings screen before allocating")
 	}
 
-	if err := checkSettingsAllowAllocation(ctx, database); err != nil {
+	settings, err := settingsForAllocation(ctx, database, logger)
+	if err != nil {
 		return nil, err
 	}
 
@@ -192,9 +193,8 @@ func AllocateRota(
 		cfg.DefaultShiftSize,
 		allocatorOverrides,
 		historicalShifts,
-		cfg.MaxAllocationFrequency,
+		settings.AllocationSettings,
 		convertRoles(roles),
-		cfg.RequiresMale,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build cpsat input: %w", err)

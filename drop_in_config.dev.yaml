@@ -26,9 +26,7 @@ gmailSender: 'dev@example.com'
 # this file.
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslmode=disable'
 
-maxAllocationFrequency: 0.34
 defaultShiftSize: 4
-requiresMale: true
 
 server:
   port: 8080

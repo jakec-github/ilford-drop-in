@@ -1,4 +1,5 @@
 import type {
+  AllocationSettings,
   AvailabilityEntry,
   AvailabilityFormState,
   AvailabilityLinkFailure,
@@ -17,6 +18,7 @@ import type {
   RotaShift,
   SendMode,
   SendOutcome,
+  ShiftTimes,
   StandingPreallocation,
   Volunteer,
 } from "./types";
@@ -242,17 +244,39 @@ export async function fetchRotaDefaults(): Promise<RotaDefaults> {
 // fills in a timezone an admin left blank and the form should show what it
 // actually holds.
 export async function saveShiftTimeDefaults(
-  defaults: RotaDefaults,
+  times: ShiftTimes,
 ): Promise<RotaDefaults> {
   const res = await fetch("/api/rota-defaults", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(defaults),
+    body: JSON.stringify(times),
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to save the shift times"));
   }
   return (await res.json()) as RotaDefaults;
+}
+
+// saveAllocationSettings writes which optional allocator rules apply. Its own
+// endpoint, because the settings screen is sections and saving one must not
+// blank another.
+//
+// Resolves with the section as the server now holds it, which is not always
+// what was sent: an answer naming a rule this server does not have is dropped.
+export async function saveAllocationSettings(
+  settings: AllocationSettings,
+): Promise<AllocationSettings> {
+  const res = await fetch("/api/rota-defaults/allocation-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(res, "Failed to save the allocation rules"),
+    );
+  }
+  return (await res.json()) as AllocationSettings;
 }
 
 interface ApiPreallocation {

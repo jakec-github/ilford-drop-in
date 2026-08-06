@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -23,8 +24,12 @@ type RotaDefaultsStore interface {
 // RotaDefaultsWriteStore is what saving the settings needs, kept apart from
 // reading them for the same reason RoleWriteStore is: one screen writes them,
 // half the app reads them.
+//
+// One method per section, because the settings screen is sections and a save
+// of one must not blank another.
 type RotaDefaultsWriteStore interface {
 	SaveRotaDefaults(ctx context.Context, defaults db.RotaDefaults) error
+	SaveAllocationSettings(ctx context.Context, settings string) error
 }
 
 // RotaDefaults reads what an admin has decided about how the drop-in runs.
@@ -43,10 +48,34 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 	}
 
 	return model.RotaDefaults{
-		ShiftStartTime: row.ShiftStartTime,
-		ShiftEndTime:   row.ShiftEndTime,
-		ShiftTimezone:  row.ShiftTimezone,
+		ShiftStartTime:     row.ShiftStartTime,
+		ShiftEndTime:       row.ShiftEndTime,
+		ShiftTimezone:      row.ShiftTimezone,
+		AllocationSettings: parseAllocationSettings(row.AllocationSettings),
 	}, nil
+}
+
+// parseAllocationSettings reads the stored document, and answers "no rules"
+// for anything it cannot make sense of.
+//
+// It never fails, which is the rule from ADR 0006 read to its conclusion: a
+// document this build cannot understand must not be able to take down the one
+// screen an admin could fix it on. Every rule reading as off is a safe answer
+// — allocation still runs, with nothing optional applied — and the section
+// re-saves cleanly over it.
+//
+// Keys this build does not know need no handling at all: encoding/json ignores
+// them, which is the leniency the ADR asks for, for free.
+func parseAllocationSettings(document string) model.AllocationSettings {
+	if document == "" {
+		return model.AllocationSettings{}
+	}
+
+	var settings model.AllocationSettings
+	if err := json.Unmarshal([]byte(document), &settings); err != nil {
+		return model.AllocationSettings{}
+	}
+	return settings
 }
 
 // checkSettingsAllowAllocation refuses when the drop-in's settings are too
@@ -61,21 +90,33 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 // for: a rota allocated against times nobody has chosen is one nobody can be
 // given the hours of.
 //
-// It reads the settings itself rather than taking them, so a caller cannot
-// allocate by forgetting to check.
-func checkSettingsAllowAllocation(ctx context.Context, store RotaDefaultsStore) error {
+// It reads the settings itself and hands back what it read, so a caller cannot
+// allocate by forgetting to check — the only way to get the settings for a
+// solve is to go through the gate.
+func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger *zap.Logger) (model.RotaDefaults, error) {
 	defaults, err := RotaDefaults(ctx, store)
 	if err != nil {
-		return err
+		return model.RotaDefaults{}, err
 	}
 
-	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
-		return wrapf(ErrInvalidInput,
+	// Both sections at once, so an admin is told everything they have to go
+	// and fill in rather than one thing per attempt.
+	missing := append(defaults.MissingShiftTimes(), defaults.AllocationSettings.Missing()...)
+	if len(missing) > 0 {
+		return model.RotaDefaults{}, wrapf(ErrInvalidInput,
 			"the drop-in's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
 			joinWithAnd(missing), plural(len(missing), "has", "have"))
 	}
 
-	return nil
+	// An answer for a rule this build no longer has is dropped, not refused —
+	// but it is worth saying so once, here, because the rota about to be
+	// allocated is not the one an admin who switched that rule on expected.
+	if unknown := defaults.AllocationSettings.UnknownConstraints(); len(unknown) > 0 {
+		logger.Warn("Ignoring allocation settings for rules this build does not have",
+			zap.Strings("rules", unknown))
+	}
+
+	return defaults, nil
 }
 
 // joinWithAnd lists what is missing the way a sentence does, so the refusal
@@ -190,4 +231,77 @@ func SaveShiftTimeDefaults(ctx context.Context, store RotaDefaultsWriteStore, pa
 		ShiftEndTime:   row.ShiftEndTime,
 		ShiftTimezone:  row.ShiftTimezone,
 	}, nil
+}
+
+// AllocationSettingsParams is the allocation-settings section of the settings
+// screen as an admin states it: an answer for every rule they were offered,
+// plus the one value a rule carries.
+//
+// Stated whole, like the shift times: the screen shows every rule at once, and
+// a partial save could not express switching one off.
+type AllocationSettingsParams struct {
+	// Enabled is one answer per rule, keyed by the constraint's name. A rule
+	// left out is off.
+	Enabled map[string]bool
+	// MaxFrequency is the share of a rota's shifts one volunteer may work.
+	// Required when max_frequency is on, and kept as given when it is off.
+	MaxFrequency float64
+}
+
+// validate turns an admin's answers into the settings to store, or says why it
+// will not.
+//
+// Answers for rules this build does not have are dropped rather than refused.
+// Storing one would mean nothing to anything that later read it — the registry
+// is the authority on which rules exist (ADR 0006) — and the caller is told
+// what was kept, so a client working from an older list can see what happened.
+func (p AllocationSettingsParams) validate() (model.AllocationSettings, error) {
+	enabled := make(map[string]bool, len(p.Enabled))
+	for _, constraint := range model.SwitchableConstraints {
+		if p.Enabled[constraint.Name] {
+			enabled[constraint.Name] = true
+		}
+	}
+
+	settings := model.AllocationSettings{Enabled: enabled, MaxFrequency: p.MaxFrequency}
+
+	// The value is only asked for when the rule that reads it is on. Off, it
+	// is kept as given: it constrains nothing there, and blanking it would
+	// lose the number an admin would want back on switching the rule on again.
+	if settings.IsEnabled(model.MaxFrequencyConstraint) && (p.MaxFrequency <= 0 || p.MaxFrequency > 1) {
+		return model.AllocationSettings{}, wrapf(ErrInvalidInput,
+			"the maximum allocation frequency is a share of a rota between 0 and 1, and %v is not one", p.MaxFrequency)
+	}
+
+	return settings, nil
+}
+
+// SaveAllocationSettings writes which optional allocator rules apply, and
+// returns the settings as they now stand — including any answer that was
+// dropped for naming a rule this build does not have.
+func SaveAllocationSettings(
+	ctx context.Context,
+	store RotaDefaultsWriteStore,
+	params AllocationSettingsParams,
+	logger *zap.Logger,
+) (model.AllocationSettings, error) {
+	settings, err := params.validate()
+	if err != nil {
+		return model.AllocationSettings{}, err
+	}
+
+	document, err := json.Marshal(settings)
+	if err != nil {
+		return model.AllocationSettings{}, fmt.Errorf("failed to encode allocation settings: %w", err)
+	}
+
+	if err := store.SaveAllocationSettings(ctx, string(document)); err != nil {
+		return model.AllocationSettings{}, fmt.Errorf("failed to save allocation settings: %w", err)
+	}
+
+	logger.Info("Allocation settings saved",
+		zap.Strings("enabled", settings.EnabledConstraints()),
+		zap.Float64("max_frequency", settings.MaxFrequency))
+
+	return settings, nil
 }
