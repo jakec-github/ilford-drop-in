@@ -40,7 +40,7 @@ in Go — Python enforces and counts):
   "max_allocation_count": 4,
   "roles": [{"name": "Team lead", "max": 1, "priority": 1},
             {"name": "Service volunteer", "max": null, "priority": 2}],
-  "requires_male": true,
+  "enabled_constraints": ["max_frequency", "male_required", "no_back_to_back"],
   "shifts": [{"index": 0, "date": "2026-07-13", "closed": false,
               "shape": [{"role": "Team lead", "count": 1},
                         {"role": "Service volunteer", "count": 4}],
@@ -106,16 +106,22 @@ read `x.role`. Modularity is the point of this package:
 
 - `constraints/` — one file per **hard rule** (something that can never
   be violated). Each module's docstring and `description` state exactly
-  what rota feature it ensures. Production set: `DEFAULT_CONSTRAINTS` in
-  `constraints/__init__.py`: grouping (members of a group work each
-  shift together or not at all), availability, max_frequency,
-  seat_capacity (a Role's Seats on a shift are never oversubscribed —
-  where "at most one team lead" now comes from, that Role having one
-  Seat), male_required (a shift without a male keeps a Seat open so one
-  can be added manually), no_back_to_back,
-  closed_shifts, preallocations, no_duplicate_allocation.
-  `one_shift_per_month` also exists but sits in `STRICT_CONSTRAINTS`, out of
-  the production set: it is regularly unsatisfiable at real volunteer numbers.
+  what rota feature it ensures. `constraints/__init__.py` splits them in
+  two:
+  - `FUNDAMENTAL_CONSTRAINTS` always apply: grouping (members of a group
+    work each shift together or not at all), availability, seat_capacity
+    (a Role's Seats on a shift are never oversubscribed — where "at most
+    one team lead" now comes from, that Role having one Seat),
+    closed_shifts, preallocations, no_duplicate_allocation.
+  - `SWITCHABLE_CONSTRAINTS` apply only when named: max_frequency,
+    male_required (a shift without a male keeps a Seat open so one can be
+    added manually), no_back_to_back, one_shift_per_month. That list is
+    the authority on which toggles exist; an admin answers them in the
+    Allocation Settings and Go sends the answers as
+    `enabled_constraints`. There is no default list on this side —
+    a rule nobody switched on is off, and an unrecognised name is
+    ignored rather than refused.
+
   Rules that are off must not be asserted in tests.
 - `preferences/` — one file per **soft goal**, contributing weighted
   terms to a single maximised objective. Production set:

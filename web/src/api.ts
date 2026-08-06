@@ -1,4 +1,5 @@
 import type {
+  AllocationSettings,
   AvailabilityEntry,
   AvailabilityFormState,
   AvailabilityLinkFailure,
@@ -272,6 +273,28 @@ export async function saveDefaultShape(
     throw new Error(await errorMessage(res, "Failed to save the shape"));
   }
   return (await res.json()) as RotaDefaults;
+}
+
+// saveAllocationSettings writes which optional allocator rules apply. Its own
+// endpoint, because the settings screen is sections and saving one must not
+// blank another.
+//
+// Resolves with the section as the server now holds it, which is not always
+// what was sent: an answer naming a rule this server does not have is dropped.
+export async function saveAllocationSettings(
+  settings: AllocationSettings,
+): Promise<AllocationSettings> {
+  const res = await fetch("/api/rota-defaults/allocation-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(res, "Failed to save the allocation rules"),
+    );
+  }
+  return (await res.json()) as AllocationSettings;
 }
 
 interface ApiPreallocation {

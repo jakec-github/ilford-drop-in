@@ -102,7 +102,8 @@ func AllocateRota(
 		return nil, wrapf(ErrInvalidInput, "no roles are configured - add them on the settings screen before allocating")
 	}
 
-	if err := checkSettingsAllowAllocation(ctx, database); err != nil {
+	settings, err := settingsForAllocation(ctx, database, logger)
+	if err != nil {
 		return nil, err
 	}
 
@@ -156,8 +157,8 @@ func AllocateRota(
 
 	// What each Shift asks for. Every Shift of the rota asks for the same thing
 	// — the Shape in the Rota Defaults — until Shifts own their own Shapes
-	// (#137). checkSettingsAllowAllocation above has already refused an empty
-	// one, so this cannot be a rota asking for nobody.
+	// (#137). The settings gate above has already refused an empty one, so this
+	// cannot be a rota asking for nobody.
 	shape, err := DefaultShape(ctx, database)
 	if err != nil {
 		return nil, err
@@ -195,9 +196,8 @@ func AllocateRota(
 		convertShape(shape),
 		allocatorOverrides,
 		historicalShifts,
-		cfg.MaxAllocationFrequency,
+		settings.AllocationSettings,
 		convertRoles(roles),
-		cfg.RequiresMale,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build cpsat input: %w", err)

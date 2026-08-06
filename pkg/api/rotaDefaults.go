@@ -29,6 +29,44 @@ type rotaDefaultsResponse struct {
 	// filled. Never null: a Shape nobody has stated is an empty list, which is a
 	// state to render rather than an absence to guard against.
 	DefaultShape []seatResponse `json:"defaultShape"`
+	// AllocationSettings is which optional allocator rules apply, and
+	// SwitchableConstraints is which rules there are to apply. Both, because
+	// the screen renders one list of toggles and cannot draw it from the
+	// answers alone — a rule nobody has answered still has to appear, switched
+	// off. Sending the registry also means the client holds no copy of it: the
+	// list in Go is the only one (ADR 0006).
+	AllocationSettings    allocationSettingsResponse `json:"allocationSettings"`
+	SwitchableConstraints []switchableConstraint     `json:"switchableConstraints"`
+}
+
+// switchableConstraint is one optional allocator rule as the screen needs it:
+// the name it is answered under, and the words to put beside the switch.
+type switchableConstraint struct {
+	Name        string `json:"name"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	// ValueLabel names the extra answer this rule needs, empty for the rules
+	// that need none. Only max_frequency has one.
+	ValueLabel string `json:"valueLabel,omitempty"`
+}
+
+// allocationSettingsResponse is an admin's answers.
+//
+// Enabled carries an entry for every rule in the registry, including the ones
+// nobody has answered — the rule that an unanswered constraint is off is
+// settled here rather than in the client, so there is one place it is stated.
+type allocationSettingsResponse struct {
+	Enabled      map[string]bool `json:"enabled"`
+	MaxFrequency float64         `json:"maxFrequency"`
+}
+
+// allocationSettingsRequest is the allocation-settings section of the settings
+// screen, stated whole for the same reason the shift times are: the screen
+// shows every rule at once, and a partial write could not express switching one
+// off.
+type allocationSettingsRequest struct {
+	Enabled      map[string]bool `json:"enabled"`
+	MaxFrequency float64         `json:"maxFrequency"`
 }
 
 // seatResponse is one line of a Shape: this many of this Role.
@@ -177,10 +215,58 @@ func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rota
 		})
 	}
 
-	return rotaDefaultsResponse{
-		ShiftStartTime: defaults.ShiftStartTime,
-		ShiftEndTime:   defaults.ShiftEndTime,
-		ShiftTimezone:  defaults.Timezone(),
-		DefaultShape:   seats,
+	constraints := make([]switchableConstraint, 0, len(model.SwitchableConstraints))
+	for _, c := range model.SwitchableConstraints {
+		constraints = append(constraints, switchableConstraint{
+			Name:        c.Name,
+			Label:       c.Label,
+			Description: c.Description,
+			ValueLabel:  c.ValueLabel,
+		})
 	}
+
+	return rotaDefaultsResponse{
+		ShiftStartTime:        defaults.ShiftStartTime,
+		ShiftEndTime:          defaults.ShiftEndTime,
+		ShiftTimezone:         defaults.Timezone(),
+		DefaultShape:          seats,
+		AllocationSettings:    toAllocationSettingsResponse(defaults.AllocationSettings),
+		SwitchableConstraints: constraints,
+	}
+}
+
+// toAllocationSettingsResponse states an answer for every rule that exists,
+// so the client never has to know that a missing key means off.
+func toAllocationSettingsResponse(settings model.AllocationSettings) allocationSettingsResponse {
+	enabled := make(map[string]bool, len(model.SwitchableConstraints))
+	for _, c := range model.SwitchableConstraints {
+		enabled[c.Name] = settings.IsEnabled(c.Name)
+	}
+
+	return allocationSettingsResponse{Enabled: enabled, MaxFrequency: settings.MaxFrequency}
+}
+
+// handleSaveAllocationSettings writes which optional allocator rules apply and
+// answers with the settings as they now stand — which is not always what was
+// sent: an answer naming a rule this build does not have is dropped, and the
+// reply is how a client working from an older list finds that out.
+func (h *Handler) handleSaveAllocationSettings(w http.ResponseWriter, r *http.Request) {
+	var req allocationSettingsRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	settings, err := services.SaveAllocationSettings(r.Context(), h.store, services.AllocationSettingsParams{
+		Enabled:      req.Enabled,
+		MaxFrequency: req.MaxFrequency,
+	}, h.logger)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, toAllocationSettingsResponse(settings))
 }

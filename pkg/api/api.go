@@ -124,13 +124,16 @@ func (h *Handler) Routes() http.Handler {
 	// times already reach the public on GET /shifts, and the sections joining
 	// this one are an admin's business.
 	//
-	// One GET for the record and a PUT per section, each named. A section is
-	// written whole — the times are one idea and a Shape has no partial edit —
-	// but the record is not: a save of one section must not blank another, and
-	// a single PUT on the record would be exactly the endpoint that could.
+	// One GET for the record and a PUT per section, each named. The screen
+	// draws every section from the one read; a section is written whole — the
+	// times are one idea, a Shape has no partial edit, and the toggles are one
+	// list — but the record is not, because a save of one section must not
+	// blank another, and a single PUT on the record would be exactly the
+	// endpoint that could.
 	api.Handle("GET /rota-defaults", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaDefaults)))
 	api.Handle("PUT /rota-defaults/shift-times", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
 	api.Handle("PUT /rota-defaults/shape", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveDefaultShape)))
+	api.Handle("PUT /rota-defaults/allocation-settings", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveAllocationSettings)))
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people

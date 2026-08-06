@@ -17,9 +17,11 @@ comes from now.
 Custom (free-text) preallocations have unknown gender: they occupy Seats
 but never satisfy the male requirement, so they narrow the escape.
 
-The rule is config (`requiresMale`). It is on everywhere today, which is
-what the code used to assume; the flag exists so a shift pattern that
-does not need male cover can say so rather than work around it.
+The rule is optional: it applies when an admin has switched male cover on
+in the Allocation Settings, which is said by this constraint being in the
+run's list at all. It used to be said twice — a `requiresMale` config key
+*and* membership of the default constraint list — which were two halves of
+one idea in two places (issue #130).
 """
 
 from __future__ import annotations
@@ -38,9 +40,6 @@ class MaleRequiredConstraint:
     )
 
     def apply(self, model: cp_model.CpModel, x: Vars, problem: Problem) -> None:
-        if not problem.requires_male:
-            return
-
         for shift in problem.shifts:
             if shift.closed:
                 continue

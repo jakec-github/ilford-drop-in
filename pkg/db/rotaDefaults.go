@@ -30,6 +30,15 @@ type RotaDefaults struct {
 	// ShiftTimezone is an IANA zone name, e.g. "Europe/London". Empty means
 	// unset; the domain falls back rather than guessing at read time.
 	ShiftTimezone string
+	// AllocationSettings is which optional allocator rules apply, as the JSON
+	// document the column holds. Empty means an admin has never saved the
+	// section, which reads as every rule off.
+	//
+	// Carried verbatim rather than decoded here: what the answers mean is the
+	// domain's business (model.AllocationSettings), and the whole reason the
+	// column is JSON is that this layer should not need changing when a
+	// constraint arrives or leaves (ADR 0006).
+	AllocationSettings string
 }
 
 // GetRotaDefaults reads the settings record.
@@ -42,13 +51,14 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 	// to_char renders the TIME the way the app states it. Doing the formatting
 	// in SQL keeps a time of day a string on this side of the boundary, where
 	// scanning into a time.Time would attach a meaningless date to it.
-	var start, end, timezone *string
+	var start, end, timezone, allocation *string
 	err := d.pool.QueryRow(ctx, `
 		SELECT to_char(shift_start_time, 'HH24:MI'),
 		       to_char(shift_end_time, 'HH24:MI'),
-		       shift_timezone
+		       shift_timezone,
+		       allocation_settings::text
 		FROM rota_defaults
-	`).Scan(&start, &end, &timezone)
+	`).Scan(&start, &end, &timezone, &allocation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RotaDefaults{}, nil
 	}
@@ -57,9 +67,10 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 	}
 
 	return RotaDefaults{
-		ShiftStartTime: deref(start),
-		ShiftEndTime:   deref(end),
-		ShiftTimezone:  deref(timezone),
+		ShiftStartTime:     deref(start),
+		ShiftEndTime:       deref(end),
+		ShiftTimezone:      deref(timezone),
+		AllocationSettings: deref(allocation),
 	}, nil
 }
 
@@ -84,6 +95,30 @@ func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error 
 	`, defaults.ShiftStartTime, defaults.ShiftEndTime, defaults.ShiftTimezone)
 	if err != nil {
 		return fmt.Errorf("failed to save rota defaults: %w", err)
+	}
+	return nil
+}
+
+// SaveAllocationSettings writes which optional allocator rules apply, creating
+// the settings record if this is the first time anyone has saved it.
+//
+// Its own method rather than a field of SaveRotaDefaults, for the reason that
+// one names the columns it sets: the settings screen is sections, and saving
+// one must not blank another.
+//
+// The document is written as given. The database checks it is an object and
+// nothing more — the answers inside it are the domain's, and a column that
+// vetted them would have to be migrated every time a constraint arrived, which
+// is precisely what storing them as JSON avoids.
+func (d *DB) SaveAllocationSettings(ctx context.Context, settings string) error {
+	_, err := d.pool.Exec(ctx, `
+		INSERT INTO rota_defaults (id, allocation_settings)
+		VALUES (TRUE, NULLIF($1, '')::jsonb)
+		ON CONFLICT (id) DO UPDATE SET
+			allocation_settings = EXCLUDED.allocation_settings
+	`, settings)
+	if err != nil {
+		return fmt.Errorf("failed to save allocation settings: %w", err)
 	}
 	return nil
 }

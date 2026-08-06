@@ -309,3 +309,57 @@
   gap: 0.5rem;
   margin-top: 1.25rem;
 }
+
+/* One optional allocator rule in the edit dialog: a switch, what the rule does
+   underneath it, and the value it carries if it has one. Spaced as a block
+   rather than as a list of fields, because each rule is a decision on its own
+   and reading straight past one is the mistake to design against. */
+.rule-choice {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.rule-choice:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.rule-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* The hint sits under the switch it explains, so it loses the negative top
+   margin that pulls it up under a field label. */
+.settings-hint.rule-description {
+  margin: 0.25rem 0 0 1.5rem;
+}
+
+/* Indented to the switch's label, so it reads as belonging to that rule
+   rather than as another question on its own. */
+.rule-value {
+  margin: 0.625rem 0 0 1.5rem;
+}
+
+/* An allocator rule is named by a sentence rather than by a word, so its term
+   column is wider than the Rota Defaults one beside it — at 8rem "Cap how often
+   somebody works" wraps to three lines and the answers stop lining up. */
+.rule-facts .settings-fact dt {
+  width: 15rem;
+}
+
+@media (max-width: 30rem) {
+  /* No room for two columns on a phone: the rule reads as a heading with its
+     answer under it. Admin tools are desktop first, but they stay usable. */
+  .rule-facts .settings-fact {
+    display: block;
+  }
+
+  .rule-facts .settings-fact dt {
+    width: auto;
+  }
+}

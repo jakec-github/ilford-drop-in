@@ -2,12 +2,22 @@
 
 Add new constraint modules here.
 
-FUNDAMENTAL CONSTRAINTS are required for allocation.
-ADDITIONAL_CONSTRAINTS improve allocation.
-STRICT_CONSTRAINTS are regularly too difficult to satisfy.
+FUNDAMENTAL_CONSTRAINTS are what makes a rota a rota. They always apply and
+nothing can switch them off.
+
+SWITCHABLE_CONSTRAINTS are the optional rules an admin chooses in the
+Allocation Settings. This list is the **authority on which toggles exist**
+(ADR 0006): the settings record stores answers keyed by the names here, and
+Go offers an admin exactly these. A rule arriving or leaving is an edit to
+this list and nothing else — no migration, and no default list anywhere but
+here.
 
 Tests inject subsets via model_builder.build().
 """
+
+from __future__ import annotations
+
+from typing import Iterable
 
 from . import (
     availability,
@@ -32,16 +42,35 @@ FUNDAMENTAL_CONSTRAINTS: list[Constraint] = [
     preallocations.CONSTRAINT,
 ]
 
-ADDITIONAL_CONSTRAINTS: list[Constraint] = [
+SWITCHABLE_CONSTRAINTS: list[Constraint] = [
     max_frequency.CONSTRAINT,
     male_required.CONSTRAINT,
     no_back_to_back.CONSTRAINT,
-]
-
-STRICT_CONSTRAINTS: list[Constraint] = [
     one_shift_per_month.CONSTRAINT,
 ]
 
-DEFAULT_CONSTRAINTS = FUNDAMENTAL_CONSTRAINTS + ADDITIONAL_CONSTRAINTS # + STRICT_CONSTRAINTS
 
-__all__ = ["Constraint", "DEFAULT_CONSTRAINTS", "Vars"]
+def constraints_for(enabled: Iterable[str]) -> list[Constraint]:
+    """The constraint list for one run: the fundamentals, plus the switchable
+    rules named in `enabled`, in registry order.
+
+    A name this build does not know selects nothing, and is not an error.
+    Stored answers outlive any one deploy, and a rule that has since been
+    withdrawn must not be able to stop a rota being allocated (ADR 0006).
+
+    Registry order rather than the caller's, so the model is built the same
+    way whatever order the answers arrive in.
+    """
+    wanted = set(enabled)
+    return FUNDAMENTAL_CONSTRAINTS + [
+        c for c in SWITCHABLE_CONSTRAINTS if c.name in wanted
+    ]
+
+
+__all__ = [
+    "Constraint",
+    "FUNDAMENTAL_CONSTRAINTS",
+    "SWITCHABLE_CONSTRAINTS",
+    "Vars",
+    "constraints_for",
+]

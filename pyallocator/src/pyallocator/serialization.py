@@ -226,7 +226,7 @@ def parse_input(data: Any) -> AllocationInput:
         shifts=shifts,
         groups=groups,
         roles=roles,
-        requires_male=_optional(data, "requires_male", bool, False, "input"),
+        enabled_constraints=_str_tuple(data, "enabled_constraints", "input"),
         historical_shifts=tuple(
             _parse_historical_shift(h, f"input.historical_shifts[{i}]")
             for i, h in enumerate(historical_raw)

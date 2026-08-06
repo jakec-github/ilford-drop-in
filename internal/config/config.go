@@ -75,29 +75,33 @@ type DevModeConfig struct {
 
 // Config represents the application configuration
 type Config struct {
-	VolunteerSheetID       string         `yaml:"volunteerSheetID" validate:"required"`
-	ServiceVolunteersTab   string         `yaml:"serviceVolunteersTab" validate:"required"`
-	RotaSheetID            string         `yaml:"rotaSheetID" validate:"required"`
-	DatabaseURL            string         `yaml:"databaseURL" validate:"required"`
-	RotaOverrides          []RotaOverride `yaml:"rotaOverrides,omitempty" validate:"dive"`
-	GmailUserID            string         `yaml:"gmailUserID" validate:"required"`
-	GmailSender            string         `yaml:"gmailSender,omitempty"`
-	MaxAllocationFrequency float64        `yaml:"maxAllocationFrequency" validate:"required,gt=0,lte=1"`
-	// RequiresMale demands that every open Shift either has a male allocated or
-	// leaves a Seat open, so one can be added by hand afterwards. Today's
-	// behaviour is unconditional; the flag exists so it can be turned off rather
-	// than because anyone will.
-	RequiresMale bool           `yaml:"requiresMale"`
-	Server       *ServerConfig  `yaml:"server,omitempty"`
-	DevMode      *DevModeConfig `yaml:"devMode,omitempty"`
-	// shiftStartTime, shiftEndTime, shiftTimezone and defaultShiftSize used to
-	// live here. They are Rota Defaults now, edited on the Settings screen
-	// (ADR 0006, #128 and #129): when the drop-in runs and what a shift asks
-	// for are an admin's decisions, not an operator's, and neither should take
-	// a redeploy. `defaultShiftSize` in particular could only ever describe a
-	// rota with one Role; the default Shape states every Role's Seats. A config
-	// file still carrying them warns and is otherwise ignored, like any key this
-	// build does not know.
+	VolunteerSheetID     string         `yaml:"volunteerSheetID" validate:"required"`
+	ServiceVolunteersTab string         `yaml:"serviceVolunteersTab" validate:"required"`
+	RotaSheetID          string         `yaml:"rotaSheetID" validate:"required"`
+	DatabaseURL          string         `yaml:"databaseURL" validate:"required"`
+	RotaOverrides        []RotaOverride `yaml:"rotaOverrides,omitempty" validate:"dive"`
+	GmailUserID          string         `yaml:"gmailUserID" validate:"required"`
+	GmailSender          string         `yaml:"gmailSender,omitempty"`
+	Server               *ServerConfig  `yaml:"server,omitempty"`
+	DevMode              *DevModeConfig `yaml:"devMode,omitempty"`
+	// shiftStartTime, shiftEndTime and shiftTimezone used to live here, and so
+	// did maxAllocationFrequency, requiresMale and defaultShiftSize. They are
+	// all settings now, edited on the Settings screen (ADR 0006, #128, #129 and
+	// #130): when the drop-in runs, what a shift asks for, and which optional
+	// allocator rules apply are an admin's decisions, not an operator's, and
+	// none of them should take a redeploy.
+	//
+	// The two allocator keys were also two halves of one idea in two places —
+	// requiresMale said whether the male-cover rule applied, while the rule's
+	// membership of the solver's default list said the same thing again. There
+	// is one answer now, and it is a toggle.
+	//
+	// defaultShiftSize could only ever describe a rota with one Role, since
+	// every other Role's count was its ceiling by construction; the default
+	// Shape states every Role's Seats.
+	//
+	// A config file still carrying any of them warns and is otherwise ignored,
+	// like any key this build does not know.
 }
 
 var validate *validator.Validate

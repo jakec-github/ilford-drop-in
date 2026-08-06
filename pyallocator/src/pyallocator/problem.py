@@ -62,7 +62,6 @@ class Problem:
         lead_role: the highest-priority capped Role, or None. Temporary —
             it is what the pre-Roles "team lead" meant, and the output
             contract still names a single team lead per shift.
-        requires_male: whether the male-cover rule applies.
         max_allocation_count: Go-computed cap on allocations per volunteer.
         preallocated_pairs: {(group_key, shift_index)} that MUST be
             allocated — from both volunteer and team-lead preallocations.
@@ -97,7 +96,6 @@ class Problem:
         self.uncapped_role: Role = uncapped[0]
         capped = [r for r in self.roles if r.capped]
         self.lead_role: Role | None = capped[0] if capped else None
-        self.requires_male: bool = input_.requires_male
 
         volunteers: list[VolunteerView] = []
         # volunteer id -> owning group key

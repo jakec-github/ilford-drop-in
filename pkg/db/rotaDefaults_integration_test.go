@@ -87,3 +87,65 @@ func TestSaveRotaDefaultsRefusesEndBeforeStart(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+// The allocation settings are one section of the record, saved on their own.
+// The JSON is stored and returned verbatim: what the answers mean is the
+// domain's business, and the database only has to keep them (issue #130).
+func TestSaveAllocationSettings(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	require.NoError(t, database.SaveAllocationSettings(ctx,
+		`{"enabled":{"no_back_to_back":true},"maxFrequency":0.34}`))
+
+	defaults, err := database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"enabled":{"no_back_to_back":true},"maxFrequency":0.34}`,
+		defaults.AllocationSettings)
+}
+
+// Each section of the settings is saved without touching the others, so an
+// admin editing the toggles cannot blank the shift times and the other way
+// round.
+func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	require.NoError(t, database.SaveAllocationSettings(ctx, `{"enabled":{"male_required":true}}`))
+	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
+		ShiftStartTime: "19:30",
+		ShiftEndTime:   "21:30",
+		ShiftTimezone:  "Europe/London",
+	}))
+
+	defaults, err := database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "19:30", defaults.ShiftStartTime)
+	assert.JSONEq(t, `{"enabled":{"male_required":true}}`, defaults.AllocationSettings)
+
+	// And the other way round: saving the toggles leaves the times alone.
+	require.NoError(t, database.SaveAllocationSettings(ctx, `{"enabled":{}}`))
+
+	defaults, err = database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "21:30", defaults.ShiftEndTime)
+}
+
+// A deployment nobody has configured reads as no settings at all rather than
+// as an empty document, so "unset" is one state on this side of the boundary.
+func TestGetAllocationSettingsUnset(t *testing.T) {
+	database, _ := dbtest.New(t)
+
+	defaults, err := database.GetRotaDefaults(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, defaults.AllocationSettings)
+}
+
+// The column holds a mapping of answers. Anything else is a bug in whatever
+// wrote it, and the database is what stops it being stored.
+func TestSaveAllocationSettingsRefusesANonObject(t *testing.T) {
+	database, _ := dbtest.New(t)
+
+	err := database.SaveAllocationSettings(context.Background(), `["no_back_to_back"]`)
+	require.Error(t, err)
+}

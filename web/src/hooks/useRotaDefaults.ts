@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   fetchRotaDefaults,
+  saveAllocationSettings,
   saveDefaultShape,
   saveShiftTimeDefaults,
 } from "../api";
-import type { RotaDefaults, ShiftTimes } from "../types";
+import type { AllocationSettings, RotaDefaults, ShiftTimes } from "../types";
 
 interface UseRotaDefaults {
   // null while the first load is still in flight. A loaded record with empty
@@ -18,6 +19,10 @@ interface UseRotaDefaults {
   // Writes the Shape whole: the Seats given here are the Seats a shift asks
   // for, and a Role left out is one it no longer asks for.
   saveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
+  // Writes which optional allocator rules apply and holds what the server
+  // stored — which is not always what was sent, since an answer naming a rule
+  // this server does not have is dropped.
+  saveAllocationRules: (settings: AllocationSettings) => Promise<void>;
 }
 
 // useRotaDefaults owns the settings an admin keeps for the drop-in as a whole.
@@ -50,8 +55,8 @@ export function useRotaDefaults(): UseRotaDefaults {
   // as it now stands, so a second round trip would only confirm what is already
   // in hand. A refusal changes nothing on the server, so what is held stays
   // right, and the caller re-throws to say why.
-  const saveShiftTimes = useCallback(async (times: ShiftTimes) => {
-    const saved = await saveShiftTimeDefaults(times);
+  const saveShiftTimes = useCallback(async (next: ShiftTimes) => {
+    const saved = await saveShiftTimeDefaults(next);
     setDefaults(saved);
     setError(null);
   }, []);
@@ -65,5 +70,16 @@ export function useRotaDefaults(): UseRotaDefaults {
     [],
   );
 
-  return { defaults, error, saveShiftTimes, saveShape };
+  // The allocation-settings write answers with its own section rather than the
+  // whole record, so this one merges instead of replacing. The rest of the
+  // record is untouched by it, which is the point of saving sections apart.
+  const saveAllocationRules = useCallback(async (next: AllocationSettings) => {
+    const saved = await saveAllocationSettings(next);
+    setDefaults((current) =>
+      current === null ? current : { ...current, allocationSettings: saved },
+    );
+    setError(null);
+  }, []);
+
+  return { defaults, error, saveShiftTimes, saveShape, saveAllocationRules };
 }

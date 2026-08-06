@@ -129,14 +129,14 @@ def make_input(
     max_allocation_count: int = 99,
     historical_shifts: Sequence[HistoricalShift] = (),
     roles: Sequence[Role] = DEFAULT_ROLES,
-    requires_male: bool = True,
+    enabled_constraints: Sequence[str] = (),
 ) -> AllocationInput:
     return AllocationInput(
         max_allocation_count=max_allocation_count,
         shifts=tuple(shifts),
         groups=tuple(groups),
         roles=tuple(roles),
-        requires_male=requires_male,
+        enabled_constraints=tuple(enabled_constraints),
         historical_shifts=tuple(historical_shifts),
     )
 

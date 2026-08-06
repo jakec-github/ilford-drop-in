@@ -1,14 +1,17 @@
 """Public solve() entrypoint: input -> problem -> model -> solver -> output.
 
-Constraint and preference lists default to the production registries;
-tests pass subsets to exercise one module at a time.
+The constraint list comes from the input's enabled_constraints — the admin's
+Allocation Settings, decided in the app and sent by Go — rather than from a
+default list held here. Preferences still default to the production registry:
+they are a weighted objective rather than a rule, and are not switchable.
+Tests pass subsets of either to exercise one module at a time.
 """
 
 from __future__ import annotations
 
 from typing import Sequence
 
-from .constraints import DEFAULT_CONSTRAINTS, Constraint
+from .constraints import Constraint, constraints_for
 from .domain import AllocationInput, AllocationOutput, Diagnostics
 from .model_builder import build
 from .preferences import DEFAULT_PREFERENCES, Preference
@@ -23,7 +26,7 @@ def solve(
     preferences: Sequence[Preference] | None = None,
 ) -> AllocationOutput:
     if constraints is None:
-        constraints = DEFAULT_CONSTRAINTS
+        constraints = constraints_for(input_.enabled_constraints)
     if preferences is None:
         preferences = DEFAULT_PREFERENCES
 

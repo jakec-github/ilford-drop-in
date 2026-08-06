@@ -25,11 +25,17 @@ func TestSeedRotaDefaults(t *testing.T) {
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, db.RotaDefaults{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
-		ShiftTimezone:  "Europe/London",
-	}, defaults)
+	assert.Equal(t, "19:30", defaults.ShiftStartTime)
+	assert.Equal(t, "21:30", defaults.ShiftEndTime)
+	assert.Equal(t, "Europe/London", defaults.ShiftTimezone)
+
+	// And the allocator rules, for the same reason: a dev stack that could not
+	// allocate would be one nobody could try the journey on. These three are
+	// what the solver applied unconditionally before they became a choice.
+	assert.JSONEq(t, `{
+		"enabled": {"max_frequency": true, "male_required": true, "no_back_to_back": true},
+		"maxFrequency": 0.34
+	}`, defaults.AllocationSettings)
 }
 
 // The seed runs on every dev-stack start, so it has to be a seed rather than a

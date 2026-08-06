@@ -23,31 +23,27 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-maxAllocationFrequency: 0.25
-requiresMale: true
 `
 
 // baseConfig is a valid config the role tests vary one field of.
 func baseConfig() *Config {
 	return &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 	}
 }
 
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		GmailSender:            "sender@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
+		GmailSender:          "sender@example.com",
 		RotaOverrides: []RotaOverride{
 			{RRule: "FREQ=WEEKLY;BYDAY=SU"},
 		},
@@ -59,12 +55,11 @@ func TestValidate_ValidConfig(t *testing.T) {
 
 func TestValidate_MinimalConfig(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 	}
 
 	err := Validate(cfg)
@@ -87,12 +82,11 @@ func TestValidate_MissingRequiredField(t *testing.T) {
 
 func TestValidate_InvalidRRule(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "INVALID_RRULE_SYNTAX",
@@ -107,12 +101,11 @@ func TestValidate_InvalidRRule(t *testing.T) {
 
 func TestValidate_MultipleInvalidRRules(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=WEEKLY;BYDAY=SU",
@@ -130,12 +123,11 @@ func TestValidate_MultipleInvalidRRules(t *testing.T) {
 
 func TestValidate_EmptyRRule(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "",
@@ -150,12 +142,11 @@ func TestValidate_EmptyRRule(t *testing.T) {
 
 func TestValidate_ComplexValidRRule(t *testing.T) {
 	cfg := &Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=MONTHLY;BYDAY=1SU;BYMONTH=1,4,7,10",
@@ -178,8 +169,6 @@ rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
-maxAllocationFrequency: 0.25
-requiresMale: true
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
     preallocations:
@@ -224,8 +213,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-maxAllocationFrequency: 0.25
-requiresMale: true
 rotaOverrides:
   - rrule: "INVALID_RRULE_SYNTAX"
     preallocations:
@@ -410,6 +397,29 @@ func TestLoadFromPath_NoWarningsForAKnownConfig(t *testing.T) {
 	assert.Empty(t, logged.String())
 }
 
+// And the same for the two allocator keys. maxAllocationFrequency was a
+// *required* key until ticket #130, so a config that still carries it is every
+// deployed config on the day this build lands; rejecting it would take the site
+// down. They are Allocation Settings now (ADR 0006), where requiresMale and the
+// male-cover rule's membership of the solver's default list finally became one
+// answer instead of two.
+func TestLoadFromPath_AllocatorKeysAreIgnoredNotRejected(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	legacyAllocator := `maxAllocationFrequency: 0.34
+requiresMale: true
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+legacyAllocator), 0644))
+
+	logged := captureWarnings(t)
+
+	cfg, err := LoadFromPath(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+	for _, key := range []string{"maxAllocationFrequency", "requiresMale"} {
+		assert.Contains(t, logged.String(), key)
+	}
+}
+
 // The line number is the useful half of an unknown key in a long file, so it
 // survives being lifted out of yaml's message.
 func TestUnknownKeys_NamesTheKeyAndItsLine(t *testing.T) {
@@ -451,8 +461,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-maxAllocationFrequency: 0.25
-requiresMale: true
 rotaOverrides:
   - preallocations:
       - custom: "John Doe"
@@ -470,12 +478,11 @@ rotaOverrides:
 
 func TestValidate_ServerConfig(t *testing.T) {
 	base := Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 	}
 
 	validServer := func() *ServerConfig {
@@ -513,12 +520,11 @@ func TestValidate_ServerConfig(t *testing.T) {
 
 func TestValidate_DevMode(t *testing.T) {
 	base := Config{
-		VolunteerSheetID:       "sheet123",
-		ServiceVolunteersTab:   "Volunteers",
-		RotaSheetID:            "rota456",
-		DatabaseURL:            "postgres://localhost:5432/test",
-		GmailUserID:            "user@example.com",
-		MaxAllocationFrequency: 0.25,
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
 	}
 
 	validDevMode := func() *DevModeConfig {
@@ -581,8 +587,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-maxAllocationFrequency: 0.25
-requiresMale: true
 server:
   port: 8080
   sessionSecret: "a-sufficiently-long-secret"
