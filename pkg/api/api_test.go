@@ -100,8 +100,15 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 			return
 		}
 		seen[id] = true
+		// A synthesised shift carries the times the settings would have minted
+		// it with, as a real one does. An explicit shiftsInRange is left
+		// exactly as the test wrote it, so a test can still say "untimed".
+		startAt, endAt, err := apiTestDefaults.ShiftTimestamps(date)
+		if err != nil {
+			startAt, endAt = "", ""
+		}
 		out = append(out, db.ShiftInRange{
-			Shift:     db.Shift{ID: id, Date: date},
+			Shift:     db.Shift{ID: id, Date: date, StartAt: startAt, EndAt: endAt},
 			Allocated: true,
 		})
 	}
@@ -497,6 +504,14 @@ var apiTestRotaDefaults = db.RotaDefaults{
 	ShiftTimezone:  "Europe/London",
 }
 
+// apiTestDefaults is the same settings as the domain reads them, which is what
+// mints a synthesised shift's times.
+var apiTestDefaults = model.RotaDefaults{
+	ShiftStartTime: apiTestRotaDefaults.ShiftStartTime,
+	ShiftEndTime:   apiTestRotaDefaults.ShiftEndTime,
+	ShiftTimezone:  apiTestRotaDefaults.ShiftTimezone,
+}
+
 var apiTestCfg = &config.Config{}
 
 func testVolunteers() *mockVolunteerClient {
@@ -603,6 +618,70 @@ func TestListShiftsEndpoint(t *testing.T) {
 	second := resp.Shifts[1]
 	require.Len(t, second.Assignees, 1)
 	assert.Equal(t, "charlie", second.Assignees[0].VolunteerID)
+}
+
+// A Shift carries its own start and end, and the listing renders those rather
+// than recomputing the settings against its date (issue #134, ADR 0007). The
+// fixture's Shift runs an hour earlier than the current defaults, so a listing
+// still reading the settings gets 19:30 and this catches it.
+func TestListShiftsEndpointReadsTheShiftsOwnTimes(t *testing.T) {
+	store := &mockStore{
+		shiftsInRange: []db.ShiftInRange{{
+			Shift: db.Shift{
+				ID:      "s1",
+				Date:    "2026-01-11",
+				RotaID:  "rota-1",
+				StartAt: "2026-01-11T18:00:00",
+				EndAt:   "2026-01-11T20:00:00",
+			},
+			Allocated: true,
+		}},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Shifts []struct {
+			Start string `json:"start"`
+			End   string `json:"end"`
+		} `json:"shifts"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Shifts, 1)
+
+	// Read in Europe/London, where January is UTC+0.
+	assert.Equal(t, "2026-01-11T18:00:00Z", resp.Shifts[0].Start)
+	assert.Equal(t, "2026-01-11T20:00:00Z", resp.Shifts[0].End)
+}
+
+// A Shift minted before an admin set the shift times has none to render, and
+// says so by leaving them out. The day is still known, and a rota that names
+// the day but not the hour beats one that will not load (ADR 0006).
+func TestListShiftsEndpointUntimedShift(t *testing.T) {
+	store := &mockStore{
+		shiftsInRange: []db.ShiftInRange{{
+			Shift:     db.Shift{ID: "s1", Date: "2026-01-11", RotaID: "rota-1"},
+			Allocated: true,
+		}},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Shifts []struct {
+			Date  string `json:"date"`
+			Start string `json:"start"`
+			End   string `json:"end"`
+		} `json:"shifts"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Shifts, 1)
+
+	assert.Equal(t, "2026-01-11", resp.Shifts[0].Date)
+	assert.Empty(t, resp.Shifts[0].Start)
+	assert.Empty(t, resp.Shifts[0].End)
 }
 
 func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {

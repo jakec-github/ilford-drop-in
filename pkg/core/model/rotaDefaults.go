@@ -109,6 +109,39 @@ func (d RotaDefaults) ShiftTimes(dateStr string) (start, end time.Time, err erro
 	return start, end, nil
 }
 
+// ShiftInstants reads a Shift's own start and end — the local wall-clock times
+// it carries, in ShiftTimestampLayout — as the moments they fall at, by
+// applying the drop-in's timezone. It is the conversion every reader that needs
+// an instant makes: a subscriber's calendar client and a browser both want to
+// know when 19:30 in Ilford is where they are (ADR 0007).
+//
+// Unlike ShiftTimes it does not consult the shift-time settings at all. The
+// times come from the Shift, which has carried its own since it was minted; the
+// settings supply only the zone to read them in, and that always has an answer.
+// So a Shift keeps the times it was minted with even after an admin changes the
+// defaults, which is the point of storing them on the Shift.
+//
+// An untimed Shift is refused rather than answered with a midnight nobody
+// chose. Callers render one by leaving the time out.
+func (d RotaDefaults) ShiftInstants(startAt, endAt string) (start, end time.Time, err error) {
+	loc, err := time.LoadLocation(d.Timezone())
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("failed to load shift timezone %q: %w", d.Timezone(), err)
+	}
+
+	start, err = time.ParseInLocation(ShiftTimestampLayout, startAt, loc)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("failed to read shift start %q: %w", startAt, err)
+	}
+
+	end, err = time.ParseInLocation(ShiftTimestampLayout, endAt, loc)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("failed to read shift end %q: %w", endAt, err)
+	}
+
+	return start, end, nil
+}
+
 // ShiftTimestamps turns a Shift's date ("2006-01-02") into the local times the
 // Shift itself carries: the default times of day written onto that date, in
 // ShiftTimestampLayout. This is what a Shift stores (ADR 0007), and it is a
