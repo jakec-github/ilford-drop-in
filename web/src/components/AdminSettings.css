@@ -154,6 +154,14 @@
   .role-fact {
     text-align: left;
   }
+
+  /* The wide columns a standing preallocation's sentences need on the desk are
+     wider than a phone, so they give up their width and wrap rather than
+     running off the edge of the card. */
+  .role-fact.standing-role,
+  .role-fact.standing-rule {
+    min-width: 0;
+  }
 }
 
 .settings-field {
@@ -164,7 +172,8 @@
 
 .settings-field input[type="text"],
 .settings-field input[type="number"],
-.settings-field input[type="time"] {
+.settings-field input[type="time"],
+.settings-field select {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -178,7 +187,8 @@
   border-radius: 6px;
 }
 
-.settings-field input:focus-visible {
+.settings-field input:focus-visible,
+.settings-field select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
