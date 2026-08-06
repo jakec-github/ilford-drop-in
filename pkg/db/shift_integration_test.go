@@ -225,3 +225,91 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	assert.Equal(t, rota1.ID, rotations[0].ID)
 	assert.Equal(t, 2, rotations[0].ShiftCount, "winning rota's shifts must be untouched")
 }
+
+// TestShiftTimesRoundTrip checks a Shift's own start and end through every read
+// that carries them (issue #133). They are wall-clock local times, so what goes
+// in is what comes back with no zone applied to it anywhere — the test runs
+// against a summer date, where a timestamptz round trip through UTC would show
+// up as an hour's drift.
+func TestShiftTimesRoundTrip(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	shift := db.Shift{
+		ID:      uuid.New().String(),
+		Date:    "2026-07-12",
+		RotaID:  rota.ID,
+		StartAt: "2026-07-12T19:30:00",
+		EndAt:   "2026-07-12T21:30:00",
+	}
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil))
+
+	byID, err := database.GetShiftByID(ctx, shift.ID)
+	require.NoError(t, err)
+	require.NotNil(t, byID)
+	assert.Equal(t, "2026-07-12T19:30:00", byID.StartAt)
+	assert.Equal(t, "2026-07-12T21:30:00", byID.EndAt)
+
+	byRota, err := database.GetShiftsByRotaID(ctx, rota.ID)
+	require.NoError(t, err)
+	require.Len(t, byRota, 1)
+	assert.Equal(t, "2026-07-12T19:30:00", byRota[0].StartAt)
+	assert.Equal(t, "2026-07-12T21:30:00", byRota[0].EndAt)
+
+	byDate, err := database.GetShiftByDate(ctx, time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.NotNil(t, byDate)
+	assert.Equal(t, "2026-07-12T19:30:00", byDate.StartAt)
+
+	inRange, err := database.GetShiftsInRange(ctx, time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, inRange, 1)
+	assert.Equal(t, "2026-07-12T19:30:00", inRange[0].StartAt)
+	assert.Equal(t, "2026-07-12T21:30:00", inRange[0].EndAt)
+}
+
+// A Shift minted while the settings are empty carries no times, and reads back
+// as empty rather than as a midnight nobody chose. This is the ordinary state
+// of a deployment whose admin has yet to fill the settings in — the expand
+// phase tolerates it because shift.date is still authoritative.
+func TestShiftTimesUnset(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	shift := db.Shift{ID: uuid.New().String(), Date: "2026-07-12", RotaID: rota.ID}
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil))
+
+	byID, err := database.GetShiftByID(ctx, shift.ID)
+	require.NoError(t, err)
+	require.NotNil(t, byID)
+	assert.Empty(t, byID.StartAt)
+	assert.Empty(t, byID.EndAt)
+}
+
+// The database refuses the two states a Shift's times have no meaning in: half
+// set, and ending before it starts. Both are constraints rather than checks in
+// the app, so no writer can reintroduce them.
+func TestShiftTimesConstraints(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	halfSet := &db.Rotation{ID: uuid.New().String()}
+	err := database.InsertDefinedRota(ctx, halfSet, []db.Shift{
+		{ID: uuid.New().String(), Date: "2026-07-12", RotaID: halfSet.ID, StartAt: "2026-07-12T19:30:00"},
+	}, nil)
+	require.Error(t, err, "a start with no end must be rejected")
+
+	backwards := &db.Rotation{ID: uuid.New().String()}
+	err = database.InsertDefinedRota(ctx, backwards, []db.Shift{
+		{
+			ID:      uuid.New().String(),
+			Date:    "2026-07-12",
+			RotaID:  backwards.ID,
+			StartAt: "2026-07-12T21:30:00",
+			EndAt:   "2026-07-12T19:30:00",
+		},
+	}, nil)
+	require.Error(t, err, "an end before the start must be rejected")
+}

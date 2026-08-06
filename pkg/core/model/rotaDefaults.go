@@ -17,6 +17,13 @@ const DefaultShiftTimezone = "Europe/London"
 // seconds.
 const ShiftTimeLayout = "15:04"
 
+// ShiftTimestampLayout is how a Shift's own start and end are spelled: a date
+// and a time of day with no zone on the end of it, because a Shift's times are
+// wall-clock facts about Ilford rather than instants on a global timeline
+// (ADR 0007). The absent offset is the point — a timestamp carrying "Z" would
+// be a different kind of thing.
+const ShiftTimestampLayout = "2006-01-02T15:04:05"
+
 // RotaDefaults is what an admin has decided about how the drop-in as a whole
 // runs: one live, global record, edited on the Settings screen rather than set
 // by an operator in the config file (ADR 0006). It holds the default shift
@@ -100,4 +107,21 @@ func (d RotaDefaults) ShiftTimes(dateStr string) (start, end time.Time, err erro
 	}
 
 	return start, end, nil
+}
+
+// ShiftTimestamps turns a Shift's date ("2006-01-02") into the local times the
+// Shift itself carries: the default times of day written onto that date, in
+// ShiftTimestampLayout. This is what a Shift stores (ADR 0007), and it is a
+// different answer from ShiftTimes — no zone is applied, because none has been
+// resolved. The stored zone says how to read these later; it does not move them.
+//
+// It refuses when the settings are unset rather than writing half a Shift's
+// times, so a caller with times to write should ask HasShiftTimes first and
+// leave both columns unset when the answer is no.
+func (d RotaDefaults) ShiftTimestamps(dateStr string) (start, end string, err error) {
+	startTime, endTime, err := d.ShiftTimes(dateStr)
+	if err != nil {
+		return "", "", err
+	}
+	return startTime.Format(ShiftTimestampLayout), endTime.Format(ShiftTimestampLayout), nil
 }

@@ -10,12 +10,29 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// shiftTimestampLayout is how a Shift's start and end are spelled on this side
+// of the boundary: a local date and time of day with nothing on the end saying
+// which zone reads it, matching the TIMESTAMP without time zone the columns
+// hold (ADR 0007).
+const shiftTimestampLayout = "2006-01-02T15:04:05"
+
+// localTimestamp renders a nullable TIMESTAMP column. NULL reads as the empty
+// string, which is how this package spells a Shift whose times have never been
+// set — pgx hands back a zero time.Time otherwise, and midnight is a time the
+// drop-in could plausibly run at.
+func localTimestamp(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(shiftTimestampLayout)
+}
+
 // GetShiftsByRotaID retrieves a rotation's shifts, ordered by date ascending.
 // Consumers that once recomputed a rota's dates by arithmetic read them here
 // instead (ADR 0001).
 func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, date, rota_id, closed
+		SELECT id, date, rota_id, closed, start_at, end_at
 		FROM shift
 		WHERE rota_id = $1
 		ORDER BY date
@@ -29,10 +46,12 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 	for rows.Next() {
 		var s Shift
 		var date time.Time
-		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed); err != nil {
+		var startAt, endAt *time.Time
+		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt); err != nil {
 			return nil, fmt.Errorf("failed to scan shift: %w", err)
 		}
 		s.Date = date.Format("2006-01-02")
+		s.StartAt, s.EndAt = localTimestamp(startAt), localTimestamp(endAt)
 		shifts = append(shifts, s)
 	}
 
@@ -59,7 +78,7 @@ type ShiftInRange struct {
 func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT s.id, s.date, s.rota_id, s.closed, r.allocated_datetime IS NOT NULL
+		SELECT s.id, s.date, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 	`+where+`
@@ -74,10 +93,12 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 	for rows.Next() {
 		var s ShiftInRange
 		var date time.Time
-		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &s.Allocated); err != nil {
+		var startAt, endAt *time.Time
+		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt, &s.Allocated); err != nil {
 			return nil, fmt.Errorf("failed to scan shift: %w", err)
 		}
 		s.Date = date.Format("2006-01-02")
+		s.StartAt, s.EndAt = localTimestamp(startAt), localTimestamp(endAt)
 		shifts = append(shifts, s)
 	}
 
@@ -114,11 +135,12 @@ func shiftDateWhere(from, to time.Time) (string, []any) {
 func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error) {
 	var s Shift
 	var d0 time.Time
+	var startAt, endAt *time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT id, date, rota_id, closed
+		SELECT id, date, rota_id, closed, start_at, end_at
 		FROM shift
 		WHERE date = $1
-	`, date).Scan(&s.ID, &d0, &s.RotaID, &s.Closed)
+	`, date).Scan(&s.ID, &d0, &s.RotaID, &s.Closed, &startAt, &endAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -126,6 +148,7 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 		return nil, fmt.Errorf("failed to query shift for date %s: %w", date.Format("2006-01-02"), err)
 	}
 	s.Date = d0.Format("2006-01-02")
+	s.StartAt, s.EndAt = localTimestamp(startAt), localTimestamp(endAt)
 	return &s, nil
 }
 
@@ -136,12 +159,13 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error) {
 	var s ShiftInRange
 	var date time.Time
+	var startAt, endAt *time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT s.id, s.date, s.rota_id, s.closed, r.allocated_datetime IS NOT NULL
+		SELECT s.id, s.date, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 		WHERE s.id = $1
-	`, id).Scan(&s.ID, &date, &s.RotaID, &s.Closed, &s.Allocated)
+	`, id).Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt, &s.Allocated)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -149,6 +173,7 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 		return nil, fmt.Errorf("failed to query shift %s: %w", id, err)
 	}
 	s.Date = date.Format("2006-01-02")
+	s.StartAt, s.EndAt = localTimestamp(startAt), localTimestamp(endAt)
 	return &s, nil
 }
 
@@ -191,10 +216,13 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 
 	batch := &pgx.Batch{}
 	for _, s := range shifts {
+		// An empty time is written as NULL rather than as a zero timestamp:
+		// "nobody has said when this runs" has to survive the round trip, and
+		// midnight is a time the drop-in could plausibly be told to run at.
 		batch.Queue(`
-			INSERT INTO shift (id, date, rota_id, closed)
-			VALUES ($1, $2, $3, $4)
-		`, s.ID, s.Date, s.RotaID, s.Closed)
+			INSERT INTO shift (id, date, rota_id, closed, start_at, end_at)
+			VALUES ($1, $2, $3, $4, NULLIF($5, '')::timestamp, NULLIF($6, '')::timestamp)
+		`, s.ID, s.Date, s.RotaID, s.Closed, s.StartAt, s.EndAt)
 	}
 	results := tx.SendBatch(ctx, batch)
 	for range shifts {

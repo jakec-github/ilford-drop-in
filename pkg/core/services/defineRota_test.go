@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,11 +20,20 @@ type mockDB struct {
 
 	rotations       []db.Rotation
 	standing        []db.StandingPreallocation
+	defaults        db.RotaDefaults
 	insertedRotas   []*db.Rotation
 	insertedShifts  [][]db.Shift
 	insertedPins    [][]db.Preallocation
 	getRotationsErr error
+	defaultsErr     error
 	insertErr       error
+}
+
+func (m *mockDB) GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error) {
+	if m.defaultsErr != nil {
+		return db.RotaDefaults{}, m.defaultsErr
+	}
+	return m.defaults, nil
 }
 
 func (m *mockDB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -254,4 +264,60 @@ func TestNextSunday(t *testing.T) {
 			assert.Equal(t, time.Sunday, result.Weekday())
 		})
 	}
+}
+
+// Defining a rota is where a Shift gets the times it runs at: the drop-in's
+// default times of day, written onto each shift's own date (issue #133). They
+// are local wall-clock, so the stored zone does not move them and a shift in
+// July reads the same as one in January.
+func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
+	mock := &mockDB{
+		defaults: db.RotaDefaults{
+			ShiftStartTime: "19:30",
+			ShiftEndTime:   "21:30",
+			ShiftTimezone:  "Europe/London",
+		},
+	}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 3)
+	require.NoError(t, err)
+
+	require.Len(t, result.Shifts, 3)
+	for i, s := range result.Shifts {
+		assert.Equal(t, s.Date+"T19:30:00", s.StartAt, "shift %d starts at the default time on its own date", i)
+		assert.Equal(t, s.Date+"T21:30:00", s.EndAt, "shift %d ends at the default time on its own date", i)
+	}
+
+	// What was returned is what was written.
+	require.Len(t, mock.insertedShifts, 1)
+	assert.Equal(t, result.Shifts, mock.insertedShifts[0])
+}
+
+// A deployment whose admin has not filled the settings in yet still defines
+// rotas: incomplete settings block allocation and nothing else (ADR 0006). The
+// shifts are minted without times, which the expand phase tolerates because
+// shift.date is still what every reader reads.
+func TestDefineRota_UnsetDefaultsMintUntimedShifts(t *testing.T) {
+	mock := &mockDB{}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
+	require.NoError(t, err)
+
+	require.Len(t, result.Shifts, 2)
+	for i, s := range result.Shifts {
+		assert.Empty(t, s.StartAt, "shift %d carries no start", i)
+		assert.Empty(t, s.EndAt, "shift %d carries no end", i)
+		assert.NotEmpty(t, s.Date, "shift %d still has its date", i)
+	}
+}
+
+// Settings that cannot be read are a fault rather than an empty answer, so the
+// rota is not minted half-timed on the back of one.
+func TestDefineRota_SettingsReadFails(t *testing.T) {
+	mock := &mockDB{defaultsErr: errors.New("boom")}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Empty(t, mock.insertedShifts, "nothing is written when the settings cannot be read")
 }

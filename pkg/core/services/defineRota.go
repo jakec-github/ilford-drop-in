@@ -26,10 +26,12 @@ type RotaResult struct {
 }
 
 // DefineRotaStore defines the database operations needed for defining a rota.
-// The Roles and the Standing Preallocations come with it because defining a rota
-// is where the Rota Defaults are spent: the Standing ones name a Role by id, and
-// the pins they seed record its name.
+// Defining a rota is where the Rota Defaults are spent, so it reads all of them:
+// the shift times, because minting a Shift means deciding when it runs (ADR
+// 0007), and the Standing Preallocations, which name a Role by id while the pins
+// they seed record its name.
 type DefineRotaStore interface {
+	RotaDefaultsStore
 	RoleStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
@@ -45,6 +47,15 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	}
 
 	logger.Debug("Defining new rota", zap.Int("shift_count", shiftCount))
+
+	// The times each minted shift will run at come from the settings. Unset
+	// settings are not a refusal here: incomplete settings block allocation and
+	// nothing else (ADR 0006), so the shifts are minted without times and
+	// shift.date carries them as it did before (#133, expand phase).
+	defaults, err := RotaDefaults(ctx, database)
+	if err != nil {
+		return nil, err
+	}
 
 	// Fetch all existing rotations
 	logger.Debug("Fetching existing rotations")
@@ -95,10 +106,24 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	// Rota definition is the sole place shift-date arithmetic lives.
 	shifts := make([]db.Shift, shiftCount)
 	for i := 0; i < shiftCount; i++ {
+		date := startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
+
+		// Both times or neither: a start with no end describes nothing, and
+		// the database refuses it.
+		var startAt, endAt string
+		if defaults.HasShiftTimes() {
+			startAt, endAt, err = defaults.ShiftTimestamps(date)
+			if err != nil {
+				return nil, fmt.Errorf("failed to derive shift times for %s: %w", date, err)
+			}
+		}
+
 		shifts[i] = db.Shift{
-			ID:     uuid.New().String(),
-			RotaID: rotation.ID,
-			Date:   startDate.AddDate(0, 0, 7*i).Format("2006-01-02"),
+			ID:      uuid.New().String(),
+			RotaID:  rotation.ID,
+			Date:    date,
+			StartAt: startAt,
+			EndAt:   endAt,
 		}
 	}
 
