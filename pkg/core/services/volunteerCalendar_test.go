@@ -161,43 +161,22 @@ func TestBuildVolunteerCalendar_InvalidShiftTimes(t *testing.T) {
 	shifts := []Shift{{Date: "2026-01-12", StartAt: "half seven", EndAt: "half nine"}}
 	_, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	assert.Error(t, err)
-
-	// An untimed shift is rendered from its date, so an unreadable one is a
-	// failure on that path too.
-	shifts = []Shift{{Date: "not-a-date"}}
-	_, err = BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
-	assert.Error(t, err)
-}
-
-// A shift minted before an admin set the drop-in's shift times has no hours to
-// draw, so it is an all-day event on its date. The settings being filled in
-// since does not retrofit hours onto it — the shift is what carries them
-// (ADR 0007) — and a subscription already on somebody's phone keeps working
-// either way.
-func TestBuildVolunteerCalendar_UntimedShift(t *testing.T) {
-	shifts := []Shift{{Date: "2026-01-12"}}
-
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
-	require.NoError(t, err)
-
-	assert.Contains(t, out, "UID:alice-2026-01-12@ilford-drop-in")
-	assert.Contains(t, out, "DTSTART;VALUE=DATE:20260112")
-	// DTEND is exclusive for an all-day event, so the day after is what makes
-	// it one day long.
-	assert.Contains(t, out, "DTEND;VALUE=DATE:20260113")
-	assert.NotContains(t, out, "DTSTART:2026")
-	assert.Contains(t, out, "X-WR-TIMEZONE:Europe/London")
 }
 
 // Settings nobody has filled in are the ordinary first state of a deployment,
-// and a shift minted under them has no times. The zone still falls back, so a
-// client is not left guessing what the calendar's own zone is.
+// and the feed still answers: the zone falls back rather than blocking, so the
+// hours the shifts themselves carry are still readable and a client is not left
+// guessing what the calendar's own zone is.
 func TestBuildVolunteerCalendar_SettingsNotSet(t *testing.T) {
-	shifts := []Shift{{Date: "2026-01-12"}}
+	shifts := []Shift{{
+		Date:    "2026-01-12",
+		StartAt: "2026-01-12T19:30:00",
+		EndAt:   "2026-01-12T21:30:00",
+	}}
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, model.RotaDefaults{})
 	require.NoError(t, err)
 
-	assert.Contains(t, out, "DTSTART;VALUE=DATE:20260112")
+	assert.Contains(t, out, "DTSTART:20260112T193000Z")
 	assert.Contains(t, out, "X-WR-TIMEZONE:Europe/London")
 }

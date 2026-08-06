@@ -21,6 +21,7 @@ import (
 func TestDefineRotaEndpointIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
+	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 

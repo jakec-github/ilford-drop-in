@@ -22,6 +22,7 @@ import (
 func TestAvailabilityLoopIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
+	dbtest.SeedRotaDefaults(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
@@ -148,6 +149,7 @@ func leadCoverage(t *testing.T, shift availabilityCoverageResponse) availability
 func TestAvailabilityLinkOpensThePage(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
+	dbtest.SeedRotaDefaults(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())

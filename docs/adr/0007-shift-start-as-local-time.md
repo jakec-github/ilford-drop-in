@@ -36,3 +36,16 @@ feed, which already knows the timezone.
 
 - Editing a Shift's start onto another Shift's day is a conflict the database
   rejects; the API answers 409 naming the clash.
+
+- Defining a Rotation refuses when the shift times are unset, which narrows ADR
+  0006's "incomplete settings block allocation and **nothing else**". A Shift
+  with no start is not a Shift with unknown hours — it is a Shift on no day at
+  all. The reason is the one that made allocation the exception in the first
+  place: defining a rota creates something people are told to turn up to, rather
+  than rendering a page. Everything that only reads still reads.
+
+- The migration making times mandatory (020) gives the whole of their day to any
+  Shift nobody ever stated times for, rather than failing. Failing would take
+  the site down at the one moment the fix is unreachable, since both the
+  Settings screen and the per-Shift times are served by the server that would
+  refuse to boot. Such a Shift is corrected on the rota screen.
