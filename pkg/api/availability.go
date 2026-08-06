@@ -11,9 +11,13 @@ import (
 // availabilityShiftResponse is one of the rota's shifts. Closed shifts are
 // listed rather than omitted so a volunteer can see the drop-in is not running
 // on that date, instead of wondering why it is missing.
+// The hours are local wall clock at the drop-in, not an instant: the volunteer
+// reading them is the person standing in the room (ADR 0007).
 type availabilityShiftResponse struct {
 	ID     string `json:"id"`
 	Date   string `json:"date"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
 	Closed bool   `json:"closed"`
 }
 
@@ -283,7 +287,13 @@ func toFormResponse(form *services.AvailabilityForm) availabilityFormResponse {
 func toShiftResponses(shifts []services.AvailabilityShift) []availabilityShiftResponse {
 	out := make([]availabilityShiftResponse, 0, len(shifts))
 	for _, s := range shifts {
-		out = append(out, availabilityShiftResponse{ID: s.ID, Date: s.Date, Closed: s.Closed})
+		out = append(out, availabilityShiftResponse{
+			ID:     s.ID,
+			Date:   s.Date,
+			Start:  s.Start,
+			End:    s.End,
+			Closed: s.Closed,
+		})
 	}
 	return out
 }

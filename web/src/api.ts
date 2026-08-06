@@ -584,7 +584,13 @@ interface ApiAvailabilityRound {
 interface ApiAvailabilityForm {
   volunteerName: string;
   groupMembers: string[] | null;
-  shifts: { id: string; date: string; closed: boolean }[];
+  shifts: {
+    id: string;
+    date: string;
+    start: string;
+    end: string;
+    closed: boolean;
+  }[];
   selectedShiftIds: string[] | null;
   submitted: boolean;
   submittedAt?: string;

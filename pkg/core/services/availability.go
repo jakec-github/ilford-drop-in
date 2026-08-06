@@ -41,8 +41,13 @@ type AvailabilityStore interface {
 // out: a volunteer seeing the date listed and shut knows the drop-in is not
 // running, where a missing date just looks like a mistake.
 type AvailabilityShift struct {
-	ID     string
-	Date   string // YYYY-MM-DD
+	ID   string
+	Date string // YYYY-MM-DD
+	// The hours the shift runs, as local wall clock at the drop-in
+	// (model.ShiftTimestampLayout). A volunteer answering yes or no is
+	// answering about these, not about the whole day.
+	Start  string
+	End    string
 	Closed bool
 }
 
@@ -530,6 +535,8 @@ func rotaAvailabilityShifts(
 		out = append(out, AvailabilityShift{
 			ID:     s.ID,
 			Date:   s.Date,
+			Start:  s.StartAt,
+			End:    s.EndAt,
 			Closed: s.Closed,
 		})
 	}

@@ -182,6 +182,10 @@ export interface RotaChange {
 export interface AvailabilityShift {
   id: string;
   date: string;
+  // The hours the shift runs, local wall clock at the drop-in — never fed to
+  // `new Date()`, which would redraw them in the reader's own zone.
+  start: string;
+  end: string;
   closed: boolean;
 }
 

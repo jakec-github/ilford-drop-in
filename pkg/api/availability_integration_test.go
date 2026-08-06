@@ -65,6 +65,13 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	assert.False(t, form.Submitted)
 	assert.Len(t, form.SelectedShiftIDs, 3, "every open shift lands pre-selected")
 
+	// Each date carries the hours it runs: a volunteer is answering about an
+	// evening, not about the whole day. Local wall clock, never an instant.
+	for _, s := range form.Shifts {
+		assert.Equal(t, s.Date+"T19:30:00", s.Start)
+		assert.Equal(t, s.Date+"T21:30:00", s.End)
+	}
+
 	// Submitting writes one generation; re-opening the link shows it.
 	chosen := []string{round.Shifts[0].ID, round.Shifts[2].ID}
 	submitted := formOverHTTP(t, handler, http.MethodPost, token, body(t, chosen))

@@ -23,6 +23,7 @@ import {
   ShiftTimesDialog,
   UnpinDialog,
 } from "./RotaEditDialogs";
+import { formatShiftTimes } from "./shiftTimes";
 import "./RotaViewer.css";
 
 interface RotaViewerProps {
@@ -93,26 +94,6 @@ function formatShiftDateLong(dateStr: string): string {
     day: "numeric",
     month: "short",
   });
-}
-
-// "19:30" — the shift's own wall-clock time, read straight off the string
-// rather than through `new Date()`, which would redraw it in the reader's zone.
-// The drop-in runs at half seven in Ilford whoever is looking.
-function timeOfDay(timestamp: string): string {
-  return timestamp.slice("2026-02-02T".length, "2026-02-02T19:30".length);
-}
-
-// "19:30–21:30", or "All day" for a shift running one midnight to the next.
-//
-// That second case is not a shift anybody typed: it is what the migration that
-// made times mandatory left behind on a deployment where nobody had ever said
-// when the drop-in runs. Rendering it as the day it is beats rendering
-// "00:00–00:00", and an admin puts the real hours on it from the same row.
-function formatShiftTimes(start: string, end: string): string {
-  const from = timeOfDay(start);
-  const to = timeOfDay(end);
-  if (from === "00:00" && to === "00:00") return "All day";
-  return `${from}\u2013${to}`;
 }
 
 // Group membership is shown by a corner dot; the colour just needs to be stable
@@ -1351,7 +1332,12 @@ export default function RotaViewer({
               Close one for a date the drop-in is not running, up until the rota
               is allocated.
             </>
-          )}
+          )}{" "}
+          {/* Unconditional, unlike the two above: the times only describe the
+              shift, so every row takes the edit whether or not it has been
+              allocated. */}
+          Select a row&rsquo;s date to change when that shift runs — the one
+          edit that stays open once the rota is allocated.
         </p>
       )}
 
