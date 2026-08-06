@@ -304,3 +304,22 @@
 .rule-value {
   margin: 0.625rem 0 0 1.5rem;
 }
+
+/* An allocator rule is named by a sentence rather than by a word, so its term
+   column is wider than the Rota Defaults one beside it — at 8rem "Cap how often
+   somebody works" wraps to three lines and the answers stop lining up. */
+.rule-facts .settings-fact dt {
+  width: 15rem;
+}
+
+@media (max-width: 30rem) {
+  /* No room for two columns on a phone: the rule reads as a heading with its
+     answer under it. Admin tools are desktop first, but they stay usable. */
+  .rule-facts .settings-fact {
+    display: block;
+  }
+
+  .rule-facts .settings-fact dt {
+    width: auto;
+  }
+}

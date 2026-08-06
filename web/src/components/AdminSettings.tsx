@@ -928,7 +928,7 @@ function AllocationRulesSettings() {
 
       {defaults !== null && (
         <>
-          <dl className="settings-facts">
+          <dl className="settings-facts rule-facts">
             {defaults.switchableConstraints.map((constraint) => (
               <div key={constraint.name} className="settings-fact">
                 <dt>{constraint.label}</dt>

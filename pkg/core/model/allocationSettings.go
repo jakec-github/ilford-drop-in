@@ -36,7 +36,7 @@ var SwitchableConstraints = []SwitchableConstraint{
 		Name:        MaxFrequencyConstraint,
 		Label:       "Cap how often somebody works",
 		Description: "No volunteer is allocated more than a set share of a rota's shifts.",
-		ValueLabel:  "Most of a rota one person may work",
+		ValueLabel:  "Most of a rota one person may work (%)",
 	},
 	{
 		Name:        "male_required",
