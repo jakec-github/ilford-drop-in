@@ -19,9 +19,11 @@ import (
 // someone checked a production config from a laptop.
 //
 // The summary it prints is not decoration. The failure this exists for was a
-// config whose preallocations were silently dropped by a format change, so the
-// counts an operator can compare against what they meant to write are the
-// useful output — "valid" alone would have printed for the broken file too.
+// config whose preallocations were silently dropped by a format change, and
+// "valid" alone would have printed for that file too. What catches it now is
+// the ignored-keys line: the domain settings this used to count are rows in the
+// database (ADR 0006), and a key that has stopped configuring anything shows up
+// as one this build does not know.
 func ValidateConfigCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate-config <path>",
@@ -57,14 +59,12 @@ devMode block is only permitted under "dev".`,
 
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s is a valid %s config\n", path, env)
-			// Who is pinned is not here either: Config Preallocations were
-			// deleted in issue #131, and the Standing Preallocations that
-			// replaced them are Rota Defaults, in the database.
-			fmt.Fprintf(out, "  overrides:  %s\n", plural(len(cfg.RotaOverrides), "rota override"))
-			// When a shift runs and what it asks for are not here any more: they
-			// are Rota Defaults, set on the Settings screen and read from the
-			// database (ADR 0006), so this command — which opens the file and
-			// nothing else — cannot report them and should not pretend to.
+			// No domain settings are summarised here any more, because none are
+			// in the file. When a shift runs, what it asks for, who is pinned to
+			// it and which allocator rules apply are all Rota Defaults, set on
+			// the Settings screen and read from the database (ADR 0006) — so
+			// this command, which opens the file and nothing else, cannot report
+			// them and should not pretend to. What is left is the deployment.
 			fmt.Fprintf(out, "  server:     %s\n", describeServer(cfg))
 			if cfg.DevMode != nil {
 				fmt.Fprintf(out, "  devMode:    ON — roster from %s, login as %s\n",
