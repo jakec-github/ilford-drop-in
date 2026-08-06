@@ -22,15 +22,21 @@ func calendarTestVolunteer() model.Volunteer {
 	return model.Volunteer{ID: "alice", DisplayName: "Alice", Roles: []string{"Team lead", "Service volunteer"}}
 }
 
+// calendarShift is a shift as the listing hands one over: minted with the
+// drop-in's default times written onto its date, which is what defineRota does.
+func calendarShift(t *testing.T, date string) Shift {
+	t.Helper()
+	start, end, err := calendarTestDefaults.ShiftTimestamps(date)
+	require.NoError(t, err)
+	return Shift{Date: date, StartAt: start, EndAt: end}
+}
+
 func TestBuildVolunteerCalendar_Basic(t *testing.T) {
-	shifts := []Shift{
-		{
-			Date: "2026-01-12", // GMT: 19:30 London == 19:30 UTC
-			Assignees: []ShiftAssignee{
-				{VolunteerID: "alice", Name: "Alice", Role: "Service volunteer"},
-			},
-		},
+	shift := calendarShift(t, "2026-01-12") // GMT: 19:30 London == 19:30 UTC
+	shift.Assignees = []ShiftAssignee{
+		{VolunteerID: "alice", Name: "Alice", Role: "Service volunteer"},
 	}
+	shifts := []Shift{shift}
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
@@ -59,10 +65,13 @@ func TestBuildVolunteerCalendar_Basic(t *testing.T) {
 	assert.Contains(t, out, "\r\n")
 }
 
+// A shift's times are wall-clock in the drop-in's zone, so the same stored
+// 19:30 is a different instant either side of the DST boundary. This is what a
+// subscriber's client has to be told, and the reason the zone is a setting.
 func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
 	shifts := []Shift{
-		{Date: "2026-01-12"}, // GMT (UTC+0)
-		{Date: "2026-07-13"}, // BST (UTC+1)
+		calendarShift(t, "2026-01-12"), // GMT (UTC+0)
+		calendarShift(t, "2026-07-13"), // BST (UTC+1)
 	}
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
@@ -72,16 +81,35 @@ func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
 	assert.Contains(t, out, "DTSTART:20260713T183000Z")
 }
 
+// The event runs between the shift's own times, not between the times the
+// settings currently hold. A shift minted before an admin moved the drop-in an
+// hour later keeps the hour it was minted with (ADR 0007), and a subscriber
+// sees the evening that was actually planned.
+func TestBuildVolunteerCalendar_ReadsTheShiftsOwnTimes(t *testing.T) {
+	shifts := []Shift{{
+		Date:    "2026-01-12",
+		StartAt: "2026-01-12T18:00:00",
+		EndAt:   "2026-01-12T20:00:00",
+	}}
+
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "DTSTART:20260112T180000Z")
+	assert.Contains(t, out, "DTEND:20260112T200000Z")
+	assert.NotContains(t, out, "DTSTART:20260112T193000Z", "the settings must not move a minted shift")
+	// An unaltered shift's DTSTAMP falls back to its own start, so it moves
+	// with the shift rather than with the settings.
+	assert.Contains(t, out, "DTSTAMP:20260112T180000Z")
+}
+
 func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
-	shifts := []Shift{
-		{
-			Date: "2026-01-12",
-			Assignees: []ShiftAssignee{
-				{VolunteerID: "alice", Name: "Alice", Role: "Team lead"},
-				{VolunteerID: "bob", Name: "Bob", Role: "Service volunteer"},
-			},
-		},
+	shift := calendarShift(t, "2026-01-12")
+	shift.Assignees = []ShiftAssignee{
+		{VolunteerID: "alice", Name: "Alice", Role: "Team lead"},
+		{VolunteerID: "bob", Name: "Bob", Role: "Service volunteer"},
 	}
+	shifts := []Shift{shift}
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
@@ -98,9 +126,9 @@ func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
 
 func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {
 	changed := time.Date(2026, 1, 2, 10, 30, 0, 0, time.UTC)
-	shifts := []Shift{
-		{Date: "2026-01-12", AlterationCount: 3, LastChanged: changed},
-	}
+	shift := calendarShift(t, "2026-01-12")
+	shift.AlterationCount, shift.LastChanged = 3, changed
+	shifts := []Shift{shift}
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
@@ -109,10 +137,9 @@ func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {
 }
 
 func TestBuildVolunteerCalendar_StableAcrossRenders(t *testing.T) {
-	shifts := []Shift{
-		{Date: "2026-01-12"},
-		{Date: "2026-01-19", AlterationCount: 1, LastChanged: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)},
-	}
+	altered := calendarShift(t, "2026-01-19")
+	altered.AlterationCount, altered.LastChanged = 1, time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
+	shifts := []Shift{calendarShift(t, "2026-01-12"), altered}
 
 	first, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
@@ -130,21 +157,27 @@ func TestBuildVolunteerCalendar_EmptyShifts(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out, "BEGIN:VCALENDAR"))
 }
 
-func TestBuildVolunteerCalendar_InvalidShiftDate(t *testing.T) {
-	shifts := []Shift{{Date: "not-a-date"}}
+func TestBuildVolunteerCalendar_InvalidShiftTimes(t *testing.T) {
+	shifts := []Shift{{Date: "2026-01-12", StartAt: "half seven", EndAt: "half nine"}}
 	_, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
+	assert.Error(t, err)
+
+	// An untimed shift is rendered from its date, so an unreadable one is a
+	// failure on that path too.
+	shifts = []Shift{{Date: "not-a-date"}}
+	_, err = BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	assert.Error(t, err)
 }
 
-// A drop-in whose shift times an admin has not set yet still has a calendar.
-// The day is known and the hours are not, so each shift is an all-day event —
-// incomplete settings block allocation and nothing else (ADR 0006), and a
-// subscription that has already been added to somebody's phone is not something
-// to break while an admin fills a form in.
-func TestBuildVolunteerCalendar_ShiftTimesNotSet(t *testing.T) {
+// A shift minted before an admin set the drop-in's shift times has no hours to
+// draw, so it is an all-day event on its date. The settings being filled in
+// since does not retrofit hours onto it — the shift is what carries them
+// (ADR 0007) — and a subscription already on somebody's phone keeps working
+// either way.
+func TestBuildVolunteerCalendar_UntimedShift(t *testing.T) {
 	shifts := []Shift{{Date: "2026-01-12"}}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, model.RotaDefaults{})
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "UID:alice-2026-01-12@ilford-drop-in")
@@ -153,18 +186,18 @@ func TestBuildVolunteerCalendar_ShiftTimesNotSet(t *testing.T) {
 	// it one day long.
 	assert.Contains(t, out, "DTEND;VALUE=DATE:20260113")
 	assert.NotContains(t, out, "DTSTART:2026")
-	// The zone still falls back, so a client is not left guessing.
 	assert.Contains(t, out, "X-WR-TIMEZONE:Europe/London")
 }
 
-// Half-filled settings are as unusable as empty ones: a start with no end
-// describes nothing, so the shift is drawn as a day rather than as a shift
-// running until midnight.
-func TestBuildVolunteerCalendar_HalfSetShiftTimes(t *testing.T) {
+// Settings nobody has filled in are the ordinary first state of a deployment,
+// and a shift minted under them has no times. The zone still falls back, so a
+// client is not left guessing what the calendar's own zone is.
+func TestBuildVolunteerCalendar_SettingsNotSet(t *testing.T) {
 	shifts := []Shift{{Date: "2026-01-12"}}
 
-	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles,
-		model.RotaDefaults{ShiftStartTime: "19:30"})
+	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, model.RotaDefaults{})
 	require.NoError(t, err)
+
 	assert.Contains(t, out, "DTSTART;VALUE=DATE:20260112")
+	assert.Contains(t, out, "X-WR-TIMEZONE:Europe/London")
 }

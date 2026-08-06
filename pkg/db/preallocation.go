@@ -70,7 +70,7 @@ func (d *DB) GetPreallocationByID(ctx context.Context, id string) (*Preallocatio
 	var date time.Time
 	err := d.pool.QueryRow(ctx, `
 		SELECT mp.id, mp.shift_id, mp.role, mp.volunteer_id, mp.custom_value,
-		       s.date, s.rota_id
+		       `+shiftDateExpr+`, s.rota_id
 		FROM preallocation mp
 		JOIN shift s ON s.id = mp.shift_id
 		WHERE mp.id = $1
