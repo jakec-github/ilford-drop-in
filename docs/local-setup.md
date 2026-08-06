@@ -162,9 +162,9 @@ requiresMale: true                            # every open shift needs a male al
 # Neither the jobs volunteers hold nor when the drop-in runs are configured
 # here. Roles and Rota Defaults — the default shift start, end and timezone —
 # are rows in the database (ADR 0006), set on the Settings screen rather than in
-# this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:` or `shiftTimezone:`
-# key left over from an older config is ignored with a warning — see "Creating
-# the Roles" below.
+# this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:` or
+# `preallocations:` key left over from an older config is ignored with a
+# warning — see "Creating the Roles" below.
 
 # HTTP server (required to run the web server)
 server:
@@ -173,15 +173,11 @@ server:
   adminEmails:                                 # Google accounts allowed to log in as admin
     - 'your-email@gmail.com'
 
-# Optional: overrides for specific recurring shifts
+# Optional: overrides for specific recurring shifts. An override says how big a
+# shift is and nothing else — who is pinned to one is a Standing Preallocation,
+# set on Admin → Settings, and it seeds ordinary pins when a rota is defined.
 rotaOverrides:
   - rrule: 'FREQ=MONTHLY;BYDAY=3SU'            # third Sunday monthly
-    # Each preallocation pins one volunteer (volunteerID) or one custom entry
-    # (custom) to a role. The name has to match a Role in the database; this
-    # file cannot check that, so allocation is where a typo shows up.
-    preallocations:
-      - custom: 'Custom allocation'
-        role: 'Service volunteer'
     shiftSize: 5
 ```
 

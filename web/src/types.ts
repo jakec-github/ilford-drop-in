@@ -145,6 +145,11 @@ export interface DefinedRota {
 // keyed by the text itself — which is also how the API removes one.
 export type PersonRef = { volunteerId: string } | { custom: string };
 
+// The roster option standing for "not one of these people", in any picker that
+// offers a PersonRef. Custom entries cover a visiting group or anyone else who
+// is not a synced volunteer; they have no id, so their name travels as typed.
+export const CUSTOM_CHOICE = "custom";
+
 // RotaChange is one change to a published rota, mirroring what POST /alterations
 // accepts. Every operation the rota page offers is one of these:
 //
@@ -327,32 +332,24 @@ export interface RotaShift {
   assignees: Assignee[];
 }
 
-// Where a preallocation came from. "config" pins are written into the server's
-// rota overrides and can only be changed by editing that file; "manual" pins are
-// recorded against a single shift over the API. Both are guarantees the
-// allocator has to honour, so both are worth showing, but only one of them is
-// something an admin can undo from here.
-export type PreallocationSource = "config" | "manual";
-
 // Preallocation is one person the allocator is already committed to placing on a
 // shift, before allocation has run. name is what to show — a volunteer's display
 // name, or a custom entry (an outside group, say) verbatim.
 //
-// id addresses the stored pin for a delete, and is null for config pins, which
-// have no row behind them.
+// There is one kind of these however it came to exist: a pin an admin made by
+// hand and a pin a Standing Preallocation seeded when the rota was defined are
+// the same thing, both carry an id, and an admin may remove either.
 export interface Preallocation {
-  id: string | null;
+  id: string;
   date: string;
   role: Role;
   name: string;
   custom: boolean;
   volunteerId: string | null;
-  source: PreallocationSource;
 }
 
 // NewPreallocation is one person to pin to a shift the rota has not been run
-// for. Always a manual pin — config pins are written into the server's own
-// config, never over the API.
+// for.
 //
 // role is the Seat they are pinned into. Every pin names one, and the API
 // accepts it only for a volunteer the roster records as holding that role.
@@ -360,4 +357,31 @@ export interface NewPreallocation {
   date: string;
   person: PersonRef;
   role: Role;
+}
+
+// StandingPreallocation is a Preallocation an admin expects to make every rota —
+// the team who always take the first Sunday — kept with the Rota Defaults and
+// used to seed ordinary ones when a rota is defined. It is a convenience at
+// definition, not a standing fact: the pins it has already made are ordinary and
+// outlive any later change to it.
+//
+// rrule says which of a rota's shifts it lands on, in the same recurrence-rule
+// vocabulary a calendar uses. role names the Seat by id, because these outlive
+// any number of renames; roleName is that Role as it reads today.
+export interface StandingPreallocation {
+  id: string;
+  rrule: string;
+  roleId: string;
+  role: Role;
+  name: string;
+  custom: boolean;
+  volunteerId: string | null;
+}
+
+// NewStandingPreallocation is one promise to add. There is no edit: a promise is
+// made or it is not, and changing one is removing it and making the one meant.
+export interface NewStandingPreallocation {
+  rrule: string;
+  roleId: string;
+  person: PersonRef;
 }

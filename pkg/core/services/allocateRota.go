@@ -159,13 +159,14 @@ func AllocateRota(
 		return nil, fmt.Errorf("failed to convert rota overrides: %w", err)
 	}
 
-	// Manual preallocations (issue #39): union operator-set pins with the config
-	// preallocations. Each pin becomes a synthetic exact-date override appended
-	// to the config-derived overrides so InitShifts unions them with no new merge
-	// logic; add-only, deduped against identical config contributions.
-	manualPins, err := database.GetManualPreallocationsByShiftIDs(ctx, shiftIDs)
+	// Preallocations (issue #39): each pin becomes a synthetic exact-date
+	// override appended to the config-derived ones, so InitShifts applies them
+	// with no new merge logic. The `preallocation` table is the whole set —
+	// pins an admin made by hand and pins a Standing Preallocation seeded when
+	// the rota was defined are the same rows (issue #131).
+	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch manual preallocations: %w", err)
+		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
 	}
 	activeIDs := make(map[string]bool, len(activeVolunteers))
 	for _, v := range activeVolunteers {
@@ -173,15 +174,15 @@ func AllocateRota(
 	}
 	// Pre-solve stale-pin check: fail loudly, naming the pin, rather than letting
 	// an inactive/deleted preallocated volunteer surface as the solver's opaque
-	// ProblemError (covers config pins too, per ADR 0003).
-	if err := checkPreallocationsResolve(manualPins, shifts, allocatorOverrides, activeIDs); err != nil {
+	// ProblemError.
+	if err := checkPreallocationsResolve(pins, shifts, activeIDs); err != nil {
 		return nil, err
 	}
-	manualOverrides, err := buildManualPreallocationOverrides(manualPins, dateByShiftID, allocatorOverrides, roles)
+	pinOverrides, err := buildPreallocationOverrides(pins, dateByShiftID)
 	if err != nil {
 		return nil, err
 	}
-	allocatorOverrides = append(allocatorOverrides, manualOverrides...)
+	allocatorOverrides = append(allocatorOverrides, pinOverrides...)
 
 	// Build the solver input and run the Python subprocess.
 	input, err := allocator.BuildCpsatInput(

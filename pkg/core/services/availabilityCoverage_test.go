@@ -195,22 +195,19 @@ func TestCoverageTakesShiftSizeFromTheOverrides(t *testing.T) {
 	assert.Equal(t, 2, coverageOf(t, round, "2026-08-09").Needed, "an unmatched date keeps the default")
 }
 
-// TestCoverageSubtractsPreallocations: a pinned seat is already filled, from
-// both sources (ADR 0003). The seat comes out of what the shift still needs, and
-// a pinned volunteer comes out of what is available to fill it — counting them
-// on both sides would report the shift as a person better off than it is.
+// TestCoverageSubtractsPreallocations: a pinned seat is already filled. The seat
+// comes out of what the shift still needs, and a pinned volunteer comes out of
+// what is available to fill it — counting them on both sides would report the
+// shift as a person better off than it is.
 func TestCoverageSubtractsPreallocations(t *testing.T) {
 	store, cfg := availabilityFixture()
 	cfg.DefaultShiftSize = 4
-	cfg.RotaOverrides = append(cfg.RotaOverrides, config.RotaOverride{
-		RRule:          "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
-		Preallocations: []config.Preallocation{{Custom: "St John's team", Role: "Service volunteer"}},
-	})
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, cfg)
 
-	// Michael is pinned to the first date by hand.
-	store.manualPins = []db.ManualPreallocation{
+	// A custom entry and Michael are both pinned to the first date.
+	store.pins = []db.Preallocation{
+		{ID: "pin-0", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "St John's team"},
 		{ID: "pin-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "michael"},
 	}
 
@@ -241,7 +238,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, cfg)
 
-	store.manualPins = []db.ManualPreallocation{
+	store.pins = []db.Preallocation{
 		{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "aaliyah"},
 	}
 

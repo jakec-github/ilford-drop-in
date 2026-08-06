@@ -57,9 +57,10 @@ devMode block is only permitted under "dev".`,
 
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s is a valid %s config\n", path, env)
-			fmt.Fprintf(out, "  overrides:  %s, with %s\n",
-				plural(len(cfg.RotaOverrides), "rota override"),
-				plural(countPreallocations(cfg), "preallocation"))
+			// Who is pinned is not here either: Config Preallocations were
+			// deleted in issue #131, and the Standing Preallocations that
+			// replaced them are Rota Defaults, in the database.
+			fmt.Fprintf(out, "  overrides:  %s\n", plural(len(cfg.RotaOverrides), "rota override"))
 			// When a shift runs is not here any more: it is a Rota Default, set
 			// on the Settings screen and read from the database (ADR 0006), so
 			// this command — which opens the file and nothing else — cannot
@@ -89,14 +90,6 @@ func describeServer(cfg *config.Config) string {
 		return "not configured — the CLI runs, the web server does not"
 	}
 	return fmt.Sprintf("port %d, %s", cfg.Server.Port, plural(len(cfg.Server.AdminEmails), "admin email"))
-}
-
-func countPreallocations(cfg *config.Config) int {
-	total := 0
-	for _, override := range cfg.RotaOverrides {
-		total += len(override.Preallocations)
-	}
-	return total
 }
 
 func plural(n int, noun string) string {

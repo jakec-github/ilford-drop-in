@@ -121,6 +121,20 @@
   text-align: right;
 }
 
+/* A standing preallocation's facts are words rather than figures — a Role name
+   and a recurrence read as sentences — so they take the room to say themselves
+   and align left. Right-aligning them, as the Role ceilings are, would leave the
+   column ragged down its reading edge. */
+.role-fact.standing-role {
+  min-width: 9rem;
+  text-align: left;
+}
+
+.role-fact.standing-rule {
+  min-width: 14rem;
+  text-align: left;
+}
+
 /* The desk is the design target for admin tools, but the facts are the first
    thing to give: on a phone they drop under the name rather than squeezing it
    to nothing. */
@@ -140,6 +154,14 @@
   .role-fact {
     text-align: left;
   }
+
+  /* The wide columns a standing preallocation's sentences need on the desk are
+     wider than a phone, so they give up their width and wrap rather than
+     running off the edge of the card. */
+  .role-fact.standing-role,
+  .role-fact.standing-rule {
+    min-width: 0;
+  }
 }
 
 .settings-field {
@@ -150,7 +172,8 @@
 
 .settings-field input[type="text"],
 .settings-field input[type="number"],
-.settings-field input[type="time"] {
+.settings-field input[type="time"],
+.settings-field select {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -164,7 +187,8 @@
   border-radius: 6px;
 }
 
-.settings-field input:focus-visible {
+.settings-field input:focus-visible,
+.settings-field select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

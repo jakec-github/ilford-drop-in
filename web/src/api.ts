@@ -7,9 +7,9 @@ import type {
   ConfiguredRole,
   DefinedRota,
   NewPreallocation,
+  NewStandingPreallocation,
   PersonRef,
   Preallocation,
-  PreallocationSource,
   RoleColour,
   RoleEdit,
   RotaChange,
@@ -17,6 +17,7 @@ import type {
   RotaShift,
   SendMode,
   SendOutcome,
+  StandingPreallocation,
   Volunteer,
 } from "./types";
 import {
@@ -255,13 +256,12 @@ export async function saveShiftTimeDefaults(
 }
 
 interface ApiPreallocation {
-  id?: string;
+  id: string;
   date: string;
   role: string;
   volunteerId?: string;
   custom?: string;
   name: string;
-  source: string;
 }
 
 interface ListPreallocationsResponse {
@@ -270,24 +270,18 @@ interface ListPreallocationsResponse {
 
 function toPreallocation(p: ApiPreallocation): Preallocation {
   return {
-    id: p.id ?? null,
+    id: p.id,
     date: p.date,
     role: p.role,
     name: p.name,
     custom: !p.volunteerId,
     volunteerId: p.volunteerId ?? null,
-    // Anything the server does not name as a config pin is treated as manual:
-    // manual is the weaker claim, and a mislabelled pin must not read as one
-    // this UI cannot explain how to change.
-    source: (p.source === "config"
-      ? "config"
-      : "manual") as PreallocationSource,
   };
 }
 
 // fetchPreallocations returns everyone already pinned to a shift from today
-// onwards — both the config-derived pins and the manual ones — ordered by date.
-// Admin-only: a pin names someone against a date the rota has not published.
+// onwards, ordered by date. Admin-only: a pin names someone against a date the
+// rota has not published.
 export async function fetchPreallocations(): Promise<Preallocation[]> {
   const today = new Date().toLocaleDateString("en-CA");
   const res = await fetch(`/api/preallocations?from=${today}`);
@@ -303,8 +297,8 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
 // been allocated — a pin can only promise something that has not happened yet.
 //
 // Resolves with nothing: the created pin comes back, but a caller showing pins
-// is showing both sources merged and sorted server-side, so it re-reads the
-// listing rather than splicing this one in. Throws the server's own message,
+// is showing them sorted server-side, so it re-reads the listing rather than
+// splicing this one in. Throws the server's own message,
 // which names what it clashed with ("every Team lead seat for … is already
 // pinned").
 export async function createPreallocation(
@@ -332,13 +326,87 @@ export async function createPreallocation(
   }
 }
 
-// deletePreallocation removes one manual pin by id. Config pins have no id and
-// no row behind them, so there is nothing here to address one at: changing one
-// means editing the server's config.
+// deletePreallocation removes one pin by id. Any of them can go: there is one
+// kind of pin, and an admin may take back any promise the rota has not been
+// allocated on.
 export async function deletePreallocation(id: string): Promise<void> {
   const res = await fetch(`/api/preallocations/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to remove the pin"));
+  }
+}
+
+interface ApiStandingPreallocation {
+  id: string;
+  rrule: string;
+  roleId: string;
+  role: string;
+  volunteerId?: string;
+  custom?: string;
+  name: string;
+}
+
+interface ListStandingPreallocationsResponse {
+  standingPreallocations: ApiStandingPreallocation[];
+}
+
+// fetchStandingPreallocations returns the pins an admin has said to make every
+// rota, in the order the settings screen lists them. Admin-only.
+export async function fetchStandingPreallocations(): Promise<
+  StandingPreallocation[]
+> {
+  const res = await fetch("/api/standing-preallocations");
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(res, "Failed to load the standing preallocations"),
+    );
+  }
+  const data = (await res.json()) as ListStandingPreallocationsResponse;
+  return data.standingPreallocations.map((s) => ({
+    id: s.id,
+    rrule: s.rrule,
+    roleId: s.roleId,
+    role: s.role,
+    name: s.name,
+    custom: !s.volunteerId,
+    volunteerId: s.volunteerId ?? null,
+  }));
+}
+
+// createStandingPreallocation adds one. Throws the server's own message, which
+// names what was wrong with the rule or who was already promised those shifts.
+export async function createStandingPreallocation(
+  standing: NewStandingPreallocation,
+): Promise<void> {
+  const body: Record<string, string> = {
+    rrule: standing.rrule,
+    roleId: standing.roleId,
+  };
+  if ("volunteerId" in standing.person) {
+    body.volunteerId = standing.person.volunteerId;
+  } else {
+    body.custom = standing.person.custom;
+  }
+
+  const res = await fetch("/api/standing-preallocations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to add the pin"));
+  }
+}
+
+// deleteStandingPreallocation removes one. The pins it has already seeded belong
+// to the rotas that minted them and are left exactly as they are.
+export async function deleteStandingPreallocation(id: string): Promise<void> {
+  const res = await fetch(
+    `/api/standing-preallocations/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to remove the pin"));
   }

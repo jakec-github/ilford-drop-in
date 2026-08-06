@@ -106,8 +106,8 @@ Three things it is doing on purpose:
   is `go run ./cmd/cli -e prod validate-config <path>`, which reads the file and
   nothing else: no database, no Google. Run it on its own any time.
 - **The summary is the point.** "Valid" is not the same as "right" — a config
-  can parse and validate with every preallocation missing. The preallocation
-  count is what to check against the change you meant to make.
+  can parse and validate with a whole section missing. The counts it prints are
+  what to check against the change you meant to make.
 - **It recreates rather than restarts.** A restarted container keeps the mounts
   it already resolved, and a bare `docker compose up -d` is a no-op when the
   compose file has not changed, so neither reliably picks up a new config.

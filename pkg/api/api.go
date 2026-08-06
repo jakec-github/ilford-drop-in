@@ -26,6 +26,7 @@ type Store interface {
 	services.RotaDefaultsStore
 	services.RotaDefaultsWriteStore
 	services.SetShiftClosedStore
+	services.StandingPreallocationStore
 	// Ping reports whether the database is reachable, for GET /health.
 	Ping(ctx context.Context) error
 }
@@ -129,6 +130,14 @@ func (h *Handler) Routes() http.Handler {
 	// Reading pins is admin-only alongside writing them: a listing names people
 	// against dates whose rota has not been allocated, let alone published, and
 	// nothing outside the admin UI has any use for it.
+	// The Standing Preallocations, part of the Rota Defaults: the pins an admin
+	// expects to make every rota, which seed ordinary Preallocations when one is
+	// defined. Admin-only throughout, like the settings screen they live on.
+	// There is no PUT — a promise is made or it is not, and editing one is
+	// removing it and making the one that was meant.
+	api.Handle("GET /standing-preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleListStandingPreallocations)))
+	api.Handle("POST /standing-preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateStandingPreallocation)))
+	api.Handle("DELETE /standing-preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeleteStandingPreallocation)))
 	api.Handle("GET /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleListPreallocations)))
 	api.Handle("POST /preallocations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreatePreallocation)))
 	api.Handle("DELETE /preallocations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDeletePreallocation)))

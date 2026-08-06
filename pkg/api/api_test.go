@@ -27,20 +27,28 @@ type mockStore struct {
 	rotations            []db.Rotation
 	allocations          []db.Allocation
 	alterations          []db.Alteration
-	manualPreallocations []db.ManualPreallocation
-	availabilityRequests []db.AvailabilityRequest
-	allocatedRotas       map[string]bool
+	manualPreallocations []db.Preallocation
+	// standingPreallocations are the Rota Defaults' Standing Preallocations,
+	// which seed ordinary ones when a rota is defined.
+	standingPreallocations []db.StandingPreallocation
+	availabilityRequests   []db.AvailabilityRequest
+	allocatedRotas         map[string]bool
 
 	insertedCover           *db.Cover
 	insertedAlterations     []db.Alteration
-	insertedPreallocations  []db.ManualPreallocation
+	insertedPreallocations  []db.Preallocation
 	insertedRotations       []db.Rotation
 	insertedShifts          []db.Shift
 	deletedPreallocationIDs []string
-	insertErr               error
-	pingErr                 error
-	getShiftsErr            error
-	getRotationsErr         error
+	insertedStanding        []db.StandingPreallocation
+	deletedStandingIDs      []string
+	// standingWriteErr is what the database says to a Standing Preallocation
+	// write — db.ErrDuplicateStandingPreallocation for a promise already made.
+	standingWriteErr error
+	insertErr        error
+	pingErr          error
+	getShiftsErr     error
+	getRotationsErr  error
 
 	// roles overrides apiTestRoles for a test that cares which Roles exist;
 	// rolesErr makes the read fail.
@@ -129,10 +137,10 @@ func (m *mockStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	return m.rotations, nil
 }
 
-// InsertRotationAndShifts records the write and makes it visible to subsequent
-// reads, deriving the rotation's span from its shifts as the real store does
-// (ADR 0001) so a second define lands after the first.
-func (m *mockStore) InsertRotationAndShifts(ctx context.Context, rotation *db.Rotation, shifts []db.Shift) error {
+// InsertDefinedRota records the write and makes it visible to subsequent reads,
+// deriving the rotation's span from its shifts as the real store does (ADR 0001)
+// so a second define lands after the first.
+func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
@@ -146,7 +154,33 @@ func (m *mockStore) InsertRotationAndShifts(ctx context.Context, rotation *db.Ro
 	m.shifts = append(m.shifts, shifts...)
 	m.insertedRotations = append(m.insertedRotations, stored)
 	m.insertedShifts = append(m.insertedShifts, shifts...)
+	m.manualPreallocations = append(m.manualPreallocations, preallocations...)
+	m.insertedPreallocations = append(m.insertedPreallocations, preallocations...)
 	return nil
+}
+
+func (m *mockStore) GetStandingPreallocations(context.Context) ([]db.StandingPreallocation, error) {
+	return m.standingPreallocations, nil
+}
+
+func (m *mockStore) InsertStandingPreallocation(_ context.Context, s db.StandingPreallocation) error {
+	if m.standingWriteErr != nil {
+		return m.standingWriteErr
+	}
+	m.standingPreallocations = append(m.standingPreallocations, s)
+	m.insertedStanding = append(m.insertedStanding, s)
+	return nil
+}
+
+func (m *mockStore) DeleteStandingPreallocationByID(_ context.Context, id string) (bool, error) {
+	for i := range m.standingPreallocations {
+		if m.standingPreallocations[i].ID == id {
+			m.standingPreallocations = append(m.standingPreallocations[:i], m.standingPreallocations[i+1:]...)
+			m.deletedStandingIDs = append(m.deletedStandingIDs, id)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *mockStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {
@@ -181,10 +215,10 @@ func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shi
 	return nil, nil
 }
 
-// GetManualPreallocationsByShiftIDs returns the pins on the given shifts.
-func (m *mockStore) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error) {
+// GetPreallocationsByShiftIDs returns the pins on the given shifts.
+func (m *mockStore) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error) {
 	want := idSet(shiftIDs)
-	var filtered []db.ManualPreallocation
+	var filtered []db.Preallocation
 	for _, p := range m.manualPreallocations {
 		if want[p.ShiftID] {
 			filtered = append(filtered, p)
@@ -193,8 +227,8 @@ func (m *mockStore) GetManualPreallocationsByShiftIDs(ctx context.Context, shift
 	return filtered, nil
 }
 
-// GetManualPreallocationByID finds a pin and resolves its shift.
-func (m *mockStore) GetManualPreallocationByID(ctx context.Context, id string) (*db.ManualPreallocation, *db.Shift, error) {
+// GetPreallocationByID finds a pin and resolves its shift.
+func (m *mockStore) GetPreallocationByID(ctx context.Context, id string) (*db.Preallocation, *db.Shift, error) {
 	for i := range m.manualPreallocations {
 		if m.manualPreallocations[i].ID != id {
 			continue
@@ -256,7 +290,7 @@ func (m *mockStore) RotaAllocated(ctx context.Context, rotaID string) (bool, err
 	return m.allocatedRotas[rotaID], nil
 }
 
-func (m *mockStore) InsertManualPreallocation(ctx context.Context, mp db.ManualPreallocation) error {
+func (m *mockStore) InsertPreallocation(ctx context.Context, mp db.Preallocation) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
@@ -265,7 +299,7 @@ func (m *mockStore) InsertManualPreallocation(ctx context.Context, mp db.ManualP
 	return nil
 }
 
-func (m *mockStore) DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error) {
+func (m *mockStore) DeletePreallocationByID(ctx context.Context, id string) (bool, error) {
 	for i := range m.manualPreallocations {
 		if m.manualPreallocations[i].ID == id {
 			m.manualPreallocations = append(m.manualPreallocations[:i], m.manualPreallocations[i+1:]...)

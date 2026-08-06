@@ -326,18 +326,6 @@
   font-style: italic;
 }
 
-/* Where the pin came from, on the pin itself: config pins cannot be undone from
-   here, and an admin hunting for the button needs to know that before they
-   look for one. */
-.prealloc-source {
-  font-size: 10px;
-  font-weight: 500;
-  font-style: normal;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
-}
-
 /* Sits inside the pin it removes, so it needs no label of its own on screen.
    Padded out to a touch target the chip's own text size would not give it —
    this is the primary way a pin comes off, and the rota page is mobile first. */

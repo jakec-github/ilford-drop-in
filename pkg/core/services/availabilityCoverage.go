@@ -98,11 +98,10 @@ type shiftSeats struct {
 // buildShiftSeats resolves every shift's Shape and pins, keyed by shift id.
 //
 // The pins are resolved through the same two helpers allocation uses —
-// buildManualPreallocationOverrides for the manual/config merge (ADR 0003), then
-// configPreallocationsForDate over the union, which mirrors InitShifts. That is
-// deliberate: the page must show the Seats the solve will actually see, and a
-// second implementation of the merge is how the three copies of the group rule
-// happened.
+// buildPreallocationOverrides, then preallocationsForDate over the result, which
+// mirrors InitShifts. That is deliberate: the page must show the Seats the solve
+// will actually see, and a second implementation of it is how the three copies
+// of the group rule happened.
 //
 // An unparseable rrule is warned about and skipped, as everywhere else on a read
 // path. Allocation is where it fails hard; refusing to show an admin their round
@@ -111,7 +110,7 @@ func buildShiftSeats(
 	cfg *config.Config,
 	roles model.Roles,
 	shifts []AvailabilityShift,
-	pins []db.ManualPreallocation,
+	pins []db.Preallocation,
 	logger *zap.Logger,
 ) (map[string]shiftSeats, error) {
 	shiftDates := make([]time.Time, 0, len(shifts))
@@ -135,24 +134,23 @@ func buildShiftSeats(
 			continue
 		}
 		overrides = append(overrides, allocator.ShiftOverride{
-			AppliesTo:      appliesTo,
-			ShiftSize:      override.ShiftSize,
-			Preallocations: convertConfigPreallocations(override.Preallocations),
+			AppliesTo: appliesTo,
+			ShiftSize: override.ShiftSize,
 		})
 	}
 
-	// Manual pins become synthetic overrides appended after the config ones,
-	// exactly as allocation composes them, so the union below is the pin list
+	// The pins become synthetic overrides appended after the config ones,
+	// exactly as allocation composes them, so the list below is the one
 	// InitShifts would build.
 	dateByShiftID := make(map[string]string, len(shifts))
 	for _, s := range shifts {
 		dateByShiftID[s.ID] = s.Date
 	}
-	manualOverrides, err := buildManualPreallocationOverrides(pins, dateByShiftID, overrides, roles)
+	pinOverrides, err := buildPreallocationOverrides(pins, dateByShiftID)
 	if err != nil {
 		return nil, err
 	}
-	overrides = append(overrides, manualOverrides...)
+	overrides = append(overrides, pinOverrides...)
 
 	allocatorRoles := convertRoles(roles)
 
@@ -182,7 +180,7 @@ func buildShiftSeats(
 
 		pinned := make(map[string]int)
 		pinnedVolunteers := make(map[string]bool)
-		effectivePins := configPreallocationsForDate(shift.Date, overrides)
+		effectivePins := preallocationsForDate(shift.Date, overrides)
 		for _, pin := range effectivePins {
 			pinned[pin.Role]++
 			if pin.VolunteerID != "" {

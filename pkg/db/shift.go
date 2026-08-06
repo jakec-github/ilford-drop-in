@@ -188,14 +188,16 @@ func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (boo
 	return tag.RowsAffected() > 0, nil
 }
 
-// InsertRotationAndShifts inserts a rotation and all of its minted shifts in a
-// single transaction, so a rotation can never exist without its shifts.
+// InsertDefinedRota inserts a rotation, all of its minted shifts, and the
+// Preallocations its Standing Preallocations seeded, in a single transaction —
+// so a rotation can never exist without its shifts, and a rota can never be
+// defined with only some of the pins an admin was promised.
 //
 // Concurrency (issue #41, hazard B1): the shift.date UNIQUE constraint is what
 // makes concurrent runs safe — two rotas minting the same date cannot both
 // commit, and the losing transaction writes nothing. Any change that relaxes
 // that constraint must introduce a replacement guard here.
-func (d *DB) InsertRotationAndShifts(ctx context.Context, rotation *Rotation, shifts []Shift) error {
+func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -231,6 +233,15 @@ func (d *DB) InsertRotationAndShifts(ctx context.Context, rotation *Rotation, sh
 	}
 	if err := results.Close(); err != nil {
 		return fmt.Errorf("failed to close shift batch: %w", err)
+	}
+
+	// Written one at a time rather than batched: there are a handful at most,
+	// and the shift_id foreign key means a mistake in the seeding is worth
+	// naming the row it came from.
+	for _, p := range preallocations {
+		if err := insertPreallocation(ctx, tx, p); err != nil {
+			return err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

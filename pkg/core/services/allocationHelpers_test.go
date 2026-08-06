@@ -66,21 +66,21 @@ type mockAllocateRotaStore struct {
 	testRoleStore
 	testRotaDefaultsStore
 
-	rotations                  []db.Rotation
-	shifts                     []db.Shift
-	availabilityRequests       []db.AvailabilityRequest
-	generations                map[string]db.AvailabilityGeneration // keyed by request id
-	allocations                []db.Allocation
-	alterations                []db.Alteration
-	manualPreallocations       []db.ManualPreallocation
-	insertedAllocations        []db.Allocation
-	getRotationsErr            error
-	getAvailabilityErr         error
-	getLatestAvailabilityErr   error
-	getAllocationsErr          error
-	getAlterationsErr          error
-	getManualPreallocationsErr error
-	insertAllocationsErr       error
+	rotations                []db.Rotation
+	shifts                   []db.Shift
+	availabilityRequests     []db.AvailabilityRequest
+	generations              map[string]db.AvailabilityGeneration // keyed by request id
+	allocations              []db.Allocation
+	alterations              []db.Alteration
+	manualPreallocations     []db.Preallocation
+	insertedAllocations      []db.Allocation
+	getRotationsErr          error
+	getAvailabilityErr       error
+	getLatestAvailabilityErr error
+	getAllocationsErr        error
+	getAlterationsErr        error
+	getPreallocationsErr     error
+	insertAllocationsErr     error
 }
 
 func (m *mockAllocateRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -159,12 +159,12 @@ func (m *mockAllocateRotaStore) GetAlterationsByShiftIDs(ctx context.Context, sh
 	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error) {
-	if m.getManualPreallocationsErr != nil {
-		return nil, m.getManualPreallocationsErr
+func (m *mockAllocateRotaStore) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error) {
+	if m.getPreallocationsErr != nil {
+		return nil, m.getPreallocationsErr
 	}
 	want := idSet(shiftIDs)
-	var filtered []db.ManualPreallocation
+	var filtered []db.Preallocation
 	for _, p := range m.manualPreallocations {
 		if want[p.ShiftID] {
 			filtered = append(filtered, p)

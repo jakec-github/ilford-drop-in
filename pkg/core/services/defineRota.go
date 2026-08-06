@@ -12,22 +12,30 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// RotaResult represents the result of defining a new rota: the rotation and the
-// shifts it minted, in date order. Callers get the shifts themselves rather than
-// bare dates, because a shift's id is its identity everywhere downstream
-// (ADR 0001).
+// RotaResult represents the result of defining a new rota: the rotation, the
+// shifts it minted, in date order, and the Preallocations its Standing
+// Preallocations seeded. Callers get the shifts themselves rather than bare
+// dates, because a shift's id is its identity everywhere downstream (ADR 0001).
 type RotaResult struct {
 	Rotation *db.Rotation
 	Shifts   []db.Shift
+	// Preallocations are ordinary Preallocations from the moment they are
+	// written: nothing marks them as having been seeded, and an admin may
+	// remove any of them (issue #131).
+	Preallocations []db.Preallocation
 }
 
 // DefineRotaStore defines the database operations needed for defining a rota.
-// The settings are in it because minting a Shift now means deciding when it
-// runs, and that answer is the drop-in's default times (ADR 0007).
+// Defining a rota is where the Rota Defaults are spent, so it reads all of them:
+// the shift times, because minting a Shift means deciding when it runs (ADR
+// 0007), and the Standing Preallocations, which name a Role by id while the pins
+// they seed record its name.
 type DefineRotaStore interface {
 	RotaDefaultsStore
+	RoleStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
-	InsertRotationAndShifts(ctx context.Context, rotation *db.Rotation, shifts []db.Shift) error
+	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
+	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error
 }
 
 // DefineRota creates a new rota with the specified number of shifts
@@ -124,21 +132,41 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	// which derives both ends from the shift rows.
 	rotation.End = shifts[len(shifts)-1].Date
 
-	// Insert the rotation and all of its shifts atomically, so a rota can
-	// never exist half-formed.
-	if err := database.InsertRotationAndShifts(ctx, rotation, shifts); err != nil {
+	// Spend the Rota Defaults: the Standing Preallocations become ordinary
+	// Preallocations on the Shifts their rules land on. Defining is the only
+	// moment they are read, which is what makes them a convenience rather than a
+	// standing fact — editing one later changes what the next rota starts from,
+	// never what this one holds.
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	standing, err := database.GetStandingPreallocations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch standing preallocations: %w", err)
+	}
+	preallocations, err := seedPreallocations(standing, shifts, roles, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert the rotation, its shifts and its seeded pins atomically, so a rota
+	// can never exist half-formed.
+	if err := database.InsertDefinedRota(ctx, rotation, shifts, preallocations); err != nil {
 		return nil, fmt.Errorf("failed to insert rotation and shifts: %w", err)
 	}
 
 	logger.Debug("Rotation created successfully",
 		zap.String("rotation_id", rotation.ID),
 		zap.Int("shift_count", shiftCount),
+		zap.Int("preallocation_count", len(preallocations)),
 		zap.String("first_shift", shifts[0].Date),
 		zap.String("last_shift", shifts[len(shifts)-1].Date))
 
 	return &RotaResult{
-		Rotation: rotation,
-		Shifts:   shifts,
+		Rotation:       rotation,
+		Shifts:         shifts,
+		Preallocations: preallocations,
 	}, nil
 }
 

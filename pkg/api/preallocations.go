@@ -17,18 +17,17 @@ type createPreallocationRequest struct {
 	Role        string `json:"role"`
 }
 
-// preallocationResponse is one pin from either source. id is absent on a config
-// pin — it is derived from the rota overrides on every read, so there is nothing
-// to address a DELETE at, and its absence is what tells a client the pin is not
-// editable here.
+// preallocationResponse is one pin. There is one kind of them (issue #131) —
+// a pin an admin made by hand and a pin a Standing Preallocation seeded at
+// definition are the same row — so it says nothing about where it came from and
+// every one of them carries an id a DELETE can be addressed at.
 type preallocationResponse struct {
-	ID          string `json:"id,omitempty"`
+	ID          string `json:"id"`
 	Date        string `json:"date"`
 	Role        string `json:"role"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
 	Name        string `json:"name"`
-	Source      string `json:"source"`
 }
 
 type listPreallocationsResponse struct {
@@ -71,9 +70,9 @@ func (h *Handler) handleDeletePreallocation(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleListPreallocations returns every pin — manual and config-derived —
-// whose shift falls in the optional from/to date range. Admin-only: it names
-// people against dates the rota has not published yet.
+// handleListPreallocations returns every pin whose shift falls in the optional
+// from/to date range. Admin-only: it names people against dates the rota has not
+// published yet.
 func (h *Handler) handleListPreallocations(w http.ResponseWriter, r *http.Request) {
 	views, err := services.ListPreallocations(r.Context(), h.store, h.volunteers, h.cfg, services.ListPreallocationsParams{
 		From: r.URL.Query().Get("from"),
@@ -99,6 +98,5 @@ func toPreallocationResponse(v services.PreallocationView) preallocationResponse
 		VolunteerID: v.VolunteerID,
 		Custom:      v.Custom,
 		Name:        v.Name,
-		Source:      string(v.Source),
 	}
 }

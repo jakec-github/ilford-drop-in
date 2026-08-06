@@ -83,9 +83,9 @@ func (d *DB) withRotaLockTx(ctx context.Context, rotaIDs []string, fn func(tx pg
 // (issue #39, mirroring the changeRota locking discipline).
 type PreallocationTxStore interface {
 	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
-	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]ManualPreallocation, error)
-	InsertManualPreallocation(ctx context.Context, mp ManualPreallocation) error
-	DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error)
+	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error)
+	InsertPreallocation(ctx context.Context, mp Preallocation) error
+	DeletePreallocationByID(ctx context.Context, id string) (bool, error)
 }
 
 // WithRotaPreallocationLock runs fn under the same rotation-row lock as
@@ -137,16 +137,16 @@ func (r *rotaTx) RotaAllocated(ctx context.Context, rotaID string) (bool, error)
 	return rotaAllocated(ctx, r.tx, rotaID)
 }
 
-func (r *rotaTx) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]ManualPreallocation, error) {
-	return getManualPreallocationsByShiftIDs(ctx, r.tx, shiftIDs)
+func (r *rotaTx) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error) {
+	return getPreallocationsByShiftIDs(ctx, r.tx, shiftIDs)
 }
 
-func (r *rotaTx) InsertManualPreallocation(ctx context.Context, mp ManualPreallocation) error {
-	return insertManualPreallocation(ctx, r.tx, mp)
+func (r *rotaTx) InsertPreallocation(ctx context.Context, mp Preallocation) error {
+	return insertPreallocation(ctx, r.tx, mp)
 }
 
-func (r *rotaTx) DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error) {
-	return deleteManualPreallocationByID(ctx, r.tx, id)
+func (r *rotaTx) DeletePreallocationByID(ctx context.Context, id string) (bool, error) {
+	return deletePreallocationByID(ctx, r.tx, id)
 }
 
 func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error) {

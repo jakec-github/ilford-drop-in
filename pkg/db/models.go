@@ -92,15 +92,35 @@ type Allocation struct {
 	CustomEntry string
 }
 
-// ManualPreallocation represents a database manual preallocation record: a
-// person pinned to a shift before allocation runs. Like Allocation it is keyed
-// solely by ShiftID; rota and date live on the referenced shift (ADR 0001). It
-// mirrors the allocation row shape — a volunteer pin sets VolunteerID, a custom
-// entry sets CustomValue, and Role is "Team lead" or "Service volunteer".
-type ManualPreallocation struct {
+// Preallocation represents a database preallocation record: a person pinned to
+// a shift before allocation runs. Like Allocation it is keyed solely by ShiftID;
+// rota and date live on the referenced shift (ADR 0001). It mirrors the
+// allocation row shape — a volunteer pin sets VolunteerID, a custom entry sets
+// CustomValue, and Role names the Seat it fills.
+//
+// There is one kind of these however it came to exist (issue #131): a row an
+// admin added by hand and a row a Standing Preallocation seeded at definition
+// are the same thing, and either may be removed.
+type Preallocation struct {
 	ID          string // UUID
 	ShiftID     string // UUID
 	Role        string
+	VolunteerID string // nullable
+	CustomValue string // nullable
+}
+
+// StandingPreallocation is a Preallocation an admin expects to make every rota,
+// held in the Rota Defaults and used to seed real ones when a Rotation is
+// defined (issue #131). RRule says which of the rota's Shifts it lands on, the
+// same recurrence-rule vocabulary the config's Rota Overrides used.
+//
+// RoleID rather than a Role name: these outlive any number of rotas and a Role
+// may be renamed at any time, so the id is the only reference that survives it.
+// The Preallocations it seeds record the name, as every per-rota row does.
+type StandingPreallocation struct {
+	ID          string // UUID
+	RRule       string
+	RoleID      string // UUID, references role(id)
 	VolunteerID string // nullable
 	CustomValue string // nullable
 }
