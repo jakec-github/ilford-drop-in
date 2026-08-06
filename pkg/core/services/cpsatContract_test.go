@@ -10,7 +10,26 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
+)
+
+// The Allocation Settings these tests build inputs under. They cap a volunteer
+// at half a rota, which is the number the assertions on max_allocation_count
+// read; the male-cover variant is what the tests that predate the toggles were
+// written against.
+var (
+	halfFrequency = model.AllocationSettings{
+		Enabled:      map[string]bool{model.MaxFrequencyConstraint: true},
+		MaxFrequency: 0.5,
+	}
+	halfFrequencyWithMaleCover = model.AllocationSettings{
+		Enabled: map[string]bool{
+			model.MaxFrequencyConstraint: true,
+			"male_required":              true,
+		},
+		MaxFrequency: 0.5,
+	}
 )
 
 // openShifts turns bare dates into specs for the ordinary case, where every
@@ -34,7 +53,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 			{Name: "Team lead", Max: &leadMax, Priority: 1},
 			{Name: "Service volunteer", Max: nil, Priority: 2},
 		},
-		RequiresMale: true,
+		EnabledConstraints: []string{"max_frequency", "male_required"},
 		Shifts: []allocator.CpsatShift{{
 			Index:  0,
 			Date:   "2026-07-13",
@@ -70,7 +89,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 			{"name": "Team lead", "max": 1, "priority": 1},
 			{"name": "Service volunteer", "max": null, "priority": 2}
 		],
-		"requires_male": true,
+		"enabled_constraints": ["max_frequency", "male_required"],
 		"shifts": [{
 			"index": 0, "date": "2026-07-13", "closed": false,
 			"shape": [
@@ -178,7 +197,7 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, historical, 0.5, roles, true)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, historical, halfFrequencyWithMaleCover, roles)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
@@ -217,7 +236,9 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Team lead", Max: &leadMax, Priority: 1},
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}, input.Roles)
-	assert.True(t, input.RequiresMale)
+	// The optional rules travel with the problem too, in registry order, so
+	// the solver applies exactly what an admin switched on.
+	assert.Equal(t, []string{"max_frequency", "male_required"}, input.EnabledConstraints)
 
 	// Historical shifts sorted ascending by date with derived group keys.
 	require.Len(t, input.HistoricalShifts, 2)
@@ -278,7 +299,7 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 
 	input, err := allocator.BuildCpsatInput(
 		volunteers, groupAvailability, openShifts("2026-07-13"), 4, nil,
-		historical, 1, roles, false)
+		historical, model.AllocationSettings{}, roles)
 	require.NoError(t, err)
 
 	// The final historical shift is the one no_back_to_back reads.
@@ -349,7 +370,7 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, nil, 0.5, roles, true)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, nil, halfFrequencyWithMaleCover, roles)
 	require.NoError(t, err)
 
 	byKey := make(map[string]allocator.CpsatGroup, len(input.Groups))
@@ -392,7 +413,7 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	roles := []allocator.Role{{Name: "Service volunteer", Max: nil, Priority: 1}}
 
-	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, openShifts("2026-07-13", "2026-07-20"), 2, overrides, nil, 0.5, roles, false)
+	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, openShifts("2026-07-13", "2026-07-20"), 2, overrides, nil, halfFrequency, roles)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string][]int{"Alice Smith": {1}}, groupAvailability)

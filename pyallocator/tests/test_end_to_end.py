@@ -7,10 +7,9 @@ a custom (free-text) preallocation.
 Two oracles here, answering different questions.
 
 verify_solution re-checks every hard rule directly against the input,
-independently of CP-SAT — "is this rota legal?". It covers
-DEFAULT_CONSTRAINTS only: one_shift_per_month is a STRICT constraint the
-solver does not apply, so verifying it here would assert a rule the rota
-is not built to keep.
+independently of CP-SAT — "is this rota legal?". It covers E2E_ENABLED
+only: one_shift_per_month is switched off in this scenario, so verifying
+it here would assert a rule the rota is not built to keep.
 
 The golden in testdata/e2e_rota.json answers "is this the same rota as
 before?". Many rotas are legal, so verify_solution alone would not notice
@@ -48,6 +47,12 @@ from pyallocator.domain import (
 )
 
 GOLDEN_PATH = Path(__file__).parent / "testdata" / "e2e_rota.json"
+
+# The Allocation Settings this scenario runs under. They are the three rules
+# that used to be the hardcoded default list, so the golden rota below is the
+# same rota it was before the toggles existed — one_shift_per_month stays off,
+# as it was when it sat unused in STRICT_CONSTRAINTS.
+E2E_ENABLED = ("max_frequency", "male_required", "no_back_to_back")
 
 
 # The spec no longer carries a size or three preallocation lists; it carries a
@@ -281,7 +286,7 @@ def make_e2e_input() -> AllocationInput:
         shifts=shifts,
         groups=groups,
         roles=DEFAULT_ROLES,
-        requires_male=True,
+        enabled_constraints=E2E_ENABLED,
         historical_shifts=historical,
     )
 
@@ -424,7 +429,7 @@ def test_infeasible_reported_not_crashed():
             _individual("b", available=[0]),
         ),
         roles=DEFAULT_ROLES,
-        requires_male=True,
+        enabled_constraints=E2E_ENABLED,
         historical_shifts=(),
     )
     out = solve(inp)

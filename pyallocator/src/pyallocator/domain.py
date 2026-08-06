@@ -106,15 +106,20 @@ class AllocationInput:
     """The full problem sent by Go on stdin.
 
     roles is the configured Role set every Seat, tick and pin is matched
-    against. requires_male turns the male-cover rule on; it is a property of
-    the Shift, so it arrives with the problem rather than being assumed.
+    against.
+
+    enabled_constraints names the optional rules this run applies, from the
+    admin's Allocation Settings. Which rules those names may be is
+    constraints.SWITCHABLE_CONSTRAINTS' business; an unrecognised one is
+    ignored. Empty means the fundamentals only — a rule nobody has switched
+    on is off, and there is no default list on this side (ADR 0006).
     """
 
     max_allocation_count: int
     shifts: tuple[ShiftSpec, ...]
     groups: tuple[Group, ...]
     roles: tuple[Role, ...] = ()
-    requires_male: bool = False
+    enabled_constraints: tuple[str, ...] = ()
     historical_shifts: tuple[HistoricalShift, ...] = ()
 
 

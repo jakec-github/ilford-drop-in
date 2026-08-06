@@ -77,22 +77,55 @@ export interface RoleEdit {
   colour: RoleColour;
 }
 
-// RotaDefaults is what an admin has decided about how the drop-in as a whole
-// runs: one live, global record edited on the Settings screen. It holds the
-// shift times today; the default Shape, the allocation toggles and the Standing
-// Preallocations join it later.
+// ShiftTimes is when the drop-in runs: one section of the settings record, and
+// the whole of what the shift-time form states.
+//
+// Its own type rather than a slice of RotaDefaults because the server takes it
+// whole and refuses fields it does not expect — sending the rest of the record
+// back at it would be rejected, not ignored.
 //
 // Times are 24-hour "HH:MM" — the same thing an <input type="time"> reads and
 // writes — not timestamps: a time of day is not a moment until it is read
 // against a date. Empty means an admin has not set it, which is where every
 // deployment starts and is a state the screen renders rather than an error.
-export interface RotaDefaults {
+export interface ShiftTimes {
   shiftStartTime: string;
   shiftEndTime: string;
   // An IANA zone name. Never empty: the server answers with the default when an
   // admin has not chosen one, so there is one answer to what zone the drop-in
   // runs in.
   shiftTimezone: string;
+}
+
+// SwitchableConstraint is one optional allocator rule, as the server offers it.
+// The list comes down with the settings rather than being written here: the
+// registry in Go is the only one, so a rule arriving or leaving is one edit
+// (ADR 0006).
+export interface SwitchableConstraint {
+  // The key this rule is answered under in AllocationSettings.enabled.
+  name: string;
+  label: string;
+  description: string;
+  // Set only on a rule that needs an answer beyond on-or-off, which today is
+  // only the frequency cap. Its presence is what tells the screen to ask.
+  valueLabel?: string;
+}
+
+// AllocationSettings is which optional allocator rules an admin has switched
+// on. `enabled` carries an answer for every rule the server knows, so nothing
+// here has to know that a missing one means off.
+export interface AllocationSettings {
+  enabled: Record<string, boolean>;
+  // The share of a rota one volunteer may work, 0 to 1. Only read when the
+  // max_frequency rule is on.
+  maxFrequency: number;
+}
+
+// The settings record as the screen reads it: the answers, plus the rules the
+// allocation answers are about.
+export interface RotaDefaults extends ShiftTimes {
+  allocationSettings: AllocationSettings;
+  switchableConstraints: SwitchableConstraint[];
 }
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
