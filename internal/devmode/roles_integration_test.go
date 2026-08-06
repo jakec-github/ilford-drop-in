@@ -36,7 +36,7 @@ func TestSeedRoles(t *testing.T) {
 	assert.Equal(t, "violet", roles[0].Colour)
 
 	assert.Equal(t, "Service volunteer", roles[1].Name)
-	assert.Nil(t, roles[1].Max, "the Role a shift's size is spent on has no ceiling")
+	assert.Nil(t, roles[1].Max, "the Role a shift's remaining places go to has no ceiling")
 }
 
 // The seed runs on every dev-stack start, so it has to be a seed rather than a

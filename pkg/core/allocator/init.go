@@ -208,13 +208,15 @@ func calculateHistoricalAllocationCount(groupKey string, historicalShifts []*Shi
 	return count
 }
 
-// ShiftOverride allows customizing specific shifts based on date patterns
+// ShiftOverride allows customizing specific shifts based on date patterns.
+//
+// All it can say now is who is pinned: it carried a shift size until the Shape
+// stopped being a number (issue #129), and closures and config pins left before
+// that. Every override that reaches InitShifts is a Preallocation wearing a
+// date matcher.
 type ShiftOverride struct {
 	// AppliesTo is a function that returns true if this override applies to the given shift date
 	AppliesTo func(date string) bool
-
-	// ShiftSize overrides the default shift size (if set)
-	ShiftSize *int
 
 	// Preallocations are the pins this override contributes, each naming a Role.
 	Preallocations []Preallocation
@@ -234,8 +236,11 @@ type InitShiftsInput struct {
 	// Shifts is the current rota's minted shifts, in date order
 	Shifts []ShiftSpec
 
-	// DefaultShiftSize is the default number of volunteers per shift
-	DefaultShiftSize int
+	// DefaultShape is the Seats every shift asks for: which Roles, and how many
+	// of each. It comes from the Rota Defaults an admin edits, already resolved
+	// to Role names (issue #129). Empty is a rota asking for nobody, which
+	// allocation refuses before it gets here.
+	DefaultShape []Seat
 
 	// Overrides allow customizing specific shifts
 	Overrides []ShiftOverride
@@ -249,7 +254,8 @@ type InitShiftsInput struct {
 //
 // Returns a slice of initialized Shift objects with:
 //   - Sequential indices
-//   - Applied size overrides
+//   - The default Shape, which every shift of a rota shares until Shifts own
+//     their own Shapes (#137)
 //   - Preallocations unioned from every override applying to the date
 //   - AvailableGroups populated based on volunteer group availability
 //
@@ -268,19 +274,11 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	shifts := make([]*Shift, len(input.Shifts))
 
 	for i, spec := range input.Shifts {
-		// Start with default shift size
-		shiftSize := input.DefaultShiftSize
-
 		var preallocations []Preallocation
 
 		// Apply overrides for this date
 		for _, override := range input.Overrides {
 			if override.AppliesTo(spec.Date) {
-				// Override size if specified
-				if override.ShiftSize != nil {
-					shiftSize = *override.ShiftSize
-				}
-
 				preallocations = append(preallocations, override.Preallocations...)
 			}
 		}
@@ -300,7 +298,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		shifts[i] = &Shift{
 			Date:            spec.Date,
 			Index:           i,
-			Size:            shiftSize,
+			Shape:           input.DefaultShape,
 			AllocatedGroups: []*VolunteerGroup{},
 			MaleCount:       0, // Will be updated when groups are allocated
 			AvailableGroups: availableGroups,

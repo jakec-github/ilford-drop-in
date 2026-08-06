@@ -77,22 +77,39 @@ export interface RoleEdit {
   colour: RoleColour;
 }
 
-// RotaDefaults is what an admin has decided about how the drop-in as a whole
-// runs: one live, global record edited on the Settings screen. It holds the
-// shift times today; the default Shape, the allocation toggles and the Standing
-// Preallocations join it later.
+// ShiftTimes is the shift-time section of the settings, which is written whole:
+// a time of day means nothing without the zone it is read in.
 //
 // Times are 24-hour "HH:MM" — the same thing an <input type="time"> reads and
 // writes — not timestamps: a time of day is not a moment until it is read
 // against a date. Empty means an admin has not set it, which is where every
 // deployment starts and is a state the screen renders rather than an error.
-export interface RotaDefaults {
+export interface ShiftTimes {
   shiftStartTime: string;
   shiftEndTime: string;
-  // An IANA zone name. Never empty: the server answers with the default when an
-  // admin has not chosen one, so there is one answer to what zone the drop-in
-  // runs in.
+  // An IANA zone name. Never empty on the way out of the server: it answers
+  // with the default when an admin has not chosen one, so there is one answer
+  // to what zone the drop-in runs in.
   shiftTimezone: string;
+}
+
+// ShapeSeat is one line of a Shape: this many places of one Role. roleId is what
+// an edit names; role is the name an admin reads, and what a colour is keyed on
+// elsewhere.
+export interface ShapeSeat {
+  roleId: string;
+  role: Role;
+  count: number;
+}
+
+// RotaDefaults is what an admin has decided about how the drop-in as a whole
+// runs: one live, global record edited on the Settings screen. It holds the
+// shift times and the default Shape; the allocation toggles join them later.
+export interface RotaDefaults extends ShiftTimes {
+  // What every shift asks for, in the order its Seats are filled. Empty means
+  // an admin has not stated one — the state every deployment starts in, and the
+  // one thing that stops a rota being allocated without saying anything else.
+  defaultShape: ShapeSeat[];
 }
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)

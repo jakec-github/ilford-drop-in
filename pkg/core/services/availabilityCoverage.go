@@ -3,12 +3,7 @@ package services
 import (
 	"sort"
 	"strings"
-	"time"
 
-	"go.uber.org/zap"
-
-	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -22,9 +17,9 @@ import (
 //
 // The numbers are only worth anything if they are the numbers the allocator will
 // work to, so the seat arithmetic here does not restate the allocator's rules —
-// it calls them. [allocator.ShiftShape] says how many Seats of each Role a shift
-// has, and the pins are the ones InitShifts will see, resolved by the same
-// helpers allocation resolves them with.
+// it reads the same things. The Seats are the default Shape the solver is sent,
+// and the pins are the ones InitShifts will see, resolved by the same helpers
+// allocation resolves them with.
 
 // ShiftCoverage is one shift's staffing picture before allocation runs.
 //
@@ -97,62 +92,35 @@ type shiftSeats struct {
 
 // buildShiftSeats resolves every shift's Shape and pins, keyed by shift id.
 //
+// Every shift asks for the default Shape, because that is what a Shift asks for
+// until Shifts own their own Shapes (#137) — the same Shape allocation sends the
+// solver, read from the same settings.
+//
 // The pins are resolved through the same two helpers allocation uses —
 // buildPreallocationOverrides, then preallocationsForDate over the result, which
 // mirrors InitShifts. That is deliberate: the page must show the Seats the solve
 // will actually see, and a second implementation of it is how the three copies
 // of the group rule happened.
-//
-// An unparseable rrule is warned about and skipped, as everywhere else on a read
-// path. Allocation is where it fails hard; refusing to show an admin their round
-// over one bad rule in the config would be the wrong trade here.
 func buildShiftSeats(
-	cfg *config.Config,
-	roles model.Roles,
+	defaultShape model.Shape,
 	shifts []AvailabilityShift,
 	pins []db.Preallocation,
-	logger *zap.Logger,
 ) (map[string]shiftSeats, error) {
-	shiftDates := make([]time.Time, 0, len(shifts))
-	for _, s := range shifts {
-		date, err := time.Parse("2006-01-02", s.Date)
-		if err != nil {
-			logger.Warn("Skipping shift with unparseable date", zap.String("date", s.Date))
-			continue
-		}
-		shiftDates = append(shiftDates, date)
-	}
-
-	overrides := make([]allocator.ShiftOverride, 0, len(cfg.RotaOverrides))
-	for i, override := range cfg.RotaOverrides {
-		appliesTo, err := utils.NewRRuleMatcher(override.RRule, shiftDates)
-		if err != nil {
-			logger.Warn("Failed to parse rrule for shift coverage",
-				zap.Int("override_index", i),
-				zap.String("rrule", override.RRule),
-				zap.Error(err))
-			continue
-		}
-		overrides = append(overrides, allocator.ShiftOverride{
-			AppliesTo: appliesTo,
-			ShiftSize: override.ShiftSize,
-		})
-	}
-
-	// The pins become synthetic overrides appended after the config ones,
-	// exactly as allocation composes them, so the list below is the one
-	// InitShifts would build.
 	dateByShiftID := make(map[string]string, len(shifts))
 	for _, s := range shifts {
 		dateByShiftID[s.ID] = s.Date
 	}
-	pinOverrides, err := buildPreallocationOverrides(pins, dateByShiftID)
+	overrides, err := buildPreallocationOverrides(pins, dateByShiftID)
 	if err != nil {
 		return nil, err
 	}
-	overrides = append(overrides, pinOverrides...)
 
-	allocatorRoles := convertRoles(roles)
+	// One map, shared by every shift: they all ask for the same thing, and
+	// nothing downstream writes to it.
+	shape := make(map[string]int, len(defaultShape))
+	for _, seat := range defaultShape {
+		shape[seat.Role.Name] = seat.Count
+	}
 
 	seats := make(map[string]shiftSeats, len(shifts))
 	for _, shift := range shifts {
@@ -164,18 +132,6 @@ func buildShiftSeats(
 				pinnedVolunteers: map[string]bool{},
 			}
 			continue
-		}
-
-		size := cfg.DefaultShiftSize
-		for _, o := range overrides {
-			if o.AppliesTo(shift.Date) && o.ShiftSize != nil {
-				size = *o.ShiftSize
-			}
-		}
-
-		shape := make(map[string]int)
-		for _, seat := range allocator.ShiftShape(size, allocatorRoles) {
-			shape[seat.Role] = seat.Count
 		}
 
 		pinned := make(map[string]int)

@@ -128,7 +128,7 @@ func BuildCpsatInput(
 	volunteers []Volunteer,
 	groupAvailability map[string][]int,
 	shiftSpecs []ShiftSpec,
-	defaultShiftSize int,
+	defaultShape []Seat,
 	overrides []ShiftOverride,
 	historicalShifts []*Shift,
 	maxAllocationFrequency float64,
@@ -136,21 +136,21 @@ func BuildCpsatInput(
 	requiresMale bool,
 ) (*CpsatInput, error) {
 	if _, ok := uncappedRole(roles); !ok {
-		return nil, fmt.Errorf("no uncapped role configured: a shift's size has no Seats to be spent on")
+		return nil, fmt.Errorf("no uncapped role configured: the solver reports a shift's size as its uncapped Role's Seats, and there is no such Role")
 	}
 
-	// InitShifts resolves per-shift size and preallocations from the overrides,
-	// carrying each shift's own Closed through. AvailableGroups isn't part of
-	// the contract (Python derives availability from groups), so an empty state
-	// suffices.
+	// InitShifts gives each shift the default Shape and resolves its
+	// preallocations from the overrides, carrying each shift's own Closed
+	// through. AvailableGroups isn't part of the contract (Python derives
+	// availability from groups), so an empty state suffices.
 	//
 	// It runs first because the pins it resolves settle availability for the
 	// shifts they name, and InitVolunteerGroups discards a group with none.
 	initialised, err := InitShifts(InitShiftsInput{
-		Shifts:           shiftSpecs,
-		DefaultShiftSize: defaultShiftSize,
-		Overrides:        overrides,
-		VolunteerState:   &VolunteerState{VolunteerGroups: []*VolunteerGroup{}},
+		Shifts:         shiftSpecs,
+		DefaultShape:   defaultShape,
+		Overrides:      overrides,
+		VolunteerState: &VolunteerState{VolunteerGroups: []*VolunteerGroup{}},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize shifts: %w", err)
@@ -178,7 +178,7 @@ func BuildCpsatInput(
 		input.Shifts[i] = CpsatShift{
 			Index:          shift.Index,
 			Date:           shift.Date,
-			Shape:          shiftShape(shift.Size, roles),
+			Shape:          contractShape(shift.Shape),
 			Closed:         shift.Closed,
 			Preallocations: contractPreallocations(shift.Preallocations),
 		}
@@ -296,8 +296,9 @@ func emptyIfNil(values []string) []string {
 	return values
 }
 
-// uncappedRole finds the single Role with no ceiling — the one a shift's size
-// buys Seats in. Config validation guarantees exactly one.
+// uncappedRole finds the first Role with no ceiling. The Shape no longer spends
+// a size on it, but the solver still reports a shift's size as its Seats, so a
+// Role set that is capped throughout has no answer to give.
 func uncappedRole(roles []Role) (Role, bool) {
 	for _, role := range roles {
 		if role.Max == nil {
@@ -307,9 +308,10 @@ func uncappedRole(roles []Role) (Role, bool) {
 	return Role{}, false
 }
 
-// shiftShape renders [ShiftShape] onto the wire.
-func shiftShape(size int, roles []Role) []CpsatSeat {
-	seats := ShiftShape(size, roles)
+// contractShape renders a Shift's Seats onto the wire, keeping [] rather than
+// null: a shift asking for nobody is a well-formed shift, and the Python side
+// reads an absent shape as one.
+func contractShape(seats []Seat) []CpsatSeat {
 	shape := make([]CpsatSeat, 0, len(seats))
 	for _, seat := range seats {
 		shape = append(shape, CpsatSeat{Role: seat.Role, Count: seat.Count})

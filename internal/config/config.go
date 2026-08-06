@@ -18,18 +18,23 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
 
-// RotaOverride defines overrides to apply when generating rotas.
+// RotaOverride is what is left of the overrides that used to shape a rota from
+// the config file: a recurrence rule and nothing to apply to the dates it
+// matches.
 //
 // It has nothing to say about whether the drop-in runs on a date: Closed is a
 // field on the Shift, set by hand while the rota is unallocated (issue #132,
-// amending ADR 0001). Nor does it pin anybody: Config Preallocations were
+// amending ADR 0001). It does not pin anybody: Config Preallocations were
 // deleted in issue #131, replaced by Standing Preallocations in the Rota
-// Defaults, which seed ordinary Preallocations when a rota is defined. A
-// `closed` or `preallocations` key left in a config file is an unknown key now,
-// which is warned about rather than rejected.
+// Defaults. And it no longer resizes a Shift: what a Shift asks for is the
+// default Shape in the Rota Defaults, stated Role by Role (issue #129). A
+// `closed`, `preallocations` or `shiftSize` key left in a config file is an
+// unknown key now, which is warned about rather than rejected.
+//
+// The key itself goes in #136, once there is nothing left that could have
+// wanted it.
 type RotaOverride struct {
-	RRule     string `yaml:"rrule" validate:"required"`
-	ShiftSize *int   `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
+	RRule string `yaml:"rrule" validate:"required"`
 }
 
 // ServerConfig holds settings for the HTTP server
@@ -82,15 +87,17 @@ type Config struct {
 	// leaves a Seat open, so one can be added by hand afterwards. Today's
 	// behaviour is unconditional; the flag exists so it can be turned off rather
 	// than because anyone will.
-	RequiresMale     bool           `yaml:"requiresMale"`
-	DefaultShiftSize int            `yaml:"defaultShiftSize" validate:"required,min=1"`
-	Server           *ServerConfig  `yaml:"server,omitempty"`
-	DevMode          *DevModeConfig `yaml:"devMode,omitempty"`
-	// shiftStartTime, shiftEndTime and shiftTimezone used to live here. They
-	// are Rota Defaults now, edited on the Settings screen (ADR 0006, #128):
-	// when the drop-in runs is an admin's decision, not an operator's, and it
-	// should not take a redeploy. A config file still carrying them warns and
-	// is otherwise ignored, like any key this build does not know.
+	RequiresMale bool           `yaml:"requiresMale"`
+	Server       *ServerConfig  `yaml:"server,omitempty"`
+	DevMode      *DevModeConfig `yaml:"devMode,omitempty"`
+	// shiftStartTime, shiftEndTime, shiftTimezone and defaultShiftSize used to
+	// live here. They are Rota Defaults now, edited on the Settings screen
+	// (ADR 0006, #128 and #129): when the drop-in runs and what a shift asks
+	// for are an admin's decisions, not an operator's, and neither should take
+	// a redeploy. `defaultShiftSize` in particular could only ever describe a
+	// rota with one Role; the default Shape states every Role's Seats. A config
+	// file still carrying them warns and is otherwise ignored, like any key this
+	// build does not know.
 }
 
 var validate *validator.Validate

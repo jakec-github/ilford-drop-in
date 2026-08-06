@@ -154,16 +154,20 @@ func AllocateRota(
 		return nil, fmt.Errorf("failed to build historical shifts: %w", err)
 	}
 
-	allocatorOverrides, err := convertRotaOverrides(cfg.RotaOverrides, shiftDates, logger)
+	// What each Shift asks for. Every Shift of the rota asks for the same thing
+	// — the Shape in the Rota Defaults — until Shifts own their own Shapes
+	// (#137). checkSettingsAllowAllocation above has already refused an empty
+	// one, so this cannot be a rota asking for nobody.
+	shape, err := DefaultShape(ctx, database)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert rota overrides: %w", err)
+		return nil, err
 	}
 
 	// Preallocations (issue #39): each pin becomes a synthetic exact-date
-	// override appended to the config-derived ones, so InitShifts applies them
-	// with no new merge logic. The `preallocation` table is the whole set —
-	// pins an admin made by hand and pins a Standing Preallocation seeded when
-	// the rota was defined are the same rows (issue #131).
+	// override, so InitShifts applies them with no new merge logic. The
+	// `preallocation` table is the whole set — pins an admin made by hand and
+	// pins a Standing Preallocation seeded when the rota was defined are the
+	// same rows (issue #131).
 	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
@@ -178,18 +182,17 @@ func AllocateRota(
 	if err := checkPreallocationsResolve(pins, shifts, activeIDs); err != nil {
 		return nil, err
 	}
-	pinOverrides, err := buildPreallocationOverrides(pins, dateByShiftID)
+	allocatorOverrides, err := buildPreallocationOverrides(pins, dateByShiftID)
 	if err != nil {
 		return nil, err
 	}
-	allocatorOverrides = append(allocatorOverrides, pinOverrides...)
 
 	// Build the solver input and run the Python subprocess.
 	input, err := allocator.BuildCpsatInput(
 		allocatorVolunteers,
 		groupAvailability,
 		shiftSpecs,
-		cfg.DefaultShiftSize,
+		convertShape(shape),
 		allocatorOverrides,
 		historicalShifts,
 		cfg.MaxAllocationFrequency,

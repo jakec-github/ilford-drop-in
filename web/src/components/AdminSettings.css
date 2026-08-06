@@ -16,9 +16,21 @@
 
 /* The action keeps its words on one line: "New role" broken over two reads as
    two buttons at a glance, and the blurb beside it is what should give way. */
-.settings-section-head > .button {
+.settings-section-head > .button,
+.settings-section-actions > .button {
   flex: none;
   white-space: nowrap;
+}
+
+/* A section with two things to edit — the Rota Defaults have times and a shape
+   — keeps both buttons together on the heading line, dropping the second under
+   the first only when there is no room for it. */
+.settings-section-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .settings-blurb {
@@ -191,6 +203,34 @@
 .settings-field select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* One Role's Seats: the name on the left, the count on the right, so the whole
+   Shape reads as a column of numbers rather than a stack of labelled boxes.
+   The box is only as wide as the two digits anybody will ever type into it. */
+.settings-seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-seat .role-name {
+  font-size: 0.875rem;
+}
+
+/* The ceiling sits with the name rather than the box, so the numbers stay a
+   column of one figure each. */
+.settings-seat-max {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.settings-seat input[type="number"] {
+  flex: none;
+  width: 5rem;
+  margin-top: 0;
+  text-align: right;
 }
 
 .settings-hint {

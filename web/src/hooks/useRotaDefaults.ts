@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchRotaDefaults, saveShiftTimeDefaults } from "../api";
-import type { RotaDefaults } from "../types";
+import {
+  fetchRotaDefaults,
+  saveDefaultShape,
+  saveShiftTimeDefaults,
+} from "../api";
+import type { RotaDefaults, ShiftTimes } from "../types";
 
 interface UseRotaDefaults {
   // null while the first load is still in flight. A loaded record with empty
@@ -10,7 +14,10 @@ interface UseRotaDefaults {
   // Writes the shift times and holds what the server stored — including the
   // timezone it filled in for a blank field. Rejects with the server's own
   // message, which names the field that was wrong.
-  saveShiftTimes: (defaults: RotaDefaults) => Promise<void>;
+  saveShiftTimes: (times: ShiftTimes) => Promise<void>;
+  // Writes the Shape whole: the Seats given here are the Seats a shift asks
+  // for, and a Role left out is one it no longer asks for.
+  saveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
 }
 
 // useRotaDefaults owns the settings an admin keeps for the drop-in as a whole.
@@ -43,11 +50,20 @@ export function useRotaDefaults(): UseRotaDefaults {
   // as it now stands, so a second round trip would only confirm what is already
   // in hand. A refusal changes nothing on the server, so what is held stays
   // right, and the caller re-throws to say why.
-  const saveShiftTimes = useCallback(async (next: RotaDefaults) => {
-    const saved = await saveShiftTimeDefaults(next);
+  const saveShiftTimes = useCallback(async (times: ShiftTimes) => {
+    const saved = await saveShiftTimeDefaults(times);
     setDefaults(saved);
     setError(null);
   }, []);
 
-  return { defaults, error, saveShiftTimes };
+  const saveShape = useCallback(
+    async (seats: { roleId: string; count: number }[]) => {
+      const saved = await saveDefaultShape(seats);
+      setDefaults(saved);
+      setError(null);
+    },
+    [],
+  );
+
+  return { defaults, error, saveShiftTimes, saveShape };
 }

@@ -13,6 +13,8 @@ import type {
   RoleColour,
   RoleEdit,
   RotaDefaults,
+  ShapeSeat,
+  ShiftTimes,
   Volunteer,
 } from "../types";
 import { CUSTOM_CHOICE, DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
@@ -63,7 +65,7 @@ function ShiftTimesForm({
   onClose,
 }: {
   defaults: RotaDefaults;
-  onSave: (defaults: RotaDefaults) => Promise<void>;
+  onSave: (times: ShiftTimes) => Promise<void>;
   onClose: () => void;
 }) {
   const [start, setStart] = useState(defaults.shiftStartTime);
@@ -153,32 +155,162 @@ function ShiftTimesForm({
   );
 }
 
+// ShapeForm is the whole of editing the default Shape: every Role, with how
+// many Seats of it a shift asks for.
+//
+// Every Role gets a row rather than there being an add-a-Role dance, because a
+// drop-in has a handful of Roles and "how many of this one?" is the only
+// question there is. Nought is how a Role is left out — the server refuses a
+// Seat of nought, so those rows are dropped on the way rather than sent.
+//
+// Counts are held as strings so that a cleared box stays cleared while it is
+// being retyped, rather than snapping to 0 under the cursor.
+function ShapeForm({
+  roles,
+  shape,
+  onSave,
+  onClose,
+}: {
+  roles: ConfiguredRole[];
+  shape: ShapeSeat[];
+  onSave: (seats: { roleId: string; count: number }[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [counts, setCounts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      roles.map((role) => [
+        role.id,
+        String(shape.find((seat) => seat.roleId === role.id)?.count ?? 0),
+      ]),
+    ),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const seats = roles
+    .map((role) => ({ roleId: role.id, count: Number(counts[role.id] || 0) }))
+    .filter((seat) => seat.count > 0);
+  const total = seats.reduce((sum, seat) => sum + seat.count, 0);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(seats);
+      onClose();
+    } catch (err: unknown) {
+      // The server's own message names the Role whose ceiling was exceeded, so
+      // it is shown as-is and the form stays open on what was typed.
+      setError(err instanceof Error ? err.message : "Failed to save the shape");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog title="Default shape" onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <p className="settings-hint">
+          How many places of each Role a shift has. Every shift of a rota starts
+          from this; leave a Role at 0 if a shift does not need one.
+        </p>
+
+        {roles.map((role) => (
+          <label key={role.id} className="settings-field settings-seat">
+            <span className="role-name" data-role-colour={role.colour}>
+              {role.name}
+            </span>
+            {/* A capped Role says its ceiling here rather than only refusing at
+                it: the box stops at that number, and a number box that will not
+                go higher is a puzzle without the reason beside it. */}
+            {role.max !== null && (
+              <span className="settings-seat-max">at most {role.max}</span>
+            )}
+            <input
+              type="number"
+              min={0}
+              max={role.max ?? undefined}
+              value={counts[role.id] ?? "0"}
+              onChange={(e) =>
+                setCounts({ ...counts, [role.id]: e.target.value })
+              }
+            />
+          </label>
+        ))}
+
+        <p className="settings-hint">
+          {total > 0
+            ? `A shift asks for ${total} ${total === 1 ? "person" : "people"} in total.`
+            : "A shift asking for nobody cannot be allocated."}
+        </p>
+
+        {error && <p className="settings-error">{error}</p>}
+
+        <div className="settings-actions">
+          <Button onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save shape"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+// How a Shape reads in the list of facts: "1 Team lead, 4 Service volunteer",
+// in the order the Seats are filled.
+function describeShape(shape: ShapeSeat[]): string {
+  return shape.map((seat) => `${seat.count} ${seat.role}`).join(", ");
+}
+
+// What is being edited in the Rota Defaults: nothing, the times, or the Shape.
+// One value rather than two booleans, so two dialogs cannot be open at once.
+type EditingDefaults = "times" | "shape" | null;
+
 // RotaDefaultsSettings is the settings an admin keeps for the drop-in as a
-// whole. It holds the shift times today; the default Shape, the allocation
-// toggles and the Standing Preallocations join it here.
+// whole: when the drop-in runs, and what a shift asks for. The allocation
+// toggles join them here.
 //
 // Nothing seeds these, so "not set yet" is the state a new deployment is in
 // rather than a fault — and the caption says what that costs, because
 // allocation is the only thing it stops and nothing else on the screen will
 // mention it.
 function RotaDefaultsSettings() {
-  const { defaults, error, saveShiftTimes } = useRotaDefaults();
-  const [editing, setEditing] = useState(false);
+  const { defaults, error, saveShiftTimes, saveShape } = useRotaDefaults();
+  const { roles } = useRoles();
+  const [editing, setEditing] = useState<EditingDefaults>(null);
 
   const timesSet =
     defaults !== null &&
     defaults.shiftStartTime !== "" &&
     defaults.shiftEndTime !== "";
+  const shapeSet = defaults !== null && defaults.defaultShape.length > 0;
 
   return (
     <SettingsSection
       title="Rota Defaults"
-      blurb="What every rota starts from. When the drop-in runs, and the zone its times are read in."
+      blurb="What every rota starts from. When the drop-in runs, and how many people each shift asks for."
       action={
         defaults && (
-          <Button size="small" onClick={() => setEditing(true)}>
-            Edit times
-          </Button>
+          <span className="settings-section-actions">
+            <Button size="small" onClick={() => setEditing("times")}>
+              Edit times
+            </Button>
+            {/* Nothing to shape until Roles exist, and the section below says
+                so — offering the button here would open a dialog with no rows
+                in it. */}
+            {roles !== null && roles.length > 0 && (
+              <Button size="small" onClick={() => setEditing("shape")}>
+                Edit shape
+              </Button>
+            )}
+          </span>
         )
       }
     >
@@ -207,22 +339,41 @@ function RotaDefaultsSettings() {
               <dt>Timezone</dt>
               <dd>{defaults.shiftTimezone}</dd>
             </div>
+            <div className="settings-fact">
+              <dt>Shape</dt>
+              <dd>
+                {shapeSet ? (
+                  describeShape(defaults.defaultShape)
+                ) : (
+                  <span className="settings-unset">Not set yet</span>
+                )}
+              </dd>
+            </div>
           </dl>
-          {!timesSet && (
+          {(!timesSet || !shapeSet) && (
             <p className="settings-caption">
-              A rota cannot be allocated until the shift times are set.
-              Everything else — the rota, availability, the calendar feed —
+              A rota cannot be allocated until the shift times and the shape are
+              set. Everything else — the rota, availability, the calendar feed —
               works without them.
             </p>
           )}
         </>
       )}
 
-      {editing && defaults && (
+      {editing === "times" && defaults && (
         <ShiftTimesForm
           defaults={defaults}
           onSave={saveShiftTimes}
-          onClose={() => setEditing(false)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {editing === "shape" && defaults && roles && (
+        <ShapeForm
+          roles={roles}
+          shape={defaults.defaultShape}
+          onSave={saveShape}
+          onClose={() => setEditing(null)}
         />
       )}
     </SettingsSection>

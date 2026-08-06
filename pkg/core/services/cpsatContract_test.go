@@ -153,11 +153,9 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Date: "2026-07-27", Closed: true},
 		{Date: "2026-08-03"},
 	}
-	size := 5
 	overrides := []allocator.ShiftOverride{
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-20" },
-			ShiftSize: &size,
 			Preallocations: []allocator.Preallocation{
 				{Custom: "external_john", Role: "Service volunteer"},
 			},
@@ -178,7 +176,12 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, historical, 0.5, roles, true)
+	shape := []allocator.Seat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 2},
+	}
+
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, shape, overrides, historical, 0.5, roles, true)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
@@ -195,17 +198,15 @@ func TestBuildCpsatInput(t *testing.T) {
 	// The group's settled answer, applied as given.
 	assert.Equal(t, []int{0, 2, 3}, input.Groups[1].AvailableShiftIndices)
 
-	// Shift overrides applied via InitShifts. The Shape spends the shift's size
-	// on the uncapped Role and gives each capped Role its ceiling.
+	// Every shift carries the default Shape, stated rather than derived from a
+	// size; an override contributes pins and nothing else.
 	require.Len(t, input.Shifts, 4)
-	assert.Equal(t, []allocator.CpsatSeat{
-		{Role: "Team lead", Count: 1},
-		{Role: "Service volunteer", Count: 2},
-	}, input.Shifts[0].Shape)
-	assert.Equal(t, []allocator.CpsatSeat{
-		{Role: "Team lead", Count: 1},
-		{Role: "Service volunteer", Count: 5},
-	}, input.Shifts[1].Shape)
+	for i, shift := range input.Shifts {
+		assert.Equal(t, []allocator.CpsatSeat{
+			{Role: "Team lead", Count: 1},
+			{Role: "Service volunteer", Count: 2},
+		}, shift.Shape, "shift %d", i)
+	}
 	assert.Equal(t, []allocator.CpsatPreallocation{
 		{Custom: "external_john", Role: "Service volunteer"},
 	}, input.Shifts[1].Preallocations)
@@ -277,7 +278,8 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 	}
 
 	input, err := allocator.BuildCpsatInput(
-		volunteers, groupAvailability, openShifts("2026-07-13"), 4, nil,
+		volunteers, groupAvailability, openShifts("2026-07-13"),
+		[]allocator.Seat{{Role: "Service volunteer", Count: 4}}, nil,
 		historical, 1, roles, false)
 	require.NoError(t, err)
 
@@ -349,7 +351,12 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, 2, overrides, nil, 0.5, roles, true)
+	shape := []allocator.Seat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 2},
+	}
+
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, shape, overrides, nil, 0.5, roles, true)
 	require.NoError(t, err)
 
 	byKey := make(map[string]allocator.CpsatGroup, len(input.Groups))
@@ -392,7 +399,8 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	roles := []allocator.Role{{Name: "Service volunteer", Max: nil, Priority: 1}}
 
-	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, openShifts("2026-07-13", "2026-07-20"), 2, overrides, nil, 0.5, roles, false)
+	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, openShifts("2026-07-13", "2026-07-20"),
+		[]allocator.Seat{{Role: "Service volunteer", Count: 2}}, overrides, nil, 0.5, roles, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string][]int{"Alice Smith": {1}}, groupAvailability)

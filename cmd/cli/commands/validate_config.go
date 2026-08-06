@@ -61,11 +61,10 @@ devMode block is only permitted under "dev".`,
 			// deleted in issue #131, and the Standing Preallocations that
 			// replaced them are Rota Defaults, in the database.
 			fmt.Fprintf(out, "  overrides:  %s\n", plural(len(cfg.RotaOverrides), "rota override"))
-			// When a shift runs is not here any more: it is a Rota Default, set
-			// on the Settings screen and read from the database (ADR 0006), so
-			// this command — which opens the file and nothing else — cannot
-			// report it and should not pretend to.
-			fmt.Fprintf(out, "  shifts:     %d seats by default\n", cfg.DefaultShiftSize)
+			// When a shift runs and what it asks for are not here any more: they
+			// are Rota Defaults, set on the Settings screen and read from the
+			// database (ADR 0006), so this command — which opens the file and
+			// nothing else — cannot report them and should not pretend to.
 			fmt.Fprintf(out, "  server:     %s\n", describeServer(cfg))
 			if cfg.DevMode != nil {
 				fmt.Fprintf(out, "  devMode:    ON — roster from %s, login as %s\n",

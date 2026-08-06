@@ -61,10 +61,43 @@ func (s testRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefaults
 	}, nil
 }
 
+// testDefaultShapeStore answers with the Shape a configured drop-in asks for —
+// one Team lead and four Service volunteers, against the Role ids testRoleStore
+// hands out — unless a test sets defaultShape to say otherwise.
+//
+// shapeOfSize is how most tests say otherwise: they care about how many ordinary
+// places a shift has, which is the number `defaultShiftSize` used to be.
+type testDefaultShapeStore struct {
+	defaultShape []db.DefaultShapeSeat
+	// noShape is a drop-in nobody has stated a Shape for, which is a different
+	// thing from one whose Shape a test has not bothered to set.
+	noShape bool
+}
+
+func (s testDefaultShapeStore) GetDefaultShape(context.Context) ([]db.DefaultShapeSeat, error) {
+	if s.noShape {
+		return nil, nil
+	}
+	if s.defaultShape != nil {
+		return s.defaultShape, nil
+	}
+	return shapeOfSize(4), nil
+}
+
+// shapeOfSize is the app's Shape with a given number of ordinary places: one
+// Team lead Seat and `size` Service volunteer ones.
+func shapeOfSize(size int) []db.DefaultShapeSeat {
+	return []db.DefaultShapeSeat{
+		{RoleID: "role-team-lead", Seats: 1},
+		{RoleID: "role-service-volunteer", Seats: size},
+	}
+}
+
 // mockAllocateRotaStore implements AllocateRotaStore for testing
 type mockAllocateRotaStore struct {
 	testRoleStore
 	testRotaDefaultsStore
+	testDefaultShapeStore
 
 	rotations                []db.Rotation
 	shifts                   []db.Shift

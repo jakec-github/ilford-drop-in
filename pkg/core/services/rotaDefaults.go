@@ -49,6 +49,13 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 	}, nil
 }
 
+// AllocationSettingsStore is everything the settings gate reads: the record
+// itself and the default Shape, which is stored beside it as rows.
+type AllocationSettingsStore interface {
+	RotaDefaultsStore
+	DefaultShapeStore
+}
+
 // checkSettingsAllowAllocation refuses when the drop-in's settings are too
 // incomplete to allocate against, naming what is missing.
 //
@@ -63,13 +70,26 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 //
 // It reads the settings itself rather than taking them, so a caller cannot
 // allocate by forgetting to check.
-func checkSettingsAllowAllocation(ctx context.Context, store RotaDefaultsStore) error {
+func checkSettingsAllowAllocation(ctx context.Context, store AllocationSettingsStore) error {
 	defaults, err := RotaDefaults(ctx, store)
 	if err != nil {
 		return err
 	}
 
-	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
+	missing := defaults.MissingShiftTimes()
+
+	// A Shape asking for nobody solves perfectly and staffs nothing, which is
+	// the worst way for an unset setting to behave: a rota comes back empty and
+	// nothing says why.
+	shape, err := DefaultShape(ctx, store)
+	if err != nil {
+		return err
+	}
+	if len(shape) == 0 {
+		missing = append(missing, "the default shape")
+	}
+
+	if len(missing) > 0 {
 		return wrapf(ErrInvalidInput,
 			"the drop-in's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
 			joinWithAnd(missing), plural(len(missing), "has", "have"))
