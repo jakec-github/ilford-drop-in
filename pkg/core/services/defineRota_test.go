@@ -15,9 +15,13 @@ import (
 
 // mockDB implements a test double for db.DB
 type mockDB struct {
+	testRoleStore
+
 	rotations       []db.Rotation
+	standing        []db.StandingPreallocation
 	insertedRotas   []*db.Rotation
 	insertedShifts  [][]db.Shift
+	insertedPins    [][]db.Preallocation
 	getRotationsErr error
 	insertErr       error
 }
@@ -29,12 +33,17 @@ func (m *mockDB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 	return m.rotations, nil
 }
 
-func (m *mockDB) InsertRotationAndShifts(ctx context.Context, rotation *db.Rotation, shifts []db.Shift) error {
+func (m *mockDB) GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error) {
+	return m.standing, nil
+}
+
+func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
 	m.insertedRotas = append(m.insertedRotas, rotation)
 	m.insertedShifts = append(m.insertedShifts, shifts)
+	m.insertedPins = append(m.insertedPins, preallocations)
 	return nil
 }
 
@@ -122,6 +131,48 @@ func TestDefineRota_WithExistingRotations(t *testing.T) {
 	assert.Equal(t, expectedStart.Format("2006-01-02"), startDate.Format("2006-01-02"))
 	assert.Equal(t, 6, result.Rotation.ShiftCount)
 	assert.Len(t, result.Shifts, 6)
+}
+
+// Defining a rota spends the Rota Defaults: the Standing Preallocations become
+// ordinary Preallocations on the Shifts their rules land on, written in the same
+// transaction as the rota itself.
+func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
+	// A rota starting on the first Sunday of a month, so a "first Sunday" rule
+	// lands on its opening shift and on nothing else in a four-shift run.
+	existingEnd := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC) // Sunday before 2 August
+	mock := &mockDB{
+		rotations: []db.Rotation{
+			{ID: "existing", Start: "2026-07-05", End: existingEnd.Format("2006-01-02"), ShiftCount: 4},
+		},
+		standing: []db.StandingPreallocation{
+			{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
+		},
+	}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	require.NoError(t, err)
+	require.Equal(t, "2026-08-02", result.Rotation.Start)
+
+	require.Len(t, result.Preallocations, 1)
+	assert.Equal(t, result.Shifts[0].ID, result.Preallocations[0].ShiftID)
+	assert.Equal(t, "St John's team", result.Preallocations[0].CustomValue)
+	assert.Equal(t, "Service volunteer", result.Preallocations[0].Role)
+
+	// One store call, so a rota can never exist with only some of the pins an
+	// admin was promised.
+	require.Len(t, mock.insertedPins, 1)
+	assert.Equal(t, result.Preallocations, mock.insertedPins[0])
+}
+
+// No Standing Preallocations is the ordinary state of a deployment nobody has
+// configured, not a reason to refuse a rota.
+func TestDefineRota_NoStandingPreallocations(t *testing.T) {
+	mock := &mockDB{}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	require.NoError(t, err)
+	assert.Empty(t, result.Preallocations)
+	require.Len(t, mock.insertedRotas, 1)
 }
 
 func TestDefineRota_InvalidShiftCount(t *testing.T) {

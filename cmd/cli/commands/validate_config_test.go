@@ -27,9 +27,7 @@ defaultShiftSize: 4
 requiresMale: true
 rotaOverrides:
   - rrule: "FREQ=MONTHLY;BYDAY=3SU"
-    preallocations:
-      - custom: "OC Church"
-        role: "Service volunteer"
+    shiftSize: 6
 `
 
 // runValidateConfig executes the command the way main.go wires it: under a root
@@ -64,9 +62,10 @@ func TestValidateConfigCmd_ValidConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, out, path)
-	// The pin count is the number the operator checks against what they meant to
-	// write — the failure this command exists for dropped pins silently.
-	assert.Contains(t, out, "1 preallocation")
+	// The counts are what the operator checks against the change they meant to
+	// make — the failure this command exists for dropped a whole section
+	// silently.
+	assert.Contains(t, out, "1 rota override")
 }
 
 // `roles:` left config for the database in ticket #126, and a deployed file
@@ -98,18 +97,23 @@ func TestValidateConfigCmd_UnknownKey(t *testing.T) {
 	assert.Contains(t, out, "1 unknown key")
 	assert.Contains(t, out, "preallocatedTeamLeadID")
 	// The rest of the file still configured what it says.
-	assert.Contains(t, out, "1 preallocation")
+	assert.Contains(t, out, "1 rota override")
 }
 
-// A pin with no Role at all is still refused here. Which Roles exist is a
-// database question this command cannot ask, but a pin naming none is broken on
-// the face of the file.
-func TestValidateConfigCmd_PreallocationWithoutARole(t *testing.T) {
-	path := writeConfig(t, prodConfigYAML+"  - rrule: 'FREQ=WEEKLY'\n    preallocations:\n      - custom: 'X'\n")
+// `preallocations:` under a rota override left config for the database in ticket
+// #131 — the pins an admin makes every rota are Standing Preallocations now — so
+// a deployed file still carrying one has to validate rather than fail. This is
+// the case that matters most: it is what every existing deployment's config
+// looks like on the day this ships.
+func TestValidateConfigCmd_LegacyPreallocationsKeyIsReportedNotRejected(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+"  - rrule: 'FREQ=WEEKLY'\n    preallocations:\n      - custom: 'X'\n        role: 'Service volunteer'\n")
 
-	_, err := runValidateConfig(t, "-e", "prod", path)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "role is required")
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "1 unknown key")
+	assert.Contains(t, out, "preallocations")
+	assert.Contains(t, out, "2 rota overrides")
 }
 
 // devMode is env-dependent, so the command has to know which environment the

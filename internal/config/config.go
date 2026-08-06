@@ -18,31 +18,18 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
 
-// Preallocation pins one volunteer, or one custom entry, to a Role on every
-// date its override matches. Every preallocation names a Role — that is what
-// lets a custom entry such as "St John's team" hold something other than an
-// ordinary Seat.
-type Preallocation struct {
-	// VolunteerID pins a volunteer from the roster. Exactly one of VolunteerID
-	// and Custom is set.
-	VolunteerID string `yaml:"volunteerID,omitempty"`
-	// Custom pins a free-text entry — a group or an outside body, with no roster
-	// record and no availability.
-	Custom string `yaml:"custom,omitempty"`
-	// Role is the name of the Role the pin fills. It must be one config names.
-	Role string `yaml:"role"`
-}
-
 // RotaOverride defines overrides to apply when generating rotas.
 //
 // It has nothing to say about whether the drop-in runs on a date: Closed is a
 // field on the Shift, set by hand while the rota is unallocated (issue #132,
-// amending ADR 0001). A `closed` key left in a config file is now an unknown
-// key, which is warned about rather than rejected.
+// amending ADR 0001). Nor does it pin anybody: Config Preallocations were
+// deleted in issue #131, replaced by Standing Preallocations in the Rota
+// Defaults, which seed ordinary Preallocations when a rota is defined. A
+// `closed` or `preallocations` key left in a config file is an unknown key now,
+// which is warned about rather than rejected.
 type RotaOverride struct {
-	RRule          string          `yaml:"rrule" validate:"required"`
-	ShiftSize      *int            `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
-	Preallocations []Preallocation `yaml:"preallocations,omitempty"`
+	RRule     string `yaml:"rrule" validate:"required"`
+	ShiftSize *int   `yaml:"shiftSize,omitempty" validate:"omitempty,min=1"`
 }
 
 // ServerConfig holds settings for the HTTP server
@@ -295,40 +282,18 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// The rules below are cross-field — a pin naming exactly one subject, an
-	// rrule that parses — which validator.v10 tags cannot express, so they run
-	// here.
+	// An rrule that parses is a cross-field rule validator.v10 tags cannot
+	// express, so it runs here.
 	//
-	// A pin's Role is no longer among them. Roles left config for the database
-	// in ticket #126 (ADR 0006), and this function deliberately touches nothing
-	// but the file it was handed: scripts/deploy-config.sh runs it from a laptop
-	// against a production config, which is only safe because it connects to
-	// nothing.
+	// This function deliberately touches nothing but the file it was handed:
+	// scripts/deploy-config.sh runs it from a laptop against a production
+	// config, which is only safe because it connects to nothing.
 	for i, override := range cfg.RotaOverrides {
 		if _, err := utils.ParseRRule(override.RRule); err != nil {
 			return fmt.Errorf("invalid rrule in rotaOverrides[%d]: %w", i, err)
 		}
-		for j, pin := range override.Preallocations {
-			if err := validatePreallocation(pin); err != nil {
-				return fmt.Errorf("invalid preallocation in rotaOverrides[%d].preallocations[%d]: %w", i, j, err)
-			}
-		}
 	}
 
-	return nil
-}
-
-// validatePreallocation checks a config pin names one subject and a Role. That
-// the Role exists is not checked here — Roles are rows in the database now, and
-// this validation runs with nothing connected. The allocation path resolves the
-// name against the Roles the app holds and fails there if it does not.
-func validatePreallocation(pin Preallocation) error {
-	if (pin.VolunteerID == "") == (pin.Custom == "") {
-		return fmt.Errorf("set exactly one of volunteerID and custom")
-	}
-	if pin.Role == "" {
-		return fmt.Errorf("role is required")
-	}
 	return nil
 }
 

@@ -9,39 +9,39 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetManualPreallocationsByShiftIDs retrieves the manual preallocation records
-// belonging to the given shifts. Like GetAllocationsByShiftIDs it scopes by the
+// GetPreallocationsByShiftIDs retrieves the Preallocation records belonging to
+// the given shifts. Like GetAllocationsByShiftIDs it scopes by the
 // shift set the caller already holds rather than a re-derived date window (ADR
 // 0001); each record carries only its shift_id, with rota and date living on the
 // shift. An empty id set returns no rows without a query.
-func (d *DB) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]ManualPreallocation, error) {
-	return getManualPreallocationsByShiftIDs(ctx, d.pool, shiftIDs)
+func (d *DB) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error) {
+	return getPreallocationsByShiftIDs(ctx, d.pool, shiftIDs)
 }
 
-func getManualPreallocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string) ([]ManualPreallocation, error) {
+func getPreallocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string) ([]Preallocation, error) {
 	if len(shiftIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := q.Query(ctx, `
 		SELECT id, shift_id, role, volunteer_id, custom_value
-		FROM manual_preallocation
+		FROM preallocation
 		WHERE shift_id = ANY($1)
 	`, shiftIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query manual preallocations by shift: %w", err)
+		return nil, fmt.Errorf("failed to query preallocations by shift: %w", err)
 	}
-	return scanManualPreallocations(rows)
+	return scanPreallocations(rows)
 }
 
-func scanManualPreallocations(rows pgx.Rows) ([]ManualPreallocation, error) {
+func scanPreallocations(rows pgx.Rows) ([]Preallocation, error) {
 	defer rows.Close()
 
-	var preallocations []ManualPreallocation
+	var preallocations []Preallocation
 	for rows.Next() {
-		var mp ManualPreallocation
+		var mp Preallocation
 		var volunteerID, customValue *string
 		if err := rows.Scan(&mp.ID, &mp.ShiftID, &mp.Role, &volunteerID, &customValue); err != nil {
-			return nil, fmt.Errorf("failed to scan manual preallocation: %w", err)
+			return nil, fmt.Errorf("failed to scan preallocation: %w", err)
 		}
 		if volunteerID != nil {
 			mp.VolunteerID = *volunteerID
@@ -53,25 +53,25 @@ func scanManualPreallocations(rows pgx.Rows) ([]ManualPreallocation, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating manual preallocations: %w", err)
+		return nil, fmt.Errorf("error iterating preallocations: %w", err)
 	}
 
 	return preallocations, nil
 }
 
-// GetManualPreallocationByID retrieves a single manual preallocation together
-// with its shift, or (nil, nil, nil) if no row matches. A DELETE resolves the
+// GetPreallocationByID retrieves a single preallocation together with its
+// shift, or (nil, nil, nil) if no row matches. A DELETE resolves the
 // pin to its shift's rota before locking, so the shift (carrying rota_id) is
 // returned alongside the pin in one join rather than a second round trip.
-func (d *DB) GetManualPreallocationByID(ctx context.Context, id string) (*ManualPreallocation, *Shift, error) {
-	var mp ManualPreallocation
+func (d *DB) GetPreallocationByID(ctx context.Context, id string) (*Preallocation, *Shift, error) {
+	var mp Preallocation
 	var s Shift
 	var volunteerID, customValue *string
 	var date time.Time
 	err := d.pool.QueryRow(ctx, `
 		SELECT mp.id, mp.shift_id, mp.role, mp.volunteer_id, mp.custom_value,
 		       s.date, s.rota_id
-		FROM manual_preallocation mp
+		FROM preallocation mp
 		JOIN shift s ON s.id = mp.shift_id
 		WHERE mp.id = $1
 	`, id).Scan(&mp.ID, &mp.ShiftID, &mp.Role, &volunteerID, &customValue, &date, &s.RotaID)
@@ -79,7 +79,7 @@ func (d *DB) GetManualPreallocationByID(ctx context.Context, id string) (*Manual
 		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query manual preallocation %s: %w", id, err)
+		return nil, nil, fmt.Errorf("failed to query preallocation %s: %w", id, err)
 	}
 	if volunteerID != nil {
 		mp.VolunteerID = *volunteerID
@@ -92,10 +92,10 @@ func (d *DB) GetManualPreallocationByID(ctx context.Context, id string) (*Manual
 	return &mp, &s, nil
 }
 
-// insertManualPreallocation writes a single manual preallocation row. The
+// insertPreallocation writes a single preallocation row. The
 // nullable volunteer_id / custom_value follow the allocation pattern: an empty
 // string is stored as NULL. An unknown shift_id trips the FK and fails loudly.
-func insertManualPreallocation(ctx context.Context, q querier, mp ManualPreallocation) error {
+func insertPreallocation(ctx context.Context, q querier, mp Preallocation) error {
 	var volunteerID, customValue *string
 	if mp.VolunteerID != "" {
 		volunteerID = &mp.VolunteerID
@@ -104,22 +104,22 @@ func insertManualPreallocation(ctx context.Context, q querier, mp ManualPrealloc
 		customValue = &mp.CustomValue
 	}
 	_, err := q.Exec(ctx, `
-		INSERT INTO manual_preallocation (id, shift_id, role, volunteer_id, custom_value)
+		INSERT INTO preallocation (id, shift_id, role, volunteer_id, custom_value)
 		VALUES ($1, $2, $3, $4, $5)
 	`, mp.ID, mp.ShiftID, mp.Role, volunteerID, customValue)
 	if err != nil {
-		return fmt.Errorf("failed to insert manual preallocation: %w", err)
+		return fmt.Errorf("failed to insert preallocation: %w", err)
 	}
 	return nil
 }
 
-// deleteManualPreallocationByID removes the row with the given id, reporting
+// deletePreallocationByID removes the row with the given id, reporting
 // whether a row was actually deleted (false lets a caller distinguish a
 // concurrent delete from success).
-func deleteManualPreallocationByID(ctx context.Context, q querier, id string) (bool, error) {
-	tag, err := q.Exec(ctx, `DELETE FROM manual_preallocation WHERE id = $1`, id)
+func deletePreallocationByID(ctx context.Context, q querier, id string) (bool, error) {
+	tag, err := q.Exec(ctx, `DELETE FROM preallocation WHERE id = $1`, id)
 	if err != nil {
-		return false, fmt.Errorf("failed to delete manual preallocation %s: %w", id, err)
+		return false, fmt.Errorf("failed to delete preallocation %s: %w", id, err)
 	}
 	return tag.RowsAffected() > 0, nil
 }

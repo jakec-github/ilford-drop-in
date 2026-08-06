@@ -11,31 +11,29 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// PreallocationStore defines the database operations the manual-preallocation
-// flows need. The mutating flows do their state read, validation, and write
-// inside WithRotaPreallocationLock so a concurrent mutation or allocation of the
-// same rota cannot slip between the duplicate/frozen checks and the write
-// (issue #39, mirroring the changeRota locking discipline). ListPreallocations
-// reads outside any lock.
+// PreallocationStore defines the database operations the preallocation flows
+// need. The mutating flows do their state read, validation, and write inside
+// WithRotaPreallocationLock so a concurrent mutation or allocation of the same
+// rota cannot slip between the duplicate/frozen checks and the write (issue #39,
+// mirroring the changeRota locking discipline). ListPreallocations reads outside
+// any lock.
 type PreallocationStore interface {
 	RoleStore
 	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
-	GetManualPreallocationByID(ctx context.Context, id string) (*db.ManualPreallocation, *db.Shift, error)
-	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
+	GetPreallocationByID(ctx context.Context, id string) (*db.Preallocation, *db.Shift, error)
+	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
 	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
 	WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store db.PreallocationTxStore) error) error
 }
 
 // AddPreallocationParams holds the input for pinning one assignee to a shift.
 // Exactly one of VolunteerID or Custom is set. Role names the Seat the pin
-// fills and is required — a pin is a promise about a job, and config pins have
-// named one since Roles became data.
+// fills and is required — a pin is a promise about a job.
 type AddPreallocationParams struct {
 	Date        string // Target shift date (YYYY-MM-DD)
 	VolunteerID string // Volunteer to pin
@@ -43,31 +41,20 @@ type AddPreallocationParams struct {
 	Role        string // Name of the Role the pin fills
 }
 
-// PreallocationSource says where a pin came from. Both sources union at
-// allocation time and are the same mechanism downstream (ADR 0003), but only a
-// manual pin has a row behind it to edit or delete, so a reader has to be able
-// to tell them apart.
-type PreallocationSource string
-
-const (
-	// PreallocationSourceConfig is a pin derived from a config Rota Override.
-	// It has no stored row and no id: changing it means editing the config.
-	PreallocationSourceConfig PreallocationSource = "config"
-	// PreallocationSourceManual is a pin recorded against a shift over HTTP.
-	PreallocationSourceManual PreallocationSource = "manual"
-)
-
-// PreallocationView is the read model for one preallocation, whatever its
-// source: who is pinned, to which date, in which role. Config pins carry no ID —
-// they are resolved from the rota overrides on every read, not stored.
+// PreallocationView is the read model for one preallocation: who is pinned, to
+// which date, in which role.
+//
+// There is one kind of these (issue #131). A pin an admin added by hand and a
+// pin a Standing Preallocation seeded when the rota was defined are the same
+// row, read the same way, and either may be removed — so nothing here says where
+// it came from, and nothing downstream branches on it.
 type PreallocationView struct {
-	ID          string // empty for config pins
+	ID          string
 	Date        string
 	Role        string
 	VolunteerID string
 	Custom      string
 	Name        string // volunteer display name, or the custom entry verbatim
-	Source      PreallocationSource
 }
 
 // ListPreallocationsParams bounds a preallocation listing by shift date,
@@ -77,8 +64,8 @@ type ListPreallocationsParams struct {
 	To   string // inclusive upper bound (YYYY-MM-DD), optional
 }
 
-// AddPreallocation validates and records a single manual preallocation. The
-// volunteer fetch (network) happens outside the rota lock; the frozen-rota and
+// AddPreallocation validates and records a single preallocation. The volunteer
+// fetch (network) happens outside the rota lock; the frozen-rota and
 // duplicate-assignee checks and the insert happen inside it.
 func AddPreallocation(
 	ctx context.Context,
@@ -95,8 +82,8 @@ func AddPreallocation(
 		zap.String("role", params.Role))
 
 	// Step 1: input shape — exactly one of volunteer / custom, filling a Role
-	// config names. An unconfigured Role would reach the solver as a Seat no
-	// Shape has, so it is refused here rather than at solve time.
+	// that exists. An unknown Role would reach the solver as a Seat no Shape
+	// has, so it is refused here rather than at solve time.
 	if (params.VolunteerID == "") == (params.Custom == "") {
 		return nil, wrapf(ErrInvalidInput, "exactly one of volunteerId or custom must be provided")
 	}
@@ -159,21 +146,9 @@ func AddPreallocation(
 		return nil, wrapf(ErrConflict, "shift for %s is closed", params.Date)
 	}
 
-	// Step 4: config checks for the date (no network). Config is authoritative
-	// for a capped Role's Seats, so a Role config has already filled leaves
-	// nothing here to pin into.
-	configPins, err := configPreallocationState(cfg, date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate config overrides for %s: %w", params.Date, err)
-	}
-	configFilled := countRole(params.Role, configPins)
-	if role.Capped() && configFilled >= *role.Max {
-		return nil, wrapf(ErrConflict, "config already fills every %s seat for %s", params.Role, params.Date)
-	}
-
-	// Step 5: state read, duplicate/frozen checks, and insert under the rota
+	// Step 4: state read, duplicate/frozen checks, and insert under the rota
 	// lock.
-	created := db.ManualPreallocation{
+	created := db.Preallocation{
 		ID:          uuid.New().String(),
 		ShiftID:     shift.ID,
 		Role:        params.Role,
@@ -190,11 +165,11 @@ func AddPreallocation(
 			return wrapf(ErrConflict, "rota for %s is already allocated", params.Date)
 		}
 
-		existing, err := tx.GetManualPreallocationsByShiftIDs(ctx, []string{shift.ID})
+		existing, err := tx.GetPreallocationsByShiftIDs(ctx, []string{shift.ID})
 		if err != nil {
 			return err
 		}
-		filled := configFilled
+		filled := 0
 		for _, p := range existing {
 			if params.VolunteerID != "" && p.VolunteerID == params.VolunteerID {
 				return wrapf(ErrConflict, "volunteer %s is already pinned to %s", params.VolunteerID, params.Date)
@@ -212,13 +187,13 @@ func AddPreallocation(
 			return wrapf(ErrConflict, "every %s seat for %s is already pinned", params.Role, params.Date)
 		}
 
-		return tx.InsertManualPreallocation(ctx, created)
+		return tx.InsertPreallocation(ctx, created)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("Manual preallocation recorded",
+	logger.Info("Preallocation recorded",
 		zap.String("id", created.ID),
 		zap.String("shift_id", created.ShiftID),
 		zap.String("role", created.Role))
@@ -230,12 +205,12 @@ func AddPreallocation(
 		VolunteerID: created.VolunteerID,
 		Custom:      created.CustomValue,
 		Name:        name,
-		Source:      PreallocationSourceManual,
 	}, nil
 }
 
-// DeletePreallocation removes a manual preallocation by id, rejecting a delete
-// on an already-allocated (frozen) rota. Resolving the pin to its rota happens
+// DeletePreallocation removes a preallocation by id, rejecting a delete on an
+// already-allocated (frozen) rota. Any of them may be removed, however it came
+// to exist (issue #131). Resolving the pin to its rota happens
 // before the lock; the frozen check and the delete happen inside it.
 func DeletePreallocation(
 	ctx context.Context,
@@ -245,12 +220,12 @@ func DeletePreallocation(
 ) error {
 	logger.Debug("Starting DeletePreallocation", zap.String("id", id))
 
-	_, shift, err := store.GetManualPreallocationByID(ctx, id)
+	_, shift, err := store.GetPreallocationByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to look up manual preallocation %s: %w", id, err)
+		return fmt.Errorf("failed to look up preallocation %s: %w", id, err)
 	}
 	if shift == nil {
-		return wrapf(ErrNotFound, "manual preallocation %s not found", id)
+		return wrapf(ErrNotFound, "preallocation %s not found", id)
 	}
 
 	err = store.WithRotaPreallocationLock(ctx, []string{shift.RotaID}, func(tx db.PreallocationTxStore) error {
@@ -261,13 +236,13 @@ func DeletePreallocation(
 		if allocated {
 			return wrapf(ErrConflict, "rota is already allocated")
 		}
-		deleted, err := tx.DeleteManualPreallocationByID(ctx, id)
+		deleted, err := tx.DeletePreallocationByID(ctx, id)
 		if err != nil {
 			return err
 		}
 		if !deleted {
 			// Lost a race with a concurrent delete under the same lock.
-			return wrapf(ErrNotFound, "manual preallocation %s not found", id)
+			return wrapf(ErrNotFound, "preallocation %s not found", id)
 		}
 		return nil
 	})
@@ -275,16 +250,12 @@ func DeletePreallocation(
 		return err
 	}
 
-	logger.Info("Manual preallocation deleted", zap.String("id", id))
+	logger.Info("Preallocation deleted", zap.String("id", id))
 	return nil
 }
 
-// ListPreallocations returns every preallocation that applies to a shift in the
-// given date range, from both sources: the manual pins stored against those
-// shifts, and the pins the config's Rota Overrides resolve to for their dates.
-// Config pins are not stored anywhere, so they are re-derived here through the
-// same override machinery allocation uses — what this returns is what the
-// allocator will be handed.
+// ListPreallocations returns every preallocation whose shift falls in the given
+// date range.
 //
 // It resolves the range to shifts first, so every pin comes back with its date
 // and the id→date mapping stays honest.
@@ -306,31 +277,21 @@ func ListPreallocations(
 		return nil, fmt.Errorf("failed to fetch shifts in range: %w", err)
 	}
 
-	// A closed shift carries no pins from either source: the drop-in is not
-	// running, so nobody is promised it, and InitShifts strips whatever the two
-	// sources contributed. Dropping them here is what stops the rota page
-	// listing people against a shut date.
+	// A closed shift carries no pins: the drop-in is not running, so nobody is
+	// promised it, and InitShifts strips whatever it was carrying. Dropping them
+	// here is what stops the rota page listing people against a shut date.
 	dateByShiftID := make(map[string]string, len(shifts))
 	shiftIDs := make([]string, 0, len(shifts))
-	// The rrule matchers search a window bounded by these dates, so a shift
-	// whose date will not parse is dropped rather than widening it wrongly.
-	shiftDates := make([]time.Time, 0, len(shifts))
 	for _, s := range shifts {
 		if s.Closed {
 			continue
 		}
 		dateByShiftID[s.ID] = s.Date
 		shiftIDs = append(shiftIDs, s.ID)
-		date, err := time.Parse("2006-01-02", s.Date)
-		if err != nil {
-			logger.Warn("Skipping shift with unparseable date", zap.String("date", s.Date))
-			continue
-		}
-		shiftDates = append(shiftDates, date)
 	}
 
 	// Names are resolved here rather than left to the caller: a pin is only
-	// legible as a person, and a config pin is a bare id in a YAML file.
+	// legible as a person, and the row holds a volunteer id.
 	roles, err := RoleTable(ctx, store)
 	if err != nil {
 		return nil, err
@@ -345,15 +306,11 @@ func ListPreallocations(
 		volunteersByID[v.ID] = v
 	}
 
-	views, err := configPreallocationViews(cfg, shiftDates, volunteersByID, logger)
+	pins, err := store.GetPreallocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
 	}
-
-	pins, err := store.GetManualPreallocationsByShiftIDs(ctx, shiftIDs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch manual preallocations: %w", err)
-	}
+	views := make([]PreallocationView, 0, len(pins))
 	for _, p := range pins {
 		views = append(views, PreallocationView{
 			ID:          p.ID,
@@ -362,59 +319,10 @@ func ListPreallocations(
 			VolunteerID: p.VolunteerID,
 			Custom:      p.CustomValue,
 			Name:        preallocationName(p.VolunteerID, p.CustomValue, volunteersByID, logger),
-			Source:      PreallocationSourceManual,
 		})
 	}
 
 	sortPreallocationViews(views, roles)
-	return views, nil
-}
-
-// configPreallocationViews resolves the config Rota Overrides to per-date pins
-// for the given shift dates. It goes through convertRotaOverrides and
-// configPreallocationsForDate — the same pair allocation uses — so a date's pins
-// read here exactly as InitShifts will apply them: every matching override
-// contributing. Closed shifts never reach it; the caller has dropped them.
-//
-// The one thing it collapses is the identical pin: the same subject in the same
-// Role, named by two overrides, is one Seat to the solver and one chip here.
-// The same person in two different Roles is not collapsed — that is a config
-// error the solver will refuse, and hiding half of it hides the fix.
-func configPreallocationViews(
-	cfg *config.Config,
-	shiftDates []time.Time,
-	volunteersByID map[string]model.Volunteer,
-	logger *zap.Logger,
-) ([]PreallocationView, error) {
-	if cfg == nil || len(cfg.RotaOverrides) == 0 || len(shiftDates) == 0 {
-		return nil, nil
-	}
-
-	overrides, err := convertRotaOverrides(cfg.RotaOverrides, shiftDates, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate config overrides: %w", err)
-	}
-
-	var views []PreallocationView
-	for _, d := range shiftDates {
-		date := d.Format("2006-01-02")
-		pins := configPreallocationsForDate(date, overrides)
-		seen := make(map[allocator.Preallocation]bool, len(pins))
-		for _, pin := range pins {
-			if seen[pin] {
-				continue
-			}
-			seen[pin] = true
-			views = append(views, PreallocationView{
-				Date:        date,
-				Role:        pin.Role,
-				VolunteerID: pin.VolunteerID,
-				Custom:      pin.Custom,
-				Name:        preallocationName(pin.VolunteerID, pin.Custom, volunteersByID, logger),
-				Source:      PreallocationSourceConfig,
-			})
-		}
-	}
 	return views, nil
 }
 
@@ -436,11 +344,11 @@ func preallocationName(volunteerID, custom string, volunteersByID map[string]mod
 }
 
 // sortPreallocationViews puts the pins in reading order — by date, then by Role
-// priority, then by name — so a listing is stable whichever order the two
-// sources produced their entries in. Role priority is the order Seats are
-// filled in, which is the order a shift reads in everywhere else.
+// priority, then by name — so a listing is stable whatever order the rows came
+// back in. Role priority is the order Seats are filled in, which is the order a
+// shift reads in everywhere else.
 func sortPreallocationViews(views []PreallocationView, roles model.Roles) {
-	// A Role config no longer names sorts last rather than first: it is a stale
+	// A Role nobody offers any more sorts last rather than first: it is a stale
 	// pin, and a listing should not open with one.
 	priority := func(name string) int {
 		if role, ok := roles.ByName(name); ok {
@@ -462,47 +370,8 @@ func sortPreallocationViews(views []PreallocationView, roles model.Roles) {
 		if a.Name != b.Name {
 			return a.Name < b.Name
 		}
-		if a.Source != b.Source {
-			return a.Source < b.Source
-		}
 		return a.ID < b.ID
 	})
-}
-
-// configPreallocationState resolves the config Rota Overrides for a single date,
-// returning the pins they contribute there. It builds one rrule matcher per
-// override over a single-date window (NewRRuleMatcher widens the window by a
-// week, so a lone date matches correctly), and mirrors InitShifts: every
-// matching override appends its pins in order.
-func configPreallocationState(cfg *config.Config, date time.Time) ([]config.Preallocation, error) {
-	if cfg == nil {
-		return nil, nil
-	}
-	var pins []config.Preallocation
-	dateStr := date.Format("2006-01-02")
-	for _, o := range cfg.RotaOverrides {
-		matcher, err := utils.NewRRuleMatcher(o.RRule, []time.Time{date})
-		if err != nil {
-			return nil, fmt.Errorf("invalid rrule %q: %w", o.RRule, err)
-		}
-		if !matcher(dateStr) {
-			continue
-		}
-		pins = append(pins, o.Preallocations...)
-	}
-	return pins, nil
-}
-
-// countRole counts the pins filling one Role, which is how many of its Seats
-// are already spoken for.
-func countRole(role string, pins []config.Preallocation) int {
-	count := 0
-	for _, pin := range pins {
-		if pin.Role == role {
-			count++
-		}
-	}
-	return count
 }
 
 // parseDateRange parses optional from/to bounds (YYYY-MM-DD), leaving a blank

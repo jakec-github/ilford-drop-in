@@ -22,11 +22,11 @@ type mockPreallocationStore struct {
 
 	shifts      []db.Shift
 	allocated   map[string]bool // rota id → allocated
-	preallocs   []db.ManualPreallocation
+	preallocs   []db.Preallocation
 	shiftRanges []db.ShiftInRange
 
 	lockedRotaIDs [][]string
-	inserted      []db.ManualPreallocation
+	inserted      []db.Preallocation
 	deletedIDs    []string
 }
 
@@ -40,7 +40,7 @@ func (m *mockPreallocationStore) GetShiftByDate(ctx context.Context, date time.T
 	return nil, nil
 }
 
-func (m *mockPreallocationStore) GetManualPreallocationByID(ctx context.Context, id string) (*db.ManualPreallocation, *db.Shift, error) {
+func (m *mockPreallocationStore) GetPreallocationByID(ctx context.Context, id string) (*db.Preallocation, *db.Shift, error) {
 	for i := range m.preallocs {
 		if m.preallocs[i].ID == id {
 			p := m.preallocs[i]
@@ -55,9 +55,9 @@ func (m *mockPreallocationStore) GetManualPreallocationByID(ctx context.Context,
 	return nil, nil, nil
 }
 
-func (m *mockPreallocationStore) GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error) {
+func (m *mockPreallocationStore) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error) {
 	want := idSet(shiftIDs)
-	var out []db.ManualPreallocation
+	var out []db.Preallocation
 	for _, p := range m.preallocs {
 		if want[p.ShiftID] {
 			out = append(out, p)
@@ -87,13 +87,13 @@ func (m *mockPreallocationStore) RotaAllocated(ctx context.Context, rotaID strin
 	return m.allocated[rotaID], nil
 }
 
-func (m *mockPreallocationStore) InsertManualPreallocation(ctx context.Context, mp db.ManualPreallocation) error {
+func (m *mockPreallocationStore) InsertPreallocation(ctx context.Context, mp db.Preallocation) error {
 	m.inserted = append(m.inserted, mp)
 	m.preallocs = append(m.preallocs, mp)
 	return nil
 }
 
-func (m *mockPreallocationStore) DeleteManualPreallocationByID(ctx context.Context, id string) (bool, error) {
+func (m *mockPreallocationStore) DeletePreallocationByID(ctx context.Context, id string) (bool, error) {
 	for i := range m.preallocs {
 		if m.preallocs[i].ID == id {
 			m.preallocs = append(m.preallocs[:i], m.preallocs[i+1:]...)
@@ -122,14 +122,6 @@ func preallocVolunteers() *preallocVolClient {
 			{ID: "dan", FirstName: "Dan", DisplayName: "Dan", Roles: []string{"Team lead", "Service volunteer"}, Status: "Active"},
 		},
 	}
-}
-
-// cfgWithOverrides is testCfg plus rota overrides — the Roles have to come
-// along, since every pin now resolves its Role against them.
-func cfgWithOverrides(overrides ...config.RotaOverride) *config.Config {
-	cfg := *testCfg
-	cfg.RotaOverrides = overrides
-	return &cfg
 }
 
 func oneShiftStore() *mockPreallocationStore {
@@ -263,33 +255,9 @@ func TestAddPreallocation_ClosedShift(t *testing.T) {
 	assert.Empty(t, store.inserted)
 }
 
-func TestAddPreallocation_ConfigFillsTheCappedRole(t *testing.T) {
-	store := oneShiftStore()
-	cfg := cfgWithOverrides(config.RotaOverride{
-		RRule:          "FREQ=WEEKLY;BYDAY=SU",
-		Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: "Team lead"}},
-	})
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", Role: "Team lead"}, zap.NewNop())
-	assert.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "config already fills every Team lead seat")
-}
-
-// A config team-lead pin must not block an ordinary volunteer pin on the same date.
-func TestAddPreallocation_ConfigTeamLeadDoesNotBlockVolunteer(t *testing.T) {
-	store := oneShiftStore()
-	cfg := cfgWithOverrides(config.RotaOverride{
-		RRule:          "FREQ=WEEKLY;BYDAY=SU",
-		Preallocations: []config.Preallocation{{VolunteerID: "someone", Role: "Team lead"}},
-	})
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), cfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
-	require.NoError(t, err)
-}
-
 func TestAddPreallocation_DuplicateVolunteer(t *testing.T) {
 	store := oneShiftStore()
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
@@ -300,7 +268,7 @@ func TestAddPreallocation_DuplicateVolunteer(t *testing.T) {
 
 func TestAddPreallocation_DuplicateCustom(t *testing.T) {
 	store := oneShiftStore()
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "External Org"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
@@ -310,7 +278,7 @@ func TestAddPreallocation_DuplicateCustom(t *testing.T) {
 
 func TestAddPreallocation_CappedRoleAlreadyFull(t *testing.T) {
 	store := oneShiftStore()
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
@@ -322,7 +290,7 @@ func TestAddPreallocation_CappedRoleAlreadyFull(t *testing.T) {
 // The uncapped Role has no ceiling to hit, however many are already pinned.
 func TestAddPreallocation_UncappedRoleHasNoCeiling(t *testing.T) {
 	store := oneShiftStore()
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "alice"},
 		{ID: "p2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "Scouts"},
 	}
@@ -344,7 +312,7 @@ func TestAddPreallocation_AlreadyAllocated(t *testing.T) {
 
 func TestDeletePreallocation_HappyPath(t *testing.T) {
 	store := oneShiftStore()
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
 	}
 	err := DeletePreallocation(context.Background(), store, "p1", zap.NewNop())
@@ -363,7 +331,7 @@ func TestDeletePreallocation_NotFound(t *testing.T) {
 func TestDeletePreallocation_AlreadyAllocated(t *testing.T) {
 	store := oneShiftStore()
 	store.allocated["rota-1"] = true
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
 	}
 	err := DeletePreallocation(context.Background(), store, "p1", zap.NewNop())
@@ -377,7 +345,7 @@ func TestListPreallocations(t *testing.T) {
 			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
 		},
-		preallocs: []db.ManualPreallocation{
+		preallocs: []db.Preallocation{
 			{ID: "p1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
 			{ID: "p2", ShiftID: "shift-2", Role: "Service volunteer", CustomValue: "External"},
 		},
@@ -393,11 +361,9 @@ func TestListPreallocations(t *testing.T) {
 	assert.Equal(t, "2026-08-02", byID["p1"].Date)
 	assert.Equal(t, "alice", byID["p1"].VolunteerID)
 	assert.Equal(t, "Alice", byID["p1"].Name)
-	assert.Equal(t, PreallocationSourceManual, byID["p1"].Source)
 	assert.Equal(t, "2026-08-09", byID["p2"].Date)
 	assert.Equal(t, "External", byID["p2"].Custom)
 	assert.Equal(t, "External", byID["p2"].Name, "a custom pin is its own name")
-	assert.Equal(t, PreallocationSourceManual, byID["p2"].Source)
 }
 
 func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
@@ -406,7 +372,7 @@ func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
 			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
 		},
-		preallocs: []db.ManualPreallocation{
+		preallocs: []db.Preallocation{
 			{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "alice"},
 			{ID: "p2", ShiftID: "shift-2", Role: "Service volunteer", VolunteerID: "bob"},
 		},
@@ -419,8 +385,7 @@ func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
 }
 
 // twoSundayStore is the listing fixture: two consecutive Sundays in one rota,
-// no pins of any kind. Config-derived pins are added by giving the call a config
-// whose rrule matches one or both dates.
+// no pins.
 func twoSundayStore() *mockPreallocationStore {
 	return &mockPreallocationStore{
 		shiftRanges: []db.ShiftInRange{
@@ -430,140 +395,64 @@ func twoSundayStore() *mockPreallocationStore {
 	}
 }
 
-func listPreallocs(t *testing.T, store *mockPreallocationStore, cfg *config.Config) []PreallocationView {
+func listPreallocs(t *testing.T, store *mockPreallocationStore) []PreallocationView {
 	t.Helper()
-	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), cfg, ListPreallocationsParams{}, zap.NewNop())
+	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), testCfg, ListPreallocationsParams{}, zap.NewNop())
 	require.NoError(t, err)
 	return views
 }
 
-// Config preallocations are not stored anywhere: they are resolved from the
-// rota overrides against the shifts in range, in all three flavours.
-func TestListPreallocations_IncludesConfigPins(t *testing.T) {
-	cfg := cfgWithOverrides(config.RotaOverride{
-		RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2",
-		Preallocations: []config.Preallocation{
-			{VolunteerID: "alice", Role: "Team lead"},
-			{VolunteerID: "bob", Role: "Service volunteer"},
-			{Custom: "Scouts", Role: "Service volunteer"},
-		},
-	})
-
-	views := listPreallocs(t, twoSundayStore(), cfg)
-	require.Len(t, views, 3, "all three flavours land on 2 August only")
-
-	for _, v := range views {
-		assert.Equal(t, "2026-08-02", v.Date)
-		assert.Equal(t, PreallocationSourceConfig, v.Source)
-		assert.Empty(t, v.ID, "a config pin has no stored row to delete")
-	}
-
-	assert.Equal(t, "Team lead", views[0].Role, "the team lead leads the date")
-	assert.Equal(t, "alice", views[0].VolunteerID)
-	assert.Equal(t, "Alice", views[0].Name)
-
-	assert.Equal(t, "bob", views[1].VolunteerID)
-	assert.Equal(t, "Bob", views[1].Name)
-	assert.Equal(t, "Service volunteer", views[1].Role)
-
-	assert.Equal(t, "Scouts", views[2].Custom)
-	assert.Equal(t, "Scouts", views[2].Name)
-	assert.Empty(t, views[2].VolunteerID)
-}
-
 // A closed shift carries no pins into allocation (InitShifts clears them), so
-// it must not show any either — from either source.
+// it must not show any either.
 func TestListPreallocations_SkipsClosedShifts(t *testing.T) {
-	cfg := cfgWithOverrides(
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: "Service volunteer"}}},
-	)
-
 	store := twoSundayStore()
 	store.shiftRanges[0].Closed = true
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "dan"},
 	}
 
-	assert.Empty(t, listPreallocs(t, store, cfg))
+	assert.Empty(t, listPreallocs(t, store))
 }
 
-// Two overrides pinning the same person to the same date are one seat at
-// allocation time, so they are one entry here.
-func TestListPreallocations_ConfigPinsDedupe(t *testing.T) {
-	cfg := cfgWithOverrides(
-		config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: "Service volunteer"}, {Custom: "Scouts", Role: "Service volunteer"}}},
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "bob", Role: "Service volunteer"}, {Custom: "Scouts", Role: "Service volunteer"}}},
-	)
-
-	views := listPreallocs(t, twoSundayStore(), cfg)
-	require.Len(t, views, 4, "two pins on each of the two Sundays, not three on the first")
-	for _, v := range views {
-		assert.Equal(t, PreallocationSourceConfig, v.Source)
+// A pin naming someone the roster no longer knows still has to be visible — it
+// is the reason allocation will fail, and hiding it hides the fix. It is the
+// pins nobody typed recently that reach this state: a Standing Preallocation
+// seeds one at definition and the person can have left by allocation.
+func TestListPreallocations_UnknownVolunteerShowsID(t *testing.T) {
+	store := twoSundayStore()
+	store.preallocs = []db.Preallocation{
+		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "ghost"},
 	}
-}
 
-// Overrides accumulate rather than overwrite: two of them pinning the same
-// capped Role to one date are two pins, exactly as InitShifts resolves them.
-// The date is then over its ceiling, which is the solver's complaint to make —
-// the listing's job is to show what it will be handed.
-func TestListPreallocations_ConfigPinsAccumulatePerRole(t *testing.T) {
-	cfg := cfgWithOverrides(
-		config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "alice", Role: "Team lead"}}},
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: "Team lead"}}},
-	)
-
-	views := listPreallocs(t, twoSundayStore(), cfg)
-	require.Len(t, views, 3)
-	assert.Equal(t, "2026-08-02", views[0].Date)
-	assert.Equal(t, "alice", views[0].VolunteerID)
-	assert.Equal(t, "2026-08-02", views[1].Date)
-	assert.Equal(t, "dan", views[1].VolunteerID)
-	assert.Equal(t, "2026-08-09", views[2].Date)
-	assert.Equal(t, "alice", views[2].VolunteerID)
-}
-
-// A config pin naming someone the roster no longer knows still has to be
-// visible — it is the reason allocation will fail, and hiding it hides the fix.
-func TestListPreallocations_UnknownConfigVolunteerShowsID(t *testing.T) {
-	cfg := cfgWithOverrides(
-		config.RotaOverride{RRule: "FREQ=YEARLY;BYMONTH=8;BYMONTHDAY=2", Preallocations: []config.Preallocation{{VolunteerID: "ghost", Role: "Service volunteer"}}},
-	)
-
-	views := listPreallocs(t, twoSundayStore(), cfg)
+	views := listPreallocs(t, store)
 	require.Len(t, views, 1)
 	assert.Equal(t, "ghost", views[0].VolunteerID)
 	assert.Equal(t, "ghost", views[0].Name)
 }
 
-// Both sources come back from one call, ordered by date and then team lead
-// first — the order a shift is read in, not the order the two sources were
-// resolved in.
-func TestListPreallocations_MergesSourcesInDateOrder(t *testing.T) {
+// Ordered by date and then team lead first — the order a shift is read in, not
+// the order the rows came back in.
+func TestListPreallocations_OrderedByDateThenRole(t *testing.T) {
 	store := twoSundayStore()
-	store.preallocs = []db.ManualPreallocation{
+	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-2", Role: "Service volunteer", VolunteerID: "bob"},
 		{ID: "p2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "Aardvark Group"},
+		{ID: "p3", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "dan"},
+		{ID: "p4", ShiftID: "shift-2", Role: "Team lead", VolunteerID: "alice"},
 	}
-	cfg := cfgWithOverrides(
-		config.RotaOverride{RRule: "FREQ=WEEKLY;BYDAY=SU", Preallocations: []config.Preallocation{{VolunteerID: "dan", Role: "Team lead"}}},
-	)
 
-	views := listPreallocs(t, store, cfg)
+	views := listPreallocs(t, store)
 	require.Len(t, views, 4)
 
-	type entry struct {
-		date   string
-		name   string
-		source PreallocationSource
-	}
+	type entry struct{ date, name string }
 	got := make([]entry, 0, len(views))
 	for _, v := range views {
-		got = append(got, entry{v.Date, v.Name, v.Source})
+		got = append(got, entry{v.Date, v.Name})
 	}
 	assert.Equal(t, []entry{
-		{"2026-08-02", "Dan", PreallocationSourceConfig},
-		{"2026-08-02", "Aardvark Group", PreallocationSourceManual},
-		{"2026-08-09", "Dan", PreallocationSourceConfig},
-		{"2026-08-09", "Bob", PreallocationSourceManual},
+		{"2026-08-02", "Dan"},
+		{"2026-08-02", "Aardvark Group"},
+		{"2026-08-09", "Alice"},
+		{"2026-08-09", "Bob"},
 	}, got)
 }

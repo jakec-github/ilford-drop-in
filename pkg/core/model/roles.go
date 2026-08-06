@@ -82,11 +82,12 @@ func ValidRoleColour(colour string) bool {
 func (r Role) Capped() bool { return r.Max != nil }
 
 // Roles is the set of Roles the drop-in offers: ordered by priority, indexed by
-// name. The zero value is an empty set, which answers every query rather than
-// panicking — callers with no Roles in scope hold one.
+// name and by id. The zero value is an empty set, which answers every query
+// rather than panicking — callers with no Roles in scope hold one.
 type Roles struct {
 	ordered []Role
 	byName  map[string]Role
+	byID    map[string]Role
 }
 
 // NewRoles builds the lookup table from Roles in any order. It does not
@@ -110,17 +111,32 @@ func NewRoles(roles []Role) Roles {
 	}
 
 	byName := make(map[string]Role, len(ordered))
+	byID := make(map[string]Role, len(ordered))
 	for _, r := range ordered {
 		byName[r.Name] = r
+		// A Role built without a database in scope has no id, and an empty one
+		// is not a key: looking one up by "" must miss rather than find
+		// whichever such Role was last in.
+		if r.ID != "" {
+			byID[r.ID] = r
+		}
 	}
 
-	return Roles{ordered: ordered, byName: byName}
+	return Roles{ordered: ordered, byName: byName, byID: byID}
 }
 
 // ByName looks a Role up by name. Names are matched exactly: the roster, the
 // stored Roles and the solver all speak the same string.
 func (r Roles) ByName(name string) (Role, bool) {
 	role, ok := r.byName[name]
+	return role, ok
+}
+
+// ByID looks a Role up by its stable id. That is how anything long-lived
+// references a Role — a Standing Preallocation outlives any number of renames —
+// where a per-rota row records the name it was made under.
+func (r Roles) ByID(id string) (Role, bool) {
+	role, ok := r.byID[id]
 	return role, ok
 }
 

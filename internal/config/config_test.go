@@ -41,61 +41,6 @@ func baseConfig() *Config {
 	}
 }
 
-// Every preallocation names one subject and one Role — the check that stops a
-// typo becoming a pin the solver silently drops. Whether the Role exists is not
-// asked here: Roles are rows in the database now, and this validation connects
-// to nothing (ADR 0006).
-func TestValidate_Preallocations(t *testing.T) {
-	tests := []struct {
-		name    string
-		pin     Preallocation
-		wantErr string
-	}{
-		{
-			name: "volunteer pinned to a role",
-			pin:  Preallocation{VolunteerID: "vol-1", Role: "Team lead"},
-		},
-		{
-			name: "custom entry pinned to a role",
-			pin:  Preallocation{Custom: "St John's team", Role: "Service volunteer"},
-		},
-		{
-			name:    "neither volunteer nor custom",
-			pin:     Preallocation{Role: "Team lead"},
-			wantErr: "exactly one of volunteerID and custom",
-		},
-		{
-			name:    "both volunteer and custom",
-			pin:     Preallocation{VolunteerID: "vol-1", Custom: "St John's team", Role: "Team lead"},
-			wantErr: "exactly one of volunteerID and custom",
-		},
-		{
-			name:    "no role",
-			pin:     Preallocation{VolunteerID: "vol-1"},
-			wantErr: "role is required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := baseConfig()
-			cfg.RotaOverrides = []RotaOverride{{
-				RRule:          "FREQ=WEEKLY;BYDAY=SU",
-				Preallocations: []Preallocation{tt.pin},
-			}}
-
-			err := Validate(cfg)
-			if tt.wantErr == "" {
-				assert.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
-			assert.Contains(t, err.Error(), "rotaOverrides[0].preallocations[0]")
-		})
-	}
-}
-
 func TestValidate_ValidConfig(t *testing.T) {
 	shiftSize := 5
 	cfg := &Config{
@@ -109,11 +54,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
-				RRule: "FREQ=WEEKLY;BYDAY=SU",
-				Preallocations: []Preallocation{
-					{Custom: "John Doe", Role: "Service volunteer"},
-					{Custom: "Jane Smith", Role: "Service volunteer"},
-				},
+				RRule:     "FREQ=WEEKLY;BYDAY=SU",
 				ShiftSize: &shiftSize,
 			},
 		},
@@ -163,8 +104,7 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
-				RRule:          "INVALID_RRULE_SYNTAX",
-				Preallocations: []Preallocation{{Custom: "John Doe", Role: "Service volunteer"}},
+				RRule: "INVALID_RRULE_SYNTAX",
 			},
 		},
 	}
@@ -209,8 +149,7 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		DefaultShiftSize:       2,
 		RotaOverrides: []RotaOverride{
 			{
-				RRule:          "",
-				Preallocations: []Preallocation{{Custom: "John Doe", Role: "Service volunteer"}},
+				RRule: "",
 			},
 		},
 	}
@@ -282,9 +221,9 @@ rotaOverrides:
 	require.Len(t, cfg.RotaOverrides, 1)
 	override := cfg.RotaOverrides[0]
 	assert.Equal(t, "FREQ=WEEKLY;BYDAY=SU", override.RRule)
-	require.Len(t, override.Preallocations, 2)
-	assert.Equal(t, Preallocation{Custom: "John Doe", Role: "Service volunteer"}, override.Preallocations[0])
-	assert.Equal(t, Preallocation{Custom: "Jane Smith", Role: "Service volunteer"}, override.Preallocations[1])
+	// The `preallocations:` block in that file configures nothing now — Config
+	// Preallocations were deleted in issue #131 — and an unknown key is warned
+	// about rather than rejected, so the rest of the file still loads.
 	require.NotNil(t, override.ShiftSize)
 	assert.Equal(t, 5, *override.ShiftSize)
 }

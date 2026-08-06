@@ -27,7 +27,7 @@ type AllocateRotaStore interface {
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
-	GetManualPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.ManualPreallocation, error)
+	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
@@ -186,9 +186,15 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 	return allocations, nil
 }
 
-// convertRotaOverrides converts config.RotaOverride to allocator.ShiftOverride
-// RRule strings are parsed and converted to date-matching functions
-// shiftDates provides the actual date range for the rota, which may span years
+// convertRotaOverrides converts config.RotaOverride to allocator.ShiftOverride.
+// RRule strings are parsed and converted to date-matching functions;
+// shiftDates provides the actual date range for the rota, which may span years.
+//
+// An override says only how big a Shift is now. Config Preallocations were
+// deleted in issue #131 — the pins an admin expects to make every rota are
+// Standing Preallocations, held in the Rota Defaults, and they seed ordinary
+// Preallocations when the rota is defined rather than being resolved afresh on
+// every read.
 func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []time.Time, logger *zap.Logger) ([]allocator.ShiftOverride, error) {
 	result := make([]allocator.ShiftOverride, 0, len(configOverrides))
 
@@ -200,19 +206,15 @@ func convertRotaOverrides(configOverrides []config.RotaOverride, shiftDates []ti
 			return nil, fmt.Errorf("failed to parse rrule for override %d: %w", i, err)
 		}
 
-		pins := convertConfigPreallocations(override.Preallocations)
-
 		result = append(result, allocator.ShiftOverride{
-			AppliesTo:      appliesTo,
-			ShiftSize:      override.ShiftSize,
-			Preallocations: pins,
+			AppliesTo: appliesTo,
+			ShiftSize: override.ShiftSize,
 		})
 
 		logger.Debug("Converted override",
 			zap.Int("index", i),
 			zap.String("rrule", override.RRule),
-			zap.Bool("has_shift_size", override.ShiftSize != nil),
-			zap.Int("preallocation_count", len(pins)))
+			zap.Bool("has_shift_size", override.ShiftSize != nil))
 	}
 
 	return result, nil
@@ -355,30 +357,14 @@ func convertRoles(roles model.Roles) []allocator.Role {
 	return converted
 }
 
-// convertConfigPreallocations lifts config pins into the allocator's own type.
-// Both allocation and the availability view build overrides from the same
-// config, so the mapping lives once.
-func convertConfigPreallocations(pins []config.Preallocation) []allocator.Preallocation {
-	converted := make([]allocator.Preallocation, 0, len(pins))
-	for _, pin := range pins {
-		converted = append(converted, allocator.Preallocation{
-			VolunteerID: pin.VolunteerID,
-			Custom:      pin.Custom,
-			Role:        pin.Role,
-		})
-	}
-	return converted
-}
-
-// configPreallocationsForDate collects the config-derived preallocations that
-// apply to a single date, mirroring InitShifts exactly: every matching override
-// appends its pins in order. Manual pins are deduped against exactly what
-// config already contributes for that date.
+// preallocationsForDate collects the preallocations that apply to a single date,
+// mirroring InitShifts exactly: every matching override appends its pins in
+// order.
 //
 // Whether the shift is closed plays no part here. Closure is a field on the
 // Shift now, so the shifts a caller is iterating already carry it, and
-// InitShifts strips the pins of a closed one wherever they came from.
-func configPreallocationsForDate(date string, overrides []allocator.ShiftOverride) []allocator.Preallocation {
+// InitShifts strips the pins of a closed one.
+func preallocationsForDate(date string, overrides []allocator.ShiftOverride) []allocator.Preallocation {
 	var pins []allocator.Preallocation
 	for _, o := range overrides {
 		if !o.AppliesTo(date) {
@@ -390,52 +376,32 @@ func configPreallocationsForDate(date string, overrides []allocator.ShiftOverrid
 }
 
 // exactDateMatcher returns an AppliesTo predicate matching exactly one date, so
-// a synthetic manual-preallocation override touches only its own shift.
+// a synthetic preallocation override touches only its own shift.
 func exactDateMatcher(date string) func(string) bool {
 	return func(d string) bool { return d == date }
 }
 
-// buildManualPreallocationOverrides turns each manual pin into a synthetic,
-// exact-date allocator.ShiftOverride so InitShifts unions them with the
-// config-derived overrides through its existing append semantics — no new merge
-// logic in the solver (issue #39 / ADR 0003). Manual is add-only: a pin that
-// duplicates a config contribution for the same date is dropped so it never
-// doubles a Seat. That is either the same subject — a person holds one Role on
-// a Shift, so a second pin naming them is not a second Seat — or a capped Role
-// config has already filled, since config stays authoritative for those. A pin
-// on a closed Shift is left alone here and stripped by InitShifts, alongside
-// the config pins on that date.
-func buildManualPreallocationOverrides(
-	manualPins []db.ManualPreallocation,
+// buildPreallocationOverrides turns each pin into a synthetic, exact-date
+// allocator.ShiftOverride so InitShifts applies them through its existing append
+// semantics — no new merge logic in the solver (issue #39 / ADR 0003).
+//
+// There is nothing to merge against any more: Config Preallocations were deleted
+// in issue #131, so the `preallocation` table is the whole set of pins a rota
+// has and the rules that kept the two sources apart went with the second source.
+// A pin on a closed Shift is left alone here and stripped by InitShifts.
+func buildPreallocationOverrides(
+	pins []db.Preallocation,
 	dateByShiftID map[string]string,
-	configOverrides []allocator.ShiftOverride,
-	roles model.Roles,
 ) ([]allocator.ShiftOverride, error) {
-	overrides := make([]allocator.ShiftOverride, 0, len(manualPins))
+	overrides := make([]allocator.ShiftOverride, 0, len(pins))
 
-	for _, pin := range manualPins {
+	for _, pin := range pins {
 		date, ok := dateByShiftID[pin.ShiftID]
 		if !ok {
-			return nil, fmt.Errorf("manual preallocation %s references shift %s with no minted date", pin.ID, pin.ShiftID)
+			return nil, fmt.Errorf("preallocation %s references shift %s with no minted date", pin.ID, pin.ShiftID)
 		}
 		if pin.VolunteerID == "" && pin.CustomValue == "" {
-			return nil, fmt.Errorf("manual preallocation %s has neither a volunteer nor a custom value", pin.ID)
-		}
-
-		configPins := configPreallocationsForDate(date, configOverrides)
-		if configPinsSubject(configPins, pin) {
-			continue // config already pins this person or entry here
-		}
-		if role, ok := roles.ByName(pin.Role); ok && role.Capped() {
-			filled := 0
-			for _, configPin := range configPins {
-				if configPin.Role == pin.Role {
-					filled++
-				}
-			}
-			if filled >= *role.Max {
-				continue // config has filled this Role's Seats
-			}
+			return nil, fmt.Errorf("preallocation %s has neither a volunteer nor a custom value", pin.ID)
 		}
 
 		overrides = append(overrides, allocator.ShiftOverride{
@@ -451,35 +417,22 @@ func buildManualPreallocationOverrides(
 	return overrides, nil
 }
 
-// configPinsSubject reports whether config already pins the same person or the
-// same custom entry, whatever Role it named them in.
-func configPinsSubject(configPins []allocator.Preallocation, pin db.ManualPreallocation) bool {
-	for _, configPin := range configPins {
-		if pin.VolunteerID != "" && configPin.VolunteerID == pin.VolunteerID {
-			return true
-		}
-		if pin.CustomValue != "" && configPin.Custom == pin.CustomValue {
-			return true
-		}
-	}
-	return false
-}
-
 // checkPreallocationsResolve verifies, before the solver runs, that every
 // preallocated volunteer still resolves to an active volunteer. A pin whose
 // volunteer has gone inactive or been deleted would otherwise surface as the
 // solver's opaque ProblemError; here it fails loudly, naming the offending
-// pin(s). It covers both manual pins and config preallocations (ADR 0003 asks
-// the check to shield config too). Custom (non-volunteer) pins carry no id and
-// are not checked.
+// pin(s). Custom (non-volunteer) pins carry no id and are not checked.
 //
-// Closed shifts are skipped on both sides: InitShifts strips their pins, so a
-// stale one there reaches neither the solver nor anything else, and reporting
-// it would block a rota over a pin that has no effect.
+// It matters most for the pins nobody typed recently: a Standing Preallocation
+// seeds one at definition and an admin may not look at it again before
+// allocating, by which time the person can have left.
+//
+// Closed shifts are skipped: InitShifts strips their pins, so a stale one there
+// reaches neither the solver nor anything else, and reporting it would block a
+// rota over a pin that has no effect.
 func checkPreallocationsResolve(
-	manualPins []db.ManualPreallocation,
+	pins []db.Preallocation,
 	shifts []db.Shift,
-	configOverrides []allocator.ShiftOverride,
 	activeIDs map[string]bool,
 ) error {
 	var offenders []string
@@ -491,7 +444,7 @@ func checkPreallocationsResolve(
 		}
 	}
 
-	for _, pin := range manualPins {
+	for _, pin := range pins {
 		if pin.VolunteerID == "" {
 			continue
 		}
@@ -500,23 +453,7 @@ func checkPreallocationsResolve(
 			continue
 		}
 		if !activeIDs[pin.VolunteerID] {
-			offenders = append(offenders, fmt.Sprintf("manual pin for %s: volunteer %s is not active", date, pin.VolunteerID))
-		}
-	}
-
-	for _, s := range shifts {
-		if s.Closed {
-			continue
-		}
-		for _, o := range configOverrides {
-			if !o.AppliesTo(s.Date) {
-				continue
-			}
-			for _, pin := range o.Preallocations {
-				if pin.VolunteerID != "" && !activeIDs[pin.VolunteerID] {
-					offenders = append(offenders, fmt.Sprintf("config pin for %s: %s %s is not active", s.Date, strings.ToLower(pin.Role), pin.VolunteerID))
-				}
-			}
+			offenders = append(offenders, fmt.Sprintf("pin for %s: volunteer %s is not active", date, pin.VolunteerID))
 		}
 	}
 
