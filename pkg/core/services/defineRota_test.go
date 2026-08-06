@@ -295,8 +295,8 @@ func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
 
 // A deployment whose admin has not filled the settings in yet still defines
 // rotas: incomplete settings block allocation and nothing else (ADR 0006). The
-// shifts are minted without times, which the expand phase tolerates because
-// shift.date is still what every reader reads.
+// shifts are minted without times, which is tolerable while the date column
+// survives to carry those rows' dates — #135 is where it stops being.
 func TestDefineRota_UnsetDefaultsMintUntimedShifts(t *testing.T) {
 	mock := &mockDB{}
 

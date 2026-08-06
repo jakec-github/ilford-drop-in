@@ -13,11 +13,12 @@ type shiftResponse struct {
 	// external language everywhere else, but identity is the UUID (ADR 0001).
 	ID   string `json:"id"`
 	Date string `json:"date"`
-	// Start and End are the moments the shift runs between, read from the
-	// drop-in's settings. Empty when an admin has not set the shift times yet:
-	// the date is still known, and a rota that says which day but not which
-	// hour is better than one that will not load. Incomplete settings block
-	// allocation and nothing else (ADR 0006).
+	// Start and End are the moments the shift runs between: the shift's own
+	// local times, read in the drop-in's timezone (ADR 0007). Empty when the
+	// shift was minted before an admin set the shift times: the date is still
+	// known, and a rota that says which day but not which hour is better than
+	// one that will not load. Incomplete settings block allocation and nothing
+	// else (ADR 0006).
 	Start     string             `json:"start"`
 	End       string             `json:"end"`
 	Closed    bool               `json:"closed"`
@@ -50,7 +51,8 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read once for the whole listing rather than per shift: it is one row, and
-	// every shift in a rota runs at the same time of day.
+	// the only thing wanted from it is the zone the shifts' own times are read
+	// in.
 	defaults, err := services.RotaDefaults(r.Context(), h.store)
 	if err != nil {
 		h.writeServiceError(w, err)
@@ -60,8 +62,8 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 	resp := listShiftsResponse{Shifts: make([]shiftResponse, 0, len(shifts))}
 	for _, shift := range shifts {
 		var start, end string
-		if defaults.HasShiftTimes() {
-			startAt, endAt, err := defaults.ShiftTimes(shift.Date)
+		if shift.StartAt != "" {
+			startAt, endAt, err := defaults.ShiftInstants(shift.StartAt, shift.EndAt)
 			if err != nil {
 				h.writeServiceError(w, err)
 				return

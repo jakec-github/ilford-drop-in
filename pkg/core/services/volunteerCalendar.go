@@ -20,9 +20,11 @@ const calendarRefreshInterval = "PT6H"
 // duplicating them, SEQUENCE increases with each alteration to the shift, and
 // DTSTAMP only changes when the shift changes.
 //
-// The times come from the settings an admin keeps rather than from the config
-// file (ADR 0006), so a change to when the drop-in runs reaches every
-// subscriber on their next poll instead of at the next deploy.
+// The times come from each shift, which carries the local hours it runs
+// between (ADR 0007). The settings supply the zone those hours are read in, so
+// a subscriber in another country sees the evening at their own reckoning of
+// it, and a shift already minted keeps the hours it was planned for even after
+// an admin moves the drop-in's default times.
 func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, defaults model.RotaDefaults) (string, error) {
 	cal := ics.NewCalendar()
 	cal.SetProductId("-//ilford-drop-in//EN")
@@ -49,7 +51,7 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 		}
 
 		event := cal.AddEvent(fmt.Sprintf("%s-%s@ilford-drop-in", volunteer.ID, shift.Date))
-		stamp, err := setEventDates(event, shift.Date, defaults)
+		stamp, err := setEventDates(event, shift, defaults)
 		if err != nil {
 			return "", err
 		}
@@ -71,16 +73,16 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 // setEventDates gives one event its span and reports the moment DTSTAMP falls
 // back to for an unaltered shift.
 //
-// A drop-in whose shift times an admin has not set yet gets an all-day event on
-// the date. That is the honest rendering — the day is known and the hours are
-// not — and it keeps the promise that incomplete settings block allocation and
-// nothing else: a volunteer's subscription still works, and gains its hours the
-// moment the settings are filled in.
-func setEventDates(event *ics.VEvent, date string, defaults model.RotaDefaults) (time.Time, error) {
-	if !defaults.HasShiftTimes() {
-		day, err := time.Parse("2006-01-02", date)
+// A shift minted before an admin set the drop-in's shift times carries none,
+// and gets an all-day event on its date. That is the honest rendering — the day
+// is known and the hours are not — and it keeps the promise that incomplete
+// settings block allocation and nothing else: a volunteer's subscription still
+// works.
+func setEventDates(event *ics.VEvent, shift Shift, defaults model.RotaDefaults) (time.Time, error) {
+	if shift.StartAt == "" {
+		day, err := time.Parse("2006-01-02", shift.Date)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to read the date of shift %s: %w", date, err)
+			return time.Time{}, fmt.Errorf("failed to read the date of shift %s: %w", shift.Date, err)
 		}
 		event.SetAllDayStartAt(day)
 		// DTEND is exclusive for an all-day event: the day after is what makes
@@ -89,9 +91,9 @@ func setEventDates(event *ics.VEvent, date string, defaults model.RotaDefaults) 
 		return day, nil
 	}
 
-	start, end, err := defaults.ShiftTimes(date)
+	start, end, err := defaults.ShiftInstants(shift.StartAt, shift.EndAt)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to compute times for shift %s: %w", date, err)
+		return time.Time{}, fmt.Errorf("failed to read the times of shift %s: %w", shift.Date, err)
 	}
 	event.SetStartAt(start)
 	event.SetEndAt(end)

@@ -120,3 +120,45 @@ func TestShiftTimestampsRefuses(t *testing.T) {
 	_, _, err = defaults.ShiftTimestamps("13/07/2026")
 	assert.Error(t, err)
 }
+
+// A Shift's own times are read in the drop-in's zone, so the same stored 19:30
+// is a different moment in winter and in summer — the conversion the calendar
+// feed and the shift listing both need (issue #134, ADR 0007).
+func TestShiftInstantsReadTheStoredTimesInTheZone(t *testing.T) {
+	var defaults model.RotaDefaults
+
+	// GMT: London is UTC+0.
+	start, end, err := defaults.ShiftInstants("2026-01-11T19:30:00", "2026-01-11T21:30:00")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-01-11T19:30:00Z", start.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-01-11T21:30:00Z", end.UTC().Format(time.RFC3339))
+
+	// BST: London is UTC+1.
+	start, end, err = defaults.ShiftInstants("2026-07-12T19:30:00", "2026-07-12T21:30:00")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-12T18:30:00Z", start.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-07-12T20:30:00Z", end.UTC().Format(time.RFC3339))
+}
+
+// The zone an admin chose is what the stored times are read in. Unlike
+// ShiftTimes this needs no shift-time settings at all: the times come from the
+// Shift, and the settings supply only the zone to read them in.
+func TestShiftInstantsUseTheChosenZone(t *testing.T) {
+	defaults := model.RotaDefaults{ShiftTimezone: "Pacific/Auckland"}
+
+	start, _, err := defaults.ShiftInstants("2026-07-12T19:30:00", "2026-07-12T21:30:00")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-12T07:30:00Z", start.UTC().Format(time.RFC3339))
+}
+
+// A Shift with no times has no moments, and says so rather than answering with
+// a midnight nobody chose. Callers render such a Shift by leaving the time out.
+func TestShiftInstantsRefuseAnUntimedShift(t *testing.T) {
+	var defaults model.RotaDefaults
+
+	_, _, err := defaults.ShiftInstants("", "")
+	assert.Error(t, err)
+
+	_, _, err = defaults.ShiftInstants("2026-07-12 19:30", "2026-07-12T21:30:00")
+	assert.Error(t, err, "a timestamp that is not in ShiftTimestampLayout is unreadable")
+}

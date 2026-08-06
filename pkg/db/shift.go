@@ -16,6 +16,22 @@ import (
 // hold (ADR 0007).
 const shiftTimestampLayout = "2006-01-02T15:04:05"
 
+// shiftDateExpr is where a Shift's date comes from: the date of the evening it
+// starts (ADR 0007). Written against a shift aliased `s`, so every query that
+// wants a date — selecting it, ordering by it, bounding a range with it — spells
+// it the same way and none of them can drift apart.
+//
+// The COALESCE is the migrate phase showing (issue #134). A Shift minted before
+// an admin set the drop-in's shift times has no start to take a date from, and
+// the column it was minted with is still the only answer for those rows.
+// Nothing above this package sees the difference. Issue #135 makes a Shift
+// without times impossible and drops both the column and this fallback, which
+// is the last read of shift.date anywhere.
+//
+// `start_at::date` is IMMUTABLE, which is what lets #135 put a unique index on
+// it; the timestamptz equivalent is only STABLE and could not be indexed.
+const shiftDateExpr = "COALESCE(s.start_at::date, s.date)"
+
 // localTimestamp renders a nullable TIMESTAMP column. NULL reads as the empty
 // string, which is how this package spells a Shift whose times have never been
 // set — pgx hands back a zero time.Time otherwise, and midnight is a time the
@@ -32,10 +48,10 @@ func localTimestamp(t *time.Time) string {
 // instead (ADR 0001).
 func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, date, rota_id, closed, start_at, end_at
-		FROM shift
-		WHERE rota_id = $1
-		ORDER BY date
+		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
+		FROM shift s
+		WHERE s.rota_id = $1
+		ORDER BY `+shiftDateExpr+`
 	`, rotaID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts for rota %s: %w", rotaID, err)
@@ -78,11 +94,11 @@ type ShiftInRange struct {
 func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
 	where, args := shiftDateWhere(from, to)
 	rows, err := d.pool.Query(ctx, `
-		SELECT s.id, s.date, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
+		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 	`+where+`
-		ORDER BY s.date
+		ORDER BY `+shiftDateExpr+`
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts in range: %w", err)
@@ -117,11 +133,11 @@ func shiftDateWhere(from, to time.Time) (string, []any) {
 	var args []any
 	if !from.IsZero() {
 		args = append(args, from)
-		conds = append(conds, fmt.Sprintf("s.date >= $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("%s >= $%d", shiftDateExpr, len(args)))
 	}
 	if !to.IsZero() {
 		args = append(args, to)
-		conds = append(conds, fmt.Sprintf("s.date <= $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("%s <= $%d", shiftDateExpr, len(args)))
 	}
 	if len(conds) == 0 {
 		return "", nil
@@ -137,9 +153,9 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 	var d0 time.Time
 	var startAt, endAt *time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT id, date, rota_id, closed, start_at, end_at
-		FROM shift
-		WHERE date = $1
+		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
+		FROM shift s
+		WHERE `+shiftDateExpr+` = $1
 	`, date).Scan(&s.ID, &d0, &s.RotaID, &s.Closed, &startAt, &endAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -161,7 +177,7 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 	var date time.Time
 	var startAt, endAt *time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT s.id, s.date, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
+		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 		WHERE s.id = $1

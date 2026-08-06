@@ -17,7 +17,11 @@ type Rotation struct {
 type Shift struct {
 	ID     string // UUID
 	RotaID string // UUID
-	Date   string // DATE
+	// Date is the day the session runs, "2006-01-02". On the way out it is
+	// derived from StartAt rather than stored (shiftDateExpr, ADR 0007); on the
+	// way in it still writes the column that #135 drops. Nothing above this
+	// package can tell the difference, which is what makes the swap safe.
+	Date string
 	// Closed is a date the drop-in does not run — a holiday closure. Set by
 	// hand while the rota is unallocated and false at mint; there is no stored
 	// list of known closure dates (issue #132, amending ADR 0001).
@@ -29,8 +33,8 @@ type Shift struct {
 	// about Ilford rather than an instant on a global timeline (ADR 0007).
 	//
 	// Both are empty or neither is, which the database enforces. Empty means a
-	// Shift minted before the drop-in's default times were set; Date is still
-	// the authoritative source for every reader until #134 moves them over.
+	// Shift minted before the drop-in's default times were set: it still has a
+	// Date, from the column, and #135 is where that state stops being reachable.
 	StartAt string // TIMESTAMP, empty string if NULL
 	EndAt   string // TIMESTAMP, empty string if NULL
 }

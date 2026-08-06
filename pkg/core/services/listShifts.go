@@ -46,8 +46,15 @@ type ShiftAssignee struct {
 // included (their rota has not been allocated yet), carrying Allocated=false and
 // no assignees.
 type Shift struct {
-	ID              string // UUID; how a client addresses the shift to change it
-	Date            string // YYYY-MM-DD
+	ID   string // UUID; how a client addresses the shift to change it
+	Date string // YYYY-MM-DD, the date the shift starts
+	// StartAt and EndAt are the shift's own local wall-clock times,
+	// "2006-01-02T15:04:05", carrying no zone (ADR 0007). Both empty means a
+	// shift minted before an admin set the drop-in's times; readers that need a
+	// moment turn these into one with model.RotaDefaults.ShiftInstants, and
+	// leave the time out when they are empty.
+	StartAt         string
+	EndAt           string
 	Closed          bool
 	Allocated       bool // rota's allocated_datetime is set; assignees are meaningful only when true
 	Assignees       []ShiftAssignee
@@ -140,6 +147,8 @@ func ListShifts(
 		shift := Shift{
 			ID:              s.ID,
 			Date:            s.Date,
+			StartAt:         s.StartAt,
+			EndAt:           s.EndAt,
 			Closed:          s.Closed,
 			Allocated:       s.Allocated,
 			AlterationCount: alterationCounts[s.ID],
