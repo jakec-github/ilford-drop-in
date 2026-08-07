@@ -110,17 +110,21 @@ func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error 
 // nothing more — the answers inside it are the domain's, and a column that
 // vetted them would have to be migrated every time a constraint arrived, which
 // is precisely what storing them as JSON avoids.
+// Which rules apply is an allocator input, so saving them makes the rota in
+// flight's draft stale (issue #142).
 func (d *DB) SaveAllocationSettings(ctx context.Context, settings string) error {
-	_, err := d.pool.Exec(ctx, `
-		INSERT INTO rota_defaults (id, allocation_settings)
-		VALUES (TRUE, NULLIF($1, '')::jsonb)
-		ON CONFLICT (id) DO UPDATE SET
-			allocation_settings = EXCLUDED.allocation_settings
-	`, settings)
-	if err != nil {
-		return fmt.Errorf("failed to save allocation settings: %w", err)
-	}
-	return nil
+	return d.inTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO rota_defaults (id, allocation_settings)
+			VALUES (TRUE, NULLIF($1, '')::jsonb)
+			ON CONFLICT (id) DO UPDATE SET
+				allocation_settings = EXCLUDED.allocation_settings
+		`, settings)
+		if err != nil {
+			return fmt.Errorf("failed to save allocation settings: %w", err)
+		}
+		return markAllRotaInputsChanged(ctx, tx)
+	})
 }
 
 // deref reads a nullable text column as the empty string, which is how this

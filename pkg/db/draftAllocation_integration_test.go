@@ -82,6 +82,65 @@ func TestReplaceDraftRotaAllocation(t *testing.T) {
 	assert.Empty(t, none)
 }
 
+// What a draft records about its own freshness round-trips: the Rotation's
+// inputs stamp as it stood when the solve began, and what the solve was asked
+// for against what it managed (issue #142).
+//
+// The stamp is stored as the Rotation holds it, NULL and all, so that a draft of
+// a rota nothing has moved under reads as equal to it rather than as dirty
+// forever.
+func TestReplaceDraftRotaAllocationRecordsFreshness(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rota, first, _ := draftFixture(t, database)
+
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
+		RotaID:       rota.ID,
+		SolvedAt:     time.Now().UTC(),
+		Success:      true,
+		SolverStatus: "OPTIMAL",
+		Diagnostics:  []byte(`{}`),
+		SeatsAsked:   10,
+		SeatsFilled:  7,
+	}, []db.DraftAllocation{
+		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+	}))
+
+	draft, err := database.GetDraftRotaAllocation(ctx, rota.ID)
+	require.NoError(t, err)
+	require.NotNil(t, draft)
+	assert.True(t, draft.InputsChangedAt.IsZero(), "nothing had moved under the rota when it was solved")
+	assert.Equal(t, 10, draft.SeatsAsked)
+	assert.Equal(t, 7, draft.SeatsFilled, "three Seats short, and the draft says so on its own")
+
+	// Now something moves, and the draft is solved again against the stamp it
+	// read on the way in.
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		_, err := tx.SetShiftClosed(ctx, first.ID, true)
+		return err
+	}))
+	inFlight, err := database.GetRotaInFlight(ctx)
+	require.NoError(t, err)
+	require.False(t, inFlight.InputsChangedAt.IsZero())
+
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
+		RotaID:          rota.ID,
+		SolvedAt:        time.Now().UTC(),
+		Success:         true,
+		SolverStatus:    "OPTIMAL",
+		Diagnostics:     []byte(`{}`),
+		InputsChangedAt: inFlight.InputsChangedAt,
+		SeatsAsked:      5,
+		SeatsFilled:     5,
+	}, nil))
+
+	draft, err = database.GetDraftRotaAllocation(ctx, rota.ID)
+	require.NoError(t, err)
+	require.NotNil(t, draft)
+	assert.True(t, draft.InputsChangedAt.Equal(inFlight.InputsChangedAt),
+		"the draft caught up with the Rotation, which is what makes it clean again")
+}
+
 // A Rotation nobody has solved for has no draft, which is an ordinary answer
 // rather than an error — it is where every rota starts.
 func TestGetDraftRotaAllocationUnsolved(t *testing.T) {

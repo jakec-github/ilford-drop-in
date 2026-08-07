@@ -110,18 +110,31 @@ func insertPreallocation(ctx context.Context, q querier, mp Preallocation) error
 	if err != nil {
 		return fmt.Errorf("failed to insert preallocation: %w", err)
 	}
-	return nil
+	// A pin is an allocator input twice over — it fills a Seat and it grants the
+	// Role it names (issue #109) — so the rota's draft is stale for it.
+	return markRotaInputsChangedForShift(ctx, q, mp.ShiftID)
 }
 
 // deletePreallocationByID removes the row with the given id, reporting
 // whether a row was actually deleted (false lets a caller distinguish a
 // concurrent delete from success).
+//
+// The shift comes back with it so the rota's draft can be stamped stale:
+// unpinning changes the problem exactly as pinning does, and after the delete
+// there is no row left to ask which Shift it was on.
 func deletePreallocationByID(ctx context.Context, q querier, id string) (bool, error) {
-	tag, err := q.Exec(ctx, `DELETE FROM preallocation WHERE id = $1`, id)
+	var shiftID string
+	err := q.QueryRow(ctx, `DELETE FROM preallocation WHERE id = $1 RETURNING shift_id`, id).Scan(&shiftID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("failed to delete preallocation %s: %w", id, err)
 	}
-	return tag.RowsAffected() > 0, nil
+	if err := markRotaInputsChangedForShift(ctx, q, shiftID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // rotaAllocated reports whether the rotation has been allocated (its

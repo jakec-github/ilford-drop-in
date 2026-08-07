@@ -59,6 +59,10 @@ type Handler struct {
 	// sends holds the availability sends in flight. They are jobs rather than
 	// requests because a round takes about ninety seconds — see sendjobs.go.
 	sends *sendJobs
+	// drafts is the one solve slot draft solves take turns in, so that two
+	// admins reading the rota at once do not start two solvers over the same
+	// inputs — see draftsolves.go.
+	drafts *draftSolves
 }
 
 // NewHandler creates an API handler with its dependencies. frontend is the
@@ -82,6 +86,7 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 		logger:     logger,
 		newMailer:  newMailer,
 		sends:      newSendJobs(),
+		drafts:     newDraftSolves(),
 	}
 
 	// The gmail.send grant comes back through the login callback, which the
@@ -154,13 +159,21 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("DELETE /rotations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDiscardRota)))
 	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has
-	// decided yet, and it is replaced wholesale every few hours. Publishing one
-	// would tell a volunteer they are working a shift they may well not be
-	// (ADR 0008).
+	// decided yet, and it is replaced wholesale every time an input moves.
+	// Publishing one would tell a volunteer they are working a shift they may
+	// well not be (ADR 0008).
 	//
 	// Singular because there is one, for the one unallocated Rotation. POST
 	// rather than PUT: the request states no body — the inputs are already in
 	// the database — and what comes back is a solve that has just run.
+	//
+	// The GET beside it reads the draft's state, and re-solves first when the
+	// inputs have moved (issue #142) — which is why it is here rather than a
+	// field of some other read: solving on a GET is a surprising thing for an
+	// endpoint to do, and it should be the endpoint that is plainly about the
+	// draft that does it. The POST re-solves whether or not anything moved,
+	// for the changes no stamp can catch: the roster is a Google Sheet.
+	api.Handle("GET /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleGetDraftRotaAllocation)))
 	api.Handle("POST /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people

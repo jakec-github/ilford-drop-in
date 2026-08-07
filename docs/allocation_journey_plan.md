@@ -26,9 +26,9 @@ which is why the screen is a screen and not a wizard.
 2. **Prepare.** Per-Shift edits while the Rotation is unallocated: Shape, open
    or closed, start and end, pins.
 3. **Ask.** The availability round is minted and sent, as today.
-4. **Watch.** A Draft Rota Allocation is re-solved on a six-hourly tick and on
-   demand, shown in the rota view as dashed-border chips, with its solve
-   outcome and whether inputs have moved since.
+4. **Watch.** A Draft Rota Allocation is re-solved when it is read and its
+   inputs have moved, and on demand, shown in the rota view as dashed-border
+   chips, with its solve outcome and whether inputs have moved since.
 5. **Allocate.** Re-solve, compare the result against the draft, commit and
    stamp on a match. From here the rota is the rota, changes are Alterations,
    and the next rota can be defined.
@@ -123,8 +123,8 @@ Defaults land first and #90's table is seeded from the default Shape on day one.
    unallocated. Supersedes #90.
 5. **Rota lifecycle.** One rota in flight, discard, and the define screen.
 6. **Draft Rota Allocations.** `draft_allocation` table, solve outcome, dirty
-   flag, six-hourly tick, dashed chips in the rota view, and allocation by
-   output-hash comparison; `allocate_rota` deleted.
+   inputs stamp, re-solve on read, dashed chips in the rota view, and allocation
+   by output-hash comparison; `allocate_rota` deleted.
 7. **The Allocation tab.** Merges the Rota and Availability tabs into one
    two-state screen; `define_rota` deleted.
 

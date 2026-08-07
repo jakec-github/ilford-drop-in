@@ -107,5 +107,11 @@ func setShiftShape(ctx context.Context, q querier, shiftID string, seats []Shift
 	if err := insertShiftRequirements(ctx, q, seats); err != nil {
 		return false, err
 	}
+
+	// What a Shift asks for is the question the solver answers, so the rota's
+	// draft no longer speaks for it (issue #142).
+	if err := markRotaInputsChangedForShift(ctx, q, shiftID); err != nil {
+		return false, err
+	}
 	return true, nil
 }

@@ -1,6 +1,7 @@
 # Draft Rota Allocations live in their own table and are confirmed by output hash
 
-Status: accepted
+Status: accepted. Amended 2026-08-07: drafts re-solve when they are read, not on
+a timer (#142) — see "Re-solves happen when a draft is read".
 
 An unallocated Rotation continuously carries a **Draft Rota Allocation**: a
 speculative rota the solver produces from whatever availability, Shapes and
@@ -35,13 +36,29 @@ only if the fresh result hashes identically to the draft the admin was shown.
   `FOR UPDATE` guard in `InsertAllocationsAndSetAllocated` (#8). Allocation
   cannot half-happen and cannot race.
 
-- **Re-solves are periodic and manual, not per-write.** A dirty flag on the
-  rotation records that inputs have moved, and drives what the admin is told;
-  the solve itself runs on a hard-coded six-hourly tick and on demand. The tick
-  is **not** gated on the flag, because the roster is a Google Sheet with no
-  change notification — a new volunteer or a newly held Role sets nothing, and
-  that is exactly the change an admin could not have predicted. A solve is a
-  capped subprocess on an otherwise idle droplet.
+- **Re-solves happen when a draft is read, not per-write.** The Rotation records
+  when an allocator input last moved; a draft keeps the stamp it read when its
+  solve began, and the two disagreeing is what "dirty" means. Reading the draft
+  re-solves it when it is dirty, and reports it as it stands when it is not.
+
+  *Amended 2026-08-07 (#142). The superseded design* was a hard-coded six-hourly
+  tick, deliberately ungated on the flag. It was dropped for the simpler thing
+  once a solve turned out to be quick enough to sit on a request: a timer solves
+  a rota nobody is looking at, and is stale again by the time somebody is. A read
+  is the moment the answer is actually wanted. What the tick was for — the
+  roster, a Google Sheet with no change notification, where a new volunteer or a
+  newly held Role moves no stamp here — is served by the manual re-solve control
+  instead, which solves whether or not anything is known to have moved.
+
+  Dirtiness is derived from two stamps rather than stored as a flag a solve
+  clears. A flag would be cleared by the solve that ran, taking with it any
+  change that landed during it — thirty seconds is long enough for one — whereas
+  a change that moves the Rotation's stamp past the one the draft captured simply
+  leaves the draft dirty, costing a re-solve rather than losing the change.
+
+  One solve runs at a time per process. A reader arriving while one is running is
+  given the draft as it stands, told a solve is in flight, and left to ask
+  again — not queued behind a subprocess that is already computing its answer.
 
 - **Drafts are read-only.** No drag-and-drop before allocation: a hand
   placement would be destroyed by the next solve. The durable way to say "put
