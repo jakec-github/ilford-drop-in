@@ -95,6 +95,40 @@ type Allocation struct {
 	CustomEntry string
 }
 
+// DraftRotaAllocation is a Rotation's Draft Rota Allocation: the speculative
+// rota solved from whatever availability, Shapes and pins existed at the time,
+// replaced entire each time it is solved (ADR 0008). One per Rotation, and only
+// ever for an unallocated one.
+//
+// It is the draft's outcome rather than its content — the Seats are
+// DraftAllocation rows — because an infeasible solve and a rota nobody has
+// solved yet both store no Seats, and an admin needs to tell those apart.
+type DraftRotaAllocation struct {
+	RotaID       string // UUID
+	SolvedAt     time.Time
+	Success      bool
+	SolverStatus string
+	// ObjectiveValue is what the solver scored the rota it found. It is
+	// meaningless when Success is false.
+	ObjectiveValue int
+	// Diagnostics is the solver's own diagnostic bag, stored and returned as
+	// the JSON it arrived as. This package never looks inside it: the shape
+	// belongs to the allocator, which this layer does not import.
+	Diagnostics []byte
+}
+
+// DraftAllocation is one Seat of a Draft Rota Allocation: exactly the shape of
+// an Allocation, because it becomes one when the rota is allocated. Like
+// Allocation it is keyed solely by ShiftID; rota and date live on the
+// referenced shift (ADR 0001).
+type DraftAllocation struct {
+	ID          string // UUID
+	ShiftID     string // UUID
+	Role        string
+	VolunteerID string
+	CustomEntry string
+}
+
 // Preallocation represents a database preallocation record: a person pinned to
 // a shift before allocation runs. Like Allocation it is keyed solely by ShiftID;
 // rota and date live on the referenced shift (ADR 0001). It mirrors the

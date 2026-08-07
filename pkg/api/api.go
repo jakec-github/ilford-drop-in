@@ -21,6 +21,7 @@ type Store interface {
 	services.ChangeRotaStore
 	services.DefaultShapeWriteStore
 	services.DefineRotaStore
+	services.DraftRotaAllocationStore
 	services.ListShiftsStore
 	services.PreallocationStore
 	services.RoleWriteStore
@@ -135,6 +136,16 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("PUT /rota-defaults/shape", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveDefaultShape)))
 	api.Handle("PUT /rota-defaults/allocation-settings", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveAllocationSettings)))
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
+	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
+	// the point: a draft names people against Shifts on a rota nobody has
+	// decided yet, and it is replaced wholesale every few hours. Publishing one
+	// would tell a volunteer they are working a shift they may well not be
+	// (ADR 0008).
+	//
+	// Singular because there is one, for the one unallocated Rotation. POST
+	// rather than PUT: the request states no body — the inputs are already in
+	// the database — and what comes back is a solve that has just run.
+	api.Handle("POST /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people
 	// against dates whose rota has not been allocated, let alone published, and
