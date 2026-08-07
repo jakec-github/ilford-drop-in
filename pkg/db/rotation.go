@@ -137,9 +137,13 @@ func (d *DB) GetRotaInFlight(ctx context.Context) (*RotaInFlight, error) {
 // fails, the transaction rolls back and nothing is lost. A silent cascade there
 // would be the one bug worth being loud about.
 //
-// shift_requirement is absent for the opposite reason: it is declared ON DELETE
-// CASCADE because a Shape is part of its Shift rather than something that
-// outlives one, so deleting the shifts takes their Shapes with them.
+// Three tables are absent for the opposite reason, each declared ON DELETE
+// CASCADE by the migration that added it, and each because the row is part of
+// something this deletes rather than something that outlives it:
+// shift_requirement (a Shape belongs to its Shift), draft_allocation (a draft
+// Seat likewise), and draft_rota_allocation (a Draft Rota Allocation belongs to
+// its Rotation). `allocation` deliberately does not cascade — those rows are the
+// record of a rota that ran.
 var discardStatements = []string{
 	`DELETE FROM shift_availability
 	 WHERE response_id IN (
@@ -160,9 +164,10 @@ var discardStatements = []string{
 }
 
 // DiscardRota destroys an unallocated Rotation and everything hanging off it —
-// its Shifts, their Shapes, its Preallocations, its availability round and every
-// response to it — in one transaction. It reports whether a rotation with that
-// id existed, and ErrRotaAllocated when it did but has been allocated.
+// its Shifts, their Shapes, its Preallocations, its Draft Rota Allocation, its
+// availability round and every response to it — in one transaction. It reports
+// whether a rotation with that id existed, and ErrRotaAllocated when it did but
+// has been allocated.
 //
 // One transaction is the whole point: a rota half-discarded is worse than either
 // state it lies between — shifts with no rotation, or a rotation whose round

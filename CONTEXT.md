@@ -32,8 +32,8 @@ _Avoid_: current rota, active rota, draft rota (which is a Draft Rota Allocation
 
 **Discard**:
 Destroying the Rota in Flight and everything hanging off it — its Shifts, their
-Shapes, its Preallocations, its Availability Round and every response to it — in
-one transaction. Offered at any point before allocation, including after the
+Shapes, its Preallocations, its Draft Rota Allocation, its Availability Round and
+every response to it — in one transaction. Offered at any point before allocation, including after the
 round has gone out, behind a confirmation naming how many volunteers' answers
 will be lost. An allocated Rotation is never Discarded; the tool for changing one
 is an Alteration.

@@ -150,6 +150,20 @@ func TestDiscardRota(t *testing.T) {
 		[]db.ShiftAnswer{{ShiftID: doomedShifts[0].ID, Answer: "YES"}, {ShiftID: doomedShifts[1].ID, Answer: "YES"}})
 	require.NoError(t, err)
 
+	// A Draft Rota Allocation on each. Both cascade rather than being deleted
+	// here — the draft from its Rotation, its Seats from their Shifts (issue
+	// #141) — so this is what proves the cascade is really wired up and a
+	// discard does not leave a draft naming a rota that is not there.
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx,
+		db.DraftRotaAllocation{RotaID: keeper.ID, SolvedAt: time.Now(), Success: true, SolverStatus: "OPTIMAL", Diagnostics: []byte(`{}`)},
+		[]db.DraftAllocation{{ID: uuid.New().String(), ShiftID: keeperShift.ID, Role: roles[0].Name, VolunteerID: "alice"}}))
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx,
+		db.DraftRotaAllocation{RotaID: doomed.ID, SolvedAt: time.Now(), Success: true, SolverStatus: "OPTIMAL", Diagnostics: []byte(`{}`)},
+		[]db.DraftAllocation{
+			{ID: uuid.New().String(), ShiftID: doomedShifts[0].ID, Role: roles[0].Name, VolunteerID: "bob"},
+			{ID: uuid.New().String(), ShiftID: doomedShifts[1].ID, Role: roles[0].Name, VolunteerID: "alice"},
+		}))
+
 	discarded, err := database.DiscardRota(ctx, doomed.ID)
 	require.NoError(t, err)
 	assert.True(t, discarded)
@@ -181,6 +195,13 @@ func TestDiscardRota(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, stale, "a link to a discarded rota resolves to nothing")
 
+	draft, err := database.GetDraftRotaAllocation(ctx, doomed.ID)
+	require.NoError(t, err)
+	assert.Nil(t, draft, "a Draft Rota Allocation does not outlive the Rotation it drafts")
+	draftSeats, err := database.GetDraftAllocationsByShiftIDs(ctx, []string{doomedShifts[0].ID, doomedShifts[1].ID})
+	require.NoError(t, err)
+	assert.Empty(t, draftSeats)
+
 	// The neighbour is untouched, top to bottom.
 	keptShifts, err := database.GetShiftsByRotaID(ctx, keeper.ID)
 	require.NoError(t, err)
@@ -197,6 +218,12 @@ func TestDiscardRota(t *testing.T) {
 	keptAnswers, err := database.GetLatestAvailability(ctx, []string{keptRequests[0].ID}, nil)
 	require.NoError(t, err)
 	assert.Len(t, keptAnswers, 1, "the neighbour's answers survive")
+	keptDraft, err := database.GetDraftRotaAllocation(ctx, keeper.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, keptDraft, "and so does its draft")
+	keptDraftSeats, err := database.GetDraftAllocationsByShiftIDs(ctx, []string{keeperShift.ID})
+	require.NoError(t, err)
+	assert.Len(t, keptDraftSeats, 1)
 
 	// Nothing is in flight but the neighbour now.
 	inFlight, err := database.GetRotaInFlight(ctx)
