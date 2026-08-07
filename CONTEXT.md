@@ -23,6 +23,22 @@ A batch of consecutive Shifts over which availability is requested and allocatio
 runs. Its span and size are derived from the Shifts it minted. Rota is an
 acceptable alias.
 
+**Rota in Flight**:
+The one Rotation that has not been allocated yet. Defining a Rotation is refused
+while one exists, so there is at most one and every screen can address "the
+rota" without a picker. A Rotation stops being in flight by being allocated or
+by being Discarded.
+_Avoid_: current rota, active rota, draft rota (which is a Draft Rota Allocation)
+
+**Discard**:
+Destroying the Rota in Flight and everything hanging off it — its Shifts, their
+Shapes, its Preallocations, its Draft Rota Allocation, its Availability Round and
+every response to it — in one transaction. Offered at any point before allocation, including after the
+round has gone out, behind a confirmation naming how many volunteers' answers
+will be lost. An allocated Rotation is never Discarded; the tool for changing one
+is an Alteration.
+_Avoid_: delete rota, cancel rota
+
 **Role**:
 A job on a Shift — Team lead, Service volunteer, Food collector. A volunteer
 holds the Roles they will do, and only a holder may be allocated to one, bar a

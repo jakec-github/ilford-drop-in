@@ -26,6 +26,7 @@ type Store interface {
 	services.PreallocationStore
 	services.RoleWriteStore
 	services.RotaDefaultsStore
+	services.RotaLifecycleStore
 	services.RotaDefaultsWriteStore
 	services.UpdateShiftStore
 	services.StandingPreallocationStore
@@ -135,7 +136,15 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("PUT /rota-defaults/shift-times", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
 	api.Handle("PUT /rota-defaults/shape", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveDefaultShape)))
 	api.Handle("PUT /rota-defaults/allocation-settings", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveAllocationSettings)))
+	// The rota's own lifecycle. One rota is in flight at a time, so the read is
+	// a singleton at a fixed path rather than a listing: there is nothing to
+	// pick between, which is the whole point of the rule (issue #139). It does
+	// not collide with the DELETE below — the two differ in method, so no
+	// request matches both, and there is no GET /rotations/{id} for "in-flight"
+	// to be mistaken for an id under.
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
+	api.Handle("GET /rotations/in-flight", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaInFlight)))
+	api.Handle("DELETE /rotations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDiscardRota)))
 	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has
 	// decided yet, and it is replaced wholesale every few hours. Publishing one

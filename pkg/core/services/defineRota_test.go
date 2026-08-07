@@ -142,18 +142,22 @@ func TestDefineRota_NoExistingRotations(t *testing.T) {
 func TestDefineRota_WithExistingRotations(t *testing.T) {
 	existingStart := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC) // Sunday, Jan 5, 2025
 	mock := definableMock()
+	// Both allocated: a rota may only be defined when none is in flight, so
+	// every fixture here is a rota that has already been run (issue #139).
 	mock.rotations = []db.Rotation{
 		{
-			ID:         "existing-1",
-			Start:      "2024-12-15", // Older rotation
-			End:        "2025-02-02",
-			ShiftCount: 8,
+			ID:                "existing-1",
+			Start:             "2024-12-15", // Older rotation
+			End:               "2025-02-02",
+			ShiftCount:        8,
+			AllocatedDatetime: "2024-12-01T09:00:00Z",
 		},
 		{
-			ID:         "existing-2",
-			Start:      existingStart.Format("2006-01-02"), // Most recent
-			End:        existingStart.AddDate(0, 0, 7*9).Format("2006-01-02"),
-			ShiftCount: 10,
+			ID:                "existing-2",
+			Start:             existingStart.Format("2006-01-02"), // Most recent
+			End:               existingStart.AddDate(0, 0, 7*9).Format("2006-01-02"),
+			ShiftCount:        10,
+			AllocatedDatetime: "2024-12-22T09:00:00Z",
 		},
 	}
 
@@ -185,7 +189,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	existingEnd := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC) // Sunday before 2 August
 	mock := definableMock()
 	mock.rotations = []db.Rotation{
-		{ID: "existing", Start: "2026-07-05", End: existingEnd.Format("2006-01-02"), ShiftCount: 4},
+		{ID: "existing", Start: "2026-07-05", End: existingEnd.Format("2006-01-02"), ShiftCount: 4, AllocatedDatetime: "2026-06-28T09:00:00Z"},
 	}
 	mock.standing = []db.StandingPreallocation{
 		{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
@@ -386,4 +390,52 @@ func TestDefineRota_SettingsReadFails(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Empty(t, mock.insertedShifts, "nothing is written when the settings cannot be read")
+}
+
+// One rota is in flight at a time (issue #139). An unallocated rota is refused
+// as a conflict rather than as bad input: nothing about the request is wrong,
+// and the fix is an act on the other rota — which is why the message names it.
+func TestDefineRota_RefusedWhileARotaIsInFlight(t *testing.T) {
+	mock := definableMock()
+	mock.rotations = []db.Rotation{
+		{ID: "allocated", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, AllocatedDatetime: "2026-05-31T09:00:00Z"},
+		{ID: "in-flight", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4},
+	}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	assert.Nil(t, result)
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "2026-07-05 to 2026-07-26", "the message points at the rota in the way")
+	assert.Empty(t, mock.insertedRotas, "nothing is minted behind a rota that is still in flight")
+}
+
+// The rule is about unallocated rotas only: a history of allocated ones is the
+// ordinary state of a deployment that has been running for years.
+func TestDefineRota_AllowedWhenEveryRotaIsAllocated(t *testing.T) {
+	mock := definableMock()
+	mock.rotations = []db.Rotation{
+		{ID: "older", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, AllocatedDatetime: "2026-05-31T09:00:00Z"},
+		{ID: "latest", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, AllocatedDatetime: "2026-06-28T09:00:00Z"},
+	}
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-08-02", result.Rotation.Start, "the new rota follows the latest allocated one")
+	assert.Len(t, mock.insertedRotas, 1)
+}
+
+// Where more than one rota is somehow unallocated — a deployment predating the
+// rule, or rows edited by hand — the admin is pointed at the earliest, which is
+// the one that has to be dealt with first.
+func TestDefineRota_NamesTheEarliestRotaInFlight(t *testing.T) {
+	mock := definableMock()
+	mock.rotations = []db.Rotation{
+		{ID: "later", Start: "2026-09-06", End: "2026-09-27", ShiftCount: 4},
+		{ID: "earlier", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4},
+	}
+
+	_, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "2026-07-05")
+	assert.NotContains(t, err.Error(), "2026-09-06")
 }
