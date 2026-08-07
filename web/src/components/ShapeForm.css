@@ -1,0 +1,65 @@
+/* The Shape editor's own styles, so the form carries them wherever it is opened
+   from — the settings screen and the rota both show it, and neither owns it. */
+
+.shape-form-hint {
+  margin: 0 0 0.875rem;
+  font-size: 0.8125rem;
+}
+
+/* One Role's Seats: the name on the left, the count on the right, so the whole
+   Shape reads as a column of numbers rather than a stack of labelled boxes.
+   The box is only as wide as the two digits anybody will ever type into it. */
+.shape-form-seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+  font-size: 0.875rem;
+}
+
+.shape-form-role {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--role-colour, var(--text-h));
+}
+
+/* The ceiling sits with the name rather than the box, so the numbers stay a
+   column of one figure each. */
+.shape-form-max {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.shape-form-seat input[type="number"] {
+  box-sizing: border-box;
+  flex: none;
+  width: 5rem;
+  padding: 0.5rem;
+  /* 16px keeps iOS Safari from zooming the page on focus. */
+  font: 16px/1.4 var(--sans);
+  color: var(--text-h);
+  text-align: right;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.shape-form-seat input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.shape-form-error {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--role-rose);
+}
+
+.shape-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}

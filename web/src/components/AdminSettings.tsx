@@ -6,6 +6,8 @@ import { useRoles } from "../hooks/useRoles";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useStandingPreallocations } from "../hooks/useStandingPreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
+import ShapeForm from "./ShapeForm";
+import { describeShape } from "./shape";
 import type {
   AllocationSettings,
   ConfiguredRole,
@@ -13,7 +15,6 @@ import type {
   PersonRef,
   RoleColour,
   RoleEdit,
-  ShapeSeat,
   ShiftTimes,
   SwitchableConstraint,
   Volunteer,
@@ -156,120 +157,6 @@ function ShiftTimesForm({
   );
 }
 
-// ShapeForm is the whole of editing the default Shape: every Role, with how
-// many Seats of it a shift asks for.
-//
-// Every Role gets a row rather than there being an add-a-Role dance, because a
-// drop-in has a handful of Roles and "how many of this one?" is the only
-// question there is. Nought is how a Role is left out — the server refuses a
-// Seat of nought, so those rows are dropped on the way rather than sent.
-//
-// Counts are held as strings so that a cleared box stays cleared while it is
-// being retyped, rather than snapping to 0 under the cursor.
-function ShapeForm({
-  roles,
-  shape,
-  onSave,
-  onClose,
-}: {
-  roles: ConfiguredRole[];
-  shape: ShapeSeat[];
-  onSave: (seats: { roleId: string; count: number }[]) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [counts, setCounts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      roles.map((role) => [
-        role.id,
-        String(shape.find((seat) => seat.roleId === role.id)?.count ?? 0),
-      ]),
-    ),
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const seats = roles
-    .map((role) => ({ roleId: role.id, count: Number(counts[role.id] || 0) }))
-    .filter((seat) => seat.count > 0);
-  const total = seats.reduce((sum, seat) => sum + seat.count, 0);
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave(seats);
-      onClose();
-    } catch (err: unknown) {
-      // The server's own message names the Role whose ceiling was exceeded, so
-      // it is shown as-is and the form stays open on what was typed.
-      setError(err instanceof Error ? err.message : "Failed to save the shape");
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog title="Default shape" onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <p className="settings-hint">
-          How many places of each Role a shift has. Every shift of a rota starts
-          from this; leave a Role at 0 if a shift does not need one.
-        </p>
-
-        {roles.map((role) => (
-          <label key={role.id} className="settings-field settings-seat">
-            <span className="role-name" data-role-colour={role.colour}>
-              {role.name}
-            </span>
-            {/* A capped Role says its ceiling here rather than only refusing at
-                it: the box stops at that number, and a number box that will not
-                go higher is a puzzle without the reason beside it. */}
-            {role.max !== null && (
-              <span className="settings-seat-max">at most {role.max}</span>
-            )}
-            <input
-              type="number"
-              min={0}
-              max={role.max ?? undefined}
-              value={counts[role.id] ?? "0"}
-              onChange={(e) =>
-                setCounts({ ...counts, [role.id]: e.target.value })
-              }
-            />
-          </label>
-        ))}
-
-        <p className="settings-hint">
-          {total > 0
-            ? `A shift asks for ${total} ${total === 1 ? "person" : "people"} in total.`
-            : "A shift asking for nobody cannot be allocated."}
-        </p>
-
-        {error && <p className="settings-error">{error}</p>}
-
-        <div className="settings-actions">
-          <Button onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save shape"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-// How a Shape reads in the list of facts: "1 Team lead, 4 Service volunteer",
-// in the order the Seats are filled.
-function describeShape(shape: ShapeSeat[]): string {
-  return shape.map((seat) => `${seat.count} ${seat.role}`).join(", ");
-}
-
 // What is being edited in the Rota Defaults: nothing, the times, or the Shape.
 // One value rather than two booleans, so two dialogs cannot be open at once.
 type EditingDefaults = "times" | "shape" | null;
@@ -371,6 +258,9 @@ function RotaDefaultsSettings() {
 
       {editing === "shape" && defaults && roles && (
         <ShapeForm
+          title="Default shape"
+          intro="How many places of each Role a shift has. Every shift of a rota starts from this; leave a Role at 0 if a shift does not need one."
+          saveLabel="Save shape"
           roles={roles}
           shape={defaults.defaultShape}
           onSave={saveShape}

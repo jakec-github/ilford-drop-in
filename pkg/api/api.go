@@ -28,6 +28,7 @@ type Store interface {
 	services.RotaDefaultsStore
 	services.RotaLifecycleStore
 	services.RotaDefaultsWriteStore
+	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
 	services.StandingPreallocationStore
 	// Ping reports whether the database is reachable, for GET /health.
@@ -113,6 +114,12 @@ func (h *Handler) Routes() http.Handler {
 	// Editing a Shift is admin-only, and admin-only for a reason the listing is
 	// not: closing one is an allocator input, and the rota is solved around it.
 	api.Handle("PATCH /shifts/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleUpdateShift)))
+	// A Shape is its own resource under the Shift rather than another field of
+	// the PATCH above, because it is written whole: a Role left out is a Role
+	// the Shift no longer asks for, which a patch of the Shift could not say
+	// without "an absent field means unchanged" and "an absent Role means gone"
+	// meaning opposite things in one body.
+	api.Handle("PUT /shifts/{id}/shape", h.auth.requireAdmin(http.HandlerFunc(h.handleSaveShiftShape)))
 	// Public alongside the rota: it is what tells a client which Roles exist
 	// and what each is drawn in, and the rota names Roles on every chip. The
 	// writes beside it are admin-only — which Roles exist is a decision about

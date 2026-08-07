@@ -122,6 +122,31 @@ func (d *DB) WithRotaShiftLock(ctx context.Context, rotaIDs []string, fn func(st
 	})
 }
 
+// ShapeTxStore is the transaction-bound view WithRotaShapeLock hands its
+// callback: everything editing one Shift's Shape has to see at once (issue
+// #138).
+//
+// A Shape is an allocator input, so it is frozen once the Rotation is
+// allocated — the solver filled Seats against it. The pins are here because
+// they are the other thing a Shape has to agree with: a Role a Shift has no
+// Seat for is an error the solver reports rather than a rota it can produce, so
+// a Shape that would leave a pin without one is refused. Reading both and
+// writing under one rota-row lock is what stops either check being overtaken by
+// an allocation or a pin landing a moment later.
+type ShapeTxStore interface {
+	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
+	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error)
+	SetShiftShape(ctx context.Context, shiftID string, seats []ShiftRequirement) (bool, error)
+}
+
+// WithRotaShapeLock runs fn under the same rotation-row lock as WithRotaLock, so
+// a Shape edit serialises against allocation of the rota it belongs to.
+func (d *DB) WithRotaShapeLock(ctx context.Context, rotaIDs []string, fn func(store ShapeTxStore) error) error {
+	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
+		return fn(&rotaTx{tx: tx})
+	})
+}
+
 // rotaTx implements RotaChangeStore against the locking transaction.
 type rotaTx struct {
 	tx pgx.Tx
@@ -161,4 +186,8 @@ func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool
 
 func (r *rotaTx) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
 	return setShiftTimes(ctx, r.tx, shiftID, startAt, endAt)
+}
+
+func (r *rotaTx) SetShiftShape(ctx context.Context, shiftID string, seats []ShiftRequirement) (bool, error) {
+	return setShiftShape(ctx, r.tx, shiftID, seats)
 }

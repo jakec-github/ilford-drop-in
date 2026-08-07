@@ -86,6 +86,45 @@ func storedSeats(rows []db.DefaultShapeSeat) []storedSeat {
 	return seats
 }
 
+// statedSeats reads a Shape an admin has stated, or says why it will not.
+//
+// Every rule here is about the Shape alone — which Roles exist, and what a Role
+// can be asked for — so both Shapes an admin edits are checked by it: the
+// default one on the settings screen, and one Shift's own (issue #138). What
+// differs between them is what else the Shape has to agree with, and that stays
+// with each caller.
+func statedSeats(seats []SeatParams, roles model.Roles) ([]storedSeat, error) {
+	rows := make([]storedSeat, 0, len(seats))
+	named := make(map[string]bool, len(seats))
+	for _, seat := range seats {
+		role, ok := roles.ByID(seat.RoleID)
+		if !ok {
+			return nil, wrapf(ErrInvalidInput, "role %q is not a known role", seat.RoleID)
+		}
+		if named[seat.RoleID] {
+			return nil, wrapf(ErrInvalidInput, "the shape names %s twice; say how many seats it needs once", role.Name)
+		}
+		named[seat.RoleID] = true
+
+		// Zero is not a smaller Shape, it is a Role the Shape does not name.
+		// Saying so rather than dropping it silently keeps the stored Shape and
+		// the stated one the same thing.
+		if seat.Count < 1 {
+			return nil, wrapf(ErrInvalidInput,
+				"a shape asks for at least one seat of a role it names; leave %s out instead of asking for %d",
+				role.Name, seat.Count)
+		}
+		if role.Capped() && seat.Count > *role.Max {
+			return nil, wrapf(ErrInvalidInput,
+				"a shift may hold at most %d %s, so the shape cannot ask for %d",
+				*role.Max, role.Name, seat.Count)
+		}
+
+		rows = append(rows, storedSeat{RoleID: role.ID, Seats: seat.Count})
+	}
+	return rows, nil
+}
+
 // resolveShape turns stored Seats into the domain's Shape, in the order the
 // Seats are filled. `owner` names whose Shape it is, so a failure says which
 // one.
@@ -138,33 +177,14 @@ func SaveDefaultShape(
 		return nil, err
 	}
 
-	rows := make([]db.DefaultShapeSeat, 0, len(seats))
-	named := make(map[string]bool, len(seats))
-	for _, seat := range seats {
-		role, ok := roles.ByID(seat.RoleID)
-		if !ok {
-			return nil, wrapf(ErrInvalidInput, "role %q is not a known role", seat.RoleID)
-		}
-		if named[seat.RoleID] {
-			return nil, wrapf(ErrInvalidInput, "the shape names %s twice; say how many seats it needs once", role.Name)
-		}
-		named[seat.RoleID] = true
+	stated, err := statedSeats(seats, roles)
+	if err != nil {
+		return nil, err
+	}
 
-		// Zero is not a smaller Shape, it is a Role the Shape does not name.
-		// Saying so rather than dropping it silently keeps the stored Shape and
-		// the stated one the same thing.
-		if seat.Count < 1 {
-			return nil, wrapf(ErrInvalidInput,
-				"a shape asks for at least one seat of a role it names; leave %s out instead of asking for %d",
-				role.Name, seat.Count)
-		}
-		if role.Capped() && seat.Count > *role.Max {
-			return nil, wrapf(ErrInvalidInput,
-				"a shift may hold at most %d %s, so the shape cannot ask for %d",
-				*role.Max, role.Name, seat.Count)
-		}
-
-		rows = append(rows, db.DefaultShapeSeat{RoleID: role.ID, Seats: seat.Count})
+	rows := make([]db.DefaultShapeSeat, 0, len(stated))
+	for _, seat := range stated {
+		rows = append(rows, db.DefaultShapeSeat{RoleID: seat.RoleID, Seats: seat.Seats})
 	}
 
 	if err := store.SaveDefaultShape(ctx, rows); err != nil {

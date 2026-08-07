@@ -3,6 +3,7 @@ import {
   createAlteration,
   fetchRota,
   setShiftClosed,
+  setShiftShape,
   setShiftTimes,
 } from "../api";
 import type { RotaChange, RotaShift } from "../types";
@@ -23,6 +24,13 @@ interface UseRota {
   // alteration, and not frozen at allocation either: the times describe the
   // shift rather than feed the solver.
   setTimes: (shiftId: string, start: string, end: string) => Promise<void>;
+  // setShape rewrites what one shift asks for, reloading on the same terms.
+  // Unlike the times, this is frozen at allocation: the solver filled Seats
+  // against the Shape, so afterwards it is what the rota was made from.
+  setShape: (
+    shiftId: string,
+    seats: { roleId: string; count: number }[],
+  ) => Promise<void>;
 }
 
 // useRota owns the rota the page shows: the read and the changes that
@@ -92,5 +100,16 @@ export function useRota(): UseRota {
     [load],
   );
 
-  return { shifts, error, change, setClosed, setTimes };
+  const setShape = useCallback(
+    async (shiftId: string, seats: { roleId: string; count: number }[]) => {
+      try {
+        await setShiftShape(shiftId, seats);
+      } finally {
+        await load();
+      }
+    },
+    [load],
+  );
+
+  return { shifts, error, change, setClosed, setTimes, setShape };
 }

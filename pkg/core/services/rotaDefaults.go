@@ -140,6 +140,18 @@ func plural(n int, one, many string) string {
 	return many
 }
 
+// readableDate is a stored date as it reads in a sentence an admin is shown —
+// "9 August 2026" rather than "2026-08-09". A value that is not a date comes
+// back unchanged: a refusal saying the wrong-looking thing is better than a
+// refusal that fails to be written.
+func readableDate(date string) string {
+	parsed, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+	return parsed.Format("2 January 2006")
+}
+
 // ShiftTimeParams is the shift-time settings as an admin states them: a start,
 // an end and the zone they are read in. All three together, because they are
 // one form and one idea — a start with no end describes nothing.

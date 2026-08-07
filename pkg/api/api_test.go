@@ -478,6 +478,32 @@ func (m *mockStore) WithRotaShiftLock(ctx context.Context, rotaIDs []string, fn 
 	return fn(m)
 }
 
+// WithRotaShapeLock likewise, for a per-Shift Shape edit.
+func (m *mockStore) WithRotaShapeLock(ctx context.Context, rotaIDs []string, fn func(store db.ShapeTxStore) error) error {
+	return fn(m)
+}
+
+// SetShiftShape replaces what one Shift asks for, so a later listing reads back
+// what a PUT just wrote. A Shift no fixture set up is reported as gone, which
+// is how the handler answers 404.
+func (m *mockStore) SetShiftShape(_ context.Context, shiftID string, seats []db.ShiftRequirement) (bool, error) {
+	if m.shapeWriteErr != nil {
+		return false, m.shapeWriteErr
+	}
+	known := false
+	for _, s := range m.allShiftsInRange() {
+		known = known || s.ID == shiftID
+	}
+	if !known {
+		return false, nil
+	}
+	if m.shiftRequirements == nil {
+		m.shiftRequirements = make(map[string][]db.ShiftRequirement)
+	}
+	m.shiftRequirements[shiftID] = seats
+	return true, nil
+}
+
 func (m *mockStore) RotaAllocated(ctx context.Context, rotaID string) (bool, error) {
 	return m.allocatedRotas[rotaID], nil
 }

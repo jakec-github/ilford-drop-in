@@ -208,9 +208,7 @@ func dayOf(timestamp string) string {
 // dateTakenConflict turns the one-Shift-per-date index refusing a write into
 // the refusal an admin reads, naming the day two shifts would have shared.
 func dateTakenConflict(startAt string) error {
-	day := dayOf(startAt)
-	if parsed, err := time.Parse("2006-01-02", day); err == nil {
-		day = parsed.Format("2 January 2006")
-	}
-	return wrapf(ErrConflict, "the drop-in already runs on %s, and it cannot run twice on one day — move that shift first", day)
+	return wrapf(ErrConflict,
+		"the drop-in already runs on %s, and it cannot run twice on one day — move that shift first",
+		readableDate(dayOf(startAt)))
 }
