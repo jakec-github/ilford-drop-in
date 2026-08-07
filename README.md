@@ -66,14 +66,15 @@ All commands take `-e`/`--env` to pick the config environment
 | --- | --- |
 | `listVolunteers` | List volunteers from the volunteer sheet. |
 | `defineRota <n>` | Create a rotation with `n` weekly shifts (DB only). |
-| `allocateRota [--seed <n>] [--dry-run]` | Generate the rota from responses. |
 | `publishRota` | Publish the latest rota to the rota sheet. |
 | `changeRota ...` | Apply post-allocation changes (covers/alterations). |
 | `viewHistoricalResponses ...` | Inspect past availability responses. |
 
-Availability itself is collected and chased through the web app, not the CLI:
-mint a round and send the links from the availability tab. The allocation and
-publish commands read the volunteer sheet; see
+Allocating is not among them. It happens in the app, where it re-solves and
+commits only the rota the admin was shown; a command that solved and committed
+in one step could not honour that (ADR 0008). Availability is likewise collected
+and chased through the web app: mint a round and send the links from the
+availability tab. The commands that remain read the volunteer sheet; see
 [`docs/local-setup.md`](docs/local-setup.md) for what they need.
 
 ## Requirements

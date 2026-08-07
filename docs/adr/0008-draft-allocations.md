@@ -36,6 +36,25 @@ only if the fresh result hashes identically to the draft the admin was shown.
   `FOR UPDATE` guard in `InsertAllocationsAndSetAllocated` (#8). Allocation
   cannot half-happen and cannot race.
 
+  *Amended 2026-08-07 (#144), where the confirmation was built.* Three details
+  the design left open, settled by the implementation:
+
+  - **The hash is derived, never stored.** A draft's fingerprint is computed
+    from its Seats — Shift, Role, and the volunteer or custom entry in it —
+    every time it is read, by the same function the fresh solve hashes its
+    answer with. A stored column could disagree with the rows it claims to
+    fingerprint; a derived one cannot. Seat ids and row order are deliberately
+    outside it: every solve mints fresh ids, and the store returns the rows in
+    whatever order it likes.
+  - **The confirmation is the hash the client states**, not the one the stored
+    draft carries. The two differ exactly when another Admin's read re-solved
+    the draft while this one had the rota open — and comparing against the store
+    would then commit a rota nobody had looked at, which is the outcome the
+    whole mechanism exists to prevent.
+  - **The commit consumes the draft**, deleting it in the same transaction.
+    The speculative rota has become the rota, and a draft outliving it would be
+    a second answer for a Rotation nobody can draft again.
+
 - **Re-solves happen when a draft is read, not per-write.** The Rotation records
   when an allocator input last moved; a draft keeps the stamp it read when its
   solve began, and the two disagreeing is what "dirty" means. Reading the draft

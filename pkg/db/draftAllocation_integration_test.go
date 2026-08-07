@@ -224,3 +224,69 @@ func TestReplaceDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, seats)
 }
+
+// Allocating consumes the draft. The rows it leaves behind are the allocation,
+// and the draft that became it goes in the same transaction: a draft outliving
+// its rota would be a second, speculative answer sitting beside the real one,
+// for a rota nobody can draft again.
+func TestInsertAllocationsAndSetAllocatedClearsTheDraft(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rota, first, second := draftFixture(t, database)
+
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
+		RotaID:       rota.ID,
+		SolvedAt:     time.Now().UTC(),
+		Success:      true,
+		SolverStatus: "OPTIMAL",
+		Diagnostics:  []byte(`{}`),
+	}, []db.DraftAllocation{
+		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Team lead", VolunteerID: "bob"},
+	}))
+
+	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
+		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Team lead", VolunteerID: "bob"},
+	}, rota.ID, time.Now().UTC()))
+
+	draft, err := database.GetDraftRotaAllocation(ctx, rota.ID)
+	require.NoError(t, err)
+	assert.Nil(t, draft, "the draft was consumed by the allocation")
+	seats, err := database.GetDraftAllocationsByShiftIDs(ctx, []string{first.ID, second.ID})
+	require.NoError(t, err)
+	assert.Empty(t, seats, "and so were its Seats")
+
+	allocated, err := database.GetAllocationsByShiftIDs(ctx, []string{first.ID, second.ID})
+	require.NoError(t, err)
+	assert.Len(t, allocated, 2, "while the allocation itself is there")
+}
+
+// The double-allocation guard (issue #8) under the row lock that enforces it: a
+// second attempt on a rota that has already been allocated writes nothing and
+// says why. This is the last word on allocating the rota you were shown — every
+// check in front of it is a fast refusal, and two admins confirming the same
+// draft at the same moment meet here.
+func TestInsertAllocationsAndSetAllocatedRefusesASecondAllocation(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	rota, first, _ := draftFixture(t, database)
+
+	firstAllocated := time.Now().UTC()
+	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
+		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+	}, rota.ID, firstAllocated))
+
+	err := database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
+		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "bob"},
+	}, rota.ID, time.Now().UTC())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), rota.ID, "the refusal names the rota")
+	assert.Contains(t, err.Error(), "already allocated")
+
+	allocated, err := database.GetAllocationsByShiftIDs(ctx, []string{first.ID})
+	require.NoError(t, err)
+	require.Len(t, allocated, 1, "the second attempt wrote nothing")
+	assert.Equal(t, "alice", allocated[0].VolunteerID, "and did not overwrite the first")
+}

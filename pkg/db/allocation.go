@@ -59,8 +59,14 @@ func scanAllocations(rows pgx.Rows) ([]Allocation, error) {
 	return allocations, nil
 }
 
-// InsertAllocationsAndSetAllocated inserts allocation records and marks the
-// rotation as allocated in a single transaction.
+// InsertAllocationsAndSetAllocated inserts allocation records, clears the
+// rota's Draft Rota Allocation and marks the rotation as allocated, in a single
+// transaction.
+//
+// The draft goes with the rest because allocating is what consumes it: the
+// speculative rota has become the rota, and a draft left beside an allocation
+// would be a second answer for a rota nobody can draft again — ReplaceDraftRotaAllocation
+// refuses an allocated one (ADR 0008).
 func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations []Allocation, rotaID string, datetime time.Time) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -102,6 +108,18 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 		if err != nil {
 			return fmt.Errorf("failed to insert allocation: %w", err)
 		}
+	}
+
+	// The draft's Seats go by way of their shifts, which is the only route
+	// there is: a draft Seat names its shift and nothing else (ADR 0001).
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM draft_allocation
+		WHERE shift_id IN (SELECT id FROM shift WHERE rota_id = $1)
+	`, rotaID); err != nil {
+		return fmt.Errorf("failed to clear the draft's seats: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM draft_rota_allocation WHERE rota_id = $1`, rotaID); err != nil {
+		return fmt.Errorf("failed to clear the draft: %w", err)
 	}
 
 	_, err = tx.Exec(ctx, `

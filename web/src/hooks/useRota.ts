@@ -13,6 +13,10 @@ interface UseRota {
   // which the caller renders differently from "not loaded yet".
   shifts: RotaShift[] | null;
   error: string | null;
+  // Re-reads the rota. For the change this hook does not make itself:
+  // allocating turns every unallocated shift on the page into an allocated one
+  // at once, and it is done from the draft panel rather than from here.
+  reload: () => Promise<void>;
   // change records one alteration and reloads the rota, whether or not the
   // change was accepted. It rejects with the server's message when it was not.
   change: (change: RotaChange) => Promise<void>;
@@ -111,5 +115,5 @@ export function useRota(): UseRota {
     [load],
   );
 
-  return { shifts, error, change, setClosed, setTimes, setShape };
+  return { shifts, error, reload: load, change, setClosed, setTimes, setShape };
 }
