@@ -231,13 +231,18 @@ When the drop-in runs is set on the same screen, under **Rota Defaults**: a
 start time, an end time and the timezone they are read in. Like the Roles, no
 migration seeds them.
 
-Until they are set, allocation refuses and names what is missing. Nothing else
-is gated: the rota renders without an hour against each date, and a volunteer's
-calendar subscription shows each shift as an all-day event until the times
-arrive.
+Until they are set, defining a rota and allocating one both refuse and name what
+is missing. A shift's date is the date it starts, so a shift cannot be minted
+without knowing when it runs. Nothing else is gated: everything that only reads
+still reads.
 
 A shift has to end the evening it starts — a session running past midnight is
 refused rather than stored as one ending before it began.
+
+These are the times each *new* shift is minted with, not a live setting the
+shifts follow. A shift keeps the times it was minted with when they change
+later, and an admin who wants one evening to run differently edits that shift on
+the rota, under **Edit rota** → the date.
 
 ### Setting the default Shape
 

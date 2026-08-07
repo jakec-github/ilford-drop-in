@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { createAlteration, fetchRota, setShiftClosed } from "../api";
+import {
+  createAlteration,
+  fetchRota,
+  setShiftClosed,
+  setShiftTimes,
+} from "../api";
 import type { RotaChange, RotaShift } from "../types";
 
 interface UseRota {
@@ -14,6 +19,10 @@ interface UseRota {
   // alteration: it changes what allocation will do rather than what an
   // allocated rota says.
   setClosed: (shiftId: string, closed: boolean) => Promise<void>;
+  // setTimes moves one shift's hours, and with them its date. Also not an
+  // alteration, and not frozen at allocation either: the times describe the
+  // shift rather than feed the solver.
+  setTimes: (shiftId: string, start: string, end: string) => Promise<void>;
 }
 
 // useRota owns the rota the page shows: the read and the changes that
@@ -72,5 +81,16 @@ export function useRota(): UseRota {
     [load],
   );
 
-  return { shifts, error, change, setClosed };
+  const setTimes = useCallback(
+    async (shiftId: string, start: string, end: string) => {
+      try {
+        await setShiftTimes(shiftId, start, end);
+      } finally {
+        await load();
+      }
+    },
+    [load],
+  );
+
+  return { shifts, error, change, setClosed, setTimes };
 }

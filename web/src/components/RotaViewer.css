@@ -219,17 +219,61 @@
    on the row: `opacity` on the row is a compositing group no child can escape,
    and the one control a closed row carries is the way back out of it. A faded
    "Reopen" would read as unavailable. */
-.shift-row.closed .shift-date,
+.shift-row.closed .shift-when,
 .shift-row.closed .shift-note {
   opacity: 0.55;
 }
 
-.shift-date {
+/* The first column: the day, and under it the hours the shift runs. Wide enough
+   for "19:30–21:30", which is what sets the width now rather than "2 Feb". */
+.shift-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   flex-shrink: 0;
-  width: 3.5rem;
+  width: 5rem;
+  /* Own line at the top of the row: the row is baseline-aligned, and a
+     two-line cell would otherwise sit its second line below everything. */
+  align-self: flex-start;
+}
+
+.shift-date {
   font-weight: 600;
   font-size: 15px;
   color: var(--text-h);
+}
+
+.shift-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+/* While editing, the cell is the way in to changing the hours. It is a button
+   with no chrome until it is reached for, so a rota being read looks the same
+   as one that is not. */
+.shift-when-editable {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.shift-when-editable:hover,
+.shift-when-editable:focus-visible {
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.shift-when-editable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .shift-note {
@@ -567,8 +611,8 @@
     padding: 14px 18px;
   }
 
-  .shift-date {
-    width: 4rem;
+  .shift-when {
+    width: 5.5rem;
   }
 
   .chip {

@@ -20,8 +20,10 @@ import {
   ClosureDialog,
   ConfirmChangeDialog,
   PinDialog,
+  ShiftTimesDialog,
   UnpinDialog,
 } from "./RotaEditDialogs";
+import { formatShiftTimes } from "./shiftTimes";
 import "./RotaViewer.css";
 
 interface RotaViewerProps {
@@ -37,6 +39,10 @@ interface RotaViewerProps {
   // because it is not an alteration: it changes what allocation will do rather
   // than what an allocated rota says.
   onSetClosed: (shiftId: string, closed: boolean) => Promise<void>;
+  // Moves one shift's start and end, and with the start its date. Also not an
+  // alteration, and unlike a closure not frozen at allocation: the times say
+  // when to turn up, and the rota was solved in dates.
+  onSetTimes: (shiftId: string, start: string, end: string) => Promise<void>;
 }
 
 // A shift that exists but has not been through allocation yet: no assignees,
@@ -249,6 +255,9 @@ interface RowEdit {
   // allocated: closure is an allocator input, and the rota was solved around it.
   canSetClosed: boolean;
   onSetClosed: () => void;
+  // Editing the hours is offered on every row, allocated or not: the times are
+  // descriptive, so nothing about them froze when the rota was solved.
+  onEditTimes: () => void;
 }
 
 function Chip({
@@ -477,6 +486,21 @@ function PreallocationList({
   );
 }
 
+// ShiftWhen is a row's first column: the day, and under it the hours. Both come
+// from the shift itself, which is what makes them worth showing per row — a
+// shift keeps the times it was minted with, so one evening running differently
+// from the rest shows up here rather than nowhere.
+function ShiftWhen({ shift }: { shift: RotaShift }) {
+  return (
+    <>
+      <span className="shift-date">{formatShiftDate(shift.date)}</span>
+      <span className="shift-time">
+        {formatShiftTimes(shift.start, shift.end)}
+      </span>
+    </>
+  );
+}
+
 function ShiftRow({
   shift,
   pins,
@@ -687,7 +711,20 @@ function ShiftRow({
           : undefined
       }
     >
-      <div className="shift-date">{formatShiftDate(shift.date)}</div>
+      {edit && !pending ? (
+        <button
+          type="button"
+          className="shift-when shift-when-editable"
+          aria-label={`Change when ${formatShiftDateLong(shift.date)} runs`}
+          onClick={edit.onEditTimes}
+        >
+          <ShiftWhen shift={shift} />
+        </button>
+      ) : (
+        <div className="shift-when">
+          <ShiftWhen shift={shift} />
+        </div>
+      )}
       {body}
 
       {edit && menuAssignee && (
@@ -729,13 +766,16 @@ type EditDialog =
   | { kind: "unpin"; pin: Preallocation }
   // A shift being shut or opened again, which is neither an alteration nor a
   // pin: it changes whether the drop-in runs that day at all.
-  | { kind: "closure"; shift: RotaShift };
+  | { kind: "closure"; shift: RotaShift }
+  // A shift's hours being moved, which may move the shift to another day.
+  | { kind: "times"; shift: RotaShift };
 
 export default function RotaViewer({
   rotaShifts,
   isAdmin,
   onChange,
   onSetClosed,
+  onSetTimes,
 }: RotaViewerProps) {
   const [selectedName, setSelectedName] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -972,6 +1012,14 @@ export default function RotaViewer({
     );
   }
 
+  function submitTimes(shift: RotaShift, start: string, end: string) {
+    return run(
+      shift.date,
+      () => onSetTimes(shift.id, start, end),
+      "The shift times were not saved",
+    );
+  }
+
   function submitUnpin(pin: Preallocation) {
     // Only ever called for a manual pin, which is the only kind with an id.
     if (pin.id === null) return;
@@ -1105,12 +1153,18 @@ export default function RotaViewer({
         setDialog({ kind: "unpin", pin });
       },
       // An allocated rota was solved around which of its shifts run, so the
-      // flag is frozen. A shift's times are not, but they are not editable here.
+      // flag is frozen. Its times are not: they are descriptive, and onEditTimes
+      // below is offered whether or not the rota has been run.
       canSetClosed: !shift.allocated,
       onSetClosed: () => {
         setChangeError(null);
         setOpenMenu(null);
         setDialog({ kind: "closure", shift });
+      },
+      onEditTimes: () => {
+        setChangeError(null);
+        setOpenMenu(null);
+        setDialog({ kind: "times", shift });
       },
     };
   }
@@ -1278,7 +1332,12 @@ export default function RotaViewer({
               Close one for a date the drop-in is not running, up until the rota
               is allocated.
             </>
-          )}
+          )}{" "}
+          {/* Unconditional, unlike the two above: the times only describe the
+              shift, so every row takes the edit whether or not it has been
+              allocated. */}
+          Select a row&rsquo;s date to change when that shift runs — the one
+          edit that stays open once the rota is allocated.
         </p>
       )}
 
@@ -1371,6 +1430,17 @@ export default function RotaViewer({
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={() => void submitClosure(dialog.shift)}
+        />
+      )}
+
+      {editing && dialog?.kind === "times" && (
+        <ShiftTimesDialog
+          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          start={dialog.shift.start}
+          end={dialog.shift.end}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={(start, end) => void submitTimes(dialog.shift, start, end)}
         />
       )}
 

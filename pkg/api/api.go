@@ -26,7 +26,7 @@ type Store interface {
 	services.RoleWriteStore
 	services.RotaDefaultsStore
 	services.RotaDefaultsWriteStore
-	services.SetShiftClosedStore
+	services.UpdateShiftStore
 	services.StandingPreallocationStore
 	// Ping reports whether the database is reachable, for GET /health.
 	Ping(ctx context.Context) error

@@ -29,6 +29,19 @@ type mockDB struct {
 	insertErr       error
 }
 
+// definableMock is the store a rota can actually be defined against: one that
+// has been told when the drop-in runs. A Shift's date is the date of its start
+// (ADR 0007), so unset shift times are not a rota with unknown hours, they are
+// a refusal — which the test below is the one to say. Every other test here is
+// about something else and starts from settings an admin has filled in.
+func definableMock() *mockDB {
+	return &mockDB{defaults: db.RotaDefaults{
+		ShiftStartTime: "19:30",
+		ShiftEndTime:   "21:30",
+		ShiftTimezone:  "Europe/London",
+	}}
+}
+
 func (m *mockDB) GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error) {
 	if m.defaultsErr != nil {
 		return db.RotaDefaults{}, m.defaultsErr
@@ -58,9 +71,7 @@ func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, s
 }
 
 func TestDefineRota_NoExistingRotations(t *testing.T) {
-	mock := &mockDB{
-		rotations: []db.Rotation{},
-	}
+	mock := definableMock()
 
 	logger := zap.NewNop()
 	ctx := context.Background()
@@ -107,20 +118,19 @@ func TestDefineRota_NoExistingRotations(t *testing.T) {
 
 func TestDefineRota_WithExistingRotations(t *testing.T) {
 	existingStart := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC) // Sunday, Jan 5, 2025
-	mock := &mockDB{
-		rotations: []db.Rotation{
-			{
-				ID:         "existing-1",
-				Start:      "2024-12-15", // Older rotation
-				End:        "2025-02-02",
-				ShiftCount: 8,
-			},
-			{
-				ID:         "existing-2",
-				Start:      existingStart.Format("2006-01-02"), // Most recent
-				End:        existingStart.AddDate(0, 0, 7*9).Format("2006-01-02"),
-				ShiftCount: 10,
-			},
+	mock := definableMock()
+	mock.rotations = []db.Rotation{
+		{
+			ID:         "existing-1",
+			Start:      "2024-12-15", // Older rotation
+			End:        "2025-02-02",
+			ShiftCount: 8,
+		},
+		{
+			ID:         "existing-2",
+			Start:      existingStart.Format("2006-01-02"), // Most recent
+			End:        existingStart.AddDate(0, 0, 7*9).Format("2006-01-02"),
+			ShiftCount: 10,
 		},
 	}
 
@@ -150,13 +160,12 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	// A rota starting on the first Sunday of a month, so a "first Sunday" rule
 	// lands on its opening shift and on nothing else in a four-shift run.
 	existingEnd := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC) // Sunday before 2 August
-	mock := &mockDB{
-		rotations: []db.Rotation{
-			{ID: "existing", Start: "2026-07-05", End: existingEnd.Format("2006-01-02"), ShiftCount: 4},
-		},
-		standing: []db.StandingPreallocation{
-			{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
-		},
+	mock := definableMock()
+	mock.rotations = []db.Rotation{
+		{ID: "existing", Start: "2026-07-05", End: existingEnd.Format("2006-01-02"), ShiftCount: 4},
+	}
+	mock.standing = []db.StandingPreallocation{
+		{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
 	}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
@@ -177,7 +186,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 // No Standing Preallocations is the ordinary state of a deployment nobody has
 // configured, not a reason to refuse a rota.
 func TestDefineRota_NoStandingPreallocations(t *testing.T) {
-	mock := &mockDB{}
+	mock := definableMock()
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
 	require.NoError(t, err)
@@ -271,13 +280,7 @@ func TestNextSunday(t *testing.T) {
 // are local wall-clock, so the stored zone does not move them and a shift in
 // July reads the same as one in January.
 func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
-	mock := &mockDB{
-		defaults: db.RotaDefaults{
-			ShiftStartTime: "19:30",
-			ShiftEndTime:   "21:30",
-			ShiftTimezone:  "Europe/London",
-		},
-	}
+	mock := definableMock()
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 3)
 	require.NoError(t, err)
@@ -293,22 +296,19 @@ func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
 	assert.Equal(t, result.Shifts, mock.insertedShifts[0])
 }
 
-// A deployment whose admin has not filled the settings in yet still defines
-// rotas: incomplete settings block allocation and nothing else (ADR 0006). The
-// shifts are minted without times, which is tolerable while the date column
-// survives to carry those rows' dates — #135 is where it stops being.
-func TestDefineRota_UnsetDefaultsMintUntimedShifts(t *testing.T) {
+// A deployment whose admin has not said when the drop-in runs cannot define a
+// rota at all, and is told which settings are missing (issue #135). This is the
+// second path incomplete settings block, alongside allocation, and it narrows
+// ADR 0006's "allocation and nothing else": a Shift with no start is not a
+// Shift with unknown hours, it is a Shift on no day at all (ADR 0007).
+func TestDefineRota_UnsetDefaultsRefuse(t *testing.T) {
 	mock := &mockDB{}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
-	require.NoError(t, err)
-
-	require.Len(t, result.Shifts, 2)
-	for i, s := range result.Shifts {
-		assert.Empty(t, s.StartAt, "shift %d carries no start", i)
-		assert.Empty(t, s.EndAt, "shift %d carries no end", i)
-		assert.NotEmpty(t, s.Date, "shift %d still has its date", i)
-	}
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "the default shift start time")
+	assert.Empty(t, mock.insertedShifts, "nothing is written when a rota cannot be defined")
 }
 
 // Settings that cannot be read are a fault rather than an empty answer, so the

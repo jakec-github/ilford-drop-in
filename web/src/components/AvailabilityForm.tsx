@@ -1,6 +1,7 @@
 import Button from "../ui/Button";
 import { useAvailabilityForm } from "../hooks/useAvailabilityForm";
 import type { AvailabilityLinkFailure, AvailabilityShift } from "../types";
+import { formatShiftTimes } from "./shiftTimes";
 import "./AvailabilityForm.css";
 
 // "Sunday 2 August" — the weekday matters more than the year here: a volunteer
@@ -69,6 +70,15 @@ function ShiftChoice({
     >
       <span className="shift-choice-label">
         <span className="shift-choice-date">{date}</span>
+        {/* The hours, because they are part of what is being asked: a volunteer
+            saying yes is saying yes to an evening, and the drop-in does not
+            always run the same one. Not on a closed date — the drop-in is not
+            running then, so its hours say nothing. */}
+        {!shift.closed && (
+          <span className="shift-choice-time">
+            {formatShiftTimes(shift.start, shift.end)}
+          </span>
+        )}
         {/* A change is only legible against something that is no longer on
             screen, so the row has to say what it was. Text, not just the accent
             bar: colour on its own reaches nobody who cannot see it. */}

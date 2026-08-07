@@ -22,9 +22,9 @@ func roundFixture(t *testing.T, database *db.DB) (rotaID string, shiftIDs []stri
 
 	rotaID = uuid.New().String()
 	shifts := []db.Shift{
-		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-02"},
-		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-09"},
-		{ID: uuid.New().String(), RotaID: rotaID, Date: "2026-08-16"},
+		dbtest.Shift(rotaID, "2026-08-02"),
+		dbtest.Shift(rotaID, "2026-08-09"),
+		dbtest.Shift(rotaID, "2026-08-16"),
 	}
 	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, shifts, nil))
 

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
@@ -13,12 +12,17 @@ type shiftResponse struct {
 	// external language everywhere else, but identity is the UUID (ADR 0001).
 	ID   string `json:"id"`
 	Date string `json:"date"`
-	// Start and End are the moments the shift runs between: the shift's own
-	// local times, read in the drop-in's timezone (ADR 0007). Empty when the
-	// shift was minted before an admin set the shift times: the date is still
-	// known, and a rota that says which day but not which hour is better than
-	// one that will not load. Incomplete settings block allocation and nothing
-	// else (ADR 0006).
+	// Start and End are when the shift runs, as the shift itself holds them:
+	// local wall-clock times in the drop-in's own zone, "2026-01-11T19:30:00",
+	// with no offset on the end of them.
+	//
+	// The absent offset is the answer rather than a missing one (ADR 0007). A
+	// shift's start is a fact about Ilford, so the rota says 19:30 to everyone
+	// reading it, including a volunteer reading it from another country — where
+	// an instant would be rendered as their own evening, which is not when the
+	// drop-in runs. Conversion to a moment belongs where it is actually needed,
+	// and the one place that needs it is the calendar feed, which does it
+	// server-side.
 	Start     string             `json:"start"`
 	End       string             `json:"end"`
 	Closed    bool               `json:"closed"`
@@ -50,27 +54,8 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read once for the whole listing rather than per shift: it is one row, and
-	// the only thing wanted from it is the zone the shifts' own times are read
-	// in.
-	defaults, err := services.RotaDefaults(r.Context(), h.store)
-	if err != nil {
-		h.writeServiceError(w, err)
-		return
-	}
-
 	resp := listShiftsResponse{Shifts: make([]shiftResponse, 0, len(shifts))}
 	for _, shift := range shifts {
-		var start, end string
-		if shift.StartAt != "" {
-			startAt, endAt, err := defaults.ShiftInstants(shift.StartAt, shift.EndAt)
-			if err != nil {
-				h.writeServiceError(w, err)
-				return
-			}
-			start, end = startAt.Format(time.RFC3339), endAt.Format(time.RFC3339)
-		}
-
 		assignees := make([]assigneeResponse, 0, len(shift.Assignees))
 		for _, a := range shift.Assignees {
 			assignees = append(assignees, assigneeResponse{
@@ -85,8 +70,8 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		resp.Shifts = append(resp.Shifts, shiftResponse{
 			ID:        shift.ID,
 			Date:      shift.Date,
-			Start:     start,
-			End:       end,
+			Start:     shift.StartAt,
+			End:       shift.EndAt,
 			Closed:    shift.Closed,
 			Allocated: shift.Allocated,
 			Assignees: assignees,
@@ -96,27 +81,36 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// updateShiftRequest is the shape of a per-Shift edit. Closed is a pointer so
-// "leave it alone" and "open it" are distinguishable — which matters now the
-// body has one field and will matter more when times and Shape join it.
+// updateShiftRequest is the shape of a per-Shift edit. Every field is optional
+// and an absent one is left alone, so changing when a shift runs does not mean
+// restating whether it runs at all. Closed is a pointer for that reason: it is
+// what makes "open it" distinguishable from saying nothing about it.
+//
+// Start and End are spelled exactly as the listing spells them — local
+// wall-clock time, no offset — which is also the value a browser's
+// datetime-local field carries, seconds and all.
 type updateShiftRequest struct {
-	Closed *bool `json:"closed"`
+	Closed *bool  `json:"closed"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
 }
 
-// shiftClosureResponse is what a close or reopen answers with: the shift's id,
-// the date it names, and the state it is now in. Not the full shift view — the
-// client re-reads the rota anyway, and a change should not have to assemble a
-// projection that needs the roster.
-type shiftClosureResponse struct {
+// shiftUpdateResponse is what an edit answers with: the shift's id, when it now
+// runs, and whether it is closed. Not the full shift view — the client re-reads
+// the rota anyway, and a change should not have to assemble a projection that
+// needs the roster.
+type shiftUpdateResponse struct {
 	ID     string `json:"id"`
 	Date   string `json:"date"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
 	Closed bool   `json:"closed"`
 }
 
-// handleUpdateShift changes one Shift. Today the only editable field is closed;
-// a shift's times and Shape land here as they become fields of their own.
-// Refusals — an unknown shift, or a rota already allocated — map to 404/409 via
-// writeServiceError.
+// handleUpdateShift changes one Shift: whether it is closed, when it runs, or
+// both. Refusals map to 400/404/409 via writeServiceError — an unknown shift, a
+// closure against an already-allocated rota, or a start landing on a day
+// another shift already holds.
 func (h *Handler) handleUpdateShift(w http.ResponseWriter, r *http.Request) {
 	var req updateShiftRequest
 	decoder := json.NewDecoder(r.Body)
@@ -125,20 +119,22 @@ func (h *Handler) handleUpdateShift(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
-	if req.Closed == nil {
-		h.writeError(w, http.StatusBadRequest, "closed is required")
-		return
-	}
 
-	closure, err := services.SetShiftClosed(r.Context(), h.store, r.PathValue("id"), *req.Closed, h.logger)
+	shift, err := services.UpdateShift(r.Context(), h.store, r.PathValue("id"), services.UpdateShiftParams{
+		Closed:  req.Closed,
+		StartAt: req.Start,
+		EndAt:   req.End,
+	}, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, shiftClosureResponse{
-		ID:     closure.ID,
-		Date:   closure.Date,
-		Closed: closure.Closed,
+	h.writeJSON(w, http.StatusOK, shiftUpdateResponse{
+		ID:     shift.ID,
+		Date:   shift.Date,
+		Start:  shift.StartAt,
+		End:    shift.EndAt,
+		Closed: shift.Closed,
 	})
 }

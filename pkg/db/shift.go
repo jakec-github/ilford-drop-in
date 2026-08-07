@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // shiftTimestampLayout is how a Shift's start and end are spelled on this side
@@ -21,25 +22,34 @@ const shiftTimestampLayout = "2006-01-02T15:04:05"
 // wants a date — selecting it, ordering by it, bounding a range with it — spells
 // it the same way and none of them can drift apart.
 //
-// The COALESCE is the migrate phase showing (issue #134). A Shift minted before
-// an admin set the drop-in's shift times has no start to take a date from, and
-// the column it was minted with is still the only answer for those rows.
-// Nothing above this package sees the difference. Issue #135 makes a Shift
-// without times impossible and drops both the column and this fallback, which
-// is the last read of shift.date anywhere.
-//
-// `start_at::date` is IMMUTABLE, which is what lets #135 put a unique index on
-// it; the timestamptz equivalent is only STABLE and could not be indexed.
-const shiftDateExpr = "COALESCE(s.start_at::date, s.date)"
+// There is nothing else it could come from: issue #135 dropped the stored copy,
+// and the unique index enforcing one Shift per date is defined on this very
+// expression. `start_at::date` is IMMUTABLE, which is what allows that; the
+// timestamptz equivalent is only STABLE and could not be indexed.
+const shiftDateExpr = "s.start_at::date"
 
-// localTimestamp renders a nullable TIMESTAMP column. NULL reads as the empty
-// string, which is how this package spells a Shift whose times have never been
-// set — pgx hands back a zero time.Time otherwise, and midnight is a time the
-// drop-in could plausibly run at.
-func localTimestamp(t *time.Time) string {
-	if t == nil {
-		return ""
-	}
+// ErrShiftDateTaken reports that a write would have put two Shifts on one date.
+// It is named for the same reason ErrDuplicateRoleName is: an admin moving a
+// Shift onto a day the drop-in already runs has made an ordinary mistake and is
+// told so, and reading the driver's error code is this package's job rather
+// than every caller's.
+var ErrShiftDateTaken = errors.New("another shift already starts on that date")
+
+// isShiftDateTaken reports whether an error is the one-Shift-per-date index
+// refusing a write. The index is named rather than any unique violation being
+// assumed, so a later index on the table cannot quietly start reporting itself
+// as a date clash.
+func isShiftDateTaken(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == uniqueViolation &&
+		pgErr.ConstraintName == "shift_start_date_key"
+}
+
+// localTimestamp renders a TIMESTAMP column in the layout this package spells
+// wall-clock times in. Nothing about the value says which zone reads it, which
+// is the point (ADR 0007).
+func localTimestamp(t time.Time) string {
 	return t.Format(shiftTimestampLayout)
 }
 
@@ -61,8 +71,7 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 	var shifts []Shift
 	for rows.Next() {
 		var s Shift
-		var date time.Time
-		var startAt, endAt *time.Time
+		var date, startAt, endAt time.Time
 		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt); err != nil {
 			return nil, fmt.Errorf("failed to scan shift: %w", err)
 		}
@@ -108,8 +117,7 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 	var shifts []ShiftInRange
 	for rows.Next() {
 		var s ShiftInRange
-		var date time.Time
-		var startAt, endAt *time.Time
+		var date, startAt, endAt time.Time
 		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt, &s.Allocated); err != nil {
 			return nil, fmt.Errorf("failed to scan shift: %w", err)
 		}
@@ -150,8 +158,7 @@ func shiftDateWhere(from, to time.Time) (string, []any) {
 // this is the lookup that resolves a date to its shift and rota.
 func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error) {
 	var s Shift
-	var d0 time.Time
-	var startAt, endAt *time.Time
+	var d0, startAt, endAt time.Time
 	err := d.pool.QueryRow(ctx, `
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
 		FROM shift s
@@ -174,8 +181,7 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 // whether the flag may move at all.
 func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error) {
 	var s ShiftInRange
-	var date time.Time
-	var startAt, endAt *time.Time
+	var date, startAt, endAt time.Time
 	err := d.pool.QueryRow(ctx, `
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
@@ -204,15 +210,42 @@ func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (boo
 	return tag.RowsAffected() > 0, nil
 }
 
+// setShiftTimes writes a shift's start and end, reporting whether a row
+// matched. Both together, because they are one statement of when the session
+// runs and the database refuses half of one.
+//
+// Moving a Shift's start onto a day another Shift already starts on comes back
+// as ErrShiftDateTaken. That is the one-Shift-per-date index answering, which
+// makes it the whole guard rather than a backstop behind a read: a caller
+// holding one rota's lock cannot see a clash coming from another rota.
+//
+// There is no freeze check here and none above: a Shift's times are descriptive
+// rather than an allocator input, so they stay editable after the Rotation is
+// allocated (ADR 0007).
+func setShiftTimes(ctx context.Context, q querier, id, startAt, endAt string) (bool, error) {
+	tag, err := q.Exec(ctx, `
+		UPDATE shift
+		SET start_at = $2::timestamp, end_at = $3::timestamp
+		WHERE id = $1
+	`, id, startAt, endAt)
+	if isShiftDateTaken(err) {
+		return false, ErrShiftDateTaken
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to set the times of shift %s: %w", id, err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // InsertDefinedRota inserts a rotation, all of its minted shifts, and the
 // Preallocations its Standing Preallocations seeded, in a single transaction —
 // so a rotation can never exist without its shifts, and a rota can never be
 // defined with only some of the pins an admin was promised.
 //
-// Concurrency (issue #41, hazard B1): the shift.date UNIQUE constraint is what
-// makes concurrent runs safe — two rotas minting the same date cannot both
+// Concurrency (issue #41, hazard B1): the one-Shift-per-date unique index is
+// what makes concurrent runs safe — two rotas minting the same date cannot both
 // commit, and the losing transaction writes nothing. Any change that relaxes
-// that constraint must introduce a replacement guard here.
+// that index must introduce a replacement guard here.
 func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -232,13 +265,15 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 
 	batch := &pgx.Batch{}
 	for _, s := range shifts {
-		// An empty time is written as NULL rather than as a zero timestamp:
-		// "nobody has said when this runs" has to survive the round trip, and
-		// midnight is a time the drop-in could plausibly be told to run at.
+		// Date is not written: it is derived from the start on the way out
+		// (shiftDateExpr, ADR 0007), so the caller's job is to say when the
+		// session runs and the date follows. An empty time is written as NULL
+		// and refused by the NOT NULL, which is the loudest place for "nobody
+		// said when this runs" to surface.
 		batch.Queue(`
-			INSERT INTO shift (id, date, rota_id, closed, start_at, end_at)
-			VALUES ($1, $2, $3, $4, NULLIF($5, '')::timestamp, NULLIF($6, '')::timestamp)
-		`, s.ID, s.Date, s.RotaID, s.Closed, s.StartAt, s.EndAt)
+			INSERT INTO shift (id, rota_id, closed, start_at, end_at)
+			VALUES ($1, $2, $3, NULLIF($4, '')::timestamp, NULLIF($5, '')::timestamp)
+		`, s.ID, s.RotaID, s.Closed, s.StartAt, s.EndAt)
 	}
 	results := tx.SendBatch(ctx, batch)
 	for range shifts {
