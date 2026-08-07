@@ -38,9 +38,16 @@ type SolveRotaStore interface {
 	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
 }
 
-// AllocateRotaStore defines the database operations needed for allocating a rota
+// AllocateRotaStore is what allocating the rota in flight needs: everything
+// drafting one needs, plus the write that commits a solve as the rota.
+//
+// It embeds the draft store rather than only the solve store because allocating
+// reads and writes drafts too: it refuses a rota nobody has drafted, and a solve
+// it will not commit becomes the draft (ADR 0008). The embedding is deliberately
+// one-way — holding a DraftRotaAllocationStore is permission to draft a rota,
+// not to allocate it.
 type AllocateRotaStore interface {
-	SolveRotaStore
+	DraftRotaAllocationStore
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 

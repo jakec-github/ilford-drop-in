@@ -16,8 +16,8 @@ Cloud project** for the path this guide describes.
 > the real, Sheets-backed path, and is what you need to develop against actual
 > data or to use the CLI.
 
-> **Scope.** Production and the sheet-backed commands (`allocateRota`,
-> `publishRota`, `listVolunteers`) are **not** expected to work for outside
+> **Scope.** Production and the sheet-backed commands (`publishRota`,
+> `listVolunteers`) are **not** expected to work for outside
 > contributors — they need real Sheets wired up and, for prod, infrastructure
 > access. This guide covers everything needed to run the app, view the rota, and
 > develop against it locally.

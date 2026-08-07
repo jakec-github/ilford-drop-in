@@ -1,4 +1,5 @@
 import type {
+  AllocateOutcome,
   AllocationSettings,
   Assignee,
   AvailabilityEntry,
@@ -567,7 +568,33 @@ interface DraftRotaAllocationResponse {
   seatsAsked: number;
   seatsFilled: number;
   solving: boolean;
+  hash: string;
   shifts: ApiDraftShift[];
+}
+
+// toDraftRotaState is the one place a draft crosses the wire, whether it
+// arrived from reading one or from an allocation that refused to commit. Both
+// carry the same shape because they are the same thing: where the rota has got
+// to.
+function toDraftRotaState(data: DraftRotaAllocationResponse): DraftRotaState {
+  return {
+    rotaId: data.rotaId,
+    rotaStart: data.rotaStart,
+    solved: data.solved,
+    // An unsolved rota carries no moment, and "" would be a date nobody can
+    // read rather than an absence anybody can test.
+    solvedAt: data.solved ? data.solvedAt : null,
+    success: data.success,
+    solverStatus: data.solverStatus,
+    seatsAsked: data.seatsAsked,
+    seatsFilled: data.seatsFilled,
+    solving: data.solving,
+    hash: data.hash,
+    shifts: data.shifts.map((shift) => ({
+      shiftId: shift.shiftId,
+      assignees: shift.assignees.map(toAssignee),
+    })),
+  };
 }
 
 // fetchDraftRotaAllocation reads where the rota in flight's Draft Rota
@@ -590,24 +617,7 @@ export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null>
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the draft rota"));
   }
-  const data = (await res.json()) as DraftRotaAllocationResponse;
-  return {
-    rotaId: data.rotaId,
-    rotaStart: data.rotaStart,
-    solved: data.solved,
-    // An unsolved rota carries no moment, and "" would be a date nobody can
-    // read rather than an absence anybody can test.
-    solvedAt: data.solved ? data.solvedAt : null,
-    success: data.success,
-    solverStatus: data.solverStatus,
-    seatsAsked: data.seatsAsked,
-    seatsFilled: data.seatsFilled,
-    solving: data.solving,
-    shifts: data.shifts.map((shift) => ({
-      shiftId: shift.shiftId,
-      assignees: shift.assignees.map(toAssignee),
-    })),
-  };
+  return toDraftRotaState((await res.json()) as DraftRotaAllocationResponse);
 }
 
 // solveDraftRotaAllocation re-solves the rota in flight and stores the answer as
@@ -626,6 +636,57 @@ export async function solveDraftRotaAllocation(): Promise<void> {
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to solve the draft rota"));
   }
+}
+
+interface AllocateRotaResponse {
+  allocated: boolean;
+  allocatedAt?: string;
+  rota: DraftRotaAllocationResponse;
+}
+
+// allocateRotaInFlight allocates the rota in flight — the one named by `hash`,
+// which is the fingerprint the draft was read with, and no other.
+//
+// The server re-solves and commits only if its answer fingerprints the same
+// (ADR 0008). When it does not, nothing is committed and the fresh solve comes
+// back as the draft to read and confirm instead — a 409, and the one status
+// code here whose body is worth reading rather than throwing. It is not a
+// failure: it is the guarantee working.
+//
+// It takes as long as the solver does, up to a thirty-second ceiling, so the
+// caller needs an honest spinner and no optimism about the outcome.
+export async function allocateRotaInFlight(
+  hash: string,
+): Promise<AllocateOutcome> {
+  const res = await fetch("/api/rotations/in-flight/allocation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draftHash: hash }),
+  });
+
+  // A 409 is either the rota having moved, which carries a draft, or a refusal
+  // that carries a message — no rota in flight, nothing drafted yet, a solve
+  // already running. The body tells them apart: only the first states whether
+  // it allocated.
+  if (res.status === 409) {
+    const body = (await res.json()) as Partial<AllocateRotaResponse> & {
+      error?: string;
+    };
+    if (body.rota && body.allocated === false) {
+      return { allocated: false, rota: toDraftRotaState(body.rota) };
+    }
+    throw new Error(body.error ?? "Failed to allocate the rota (409)");
+  }
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to allocate the rota"));
+  }
+
+  const data = (await res.json()) as AllocateRotaResponse;
+  return {
+    allocated: true,
+    allocatedAt: data.allocatedAt ?? "",
+    rota: toDraftRotaState(data.rota),
+  };
 }
 
 // A person becomes either an id field (`in`/`out`) or a custom-entry field

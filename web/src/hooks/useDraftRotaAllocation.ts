@@ -1,6 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchDraftRotaAllocation, solveDraftRotaAllocation } from "../api";
-import type { DraftRotaState } from "../types";
+import {
+  allocateRotaInFlight,
+  fetchDraftRotaAllocation,
+  solveDraftRotaAllocation,
+} from "../api";
+import type { AllocateOutcome, DraftRotaState, DraftShift } from "../types";
+
+// AllocationAttempt is what came of the last attempt to allocate, kept so the
+// screen can say something about it once the request is over.
+//
+// The refused case carries the rota that was shown, not the one that came
+// back — that one is now in `state`, on screen. What an admin needs is the
+// difference between the two, and this is the half of it the page would
+// otherwise have overwritten.
+export type AllocationAttempt =
+  | { outcome: "allocated"; allocatedAt: string }
+  | { outcome: "moved"; shown: DraftShift[] };
 
 interface UseDraftRotaAllocation {
   // null while the first load is still in flight, and null when no rota is in
@@ -20,6 +35,23 @@ interface UseDraftRotaAllocation {
   // rejects — the outcome is in solveError, because the control that starts it
   // is also where the answer belongs.
   solve: () => Promise<void>;
+  // True while an allocation is running. It re-solves before it commits, so it
+  // is the same thirty seconds a solve takes, on the one action that cannot be
+  // shown optimistically: what it does depends on what the solver says.
+  allocating: boolean;
+  // The message from an allocation that was refused outright — no rota in
+  // flight, nothing drafted yet, a solve already running. A rota that had moved
+  // is not one of these: that is an outcome, and it is in `attempt`.
+  allocateError: string | null;
+  // What came of the last allocation, or null if none has been attempted since
+  // this page loaded — or since the last one was superseded by starting
+  // another.
+  attempt: AllocationAttempt | null;
+  // Allocates the rota in flight, confirming the draft as it was last read.
+  // Never rejects: what happened is in `attempt` and `allocateError`, and the
+  // resolved outcome is there for a caller with something else to do about it —
+  // the rota page reloads, because allocating is what puts the rota on it.
+  allocate: () => Promise<AllocateOutcome | null>;
 }
 
 interface UseDraftRotaAllocationOptions {
@@ -45,6 +77,9 @@ export function useDraftRotaAllocation({
   const [solving, setSolving] = useState(false);
   const [solveFailure, setSolveFailure] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [allocating, setAllocating] = useState(false);
+  const [allocateFailure, setAllocateFailure] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState<AllocationAttempt | null>(null);
 
   // Written with .then rather than await so no setState is reached
   // synchronously from the effect.
@@ -75,6 +110,10 @@ export function useDraftRotaAllocation({
   const solve = useCallback(async () => {
     setSolving(true);
     setSolveFailure(null);
+    // Whatever the last allocation attempt found, a fresh solve has just
+    // answered the same question again — so what it said about the rota moving
+    // is about a rota two solves ago.
+    setAttempt(null);
     try {
       await solveDraftRotaAllocation();
     } catch (err: unknown) {
@@ -86,6 +125,53 @@ export function useDraftRotaAllocation({
       setReloads((n) => n + 1);
     }
   }, []);
+
+  // Allocating confirms the draft this page last read, by the fingerprint it
+  // came with. Nothing here decides whether it still holds — the server
+  // re-solves and compares, which is the only way to know (ADR 0008).
+  //
+  // A refused allocation carries the rota as it now stands, so it is taken from
+  // the response rather than re-read: the read would repeat the solve's roster
+  // fetch to be told the same thing. A successful one does need the re-read,
+  // and gets nothing back: the rota is allocated, so there is no draft any
+  // more, and the read that says so is what takes the draft panel off screen.
+  const allocate = useCallback(async (): Promise<AllocateOutcome | null> => {
+    if (!loaded?.hash) {
+      setAllocateFailure(
+        "There is no draft to allocate. Solve one and read it first.",
+      );
+      return null;
+    }
+
+    setAllocating(true);
+    setAllocateFailure(null);
+    setAttempt(null);
+    try {
+      const outcome = await allocateRotaInFlight(loaded.hash);
+      if (outcome.allocated) {
+        setAttempt({
+          outcome: "allocated",
+          allocatedAt: outcome.allocatedAt,
+        });
+        setReloads((n) => n + 1);
+      } else {
+        setAttempt({ outcome: "moved", shown: loaded.shifts });
+        setLoaded(outcome.rota);
+      }
+      return outcome;
+    } catch (err: unknown) {
+      setAllocateFailure(
+        err instanceof Error ? err.message : "Failed to allocate the rota",
+      );
+      // The usual reason an allocation is refused outright is that the rota is
+      // no longer what this page thinks it is — allocated by somebody else, or
+      // discarded — so the re-read is what makes the message make sense.
+      setReloads((n) => n + 1);
+      return null;
+    } finally {
+      setAllocating(false);
+    }
+  }, [loaded]);
 
   // Everything read out of here is gated on `enabled` rather than merely
   // stopping being refreshed by it, so disabling takes the draft away in the
@@ -100,5 +186,9 @@ export function useDraftRotaAllocation({
     solving: enabled && solving,
     solveError: enabled ? solveFailure : null,
     solve,
+    allocating: enabled && allocating,
+    allocateError: enabled ? allocateFailure : null,
+    attempt: enabled ? attempt : null,
+    allocate,
   };
 }

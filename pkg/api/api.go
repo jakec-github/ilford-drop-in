@@ -17,6 +17,7 @@ import (
 
 // Store defines the database operations the API needs (satisfied by *db.DB)
 type Store interface {
+	services.AllocateRotaStore
 	services.AvailabilityStore
 	services.ChangeRotaStore
 	services.DefaultShapeWriteStore
@@ -161,6 +162,11 @@ func (h *Handler) Routes() http.Handler {
 	// screen read one of these each (issue #140).
 	api.Handle("GET /rotations/proposed", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaProposal)))
 	api.Handle("DELETE /rotations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDiscardRota)))
+	// Allocating: the act that turns the rota in flight into the rota, and the
+	// end of its lifecycle. Under the rota rather than under the draft beside
+	// it, because what it changes is the Rotation — the draft is what it
+	// confirms, not what it writes.
+	api.Handle("POST /rotations/in-flight/allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleAllocateRotaInFlight)))
 	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has
 	// decided yet, and it is replaced wholesale every time an input moves.

@@ -47,11 +47,13 @@ type mockStore struct {
 	deletedStandingIDs      []string
 	storedDrafts            []db.DraftRotaAllocation
 	storedDraftSeats        [][]db.DraftAllocation
+	insertedAllocations     []db.Allocation
+	allocatedRotaIDs        []string
 	// draftSeats are the Seats of the draft held in storedDrafts: who the solve
 	// put where, which is the rota the read endpoint reports.
-	draftSeats              []db.DraftAllocation
-	getDraftErr             error
-	discardedRotaIDs        []string
+	draftSeats       []db.DraftAllocation
+	getDraftErr      error
+	discardedRotaIDs []string
 	// discardErr is what the database says to a discard that fails outright, as
 	// opposed to one it refuses (db.ErrRotaAllocated).
 	discardErr error
@@ -625,13 +627,22 @@ func (m *mockStore) Ping(ctx context.Context) error {
 	return m.pingErr
 }
 
-// ReplaceDraftRotaAllocation is the only draft write the API can reach — there
-// is deliberately no allocation writer here (services.DraftRotaAllocationStore).
-// Nothing in these tests gets far enough to call it: solving runs the CP-SAT
-// subprocess, which no Go test does.
+// ReplaceDraftRotaAllocation stores a solve as the rota's draft. Nothing in
+// these tests gets far enough to call it: solving runs the CP-SAT subprocess,
+// which no Go test does.
 func (m *mockStore) ReplaceDraftRotaAllocation(_ context.Context, draft db.DraftRotaAllocation, seats []db.DraftAllocation) error {
 	m.storedDrafts = append(m.storedDrafts, draft)
 	m.storedDraftSeats = append(m.storedDraftSeats, seats)
+	return nil
+}
+
+// InsertAllocationsAndSetAllocated commits a solve as the rota. Reachable only
+// through allocating, and only past a solve, so — like the draft write above —
+// no test here reaches it; what it records is there for the assertion that
+// matters, which is that nothing was committed.
+func (m *mockStore) InsertAllocationsAndSetAllocated(_ context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error {
+	m.insertedAllocations = append(m.insertedAllocations, allocations...)
+	m.allocatedRotaIDs = append(m.allocatedRotaIDs, rotaID)
 	return nil
 }
 

@@ -55,3 +55,96 @@
     margin-bottom: 24px;
   }
 }
+
+/* The two things that can be done to a draft, side by side: solve it again, or
+   allocate it. Wrapping rather than shrinking, so neither label truncates on a
+   phone. */
+.draft-panel-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Allocating is the one irreversible thing on this page, so it is the one
+   button given a filled accent. Everything else here is a read or a re-solve.
+   The label takes the page background rather than white: the accent is a dark
+   purple in the light theme and a light one in the dark theme, and --bg is the
+   colour that is the opposite of it in both. */
+.button.draft-panel-allocate {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* A button that cannot be pressed says so rather than only failing to respond:
+   an allocation is unavailable for a reason the sentence above it gives. */
+.draft-panel-controls .button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* An allocation that would not commit. Bordered in the accent because it is the
+   answer to something the admin just did, unlike the standing report above it. */
+.draft-panel-moved {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.draft-panel-moved-lead {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.draft-panel-changes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.draft-panel-change-date {
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.allocate-lead {
+  margin: 0 0 0.75rem;
+}
+
+.allocate-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+}
+
+.allocate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.button.allocate-button {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Same reason as the panel's own controls: the confirm button is unavailable
+   while the solve behind it runs, and it should look it. */
+.allocate-actions .button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* The count that stands in for the list when the solver has re-balanced the
+   whole rota. Same weight as the list it replaces: it is the same answer. */
+.draft-panel-moved-count {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}

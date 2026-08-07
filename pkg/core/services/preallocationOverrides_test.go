@@ -109,14 +109,17 @@ func openShiftRows(dateByShiftID map[string]string) []db.Shift {
 }
 
 // TestAllocateRotaFailsOnStalePin covers the pre-solve stale-pin guard end to
-// end: a pin whose volunteer has gone inactive makes AllocateRota fail before
-// the solver runs, naming the pin, and writes nothing.
+// end: a pin whose volunteer has gone inactive makes allocating fail before the
+// solver runs, naming the pin, and writes nothing.
 func TestAllocateRotaFailsOnStalePin(t *testing.T) {
 	store := &mockAllocateRotaStore{
 		rotations: []db.Rotation{
 			{ID: "rota-1", Start: "2026-08-02", ShiftCount: 1},
 		},
-		shifts: sundayShifts("rota-1", "2026-08-02", 1),
+		// A draft exists, so the refusal is the stale pin rather than the gate
+		// that stops a rota nobody has drafted.
+		storedDrafts: []db.DraftRotaAllocation{{RotaID: "rota-1"}},
+		shifts:       sundayShifts("rota-1", "2026-08-02", 1),
 		availabilityRequests: []db.AvailabilityRequest{
 			{ID: "req-1", RotaID: "rota-1", VolunteerID: "vol-1", Token: "tok-1"},
 		},
@@ -137,15 +140,14 @@ func TestAllocateRotaFailsOnStalePin(t *testing.T) {
 		},
 	}
 
-	result, err := AllocateRota(
+	result, err := AllocateRotaInFlight(
 		context.Background(),
 		store,
 		volClient,
 		testCfg,
 		zap.NewNop(),
-		false, // dryRun
-		false, // forceCommit
-		"",    // pythonFlag
+		"a-hash", // the draft being confirmed; never reached
+		"",       // pythonFlag
 	)
 
 	require.Error(t, err)

@@ -35,6 +35,12 @@ type draftRotaAllocationResponse struct {
 	// Solving says a solve is running now, so a fresher answer is on its way and
 	// asking again shortly will get it.
 	Solving bool `json:"solving"`
+	// Hash fingerprints the rota below. It is what a client says back when it
+	// allocates, which is how "allocate the rota you were shown" is enforced:
+	// allocating re-solves and commits only if the answer fingerprints the same
+	// (ADR 0008). Empty for a rota nobody has drafted — there is nothing to
+	// confirm.
+	Hash string `json:"hash"`
 	// SolveTimeSeconds is the one diagnostic worth an admin's attention: the
 	// solve sits on the allocate path too, so a rota creeping towards the
 	// solver's thirty-second ceiling is worth seeing before it gets there. The
@@ -156,6 +162,7 @@ func draftStatus(status *services.DraftRotaAllocationStatus) draftRotaAllocation
 		SeatsFilled:      status.SeatsFilled,
 		Dirty:            status.Dirty,
 		Solving:          status.Solving,
+		Hash:             status.Hash,
 		SolveTimeSeconds: status.Diagnostics.SolveTimeSeconds,
 		Shifts:           draftShifts(status.Shifts),
 	}

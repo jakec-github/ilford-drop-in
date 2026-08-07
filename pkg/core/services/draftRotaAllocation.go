@@ -65,6 +65,11 @@ type DraftRotaAllocationStatus struct {
 	// Set by the caller that owns the solve, since that is where the fact lives
 	// (api/draftsolves.go).
 	Solving bool
+	// Hash fingerprints the rota below: it is what an admin allocating says
+	// back, and what allocating re-solves and compares against before it
+	// commits anything (ADR 0008). Empty for a rota nobody has drafted, which
+	// has no rota to fingerprint and nothing to confirm.
+	Hash string
 	// Shifts carries only the Shifts the draft placed anybody on, in date order.
 	// A Shift the solver left empty is absent rather than present and empty —
 	// there is nothing to say about it that the rota page does not already say.
@@ -153,6 +158,30 @@ func SolveDraftRotaAllocation(
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert the solved rota: %w", err)
 	}
+
+	return storeSolveAsDraft(ctx, database, solve, allocations, time.Now().UTC(), logger)
+}
+
+// storeSolveAsDraft stores a solve as the Rotation's Draft Rota Allocation,
+// replacing whatever draft was there, and reports what it stored.
+//
+// Both things that solve the rota in flight end up here. Drafting always does,
+// which is the whole of ADR 0008; allocating does when it refuses to commit,
+// because a solve that says the rota has moved is exactly the answer the admin
+// should be looking at next. The one path means a draft is written the same way
+// whichever act produced it.
+//
+// The allocations are the caller's rather than converted here: allocating has
+// already converted them in order to hash them, and converting twice would mint
+// a second set of Seat ids for the same solve.
+func storeSolveAsDraft(
+	ctx context.Context,
+	database DraftRotaAllocationStore,
+	solve *rotaSolve,
+	allocations []db.Allocation,
+	solvedAt time.Time,
+	logger *zap.Logger,
+) (*DraftRotaAllocationStatus, error) {
 	seats := make([]db.DraftAllocation, 0, len(allocations))
 	for _, a := range allocations {
 		seats = append(seats, db.DraftAllocation{
@@ -171,7 +200,7 @@ func SolveDraftRotaAllocation(
 		return nil, fmt.Errorf("failed to encode solver diagnostics: %w", err)
 	}
 
-	draft := solve.draft(time.Now().UTC(), diagnostics)
+	draft := solve.draft(solvedAt, diagnostics)
 	if err := database.ReplaceDraftRotaAllocation(ctx, draft, seats); err != nil {
 		return nil, fmt.Errorf("failed to store the draft rota allocation: %w", err)
 	}
@@ -182,27 +211,39 @@ func SolveDraftRotaAllocation(
 		zap.Int("seats_filled", draft.SeatsFilled),
 		zap.Int("seats_asked", draft.SeatsAsked))
 
+	return solve.status(solvedAt, allocations, logger), nil
+}
+
+// status is what a solve has to say for itself, in the shape a screen reads a
+// draft in.
+//
+// One shape whether the solve was stored as a draft or committed as the rota:
+// an admin watching the rota take shape and an admin who has just allocated are
+// looking at the same thing, and it was a draft until the moment it was
+// committed.
+func (s *rotaSolve) status(solvedAt time.Time, allocations []db.Allocation, logger *zap.Logger) *DraftRotaAllocationStatus {
 	return &DraftRotaAllocationStatus{
-		RotaID:         draft.RotaID,
-		RotaStart:      solve.rota.Start,
+		RotaID:         s.rota.ID,
+		RotaStart:      s.rota.Start,
 		Solved:         true,
-		SolvedAt:       draft.SolvedAt,
-		Success:        draft.Success,
-		SolverStatus:   draft.SolverStatus,
-		ObjectiveValue: draft.ObjectiveValue,
-		Diagnostics:    solve.output.Diagnostics,
-		SeatsAsked:     draft.SeatsAsked,
-		SeatsFilled:    draft.SeatsFilled,
-		// Clean by construction: this draft was solved from the inputs as the
-		// stamp it carries found them. Anything landing since has already moved
-		// the Rotation's stamp past it, and the next read will say so.
+		SolvedAt:       solvedAt,
+		Success:        s.output.Success,
+		SolverStatus:   s.output.SolverStatus,
+		ObjectiveValue: s.output.ObjectiveValue,
+		Diagnostics:    s.output.Diagnostics,
+		SeatsAsked:     s.seatsAsked(),
+		SeatsFilled:    s.seatsFilled(),
+		// Clean by construction: this solve read the inputs as the stamp it
+		// carries found them. Anything landing since has already moved the
+		// Rotation's stamp past it, and the next read will say so.
 		Dirty: false,
+		Hash:  hashAllocations(allocations),
 		// Named from the roster the solve itself read, rather than fetched
 		// again: the Sheet is a network call, and one read a solve cannot
 		// disagree with itself about is worth more than a fresher spelling of
 		// somebody's name.
-		Shifts: draftShifts(solve.shifts, allocations, solve.volunteersByID, solve.roles, logger),
-	}, nil
+		Shifts: draftShifts(s.shifts, allocations, s.volunteersByID, s.roles, logger),
+	}
 }
 
 // draft is the row that stores this solve, minus its Seats: what the solver
@@ -337,6 +378,11 @@ func DraftRotaAllocationInFlight(
 		})
 	}
 	status.Shifts = draftShifts(shifts, allocations, volunteersByID, roles, logger)
+	// Derived from the Seats rather than stored beside them, so a draft's
+	// fingerprint can never disagree with the draft it fingerprints. It is the
+	// same function the solve on the allocate path hashes its answer with, over
+	// the same rows — which is what makes the two comparable at all.
+	status.Hash = hashAllocations(allocations)
 
 	return status, nil
 }

@@ -279,8 +279,25 @@ export interface DraftRotaState {
   // so by the time a response reaches this page dirty is only ever true
   // alongside solving: the re-solve was handed to the one already running.
   solving: boolean;
+  // Fingerprints the rota below, and is what allocating says back to the
+  // server: it re-solves and commits only if its answer fingerprints the same,
+  // which is how "allocate the rota you were shown" is enforced (ADR 0008).
+  // Opaque here — nothing on this side computes or compares it, beyond handing
+  // it back.
+  hash: string;
   shifts: DraftShift[];
 }
+
+// AllocateOutcome is what came of allocating: the rota went out, or it had
+// moved since it was shown and the fresh draft is what to read instead.
+//
+// Not an error in the second case. It is the mechanism working — nothing was
+// committed, and the admin now has the rota as it actually stands to confirm —
+// so it comes back as an outcome to render rather than a message to apologise
+// with.
+export type AllocateOutcome =
+  | { allocated: true; allocatedAt: string; rota: DraftRotaState }
+  | { allocated: false; rota: DraftRotaState };
 
 // PersonRef identifies someone on a shift for the purpose of changing it. A
 // real volunteer is keyed by id; a custom (manual) entry has none, so it is

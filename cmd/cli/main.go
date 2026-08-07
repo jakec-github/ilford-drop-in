@@ -53,7 +53,10 @@ Availability is collected and chased through the web app, not here.`,
 	// Add commands with lazy initialization
 	// These will use the app context after it's initialized by PersistentPreRunE
 	rootCmd.AddCommand(newLazyCommand(commands.DefineRotaCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.AllocateRotaCmd))
+	// There is no allocateRota command. Allocating happens in the app, where it
+	// re-solves and commits only the rota the admin was shown; a command that
+	// solved and committed in one step could not honour that, and two paths
+	// where one breaks the rule is worse than one path (issue #144, ADR 0008).
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))

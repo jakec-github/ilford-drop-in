@@ -54,6 +54,10 @@ interface RotaViewerProps {
     shiftId: string,
     seats: { roleId: string; count: number }[],
   ) => Promise<void>;
+  // Re-reads the rota. Called when it has just been allocated, which is the one
+  // change to it this view does not make a shift at a time: every unallocated
+  // row on screen has just become an allocated one.
+  onReload: () => Promise<void>;
 }
 
 // A shift that exists but has not been through allocation yet: no assignees,
@@ -904,6 +908,7 @@ export default function RotaViewer({
   onSetClosed,
   onSetTimes,
   onSetShape,
+  onReload,
 }: RotaViewerProps) {
   const [selectedName, setSelectedName] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -966,7 +971,22 @@ export default function RotaViewer({
     solving,
     solveError,
     solve,
+    allocating,
+    allocateError,
+    attempt,
+    allocate,
   } = useDraftRotaAllocation({ enabled: isAdmin });
+
+  // Shift dates by id, for the one place a draft has to be named in a
+  // sentence: what changed under an allocation that would not commit. A draft
+  // is keyed by shift id (ADR 0001), and this page is where the ids have dates.
+  const dateByShiftID = useMemo(() => {
+    const byID = new Map<string, string>();
+    for (const shift of rotaShifts) {
+      byID.set(shift.id, formatShiftDateLong(shift.date));
+    }
+    return byID;
+  }, [rotaShifts]);
 
   const draftByShiftID = useMemo(() => {
     const byShift = new Map<string, Assignee[]>();
@@ -1519,12 +1539,36 @@ export default function RotaViewer({
       {/* isAdmin as well as the state being loaded, for the reason `editing`
           above is derived rather than trusted: losing the session takes the
           draft away in the same render, without waiting on the hook. */}
+      {/* The rota has just gone out. Said here rather than in the draft panel,
+          which allocating removes: an allocated rota has no draft, so the panel
+          that would have announced it is gone by the time it lands. */}
+      {isAdmin && attempt?.outcome === "allocated" && (
+        <p className="rota-notice" role="status">
+          The rota is allocated. Volunteers can see it on this page and in the
+          calendar feeds they subscribe to, and the next rota can now be
+          defined. Changing it from here on is one alteration at a time.
+        </p>
+      )}
+
       {isAdmin && draftState && (
         <DraftRotaPanel
           state={draftState}
           solving={solving}
           solveError={solveError}
           onSolve={() => void solve()}
+          allocating={allocating}
+          allocateError={allocateError}
+          attempt={attempt}
+          onAllocate={() =>
+            allocate().then((outcome) => {
+              if (!outcome?.allocated) return;
+              // Every row on screen has just changed: the shifts the rota was
+              // solved for are allocated now, so the draft chips they were
+              // wearing are real placements.
+              return onReload();
+            })
+          }
+          dateOf={(shiftId) => dateByShiftID.get(shiftId) ?? "That shift"}
         />
       )}
 

@@ -1,8 +1,8 @@
 # pyallocator
 
-CP-SAT rota allocator. Called by the Go CLI's
-`allocateRotaCpsat` command as a subprocess: JSON problem on stdin, JSON
-rota on stdout. Motivation and design: `../docs/cpsat_allocator_plan.md`
+CP-SAT rota allocator. Called by the Go server as a subprocess — once to solve
+a rota's Draft Rota Allocation, and again to allocate it: JSON problem on stdin,
+JSON rota on stdout. Motivation and design: `../docs/cpsat_allocator_plan.md`
 and `../docs/allocator_issues.md`.
 
 ## Setup
