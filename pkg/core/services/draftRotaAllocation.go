@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/allocator"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -23,13 +25,13 @@ type DraftRotaAllocationStore interface {
 	SolveRotaStore
 	GetRotaInFlight(ctx context.Context) (*db.RotaInFlight, error)
 	GetDraftRotaAllocation(ctx context.Context, rotaID string) (*db.DraftRotaAllocation, error)
+	GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.DraftAllocation, error)
 	ReplaceDraftRotaAllocation(ctx context.Context, draft db.DraftRotaAllocation, seats []db.DraftAllocation) error
 }
 
-// DraftRotaAllocationStatus is what a draft has to say for itself: not the rota
-// it drafted — that is read back from the draft — but whether it found one, how
-// much of it it managed to staff, and whether it still speaks for the inputs as
-// they now stand.
+// DraftRotaAllocationStatus is what a draft has to say for itself: whether it
+// found a rota, how much of one it managed to staff, whether it still speaks for
+// the inputs as they now stand, and the rota it drafted.
 //
 // SeatsFilled against SeatsAsked is the number an admin acts on during the
 // availability window. "Four Seats unfilled" is a nudge to chase somebody;
@@ -38,7 +40,9 @@ type DraftRotaAllocationStore interface {
 //
 // One type for both a fresh solve and a stored draft, because an admin asking
 // "where is the rota up to" is asking one question, and two shapes for it would
-// be two things for a screen to reconcile.
+// be two things for a screen to reconcile. Both fill Shifts, so holding one of
+// these never means "the rota it drafted has not been loaded yet" — an empty
+// Shifts is a draft that staffed nobody.
 type DraftRotaAllocationStatus struct {
 	RotaID    string
 	RotaStart string
@@ -61,6 +65,58 @@ type DraftRotaAllocationStatus struct {
 	// Set by the caller that owns the solve, since that is where the fact lives
 	// (api/draftsolves.go).
 	Solving bool
+	// Shifts carries only the Shifts the draft placed anybody on, in date order.
+	// A Shift the solver left empty is absent rather than present and empty —
+	// there is nothing to say about it that the rota page does not already say.
+	Shifts []DraftShift
+}
+
+// DraftShift is one Shift's draft Seats. Keyed by Shift id rather than date,
+// because the caller already holds the Shifts and the Shift is the authority on
+// its own date (ADR 0001).
+type DraftShift struct {
+	ShiftID   string
+	Assignees []ShiftAssignee
+}
+
+// draftShifts turns a draft's Seats into the rota it drafted: the Shifts it
+// placed anybody on, in date order, with their Seats named.
+//
+// A draft Seat is exactly an allocation row — it becomes one when the rota is
+// allocated (ADR 0008) — so the naming goes through buildAssignees rather than
+// growing a second rule about how a Seat becomes a name in an order.
+//
+// Date order because that is the order the rota is read in. GetShiftsByRotaID
+// makes no promise about ordering, so the Shifts are sorted here rather than
+// relied on.
+func draftShifts(
+	shifts []db.Shift,
+	seats []db.Allocation,
+	volunteersByID map[string]model.Volunteer,
+	roles model.Roles,
+	logger *zap.Logger,
+) []DraftShift {
+	seatsByShiftID := make(map[string][]db.Allocation, len(seats))
+	for _, seat := range seats {
+		seatsByShiftID[seat.ShiftID] = append(seatsByShiftID[seat.ShiftID], seat)
+	}
+
+	sorted := make([]db.Shift, len(shifts))
+	copy(sorted, shifts)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date < sorted[j].Date })
+
+	drafted := make([]DraftShift, 0, len(sorted))
+	for _, shift := range sorted {
+		placed := seatsByShiftID[shift.ID]
+		if len(placed) == 0 {
+			continue
+		}
+		drafted = append(drafted, DraftShift{
+			ShiftID:   shift.ID,
+			Assignees: buildAssignees(placed, volunteersByID, roles, logger),
+		})
+	}
+	return drafted
 }
 
 // SolveDraftRotaAllocation solves the rota in flight and stores the answer as
@@ -141,6 +197,11 @@ func SolveDraftRotaAllocation(
 		// stamp it carries found them. Anything landing since has already moved
 		// the Rotation's stamp past it, and the next read will say so.
 		Dirty: false,
+		// Named from the roster the solve itself read, rather than fetched
+		// again: the Sheet is a network call, and one read a solve cannot
+		// disagree with itself about is worth more than a fresher spelling of
+		// somebody's name.
+		Shifts: draftShifts(solve.shifts, allocations, solve.volunteersByID, solve.roles, logger),
 	}, nil
 }
 
@@ -167,8 +228,8 @@ func (s *rotaSolve) draft(solvedAt time.Time, diagnostics []byte) db.DraftRotaAl
 }
 
 // DraftRotaAllocationInFlight reports where the rota in flight's draft has got
-// to: when it was last solved, what it found, and whether an allocator input has
-// moved under it since.
+// to: when it was last solved, what it found, whether an allocator input has
+// moved under it since, and the rota it drafted.
 //
 // It writes nothing and never solves. Deciding to solve is the caller's, because
 // only the caller knows whether a solve is already running in this process —
@@ -177,8 +238,21 @@ func (s *rotaSolve) draft(solvedAt time.Time, diagnostics []byte) db.DraftRotaAl
 //
 // A rota with no draft comes back Solved false and Dirty true, which is the
 // honest reading of both: nothing has been solved, and nothing speaks for the
-// rota as it stands.
-func DraftRotaAllocationInFlight(ctx context.Context, database DraftRotaAllocationStore) (*DraftRotaAllocationStatus, error) {
+// rota as it stands. It costs no roster fetch either: there are no Seats to name,
+// and the Sheet would be read to name nobody.
+//
+// Every caller of this must be admin-gated. A draft names people against Shifts
+// on a rota nobody has decided yet and is replaced wholesale every time an input
+// moves; publishing one would tell a volunteer they are working a shift they may
+// well not be. That is the whole reason drafts live in tables of their own
+// (ADR 0008), and this and the solve are the only reads that reach them.
+func DraftRotaAllocationInFlight(
+	ctx context.Context,
+	database DraftRotaAllocationStore,
+	volunteerClient VolunteerClient,
+	cfg *config.Config,
+	logger *zap.Logger,
+) (*DraftRotaAllocationStatus, error) {
 	rota, err := database.GetRotaInFlight(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the rota in flight: %w", err)
@@ -223,6 +297,46 @@ func DraftRotaAllocationInFlight(ctx context.Context, database DraftRotaAllocati
 	if err := json.Unmarshal(draft.Diagnostics, &status.Diagnostics); err != nil {
 		status.Diagnostics = allocator.CpsatDiagnostics{}
 	}
+
+	shifts, err := database.GetShiftsByRotaID(ctx, rota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch the rota's shifts: %w", err)
+	}
+	shiftIDs := make([]string, 0, len(shifts))
+	for _, shift := range shifts {
+		shiftIDs = append(shiftIDs, shift.ID)
+	}
+	seats, err := database.GetDraftAllocationsByShiftIDs(ctx, shiftIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the draft's seats for rota %s: %w", rota.ID, err)
+	}
+
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
+	}
+	volunteersByID := make(map[string]model.Volunteer, len(volunteers))
+	for _, v := range volunteers {
+		volunteersByID[v.ID] = v
+	}
+
+	// A draft Seat is exactly an allocation row, so it is lifted into one here
+	// and named the way every other Seat on the rota is.
+	allocations := make([]db.Allocation, 0, len(seats))
+	for _, seat := range seats {
+		allocations = append(allocations, db.Allocation{
+			ID:          seat.ID,
+			ShiftID:     seat.ShiftID,
+			Role:        seat.Role,
+			VolunteerID: seat.VolunteerID,
+			CustomEntry: seat.CustomEntry,
+		})
+	}
+	status.Shifts = draftShifts(shifts, allocations, volunteersByID, roles, logger)
 
 	return status, nil
 }

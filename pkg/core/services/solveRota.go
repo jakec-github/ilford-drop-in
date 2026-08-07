@@ -40,6 +40,12 @@ type rotaSolve struct {
 	// the allocator's own types.
 	output       *allocator.CpsatOutput
 	solvedShifts []*allocator.Shift
+	// roles and volunteersByID are what turn the answer back into names, for the
+	// caller that reports the rota it drafted rather than only storing it. Kept
+	// from the assembly rather than re-read: the roster is a Google Sheet, and a
+	// second read of it could name the Seats after somebody the solve never saw.
+	roles          model.Roles
+	volunteersByID map[string]model.Volunteer
 }
 
 // solveRotaInFlight assembles the allocator's input for the latest rota and runs
@@ -249,14 +255,21 @@ func solveRotaInFlight(
 		return nil, fmt.Errorf("failed to convert cpsat output: %w", err)
 	}
 
+	volunteersByID := make(map[string]model.Volunteer, len(allVolunteers))
+	for _, v := range allVolunteers {
+		volunteersByID[v.ID] = v
+	}
+
 	return &rotaSolve{
-		rota:          targetRota,
-		shifts:        shifts,
-		shiftDates:    shiftDates,
-		shiftIDByDate: shiftIDByDate,
-		shapes:        shapes,
-		output:        output,
-		solvedShifts:  solvedShifts,
+		rota:           targetRota,
+		shifts:         shifts,
+		shiftDates:     shiftDates,
+		shiftIDByDate:  shiftIDByDate,
+		shapes:         shapes,
+		output:         output,
+		solvedShifts:   solvedShifts,
+		roles:          roles,
+		volunteersByID: volunteersByID,
 	}, nil
 }
 

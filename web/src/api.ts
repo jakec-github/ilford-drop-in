@@ -1,5 +1,6 @@
 import type {
   AllocationSettings,
+  Assignee,
   AvailabilityEntry,
   AvailabilityFormState,
   AvailabilityLinkFailure,
@@ -7,6 +8,7 @@ import type {
   AvailabilitySend,
   ConfiguredRole,
   DefinedRota,
+  DraftRotaState,
   NewPreallocation,
   NewRota,
   NewStandingPreallocation,
@@ -104,6 +106,21 @@ function toVolunteer(v: ApiVolunteer): Volunteer {
   };
 }
 
+// One name on one shift, however it got there. Allocated Seats and drafted ones
+// arrive in the same shape because they are the same shape: a draft Seat becomes
+// an allocation when the rota is allocated (ADR 0008).
+function toAssignee(a: ApiAssignee): Assignee {
+  return {
+    name: a.name,
+    // An allocation predating the role column has none; it is one of the
+    // uncapped Role's, which is what the server backfills it to.
+    role: a.role ?? SERVICE_VOLUNTEER_ROLE,
+    custom: !a.volunteerId,
+    group: a.group || null,
+    volunteerId: a.volunteerId || null,
+  };
+}
+
 function toRotaShift(shift: ApiShift): RotaShift {
   return {
     id: shift.id,
@@ -114,17 +131,7 @@ function toRotaShift(shift: ApiShift): RotaShift {
     allocated: shift.allocated,
     shape: shift.shape ?? [],
     // Closed shifts carry no meaningful assignees.
-    assignees: shift.closed
-      ? []
-      : shift.assignees.map((a) => ({
-          name: a.name,
-          // An allocation predating the role column has none; it is one of the
-          // uncapped Role's, which is what the server backfills it to.
-          role: a.role ?? SERVICE_VOLUNTEER_ROLE,
-          custom: !a.volunteerId,
-          group: a.group || null,
-          volunteerId: a.volunteerId || null,
-        })),
+    assignees: shift.closed ? [] : shift.assignees.map(toAssignee),
   };
 }
 
@@ -542,6 +549,82 @@ export async function discardRota(id: string): Promise<void> {
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to discard the rota"));
+  }
+}
+
+interface ApiDraftShift {
+  shiftId: string;
+  assignees: ApiAssignee[];
+}
+
+interface DraftRotaAllocationResponse {
+  rotaId: string;
+  rotaStart: string;
+  solved: boolean;
+  solvedAt: string;
+  success: boolean;
+  solverStatus: string;
+  seatsAsked: number;
+  seatsFilled: number;
+  solving: boolean;
+  shifts: ApiDraftShift[];
+}
+
+// fetchDraftRotaAllocation reads where the rota in flight's Draft Rota
+// Allocation has got to, and the rota it drafted. Admin-only, and the endpoint
+// is separate from the shift listing for that reason: the listing is public, and
+// keeping it clear of the draft is what stops a speculative rota reaching the
+// volunteers named in it (ADR 0008).
+//
+// It resolves with null when no rota is in flight — the state between one rota
+// going out and the next being defined. The server says that as a 404, because
+// there is no draft resource to answer with, and it is the one failure here that
+// is not a failure: there is nothing to show, rather than something that could
+// not be loaded.
+//
+// Reading is also what re-solves a draft whose inputs have moved (issue #142),
+// so this call takes as long as the solver does when it does solve.
+export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null> {
+  const res = await fetch("/api/draft-rota-allocation");
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load the draft rota"));
+  }
+  const data = (await res.json()) as DraftRotaAllocationResponse;
+  return {
+    rotaId: data.rotaId,
+    rotaStart: data.rotaStart,
+    solved: data.solved,
+    // An unsolved rota carries no moment, and "" would be a date nobody can
+    // read rather than an absence anybody can test.
+    solvedAt: data.solved ? data.solvedAt : null,
+    success: data.success,
+    solverStatus: data.solverStatus,
+    seatsAsked: data.seatsAsked,
+    seatsFilled: data.seatsFilled,
+    solving: data.solving,
+    shifts: data.shifts.map((shift) => ({
+      shiftId: shift.shiftId,
+      assignees: shift.assignees.map(toAssignee),
+    })),
+  };
+}
+
+// solveDraftRotaAllocation re-solves the rota in flight and stores the answer as
+// its draft, replacing whatever was there. Admin-only.
+//
+// Resolves with nothing: the solve's own summary comes back, but the draft it
+// wrote is read from the endpoint above — one shape for "what the draft says",
+// whether it arrived from a page load or from this. It throws the server's own
+// message, which names the step that has not been taken ("state the default
+// shape on the settings screen") rather than reporting a fault.
+//
+// It takes as long as the solver does, up to a thirty-second ceiling, so a
+// caller needs a spinner rather than an optimistic UI.
+export async function solveDraftRotaAllocation(): Promise<void> {
+  const res = await fetch("/api/draft-rota-allocation", { method: "POST" });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to solve the draft rota"));
   }
 }
 

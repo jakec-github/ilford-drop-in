@@ -10,11 +10,13 @@ import type {
   Volunteer,
 } from "../types";
 import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
+import { useDraftRotaAllocation } from "../hooks/useDraftRotaAllocation";
 import { usePreallocations } from "../hooks/usePreallocations";
 import type { RoleColourOf } from "../hooks/useRoles";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
+import DraftRotaPanel from "./DraftRotaPanel";
 import type { AssigneeChange } from "./RotaEditDialogs";
 import {
   AssigneeDialog,
@@ -126,6 +128,20 @@ function groupColour(key: string): string {
     hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
   }
   return GROUP_COLOURS[hash % GROUP_COLOURS.length];
+}
+
+// The corner dot marking group membership, on whichever kind of chip is showing
+// the person: an allocated one or a drafted one. Group is why two names appear
+// together, which is worth seeing on a draft as much as on the rota — it is
+// often the explanation of a placement an admin was not expecting.
+function GroupDot({ group }: { group: string }) {
+  return (
+    <span
+      className="chip-group-dot"
+      style={{ background: groupColour(group) }}
+      title={`Group: ${group}`}
+    />
+  );
 }
 
 function getAllNames(shifts: RotaShift[]): string[] {
@@ -356,13 +372,7 @@ function Chip({
       }
     >
       {assignee.name}
-      {assignee.group && (
-        <span
-          className="chip-group-dot"
-          style={{ background: groupColour(assignee.group) }}
-          title={`Group: ${assignee.group}`}
-        />
-      )}
+      {assignee.group && <GroupDot group={assignee.group} />}
     </button>
   );
 }
@@ -503,6 +513,58 @@ function PreallocationList({
   );
 }
 
+// What a drafted name means. Deliberately the same sentence shape as pinTitle,
+// because these are the two things on an unallocated row that are not on the
+// rota — and the difference between them is the whole point: a pin is a promise
+// an admin made, a draft Seat is a guess the solver made and will make again.
+function draftTitle(assignee: Assignee): string {
+  const role =
+    assignee.role === SERVICE_VOLUNTEER_ROLE
+      ? ""
+      : ` as ${assignee.role.toLowerCase()}`;
+  return `The last solve put ${assignee.name} here${role}. It is a draft, not a placement, and the next solve may put somebody else here.`;
+}
+
+// DraftList shows who the last solve put on a shift it has not been allocated
+// for. Chips, because a drafted name is the same kind of thing as an allocated
+// one — dashed, because it is pencilled in.
+//
+// Nothing here is interactive, and that is the design rather than an omission
+// (ADR 0008): a hand placement made here would be destroyed by the next solve,
+// so the durable way to say "put her there" is the pin affordance on the same
+// row. List items rather than buttons, so nothing offers a keyboard user an
+// action that does not exist.
+function DraftList({
+  date,
+  assignees,
+  colourOf,
+}: {
+  date: string;
+  assignees: Assignee[];
+  colourOf: RoleColourOf;
+}) {
+  return (
+    <div className="prealloc">
+      <span className="prealloc-label" id={`draft-${date}`}>
+        Draft:
+      </span>
+      <ul className="prealloc-list" aria-labelledby={`draft-${date}`}>
+        {assignees.map((a, i) => (
+          <li
+            key={chipKey(date, a, i)}
+            className={`chip draft ${a.custom ? "custom" : "volunteer"}${a.group ? " has-group" : ""}`}
+            data-role-colour={colourOf(a.role) ?? undefined}
+            title={draftTitle(a)}
+          >
+            {a.name}
+            {a.group && <GroupDot group={a.group} />}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ShiftAsksFor says what an unallocated shift is waiting to be filled with.
 // Worth a line of its own on those rows because it is the one thing about them
 // an admin can still change and cannot see anywhere else — and because a shift
@@ -536,6 +598,7 @@ function ShiftWhen({ shift }: { shift: RotaShift }) {
 function ShiftRow({
   shift,
   pins,
+  drafted,
   colourOf,
   selectedName,
   onSelectName,
@@ -545,6 +608,10 @@ function ShiftRow({
   // Everyone already pinned to this shift. Only ever non-empty for an admin
   // looking at a shift whose rota has not been allocated.
   pins: Preallocation[];
+  // Who the last solve put on this shift. Only ever non-empty on the same rows
+  // as pins, and for the same reason: a draft only exists for a rota that has
+  // not been allocated, and only an admin is shown one.
+  drafted: Assignee[];
   colourOf: RoleColourOf;
   selectedName: string;
   onSelectName: (name: string) => void;
@@ -621,6 +688,16 @@ function ShiftRow({
             // the same way the Add buttons go away: an unallocated shift is not
             // a destination, so its pins are only there to be read.
             onUnpin={edit && !pending ? edit.onUnpin : undefined}
+          />
+        )}
+        {/* Under the pins, because it contains them: a pin is honoured by every
+            solve, so whoever is pinned above is drafted here too. The order
+            reads as the promise first and the guess built on it second. */}
+        {drafted.length > 0 && (
+          <DraftList
+            date={shift.date}
+            assignees={drafted}
+            colourOf={colourOf}
           />
         )}
         {/* Editing an unallocated shift means changing who is promised it —
@@ -878,6 +955,26 @@ export default function RotaViewer({
     addPin,
     removePin,
   } = usePreallocations({ enabled: isAdmin });
+
+  // The draft, on the same terms as the pins and for the same reasons: it only
+  // says anything about shifts the rota has not been run for, only admins see
+  // those, and reading it is not editing. It is what turns "not yet allocated"
+  // from a state into a picture of the rota taking shape (ADR 0008).
+  const {
+    state: draftState,
+    error: draftError,
+    solving,
+    solveError,
+    solve,
+  } = useDraftRotaAllocation({ enabled: isAdmin });
+
+  const draftByShiftID = useMemo(() => {
+    const byShift = new Map<string, Assignee[]>();
+    for (const shift of draftState?.shifts ?? []) {
+      byShift.set(shift.shiftId, shift.assignees);
+    }
+    return byShift;
+  }, [draftState]);
 
   const pinsByDate = useMemo(() => {
     const byDate = new Map<string, Preallocation[]>();
@@ -1411,12 +1508,33 @@ export default function RotaViewer({
         </p>
       )}
 
+      {/* Same treatment, same reason: an unallocated row with no draft on it
+          looks exactly like one whose draft failed to load. */}
+      {draftError && (
+        <p className="rota-notice" role="alert">
+          Could not load the draft rota: {draftError}
+        </p>
+      )}
+
+      {/* isAdmin as well as the state being loaded, for the reason `editing`
+          above is derived rather than trusted: losing the session takes the
+          draft away in the same render, without waiting on the hook. */}
+      {isAdmin && draftState && (
+        <DraftRotaPanel
+          state={draftState}
+          solving={solving}
+          solveError={solveError}
+          onSolve={() => void solve()}
+        />
+      )}
+
       <div className="rota-list">
         {visibleShifts.map((shift) => (
           <ShiftRow
             key={shift.date}
             shift={shift}
             pins={pinsByDate.get(shift.date) ?? []}
+            drafted={draftByShiftID.get(shift.id) ?? []}
             colourOf={colourOf}
             selectedName={selectedName}
             onSelectName={setSelectedName}

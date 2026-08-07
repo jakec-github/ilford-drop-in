@@ -78,12 +78,30 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "BEGIN:VEVENT", "a draft must never reach a subscribed calendar")
 	assert.NotContains(t, rec.Body.String(), "2026-08-02")
 
-	// The one path that does read drafts is admin-gated, and is where #143 will
-	// render them. Named here so that the guarantee above is about the public
-	// endpoints rather than about the rows being unreachable.
-	seats, err := database.GetDraftAllocationsByShiftIDs(ctx, []string{first.ID, second.ID})
-	require.NoError(t, err)
-	assert.Len(t, seats, 2, "the draft is there; it simply is not published")
+	// The one path that does read drafts. Anonymously it is a 401 that names
+	// nobody — not a thinner answer, no answer — which is what makes the silence
+	// above a gate rather than an omission.
+	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "")
+	require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
+	assert.NotContains(t, rec.Body.String(), "alice")
+	assert.NotContains(t, rec.Body.String(), "External Org")
+
+	// And with an admin session, the whole draft — which is the point of the gate
+	// rather than an exception to it, and is what the rota view renders (#143).
+	// Nothing has moved under this rota, so the read reports the stored draft
+	// rather than solving it again.
+	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var view draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &view))
+	assert.Equal(t, rota.ID, view.RotaID)
+	assert.True(t, view.Solved)
+	assert.False(t, view.Dirty)
+	require.Len(t, view.Shifts, 2, "the draft is there; it simply is not published")
+	assert.Equal(t, first.ID, view.Shifts[0].ShiftID)
+	assert.Equal(t, "Alice", view.Shifts[0].Assignees[0].Name)
+	assert.Equal(t, second.ID, view.Shifts[1].ShiftID)
+	assert.Equal(t, "External Org", view.Shifts[1].Assignees[0].Name)
 
 	// The control, without which none of the above proves anything: allocate the
 	// same person to the same Shift for real, and both endpoints say so. The

@@ -9,14 +9,13 @@ import (
 )
 
 // draftRotaAllocationResponse is what the rota in flight's draft has to say for
-// itself: whether it found a rota, how much of one it managed to staff, and
-// whether it still speaks for the inputs as they now stand. Not the rota it
-// drafted — that is read back from the draft, and only ever by an admin
-// (ADR 0008).
+// itself: whether it found a rota, how much of one it managed to staff, whether
+// it still speaks for the inputs as they now stand, and the rota it drafted.
 //
 // seatsFilled against seatsAsked is the number that changes what an admin does
 // next: four Seats unfilled is somebody to chase, INFEASIBLE is a conflict to go
 // and resolve, and there is still availability window left to do either in.
+// shifts is what they read once they have decided to look (issue #143).
 type draftRotaAllocationResponse struct {
 	RotaID    string `json:"rotaId"`
 	RotaStart string `json:"rotaStart"`
@@ -41,10 +40,22 @@ type draftRotaAllocationResponse struct {
 	// solver's thirty-second ceiling is worth seeing before it gets there. The
 	// rest of the diagnostics are stored, not shown.
 	SolveTimeSeconds float64 `json:"solveTimeSeconds"`
+	// Shifts is the rota the draft drafted, carrying only the Shifts it placed
+	// anybody on. Never null, so a rota nobody has solved for and one the solver
+	// could staff nobody on both read as an empty list rather than an absence.
+	Shifts []draftShiftResponse `json:"shifts"`
+}
+
+type draftShiftResponse struct {
+	// ShiftID rather than a date: the client already holds the rota's Shifts and
+	// merges these onto them by identity (ADR 0001).
+	ShiftID   string             `json:"shiftId"`
+	Assignees []assigneeResponse `json:"assignees"`
 }
 
 // handleGetDraftRotaAllocation reports where the rota in flight's draft has got
-// to — and re-solves it first when its inputs have moved.
+// to, and the rota it drafted — and re-solves it first when its inputs have
+// moved.
 //
 // Solving on read is the whole design (issue #142). A draft that only refreshed
 // when an admin asked it to would be stale exactly when it mattered, and the
@@ -55,8 +66,14 @@ type draftRotaAllocationResponse struct {
 // A solve already running is not waited for or duplicated: the draft as it
 // stands comes back with solving set, which is a screen's cue to show what is
 // there and ask again shortly.
+//
+// Admin-only, and that gate is the endpoint's whole reason to exist as its own
+// resource rather than as a field of GET /api/shifts. That listing is public and
+// stays that way: it never reads a draft table, so no future edit to it can leak
+// a speculative rota to the volunteers who subscribe to the rota page and its
+// calendar feed (ADR 0008).
 func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Request) {
-	status, err := services.DraftRotaAllocationInFlight(r.Context(), h.store)
+	status, err := services.DraftRotaAllocationInFlight(r.Context(), h.store, h.volunteers, h.cfg, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -140,6 +157,7 @@ func draftStatus(status *services.DraftRotaAllocationStatus) draftRotaAllocation
 		Dirty:            status.Dirty,
 		Solving:          status.Solving,
 		SolveTimeSeconds: status.Diagnostics.SolveTimeSeconds,
+		Shifts:           draftShifts(status.Shifts),
 	}
 	// An unsolved rota carries no time, rather than the zero time formatted as
 	// the year 1: there is no moment to report.
@@ -147,4 +165,23 @@ func draftStatus(status *services.DraftRotaAllocationStatus) draftRotaAllocation
 		response.SolvedAt = status.SolvedAt.Format(time.RFC3339)
 	}
 	return response
+}
+
+// draftShifts is the wire form of the rota a draft drafted.
+func draftShifts(shifts []services.DraftShift) []draftShiftResponse {
+	out := make([]draftShiftResponse, 0, len(shifts))
+	for _, shift := range shifts {
+		assignees := make([]assigneeResponse, 0, len(shift.Assignees))
+		for _, a := range shift.Assignees {
+			assignees = append(assignees, assigneeResponse{
+				VolunteerID: a.VolunteerID,
+				CustomEntry: a.CustomEntry,
+				Name:        a.Name,
+				Role:        a.Role,
+				Group:       a.Group,
+			})
+		}
+		out = append(out, draftShiftResponse{ShiftID: shift.ShiftID, Assignees: assignees})
+	}
+	return out
 }

@@ -233,6 +233,55 @@ export interface RotaInFlight {
   replied: number;
 }
 
+// DraftShift is one shift of a Draft Rota Allocation: who the solver put on it,
+// keyed by the shift's id so the rota page lays the draft over the shifts it is
+// already showing.
+export interface DraftShift {
+  shiftId: string;
+  assignees: Assignee[];
+}
+
+// DraftRotaState is where the rota in flight's Draft Rota Allocation has got to,
+// and the rota it drafted. There is one draft, for the one rota in flight, so
+// this is the whole of what the rota page knows about drafting.
+//
+// Admin-only, all of it. A draft names people against shifts nobody has decided
+// yet and is replaced wholesale every time an input moves, so showing one to a
+// volunteer would tell them they are working a shift they may well not be
+// (ADR 0008).
+export interface DraftRotaState {
+  rotaId: string;
+  rotaStart: string;
+  // False for a rota nobody has solved for yet, where every rota starts and
+  // where everything below says nothing. Reading the rota normally solves it on
+  // the spot, so this is only seen when a solve is already running.
+  solved: boolean;
+  // When the solve ran, or null for a rota nobody has solved for. A draft is
+  // only ever read against how old it is: the inputs move under it all through
+  // the availability window.
+  solvedAt: string | null;
+  // success false with a status of INFEASIBLE is the outcome that matters most:
+  // no rota is possible from the current availability, pins and Shapes, and
+  // there is still time to change them. It carries no shifts, which is exactly
+  // what a rota nobody has solved for carries — the outcome is what tells the
+  // two apart, which is why a draft is never inferred from its shifts.
+  success: boolean;
+  // CP-SAT's own verdict — OPTIMAL, FEASIBLE, INFEASIBLE — kept verbatim, so a
+  // status this build has never heard of still shows rather than disappearing.
+  solverStatus: string;
+  seatsAsked: number;
+  seatsFilled: number;
+  // A solve is running now, so a fresher draft is on its way and what is here is
+  // the previous one.
+  //
+  // The server also reports `dirty` — an allocator input having moved since the
+  // solve — and nothing here reads it. Reading is what re-solves a dirty draft,
+  // so by the time a response reaches this page dirty is only ever true
+  // alongside solving: the re-solve was handed to the one already running.
+  solving: boolean;
+  shifts: DraftShift[];
+}
+
 // PersonRef identifies someone on a shift for the purpose of changing it. A
 // real volunteer is keyed by id; a custom (manual) entry has none, so it is
 // keyed by the text itself — which is also how the API removes one.

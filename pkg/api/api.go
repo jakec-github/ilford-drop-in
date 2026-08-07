@@ -171,12 +171,15 @@ func (h *Handler) Routes() http.Handler {
 	// rather than PUT: the request states no body — the inputs are already in
 	// the database — and what comes back is a solve that has just run.
 	//
-	// The GET beside it reads the draft's state, and re-solves first when the
-	// inputs have moved (issue #142) — which is why it is here rather than a
-	// field of some other read: solving on a GET is a surprising thing for an
-	// endpoint to do, and it should be the endpoint that is plainly about the
-	// draft that does it. The POST re-solves whether or not anything moved,
-	// for the changes no stamp can catch: the roster is a Google Sheet.
+	// The GET beside it reads the draft — its state and the rota it drafted —
+	// and re-solves first when the inputs have moved (issue #142). Both facts
+	// are why it is here rather than a field of some other read: that other
+	// read would be GET /shifts, which is public, and keeping it clear of the
+	// draft tables is what makes the leak unrepresentable rather than merely
+	// forbidden; and solving on a GET is a surprising thing for an endpoint to
+	// do, so it should be the endpoint plainly about the draft that does it.
+	// The POST re-solves whether or not anything moved, for the changes no
+	// stamp can catch: the roster is a Google Sheet.
 	api.Handle("GET /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleGetDraftRotaAllocation)))
 	api.Handle("POST /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))

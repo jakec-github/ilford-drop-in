@@ -47,6 +47,9 @@ type mockStore struct {
 	deletedStandingIDs      []string
 	storedDrafts            []db.DraftRotaAllocation
 	storedDraftSeats        [][]db.DraftAllocation
+	// draftSeats are the Seats of the draft held in storedDrafts: who the solve
+	// put where, which is the rota the read endpoint reports.
+	draftSeats              []db.DraftAllocation
 	getDraftErr             error
 	discardedRotaIDs        []string
 	// discardErr is what the database says to a discard that fails outright, as
@@ -645,6 +648,23 @@ func (m *mockStore) GetDraftRotaAllocation(_ context.Context, rotaID string) (*d
 		}
 	}
 	return nil, nil
+}
+
+// GetDraftAllocationsByShiftIDs answers with the stored draft's Seats on the
+// Shifts asked for, mirroring the real store: the caller has already resolved
+// which Shifts it means.
+func (m *mockStore) GetDraftAllocationsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.DraftAllocation, error) {
+	wanted := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		wanted[id] = true
+	}
+	var out []db.DraftAllocation
+	for _, seat := range m.draftSeats {
+		if wanted[seat.ShiftID] {
+			out = append(out, seat)
+		}
+	}
+	return out, nil
 }
 
 // WithRotaLock hands the mock itself to the callback as the transaction-bound

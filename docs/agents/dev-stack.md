@@ -253,8 +253,10 @@ It is a seed and not a reset: edit or add a Role by hand and it survives a
 restart.
 
 Shifts you can seed yourself (see [Define a rota](#define-a-rota)) and so can
-availability answers (see [Collect availability](#collect-availability));
-allocation itself you cannot, since the web server does not expose it. So:
+availability answers (see [Collect availability](#collect-availability)).
+Drafting a rota works too — the solver is a local subprocess, not a Google
+call — so the whole journey up to the moment of allocation is reachable here.
+Allocation itself is not: the web server does not expose it. So:
 
 | Works | |
 | --- | --- |
@@ -269,11 +271,13 @@ allocation itself you cannot, since the web server does not expose it. So:
 | The rota tab | Two states: the define form when nothing is in flight, otherwise the rota being worked on with its round and a Discard button. The form states the whole rota — count, start date, hours and Shape — prefilled from `GET /api/rotations/proposed` and editable. Behind `requireAdmin` |
 | `POST /api/rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight, or when a start date lands on a day the drop-in already runs |
 | `DELETE /api/rotations/{id}` | Discards an unallocated rota and everything hanging off it — the way to start over |
+| `POST /api/draft-rota-allocation` | Runs the real CP-SAT solve over the rota in flight and stores it as the draft. Needs Roles, the settings, a Shape on every open shift and an availability round — it names whichever step is missing |
+| The draft on the rota page | With a draft solved, an admin sees who it put where as dashed chips, under a panel saying when it solved and how many seats it filled. Logged out, none of it |
 | The 404 route | Any unmatched path renders "Page not found" |
 
 | Does not | |
 | --- | --- |
-| The rota page | Renders empty until you define a rota. After that an admin sees the minted shifts flagged as unallocated, and the public sees nothing — filling them needs an allocation run, which the web server does not expose |
+| The rota page | Renders empty until you define a rota. After that an admin sees the minted shifts flagged as unallocated — with a draft on them once one is solved — and the public sees nothing until the rota is allocated, which the web server does not expose |
 | Deep-linking an admin tab | `http://localhost:8081/admin/volunteers` typed straight into the address bar renders blank: the build emits relative asset paths, so a nested route asks for `/admin/chunk-*.js` and the SPA fallback answers with `index.html`. Reach the tab by loading `/` and clicking through. |
 | Sync copy | The Volunteers tab's sync caption says "the Google Sheet" — in dev mode it is the CSV. |
 | Anything Sheets, Forms or Gmail | Never reached in dev mode |

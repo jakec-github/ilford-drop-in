@@ -129,7 +129,7 @@ func TestDraftRotaAllocationDirtiness(t *testing.T) {
 				}},
 			}
 
-			status, err := DraftRotaAllocationInFlight(context.Background(), store)
+			status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.dirty, status.Dirty)
@@ -155,13 +155,71 @@ func TestDraftRotaAllocationOfAnUndraftedRota(t *testing.T) {
 		shifts:    sundayShifts("rota-1", "2026-08-02", 2),
 	}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store)
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
 
 	require.NoError(t, err)
 	assert.False(t, status.Solved)
 	assert.True(t, status.Dirty, "nothing speaks for this rota yet")
 	assert.True(t, status.SolvedAt.IsZero())
 	assert.Empty(t, status.SolverStatus)
+}
+
+// The rota a draft drafted, which is what an admin watching it take shape reads:
+// who the solver put where, keyed by Shift and named against the roster, with
+// the Shifts it staffed nobody on left out.
+func TestDraftRotaAllocationCarriesTheRotaItDrafted(t *testing.T) {
+	moved := time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC)
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2, InputsChangedAt: moved}},
+		shifts:    sundayShifts("rota-1", "2026-08-02", 2),
+		storedDrafts: []db.DraftRotaAllocation{{
+			RotaID:          "rota-1",
+			SolvedAt:        moved,
+			Success:         true,
+			SolverStatus:    "OPTIMAL",
+			Diagnostics:     []byte(`{}`),
+			InputsChangedAt: moved,
+			SeatsAsked:      10,
+			SeatsFilled:     2,
+		}},
+		storedDraftSeats: [][]db.DraftAllocation{{
+			{ID: "seat-1", ShiftID: "2026-08-02", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "seat-2", ShiftID: "2026-08-02", Role: "Team lead", VolunteerID: "alice"},
+		}},
+	}
+	volunteers := &mockVolClient{volunteers: []model.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "Adams", Status: "Active"},
+		{ID: "bob", FirstName: "Bob", LastName: "Barnes", Status: "Active"},
+	}}
+
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, volunteers, &config.Config{}, zap.NewNop())
+
+	require.NoError(t, err)
+	require.Len(t, status.Shifts, 1, "the Shift the solver staffed, not the one it left empty")
+	assert.Equal(t, "2026-08-02", status.Shifts[0].ShiftID)
+	require.Len(t, status.Shifts[0].Assignees, 2)
+	// In the order the rota is read in: by Role priority, so the team lead leads.
+	assert.Equal(t, "Alice", status.Shifts[0].Assignees[0].Name)
+	assert.Equal(t, "Team lead", status.Shifts[0].Assignees[0].Role)
+	assert.Equal(t, "Bob", status.Shifts[0].Assignees[1].Name)
+}
+
+// A rota nobody has drafted for has no Seats to name, so nothing goes looking for
+// the roster: the Sheet is a network call, and it would be made to name nobody.
+func TestDraftRotaAllocationOfAnUndraftedRotaReadsNoRoster(t *testing.T) {
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
+		shifts:    sundayShifts("rota-1", "2026-08-02", 2),
+	}
+
+	status, err := DraftRotaAllocationInFlight(
+		context.Background(), store,
+		&mockVolClient{listErr: errors.New("the sheet was read")},
+		&config.Config{}, zap.NewNop(),
+	)
+
+	require.NoError(t, err)
+	assert.Empty(t, status.Shifts)
 }
 
 // No rota in flight, nothing to draft. Said as the missing step rather than as
@@ -175,7 +233,7 @@ func TestDraftRotaAllocationWithNoRotaInFlight(t *testing.T) {
 		shifts: sundayShifts("rota-1", "2026-08-02", 2),
 	}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store)
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
 
 	require.ErrorIs(t, err, ErrNotFound)
 	assert.Nil(t, status)
@@ -192,7 +250,7 @@ func TestDraftRotaAllocationSurfacesAReadFailure(t *testing.T) {
 		getDraftErr: errors.New("connection refused"),
 	}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store)
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
 
 	require.Error(t, err)
 	assert.Nil(t, status)

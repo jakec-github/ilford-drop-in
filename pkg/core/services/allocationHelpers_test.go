@@ -278,6 +278,27 @@ func (m *mockAllocateRotaStore) GetDraftRotaAllocation(ctx context.Context, rota
 	return nil, nil
 }
 
+// GetDraftAllocationsByShiftIDs answers with the last stored draft's Seats on the
+// Shifts asked for. Read back from what was stored rather than from a field of
+// its own, for the same reason as the draft above it: the Seats a status reports
+// are the Seats the solve wrote.
+func (m *mockAllocateRotaStore) GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.DraftAllocation, error) {
+	if len(m.storedDraftSeats) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		wanted[id] = true
+	}
+	var out []db.DraftAllocation
+	for _, seat := range m.storedDraftSeats[len(m.storedDraftSeats)-1] {
+		if wanted[seat.ShiftID] {
+			out = append(out, seat)
+		}
+	}
+	return out, nil
+}
+
 // mockVolClient implements VolunteerClient for testing
 type mockVolClient struct {
 	volunteers []model.Volunteer

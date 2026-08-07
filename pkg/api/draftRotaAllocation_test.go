@@ -27,13 +27,86 @@ func TestSolveDraftRotaAllocationRequiresAdmin(t *testing.T) {
 }
 
 // Reading the draft is admin-only for the same reason as solving it: what comes
-// back says how much of an undecided rota is staffed.
+// back names people against Shifts nobody has decided yet, and the rota page and
+// its calendar feed are read by the very volunteers it names (ADR 0008).
 func TestGetDraftRotaAllocationRequiresAdmin(t *testing.T) {
-	store := &mockStore{}
-
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "")
+	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "")
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "Alice", "no drafted name reaches the body")
+	assert.NotContains(t, rec.Body.String(), "shift-1")
+}
+
+// draftedRotaStore is one rota in flight of two Shifts, with a clean draft solved
+// against it: Alice leading and Bob beside her on the first Shift, nobody on the
+// second. Clean so that reading it reports rather than re-solves — the mock would
+// take a solve as far as the CP-SAT subprocess, which no Go test runs.
+func draftedRotaStore() *mockStore {
+	moved := time.Date(2026, 8, 5, 6, 0, 0, 0, time.UTC)
+	return &mockStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", End: "2026-08-09", ShiftCount: 2, InputsChangedAt: moved}},
+		shifts: []db.Shift{
+			{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02", StartAt: "2026-08-02T19:30:00", EndAt: "2026-08-02T21:30:00"},
+			{ID: "shift-2", RotaID: "rota-1", Date: "2026-08-09", StartAt: "2026-08-09T19:30:00", EndAt: "2026-08-09T21:30:00"},
+		},
+		storedDrafts: []db.DraftRotaAllocation{{
+			RotaID:          "rota-1",
+			SolvedAt:        time.Date(2026, 8, 5, 6, 0, 30, 0, time.UTC),
+			Success:         true,
+			SolverStatus:    "OPTIMAL",
+			Diagnostics:     []byte(`{}`),
+			InputsChangedAt: moved,
+			SeatsAsked:      10,
+			SeatsFilled:     2,
+		}},
+		draftSeats: []db.DraftAllocation{
+			{ID: "seat-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "seat-2", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
+		},
+	}
+}
+
+// The rota an admin watches take shape: who the solver put where, keyed by Shift
+// so the page can lay the draft over the rota it is already showing.
+func TestGetDraftRotaAllocationReportsTheRotaItDrafted(t *testing.T) {
+	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	// Only the Shift the draft placed anybody on, its people in the order the
+	// rota shows them — by Role priority, so the team lead leads.
+	require.Len(t, body.Shifts, 1, "the Shift the solver staffed, not the one it left empty")
+	assert.Equal(t, "shift-1", body.Shifts[0].ShiftID)
+	require.Len(t, body.Shifts[0].Assignees, 2)
+	assert.Equal(t, "Alice", body.Shifts[0].Assignees[0].Name)
+	assert.Equal(t, "Team lead", body.Shifts[0].Assignees[0].Role)
+	assert.Equal(t, "Bob", body.Shifts[0].Assignees[1].Name)
+	assert.Equal(t, 2, body.SeatsFilled)
+	assert.Equal(t, 10, body.SeatsAsked)
+}
+
+// A solve that staffed nobody — an infeasible one — is a draft with no Shifts
+// rather than an absent list. It reads differently from a rota nobody has solved
+// for, which is the distinction the stored outcome exists to make (ADR 0008).
+func TestGetDraftRotaAllocationWithAnInfeasibleDraft(t *testing.T) {
+	store := draftedRotaStore()
+	store.storedDrafts[0].Success = false
+	store.storedDrafts[0].SolverStatus = "INFEASIBLE"
+	store.storedDrafts[0].SeatsFilled = 0
+	store.draftSeats = nil
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.True(t, body.Solved, "solved, and the answer was that there is no rota")
+	assert.False(t, body.Success)
+	assert.Equal(t, "INFEASIBLE", body.SolverStatus)
+	assert.NotNil(t, body.Shifts)
+	assert.Empty(t, body.Shifts)
 }
 
 // A draft solved from the inputs as they stand is reported, not re-solved. This
