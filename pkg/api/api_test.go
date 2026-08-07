@@ -32,7 +32,10 @@ type mockStore struct {
 	// which seed ordinary ones when a rota is defined.
 	standingPreallocations []db.StandingPreallocation
 	availabilityRequests   []db.AvailabilityRequest
-	allocatedRotas         map[string]bool
+	// repliedRequestIDs are the requests a volunteer has answered, which is all
+	// the round counts need to know about a response.
+	repliedRequestIDs map[string]bool
+	allocatedRotas    map[string]bool
 
 	insertedCover           *db.Cover
 	insertedAlterations     []db.Alteration
@@ -42,6 +45,10 @@ type mockStore struct {
 	deletedPreallocationIDs []string
 	insertedStanding        []db.StandingPreallocation
 	deletedStandingIDs      []string
+	discardedRotaIDs        []string
+	// discardErr is what the database says to a discard that fails outright, as
+	// opposed to one it refuses (db.ErrRotaAllocated).
+	discardErr error
 	// standingWriteErr is what the database says to a Standing Preallocation
 	// write — db.ErrDuplicateStandingPreallocation for a promise already made.
 	standingWriteErr error
@@ -154,6 +161,116 @@ func (m *mockStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 		return nil, m.getRotationsErr
 	}
 	return m.rotations, nil
+}
+
+// rotaAllocated reads the two ways this store records that a rota has been run:
+// the stamp on the rotation row, which GetRotations answers with, and the
+// allocatedRotas map, which the freeze checks read. A test setting either means
+// the same thing.
+func (m *mockStore) rotaAllocated(r db.Rotation) bool {
+	return r.AllocatedDatetime != "" || m.allocatedRotas[r.ID]
+}
+
+// allocate marks a rota as run, so a test that needs a second rota defined can
+// get past the one-rota-in-flight rule the way an admin would (issue #139).
+func (m *mockStore) allocate(rotaID string) {
+	if m.allocatedRotas == nil {
+		m.allocatedRotas = make(map[string]bool)
+	}
+	m.allocatedRotas[rotaID] = true
+	for i := range m.rotations {
+		if m.rotations[i].ID == rotaID {
+			m.rotations[i].AllocatedDatetime = "2026-08-01T09:00:00Z"
+		}
+	}
+}
+
+// GetRotaInFlight returns the earliest unallocated rota with its round counts,
+// mirroring the real store's derivation rather than holding a separate field:
+// the rule under test is about what the stored rotas add up to.
+func (m *mockStore) GetRotaInFlight(ctx context.Context) (*db.RotaInFlight, error) {
+	if m.getRotationsErr != nil {
+		return nil, m.getRotationsErr
+	}
+	var earliest *db.Rotation
+	for i, r := range m.rotations {
+		if m.rotaAllocated(r) {
+			continue
+		}
+		if earliest == nil || r.Start < earliest.Start {
+			earliest = &m.rotations[i]
+		}
+	}
+	if earliest == nil {
+		return nil, nil
+	}
+
+	inFlight := db.RotaInFlight{Rotation: *earliest}
+	for _, req := range m.availabilityRequests {
+		if req.RotaID != earliest.ID {
+			continue
+		}
+		inFlight.Asked++
+		if req.SentAt != "" {
+			inFlight.Sent++
+		}
+		if m.repliedRequestIDs[req.ID] {
+			inFlight.Replied++
+		}
+	}
+	return &inFlight, nil
+}
+
+// DiscardRota drops the rota and everything this store holds against it, so a
+// test can see that the handler's success really emptied something.
+func (m *mockStore) DiscardRota(ctx context.Context, rotaID string) (bool, error) {
+	if m.discardErr != nil {
+		return false, m.discardErr
+	}
+	idx := -1
+	for i, r := range m.rotations {
+		if r.ID == rotaID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false, nil
+	}
+	if m.rotaAllocated(m.rotations[idx]) {
+		return false, db.ErrRotaAllocated
+	}
+
+	discarded := make(map[string]bool)
+	var keptShifts []db.Shift
+	for _, s := range m.shifts {
+		if s.RotaID == rotaID {
+			discarded[s.ID] = true
+			continue
+		}
+		keptShifts = append(keptShifts, s)
+	}
+	m.shifts = keptShifts
+
+	var keptPins []db.Preallocation
+	for _, p := range m.manualPreallocations {
+		if !discarded[p.ShiftID] {
+			keptPins = append(keptPins, p)
+		}
+	}
+	m.manualPreallocations = keptPins
+
+	var keptRequests []db.AvailabilityRequest
+	for _, req := range m.availabilityRequests {
+		if req.RotaID != rotaID {
+			keptRequests = append(keptRequests, req)
+		}
+	}
+	m.availabilityRequests = keptRequests
+
+	m.rotations = append(m.rotations[:idx], m.rotations[idx+1:]...)
+	m.discardedRotaIDs = append(m.discardedRotaIDs, rotaID)
+	return true, nil
 }
 
 // InsertDefinedRota records the write and makes it visible to subsequent reads,

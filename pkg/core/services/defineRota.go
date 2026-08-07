@@ -92,6 +92,22 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 
 	logger.Debug("Found existing rotations", zap.Int("count", len(rotations)))
 
+	// One rota is in flight at a time (issue #139). Everything downstream — the
+	// availability round, the draft allocation, the rota screen — addresses "the
+	// rota" without a picker, and that only reads as one thing while at most one
+	// Rotation is unallocated. Refusing here is what makes it true.
+	//
+	// Read-then-insert, without a lock, is enough: a concurrent define that has
+	// not committed yet is invisible to this read, but it computed its start
+	// date from the same rotations and is minting the same dates, so the
+	// one-Shift-per-date unique index refuses whichever of the two commits
+	// second (hazard B1, InsertDefinedRota).
+	if inFlight := unallocatedRota(rotations); inFlight != nil {
+		return nil, wrapf(ErrConflict,
+			"a rota is already in flight - the one running %s to %s has not been allocated yet; allocate it or discard it before defining another",
+			inFlight.Start, inFlight.End)
+	}
+
 	// Find latest rota and calculate next start date
 	var startDate time.Time
 	if len(rotations) == 0 {
@@ -205,6 +221,23 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 		Shifts:         shifts,
 		Preallocations: preallocations,
 	}, nil
+}
+
+// unallocatedRota returns the earliest-starting rota that has not been
+// allocated, or nil when every one has. Earliest rather than any, so that a
+// deployment which somehow holds two is told about the one that has to be dealt
+// with first.
+func unallocatedRota(rotations []db.Rotation) *db.Rotation {
+	var earliest *db.Rotation
+	for i, r := range rotations {
+		if r.AllocatedDatetime != "" {
+			continue
+		}
+		if earliest == nil || r.Start < earliest.Start {
+			earliest = &rotations[i]
+		}
+	}
+	return earliest
 }
 
 // nextSunday returns the next Sunday from the given date

@@ -73,10 +73,19 @@ Seed through the endpoints rather than by writing rows into Postgres by hand:
 fixtures that bypass the code go stale as the schema moves, and a rota assembled
 by hand can be a shape the app would never create.
 
-Defining is **not idempotent** — each call takes the weeks after the last rota,
-so calling it twice gives you two consecutive rotas. To start over, empty the
-tables (`DELETE FROM shift; DELETE FROM rotation;`) rather than hunting for the
-rota you meant.
+**One rota is in flight at a time.** A second define is refused with a 409 while
+the first is unallocated, so calling it twice does not give you two consecutive
+rotas any more. To start over, discard the one you have — that deletes it, its
+shifts, their Shapes, its pins and its whole availability round in one go:
+
+```bash
+curl -b cookies.txt localhost:8080/api/rotations/in-flight   # what is in flight
+curl -b cookies.txt -X DELETE localhost:8080/api/rotations/<rota-id>
+```
+
+Reach for that rather than emptying tables by hand: it is the same path the Rota
+tab's Discard button takes, and it cannot leave a rotation behind without its
+shifts.
 
 ## Collect availability
 
@@ -235,8 +244,9 @@ allocation itself you cannot, since the web server does not expose it. So:
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /api/volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |
-| The rota tab | Defines a rota and lists the shifts it minted, behind `requireAdmin` |
-| `POST /api/rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database |
+| The rota tab | Two states: the define form when nothing is in flight, otherwise the rota being worked on with its round and a Discard button. Behind `requireAdmin` |
+| `POST /api/rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight |
+| `DELETE /api/rotations/{id}` | Discards an unallocated rota and everything hanging off it — the way to start over |
 | The 404 route | Any unmatched path renders "Page not found" |
 
 | Does not | |

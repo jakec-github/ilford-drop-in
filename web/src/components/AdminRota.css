@@ -55,3 +55,61 @@
 .define-rota-dates li {
   padding: 0.125rem 0;
 }
+
+/* The rota in flight. The span leads because it is what identifies the rota an
+   admin is looking at — there is only ever one, so nothing else has to. */
+.in-flight-span {
+  margin: 0 0 0.25rem;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.in-flight-round {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+}
+
+.in-flight-note {
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+.in-flight-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Discard is the one destructive action in the admin area, so it is the one
+   button drawn in the warning colour. Specificity beats .button rather than
+   relying on which stylesheet the bundler happens to emit last. */
+.button.discard-button {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.1);
+  border-color: rgba(185, 28, 28, 0.3);
+}
+
+.discard-lead {
+  margin: 0 0 0.75rem;
+}
+
+/* What cannot be remade. Given its own weight because it is the one line the
+   confirmation exists to make somebody read. */
+.discard-loss {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(185, 28, 28, 0.3);
+  border-radius: 6px;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.1);
+}
+
+.discard-note {
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+.discard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

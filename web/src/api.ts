@@ -15,6 +15,7 @@ import type {
   RoleEdit,
   RotaChange,
   RotaDefaults,
+  RotaInFlight,
   RotaShift,
   SendMode,
   SendOutcome,
@@ -487,6 +488,40 @@ export async function defineRota(shiftCount: number): Promise<DefinedRota> {
     end: data.rotation.end,
     shiftDates: data.shifts.map((s) => s.date),
   };
+}
+
+// The endpoint answers with a nullable rotation rather than a 404, because "no
+// rota is in flight" is an answer: it is the state a rota may be defined in.
+interface RotaInFlightResponse {
+  rotation: RotaInFlight | null;
+}
+
+// fetchRotaInFlight reads the rota being worked on, or null when there is none —
+// which is also the answer to "may I define one". Admin-only.
+export async function fetchRotaInFlight(): Promise<RotaInFlight | null> {
+  const res = await fetch("/api/rotations/in-flight");
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load the rota"));
+  }
+  const data = (await res.json()) as RotaInFlightResponse;
+  return data.rotation;
+}
+
+// discardRota destroys an unallocated rota and everything hanging off it: its
+// shifts, what each asks for, every pin on them, and the whole availability
+// round including answers already given. Nothing is recoverable, and the server
+// refuses outright for a rota that has been allocated.
+//
+// It takes no confirmation of its own. The decision is made in front of the
+// numbers on the screen, and a token echoed back here would make the guarantee
+// depend on the caller rather than on the server.
+export async function discardRota(id: string): Promise<void> {
+  const res = await fetch(`/api/rotations/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to discard the rota"));
+  }
 }
 
 // A person becomes either an id field (`in`/`out`) or a custom-entry field

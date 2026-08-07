@@ -186,6 +186,27 @@ export interface DefinedRota {
   shiftDates: string[];
 }
 
+// RotaInFlight is the rota being worked on: the one Rotation that has not been
+// allocated yet. There is at most one, because defining a second is refused
+// while this exists — which is what lets every admin screen say "the rota"
+// without offering a picker.
+//
+// The round counts are what a discard would destroy, and they are on this read
+// rather than the round's because the confirmation has to name them on a screen
+// with no round on it. They count volunteers, not emails or submissions: a
+// resend and a resubmission are the same person twice.
+export interface RotaInFlight {
+  id: string;
+  start: string;
+  end: string;
+  shiftCount: number;
+  // How many volunteers hold a link, how many were emailed theirs, and how many
+  // have answered.
+  asked: number;
+  sent: number;
+  replied: number;
+}
+
 // PersonRef identifies someone on a shift for the purpose of changing it. A
 // real volunteer is keyed by id; a custom (manual) entry has none, so it is
 // keyed by the text itself — which is also how the API removes one.
