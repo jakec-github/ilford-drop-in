@@ -143,8 +143,11 @@ _Avoid_: user, staff
 A speculative allocation of a whole unallocated Rotation, replaced entire each
 time it is solved and shown only to Admins. Named for the rota because that is
 its scope: it is made of draft Allocations, but it is never partial, and no
-single one of them means anything on its own. It becomes the rota only when an
-Admin allocates, which re-solves and commits only if the result still matches
-what they were shown.
+single one of them means anything on its own. It is **dirty** when an allocator
+input has moved under the Rotation since it was solved — an availability
+response, a Shape, a Shift opened, closed or moved to another day, a
+Preallocation, a Role, the Allocation Settings — and reading a dirty draft
+solves it again. It becomes the rota only when an Admin allocates, which
+re-solves and commits only if the result still matches what they were shown.
 _Avoid_: draft allocation (that is one of its seats), speculative allocation,
-provisional rota, preview
+provisional rota, preview, stale (a draft is dirty)

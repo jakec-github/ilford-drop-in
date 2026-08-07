@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -90,18 +91,24 @@ func (d *DB) ListRoles(ctx context.Context) ([]Role, error) {
 //
 // There is no delete, and there never will be: Roles are permanent by design
 // (ADR 0006), so nothing that references one can dangle.
+//
+// The Roles are an allocator input — which jobs exist, in what order they are
+// filled and how many of each anyone may do — so writing one makes the rota in
+// flight's draft stale (issue #142).
 func (d *DB) InsertRole(ctx context.Context, role Role) error {
-	_, err := d.pool.Exec(ctx, `
-		INSERT INTO role (id, name, max, priority, colour)
-		VALUES ($1, $2, $3, $4, $5)
-	`, role.ID, role.Name, role.Max, role.Priority, role.Colour)
-	if err != nil {
-		if isDuplicateName(err) {
-			return fmt.Errorf("failed to insert role %q: %w", role.Name, ErrDuplicateRoleName)
+	return d.inTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO role (id, name, max, priority, colour)
+			VALUES ($1, $2, $3, $4, $5)
+		`, role.ID, role.Name, role.Max, role.Priority, role.Colour)
+		if err != nil {
+			if isDuplicateName(err) {
+				return fmt.Errorf("failed to insert role %q: %w", role.Name, ErrDuplicateRoleName)
+			}
+			return fmt.Errorf("failed to insert role %q: %w", role.Name, err)
 		}
-		return fmt.Errorf("failed to insert role %q: %w", role.Name, err)
-	}
-	return nil
+		return markAllRotaInputsChanged(ctx, tx)
+	})
 }
 
 // UpdateRole rewrites every editable field of one Role, addressed by its id.
@@ -118,16 +125,31 @@ func (d *DB) InsertRole(ctx context.Context, role Role) error {
 // an error: Roles are never deleted, so it means the caller named the wrong
 // one, which is a 404 rather than a failure.
 func (d *DB) UpdateRole(ctx context.Context, role Role) (bool, error) {
-	tag, err := d.pool.Exec(ctx, `
-		UPDATE role
-		SET name = $2, max = $3, priority = $4, colour = $5
-		WHERE id = $1
-	`, role.ID, role.Name, role.Max, role.Priority, role.Colour)
-	if err != nil {
-		if isDuplicateName(err) {
-			return false, fmt.Errorf("failed to update role %q: %w", role.Name, ErrDuplicateRoleName)
+	var written bool
+	err := d.inTx(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE role
+			SET name = $2, max = $3, priority = $4, colour = $5
+			WHERE id = $1
+		`, role.ID, role.Name, role.Max, role.Priority, role.Colour)
+		if err != nil {
+			if isDuplicateName(err) {
+				return fmt.Errorf("failed to update role %q: %w", role.Name, ErrDuplicateRoleName)
+			}
+			return fmt.Errorf("failed to update role %q: %w", role.Name, err)
 		}
-		return false, fmt.Errorf("failed to update role %q: %w", role.Name, err)
+		written = tag.RowsAffected() > 0
+		if !written {
+			return nil
+		}
+		// A cap, a priority or a colour: the first two are what the solver
+		// works to, so the rota in flight's draft is stale (issue #142). A
+		// rename is stamped with them rather than picked apart, and costs one
+		// re-solve.
+		return markAllRotaInputsChanged(ctx, tx)
+	})
+	if err != nil {
+		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	return written, nil
 }

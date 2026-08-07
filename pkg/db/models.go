@@ -9,6 +9,12 @@ type Rotation struct {
 	End               string // DATE
 	ShiftCount        int
 	AllocatedDatetime string // TIMESTAMPTZ, empty string if NULL
+	// InputsChangedAt is when an allocator input last moved under this
+	// Rotation, zero when none has. A time rather than a string, unlike the
+	// dates above, because nothing renders it: it exists to be compared with
+	// the stamp its Draft Rota Allocation captured, and the two being different
+	// is what makes a draft dirty (issue #142).
+	InputsChangedAt time.Time
 }
 
 // Shift represents a database shift record: a planned session of the drop-in on
@@ -115,6 +121,17 @@ type DraftRotaAllocation struct {
 	// the JSON it arrived as. This package never looks inside it: the shape
 	// belongs to the allocator, which this layer does not import.
 	Diagnostics []byte
+	// InputsChangedAt is the Rotation's own stamp as it stood when this solve
+	// began. It is dirtiness by comparison: a Rotation whose stamp has moved on
+	// since has had an input change the draft has not seen (issue #142).
+	InputsChangedAt time.Time
+	// SeatsAsked and SeatsFilled are the solve's own report of what it faced:
+	// every Seat of every open Shift's Shape, and the ones it staffed. Stored
+	// rather than counted from the Seats, because the Shapes go on being edited
+	// after the solve and would answer for a question this draft was never
+	// asked.
+	SeatsAsked  int
+	SeatsFilled int
 }
 
 // DraftAllocation is one Seat of a Draft Rota Allocation: exactly the shape of

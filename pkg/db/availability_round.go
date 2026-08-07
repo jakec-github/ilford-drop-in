@@ -299,6 +299,19 @@ func (d *DB) InsertAvailabilityResponse(ctx context.Context, requestID string, a
 		return nil, err
 	}
 
+	// Who is free is the largest input the solver has, so an answer landing
+	// makes the rota's draft stale (issue #142). In the same transaction as the
+	// answer: a volunteer whose availability was recorded but whose rota still
+	// read as freshly drafted would be left out of the next solve with nothing
+	// saying why.
+	if _, err := tx.Exec(ctx, `
+		UPDATE rotation SET inputs_changed_at = now()
+		WHERE allocated_datetime IS NULL
+		  AND id = (SELECT rota_id FROM availability_request WHERE id = $1)
+	`, requestID); err != nil {
+		return nil, fmt.Errorf("failed to mark the inputs of the rota behind request %s as changed: %w", requestID, err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}

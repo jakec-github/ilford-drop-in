@@ -148,3 +148,57 @@ func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, draft, "no draft was written for an allocated rota")
 }
+
+// The loop this ticket exists for, against a real Postgres: an input moves, and
+// the next admin to read the draft causes it to be solved again (issue #142).
+//
+// The solve itself is a CP-SAT subprocess, which no Go test runs — so what is
+// proved here is the decision to solve, by way of the input refusal that only
+// the solve path produces. The clean read that opens the test is the control:
+// the same request, the same store, no refusal, because nothing had moved.
+func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
+	database, _ := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
+	dbtest.SeedRotaDefaults(t, database)
+	ctx := context.Background()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+
+	rota := db.Rotation{ID: uuid.New().String()}
+	first := dbtest.Shift(rota.ID, "2026-08-02")
+	second := dbtest.Shift(rota.ID, "2026-08-09")
+	require.NoError(t, database.InsertDefinedRota(ctx, &rota, []db.Shift{first, second}, nil, nil))
+
+	// A draft solved from the inputs as they stand — nothing has moved under
+	// this rota, so it carries no stamp, exactly as a solve of it would.
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
+		RotaID:       rota.ID,
+		SolvedAt:     time.Now().UTC(),
+		Success:      true,
+		SolverStatus: "OPTIMAL",
+		Diagnostics:  []byte(`{"solve_time_seconds":1.5}`),
+		SeatsAsked:   10,
+		SeatsFilled:  10,
+	}, nil))
+
+	rec := doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.False(t, body.Dirty, "nothing has moved, so the stored draft is the answer")
+	assert.Equal(t, 10, body.SeatsFilled)
+
+	// Close a Shift: the drop-in does not run that day, which is a different
+	// rota to solve.
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		_, err := tx.SetShiftClosed(ctx, first.ID, true)
+		return err
+	}))
+
+	// The same read now solves — and runs headlong into the gate that stops a
+	// rota whose Shifts ask for nobody, which is reachable from nowhere but the
+	// solve. A read that had merely reported the stored draft would have
+	// answered 200 with the numbers above.
+	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "for nobody")
+}

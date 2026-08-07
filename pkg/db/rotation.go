@@ -45,7 +45,7 @@ type RotaInFlight struct {
 // invariant that a rotation always has at least one shift.
 func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.allocated_datetime
+		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.allocated_datetime, r.inputs_changed_at
 		FROM rotation r
 		JOIN shift s ON s.rota_id = r.id
 		GROUP BY r.id
@@ -59,14 +59,17 @@ func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	for rows.Next() {
 		var r Rotation
 		var start, end time.Time
-		var allocatedDatetime *time.Time
-		if err := rows.Scan(&r.ID, &start, &end, &r.ShiftCount, &allocatedDatetime); err != nil {
+		var allocatedDatetime, inputsChangedAt *time.Time
+		if err := rows.Scan(&r.ID, &start, &end, &r.ShiftCount, &allocatedDatetime, &inputsChangedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan rotation: %w", err)
 		}
 		r.Start = start.Format("2006-01-02")
 		r.End = end.Format("2006-01-02")
 		if allocatedDatetime != nil {
 			r.AllocatedDatetime = allocatedDatetime.UTC().Format(time.RFC3339)
+		}
+		if inputsChangedAt != nil {
+			r.InputsChangedAt = inputsChangedAt.UTC()
 		}
 		rotations = append(rotations, r)
 	}
@@ -90,15 +93,16 @@ func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 func (d *DB) GetRotaInFlight(ctx context.Context) (*RotaInFlight, error) {
 	var inFlight RotaInFlight
 	var start, end time.Time
+	var inputsChangedAt *time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*)
+		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.inputs_changed_at
 		FROM rotation r
 		JOIN shift s ON s.rota_id = r.id
 		WHERE r.allocated_datetime IS NULL
 		GROUP BY r.id
 		ORDER BY MIN(`+shiftDateExpr+`)
 		LIMIT 1
-	`).Scan(&inFlight.ID, &start, &end, &inFlight.ShiftCount)
+	`).Scan(&inFlight.ID, &start, &end, &inFlight.ShiftCount, &inputsChangedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -107,6 +111,9 @@ func (d *DB) GetRotaInFlight(ctx context.Context) (*RotaInFlight, error) {
 	}
 	inFlight.Start = start.Format("2006-01-02")
 	inFlight.End = end.Format("2006-01-02")
+	if inputsChangedAt != nil {
+		inFlight.InputsChangedAt = inputsChangedAt.UTC()
+	}
 
 	err = d.pool.QueryRow(ctx, `
 		SELECT
@@ -124,6 +131,62 @@ func (d *DB) GetRotaInFlight(ctx context.Context) (*RotaInFlight, error) {
 	}
 
 	return &inFlight, nil
+}
+
+// Marking a Rotation as having had its inputs move is what makes a Draft Rota
+// Allocation dirty (issue #142, ADR 0008): the draft carries the stamp it read
+// when it was solved, and a Rotation whose stamp has moved on since has had
+// something change that the draft has not seen.
+//
+// It happens here, in the write itself, rather than at the call site above it.
+// Every one of these writes is already declared an allocator input somewhere in
+// this package — it is why closing a Shift freezes at allocation and editing its
+// times does not — so the stamp belongs beside the write, inside whatever
+// transaction the write is running in. A caller cannot forget it, and a new
+// caller of an existing write inherits it.
+//
+// Allocated Rotations are left alone throughout. They have no draft to make
+// stale, and stamping one would say something about a rota that has been
+// decided.
+
+// markRotaInputsChanged stamps one Rotation, named directly.
+func markRotaInputsChanged(ctx context.Context, q querier, rotaID string) error {
+	if _, err := q.Exec(ctx, `
+		UPDATE rotation SET inputs_changed_at = now()
+		WHERE id = $1 AND allocated_datetime IS NULL
+	`, rotaID); err != nil {
+		return fmt.Errorf("failed to mark the inputs of rotation %s as changed: %w", rotaID, err)
+	}
+	return nil
+}
+
+// markRotaInputsChangedForShift stamps the Rotation a Shift belongs to. The
+// Shift is the sole authority on which rota it is part of (ADR 0001), so a
+// per-Shift write never has to be told.
+func markRotaInputsChangedForShift(ctx context.Context, q querier, shiftID string) error {
+	if _, err := q.Exec(ctx, `
+		UPDATE rotation SET inputs_changed_at = now()
+		WHERE allocated_datetime IS NULL
+		  AND id = (SELECT rota_id FROM shift WHERE id = $1)
+	`, shiftID); err != nil {
+		return fmt.Errorf("failed to mark the inputs of the rota holding shift %s as changed: %w", shiftID, err)
+	}
+	return nil
+}
+
+// markAllRotaInputsChanged stamps every unallocated Rotation, for the inputs
+// that belong to no single rota — the Roles and the Allocation Settings, which
+// are how the whole drop-in runs rather than facts about one rota. There is at
+// most one unallocated Rotation anyway (issue #139); the statement does not rely
+// on that.
+func markAllRotaInputsChanged(ctx context.Context, q querier) error {
+	if _, err := q.Exec(ctx, `
+		UPDATE rotation SET inputs_changed_at = now()
+		WHERE allocated_datetime IS NULL
+	`); err != nil {
+		return fmt.Errorf("failed to mark the inputs of the rota in flight as changed: %w", err)
+	}
+	return nil
 }
 
 // discardStatements empty a Rotation of everything that hangs off it, in the
