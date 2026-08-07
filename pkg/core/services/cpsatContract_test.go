@@ -33,11 +33,12 @@ var (
 )
 
 // openShifts turns bare dates into specs for the ordinary case, where every
-// shift is open and only the closed ones are worth spelling out.
-func openShifts(dates ...string) []allocator.ShiftSpec {
+// shift is open, asks for the same Shape and only the closed ones are worth
+// spelling out.
+func openShifts(shape []allocator.Seat, dates ...string) []allocator.ShiftSpec {
 	specs := make([]allocator.ShiftSpec, len(dates))
 	for i, date := range dates {
-		specs[i] = allocator.ShiftSpec{Date: date}
+		specs[i] = allocator.ShiftSpec{Date: date, Shape: shape}
 	}
 	return specs
 }
@@ -164,13 +165,18 @@ func TestBuildCpsatInput(t *testing.T) {
 		// "Silent Bob" was never answered for: absent from the map, so their
 		// group must be discarded.
 	}
+	shape := []allocator.Seat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 2},
+	}
 	// 2026-07-27 is closed, which is a fact about the Shift rather than
-	// anything an override says.
+	// anything an override says. Every Shift here asks for the same Shape,
+	// which is the ordinary case rather than something the model requires.
 	shiftSpecs := []allocator.ShiftSpec{
-		{Date: "2026-07-13"},
-		{Date: "2026-07-20"},
-		{Date: "2026-07-27", Closed: true},
-		{Date: "2026-08-03"},
+		{Date: "2026-07-13", Shape: shape},
+		{Date: "2026-07-20", Shape: shape},
+		{Date: "2026-07-27", Shape: shape, Closed: true},
+		{Date: "2026-08-03", Shape: shape},
 	}
 	overrides := []allocator.ShiftOverride{
 		{
@@ -195,12 +201,7 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	shape := []allocator.Seat{
-		{Role: "Team lead", Count: 1},
-		{Role: "Service volunteer", Count: 2},
-	}
-
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, shape, overrides, historical, halfFrequencyWithMaleCover, roles)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, overrides, historical, halfFrequencyWithMaleCover, roles)
 	require.NoError(t, err)
 
 	// max = floor(4 * 0.5)
@@ -299,9 +300,9 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 	}
 
 	input, err := allocator.BuildCpsatInput(
-		volunteers, groupAvailability, openShifts("2026-07-13"),
-		[]allocator.Seat{{Role: "Service volunteer", Count: 4}}, nil,
-		historical, model.AllocationSettings{}, roles)
+		volunteers, groupAvailability,
+		openShifts([]allocator.Seat{{Role: "Service volunteer", Count: 4}}, "2026-07-13"),
+		nil, historical, model.AllocationSettings{}, roles)
 	require.NoError(t, err)
 
 	// The final historical shift is the one no_back_to_back reads.
@@ -336,11 +337,15 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		// Ruth Grey answered, for nothing.
 		"Ruth Grey": {},
 	}
+	shape := []allocator.Seat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 2},
+	}
 	shiftSpecs := []allocator.ShiftSpec{
-		{Date: "2026-07-13"},
-		{Date: "2026-07-20"},
-		{Date: "2026-07-27", Closed: true},
-		{Date: "2026-08-03"},
+		{Date: "2026-07-13", Shape: shape},
+		{Date: "2026-07-20", Shape: shape},
+		{Date: "2026-07-27", Shape: shape, Closed: true},
+		{Date: "2026-08-03", Shape: shape},
 	}
 
 	overrides := []allocator.ShiftOverride{
@@ -372,12 +377,7 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		{Name: "Service volunteer", Max: nil, Priority: 2},
 	}
 
-	shape := []allocator.Seat{
-		{Role: "Team lead", Count: 1},
-		{Role: "Service volunteer", Count: 2},
-	}
-
-	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, shape, overrides, nil, halfFrequencyWithMaleCover, roles)
+	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, overrides, nil, halfFrequencyWithMaleCover, roles)
 	require.NoError(t, err)
 
 	byKey := make(map[string]allocator.CpsatGroup, len(input.Groups))
@@ -420,8 +420,9 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	roles := []allocator.Role{{Name: "Service volunteer", Max: nil, Priority: 1}}
 
-	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability, openShifts("2026-07-13", "2026-07-20"),
-		[]allocator.Seat{{Role: "Service volunteer", Count: 2}}, overrides, nil, halfFrequency, roles)
+	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability,
+		openShifts([]allocator.Seat{{Role: "Service volunteer", Count: 2}}, "2026-07-13", "2026-07-20"),
+		overrides, nil, halfFrequency, roles)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string][]int{"Alice Smith": {1}}, groupAvailability)

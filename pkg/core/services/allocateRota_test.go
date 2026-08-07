@@ -94,10 +94,11 @@ func TestAllocateRotaRefusesWhenTheShiftTimesAreNotSet(t *testing.T) {
 	}
 }
 
-// A Shape nobody has stated is the one unset setting that would not fail
-// loudly: the solve succeeds and staffs nobody. It is part of the same gate, so
-// allocation refuses and says which setting is empty (issue #129).
-func TestAllocateRotaRefusesWhenTheDefaultShapeIsNotSet(t *testing.T) {
+// A Shift asking for nobody is the one gap that would not fail loudly: the
+// solve succeeds and staffs nobody. Since Shifts own their Shapes the question
+// is asked of the rota's Shifts rather than of the settings (issue #137), and
+// the refusal names the dates so an admin can see which rota it means.
+func TestAllocateRotaRefusesWhenAShiftAsksForNobody(t *testing.T) {
 	store := &mockAllocateRotaStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
 		shifts:    sundayShifts("rota-1", "2026-08-02", 2),
@@ -117,9 +118,39 @@ func TestAllocateRotaRefusesWhenTheDefaultShapeIsNotSet(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrInvalidInput)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "default shape")
-	assert.Contains(t, err.Error(), "settings screen")
+	assert.Contains(t, err.Error(), "2026-08-02")
+	assert.Contains(t, err.Error(), "2026-08-09")
+	assert.Contains(t, err.Error(), "ask for nobody")
 	assert.Empty(t, store.insertedAllocations, "nothing is written")
+}
+
+// Nobody works a day the drop-in is shut, so a closed Shift with no Seats is
+// not a gap in anything and must not stop the rota being allocated.
+func TestAllocateRotaIgnoresAClosedShiftWithNoShape(t *testing.T) {
+	shifts := sundayShifts("rota-1", "2026-08-02", 2)
+	shifts[1].Closed = true
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
+		shifts:    shifts,
+	}
+	// The open Shift has its Shape; the closed one was never given any Seats.
+	store.shiftShapes = map[string][]db.DefaultShapeSeat{
+		"2026-08-09": {},
+	}
+
+	_, err := AllocateRota(
+		context.Background(),
+		store,
+		&mockVolClient{},
+		&config.Config{},
+		zap.NewNop(),
+		false, // dryRun
+		false, // forceCommit
+		"",    // pythonFlag
+	)
+
+	require.Error(t, err, "there is no availability round, so it still refuses")
+	assert.NotContains(t, err.Error(), "for nobody")
 }
 
 // The mirror of the above: settings an admin has filled in do not stop

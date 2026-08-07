@@ -23,8 +23,8 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
-	// What a Shift asks for is the stored default Shape (#129), so the round's
-	// coverage numbers are zero until one is stated.
+	// What a Shift asks for is a copy of the default Shape taken when the rota
+	// was defined (#137), so it has to be stated before the rota is.
 	dbtest.SeedDefaultShape(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
@@ -159,6 +159,7 @@ func leadCoverage(t *testing.T, shift availabilityCoverageResponse) availability
 func TestAvailabilityLinkOpensThePage(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
+	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
 

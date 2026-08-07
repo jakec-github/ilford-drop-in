@@ -92,9 +92,10 @@ type shiftSeats struct {
 
 // buildShiftSeats resolves every shift's Shape and pins, keyed by shift id.
 //
-// Every shift asks for the default Shape, because that is what a Shift asks for
-// until Shifts own their own Shapes (#137) — the same Shape allocation sends the
-// solver, read from the same settings.
+// Each shift asks for its own stored Shape — the one it was minted with, which
+// is the one the solve will be given (#137). It used to be the default Shape for
+// all of them, which meant this page answered "can the rota be staffed" against
+// whatever the settings screen happened to say at the moment it was opened.
 //
 // The pins are resolved through the same two helpers allocation uses —
 // buildPreallocationOverrides, then preallocationsForDate over the result, which
@@ -102,7 +103,7 @@ type shiftSeats struct {
 // will actually see, and a second implementation of it is how the three copies
 // of the group rule happened.
 func buildShiftSeats(
-	defaultShape model.Shape,
+	shapes map[string]model.Shape,
 	shifts []AvailabilityShift,
 	pins []db.Preallocation,
 ) (map[string]shiftSeats, error) {
@@ -115,13 +116,6 @@ func buildShiftSeats(
 		return nil, err
 	}
 
-	// One map, shared by every shift: they all ask for the same thing, and
-	// nothing downstream writes to it.
-	shape := make(map[string]int, len(defaultShape))
-	for _, seat := range defaultShape {
-		shape[seat.Role.Name] = seat.Count
-	}
-
 	seats := make(map[string]shiftSeats, len(shifts))
 	for _, shift := range shifts {
 		if shift.Closed {
@@ -132,6 +126,11 @@ func buildShiftSeats(
 				pinnedVolunteers: map[string]bool{},
 			}
 			continue
+		}
+
+		shape := make(map[string]int, len(shapes[shift.ID]))
+		for _, seat := range shapes[shift.ID] {
+			shape[seat.Role.Name] = seat.Count
 		}
 
 		pinned := make(map[string]int)

@@ -223,11 +223,20 @@ type ShiftOverride struct {
 }
 
 // ShiftSpec is one minted shift as the solver's model receives it, before
-// anything is resolved: which date it falls on, and whether the drop-in runs
-// that day. Closed arrives here rather than being derived from an override
-// because it is a field on the Shift, set by hand (issue #132).
+// anything is resolved: which date it falls on, what it asks for, and whether
+// the drop-in runs that day. Closed arrives here rather than being derived from
+// an override because it is a field on the Shift, set by hand (issue #132).
 type ShiftSpec struct {
-	Date   string
+	Date string
+
+	// Shape is the Seats this shift asks for: which Roles, and how many of
+	// each, already resolved to Role names. It is per shift rather than one
+	// Shape for the rota because a Shift owns its Shape — stored when the rota
+	// was defined, and untouched by any later edit to the settings (issue
+	// #137). An empty Shape is a shift asking for nobody, which allocation
+	// refuses before it gets here.
+	Shape []Seat
+
 	Closed bool
 }
 
@@ -235,12 +244,6 @@ type ShiftSpec struct {
 type InitShiftsInput struct {
 	// Shifts is the current rota's minted shifts, in date order
 	Shifts []ShiftSpec
-
-	// DefaultShape is the Seats every shift asks for: which Roles, and how many
-	// of each. It comes from the Rota Defaults an admin edits, already resolved
-	// to Role names (issue #129). Empty is a rota asking for nobody, which
-	// allocation refuses before it gets here.
-	DefaultShape []Seat
 
 	// Overrides allow customizing specific shifts
 	Overrides []ShiftOverride
@@ -254,8 +257,7 @@ type InitShiftsInput struct {
 //
 // Returns a slice of initialized Shift objects with:
 //   - Sequential indices
-//   - The default Shape, which every shift of a rota shares until Shifts own
-//     their own Shapes (#137)
+//   - The Shape each shift arrived asking for (issue #137)
 //   - Preallocations unioned from every override applying to the date
 //   - AvailableGroups populated based on volunteer group availability
 //
@@ -298,7 +300,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		shifts[i] = &Shift{
 			Date:            spec.Date,
 			Index:           i,
-			Shape:           input.DefaultShape,
+			Shape:           spec.Shape,
 			AllocatedGroups: []*VolunteerGroup{},
 			MaleCount:       0, // Will be updated when groups are allocated
 			AvailableGroups: availableGroups,

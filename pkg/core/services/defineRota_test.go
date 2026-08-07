@@ -14,32 +14,54 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+// testDefaultShape is the Shape these tests define rotas against — one Team
+// lead and four Service volunteers, against the Roles testRoleStore holds. Most
+// of them are not about the Shape and simply need one, since a rota cannot be
+// defined without.
+var testDefaultShape = []db.DefaultShapeSeat{
+	{RoleID: "role-team-lead", Seats: 1},
+	{RoleID: "role-service-volunteer", Seats: 4},
+}
+
 // mockDB implements a test double for db.DB
 type mockDB struct {
 	testRoleStore
 
-	rotations       []db.Rotation
-	standing        []db.StandingPreallocation
-	defaults        db.RotaDefaults
+	rotations []db.Rotation
+	standing  []db.StandingPreallocation
+	defaults  db.RotaDefaults
+	// shape is the default Shape this deployment has stated. Nil is one that
+	// has stated none, which is a refusal rather than a smaller rota.
+	shape           []db.DefaultShapeSeat
 	insertedRotas   []*db.Rotation
 	insertedShifts  [][]db.Shift
 	insertedPins    [][]db.Preallocation
+	insertedSeats   [][]db.ShiftRequirement
 	getRotationsErr error
 	defaultsErr     error
 	insertErr       error
 }
 
+func (m *mockDB) GetDefaultShape(ctx context.Context) ([]db.DefaultShapeSeat, error) {
+	return m.shape, nil
+}
+
 // definableMock is the store a rota can actually be defined against: one that
-// has been told when the drop-in runs. A Shift's date is the date of its start
-// (ADR 0007), so unset shift times are not a rota with unknown hours, they are
-// a refusal — which the test below is the one to say. Every other test here is
-// about something else and starts from settings an admin has filled in.
+// has been told when the drop-in runs and what a Shift asks for. A Shift's date
+// is the date of its start (ADR 0007), so unset shift times are not a rota with
+// unknown hours, they are a refusal; an unstated Shape is a refusal too, since
+// each Shift is minted with a copy of it (issue #137). The two tests below are
+// the ones to say so. Every other test here is about something else and starts
+// from settings an admin has filled in.
 func definableMock() *mockDB {
-	return &mockDB{defaults: db.RotaDefaults{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
-		ShiftTimezone:  "Europe/London",
-	}}
+	return &mockDB{
+		defaults: db.RotaDefaults{
+			ShiftStartTime: "19:30",
+			ShiftEndTime:   "21:30",
+			ShiftTimezone:  "Europe/London",
+		},
+		shape: testDefaultShape,
+	}
 }
 
 func (m *mockDB) GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error) {
@@ -60,13 +82,14 @@ func (m *mockDB) GetStandingPreallocations(ctx context.Context) ([]db.StandingPr
 	return m.standing, nil
 }
 
-func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation) error {
+func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
 	m.insertedRotas = append(m.insertedRotas, rotation)
 	m.insertedShifts = append(m.insertedShifts, shifts)
 	m.insertedPins = append(m.insertedPins, preallocations)
+	m.insertedSeats = append(m.insertedSeats, requirements)
 	return nil
 }
 
@@ -195,7 +218,7 @@ func TestDefineRota_NoStandingPreallocations(t *testing.T) {
 }
 
 func TestDefineRota_InvalidShiftCount(t *testing.T) {
-	mock := &mockDB{}
+	mock := &mockDB{shape: testDefaultShape}
 	logger := zap.NewNop()
 	ctx := context.Background()
 
@@ -302,7 +325,7 @@ func TestDefineRota_WritesShiftTimesFromDefaults(t *testing.T) {
 // ADR 0006's "allocation and nothing else": a Shift with no start is not a
 // Shift with unknown hours, it is a Shift on no day at all (ADR 0007).
 func TestDefineRota_UnsetDefaultsRefuse(t *testing.T) {
-	mock := &mockDB{}
+	mock := &mockDB{shape: testDefaultShape}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
 	require.ErrorIs(t, err, ErrInvalidInput)
@@ -311,10 +334,53 @@ func TestDefineRota_UnsetDefaultsRefuse(t *testing.T) {
 	assert.Empty(t, mock.insertedShifts, "nothing is written when a rota cannot be defined")
 }
 
+// Defining a rota is where a Shift gets its Shape: the default Shape, copied
+// onto every Shift as Seats of its own (issue #137). From here the settings can
+// be edited freely and this rota still asks for what it was minted asking for.
+func TestDefineRota_WritesTheDefaultShapeOntoEveryShift(t *testing.T) {
+	mock := definableMock()
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 3)
+	require.NoError(t, err)
+	require.Len(t, result.Shifts, 3)
+
+	require.Len(t, mock.insertedSeats, 1)
+	var expected []db.ShiftRequirement
+	for _, s := range result.Shifts {
+		expected = append(expected,
+			db.ShiftRequirement{ShiftID: s.ID, RoleID: "role-team-lead", Seats: 1},
+			db.ShiftRequirement{ShiftID: s.ID, RoleID: "role-service-volunteer", Seats: 4},
+		)
+	}
+	assert.Equal(t, expected, mock.insertedSeats[0])
+}
+
+// A deployment that has not stated a default Shape cannot define a rota either,
+// and is told which setting is missing — the times above are the other half of
+// the same refusal, so the mock here has them and lacks only the Shape.
+//
+// The reason is its own, and stronger than the times'. A Shift's times stay
+// editable after it is minted; its Shape is frozen at define until #138 lands,
+// so minting Shapeless Shifts would produce a rota that can never be allocated
+// and can never be fixed. Refusing at the one moment the Shape is spent is the
+// difference between an admin filling in a setting and an admin stuck with a
+// rota nothing will accept.
+func TestDefineRota_RefusesWithNoDefaultShape(t *testing.T) {
+	mock := definableMock()
+	mock.shape = nil
+
+	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 4)
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "default shape")
+	assert.Empty(t, mock.insertedRotas, "nothing is written when there is no shape to mint against")
+}
+
 // Settings that cannot be read are a fault rather than an empty answer, so the
 // rota is not minted half-timed on the back of one.
 func TestDefineRota_SettingsReadFails(t *testing.T) {
-	mock := &mockDB{defaultsErr: errors.New("boom")}
+	mock := &mockDB{shape: testDefaultShape, defaultsErr: errors.New("boom")}
 
 	result, err := DefineRota(context.Background(), mock, zap.NewNop(), 2)
 	assert.Error(t, err)

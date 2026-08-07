@@ -61,27 +61,41 @@ func (s testRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefaults
 	}, nil
 }
 
-// testDefaultShapeStore answers with the Shape a configured drop-in asks for —
-// one Team lead and four Service volunteers, against the Role ids testRoleStore
-// hands out — unless a test sets defaultShape to say otherwise.
+// testShiftShapeStore answers with the Shape every Shift was minted with — the
+// one a configured drop-in asks for, one Team lead and four Service volunteers,
+// against the Role ids testRoleStore hands out — unless a test says otherwise.
 //
 // shapeOfSize is how most tests say otherwise: they care about how many ordinary
 // places a shift has, which is the number `defaultShiftSize` used to be.
-type testDefaultShapeStore struct {
-	defaultShape []db.DefaultShapeSeat
-	// noShape is a drop-in nobody has stated a Shape for, which is a different
-	// thing from one whose Shape a test has not bothered to set.
+// shiftShapes says it a Shift at a time, for the tests that are about Shifts no
+// longer sharing a Shape.
+type testShiftShapeStore struct {
+	shape       []db.DefaultShapeSeat
+	shiftShapes map[string][]db.DefaultShapeSeat
+	// noShape is a rota whose Shifts ask for nobody — one defined before a
+	// Shape was stated — which is a different thing from one whose Shape a test
+	// has not bothered to set.
 	noShape bool
 }
 
-func (s testDefaultShapeStore) GetDefaultShape(context.Context) ([]db.DefaultShapeSeat, error) {
+func (s testShiftShapeStore) GetShiftShapes(_ context.Context, shiftIDs []string) (map[string][]db.ShiftRequirement, error) {
+	shapes := make(map[string][]db.ShiftRequirement, len(shiftIDs))
 	if s.noShape {
-		return nil, nil
+		return shapes, nil
 	}
-	if s.defaultShape != nil {
-		return s.defaultShape, nil
+	for _, id := range shiftIDs {
+		seats, named := s.shiftShapes[id]
+		if !named {
+			seats = s.shape
+		}
+		if seats == nil {
+			seats = shapeOfSize(4)
+		}
+		for _, seat := range seats {
+			shapes[id] = append(shapes[id], db.ShiftRequirement{ShiftID: id, RoleID: seat.RoleID, Seats: seat.Seats})
+		}
 	}
-	return shapeOfSize(4), nil
+	return shapes, nil
 }
 
 // shapeOfSize is the app's Shape with a given number of ordinary places: one
@@ -97,7 +111,7 @@ func shapeOfSize(size int) []db.DefaultShapeSeat {
 type mockAllocateRotaStore struct {
 	testRoleStore
 	testRotaDefaultsStore
-	testDefaultShapeStore
+	testShiftShapeStore
 
 	rotations                []db.Rotation
 	shifts                   []db.Shift

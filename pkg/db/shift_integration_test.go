@@ -26,7 +26,7 @@ func TestGetShiftsInRange(t *testing.T) {
 	require.NoError(t, database.InsertDefinedRota(ctx, rota1, []db.Shift{
 		shift1,
 		dbtest.Shift(rota1.ID, "2026-08-09"),
-	}, nil))
+	}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
 		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift1.ID, Role: "team-lead", VolunteerID: "alice"}},
 		rota1.ID, time.Now()))
@@ -34,7 +34,7 @@ func TestGetShiftsInRange(t *testing.T) {
 	rota2 := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota2, []db.Shift{
 		dbtest.Shift(rota2.ID, "2026-08-16"),
-	}, nil))
+	}, nil, nil))
 
 	// All three shifts, unbounded, ordered by date.
 	shifts, err := database.GetShiftsInRange(ctx, time.Time{}, time.Time{})
@@ -67,7 +67,7 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shiftA := dbtest.Shift(rota.ID, "2026-08-02")
 	shiftB := dbtest.Shift(rota.ID, "2026-08-09")
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
 		{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "team-lead", VolunteerID: "alice"},
 		{ID: uuid.New().String(), ShiftID: shiftB.ID, Role: "volunteer", VolunteerID: "bob"},
@@ -124,7 +124,7 @@ func TestInsertAllocationsUnknownShiftIDFails(t *testing.T) {
 	rota := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{
 		dbtest.Shift(rota.ID, "2026-08-02"),
-	}, nil))
+	}, nil, nil))
 
 	err := database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
 		{ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "volunteer", VolunteerID: "alice"},
@@ -146,7 +146,7 @@ func TestShiftClosedRoundTrips(t *testing.T) {
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-12-27")
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 
 	minted, err := database.GetShiftByID(ctx, shift.ID)
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	require.NoError(t, database.InsertDefinedRota(ctx, rota1, []db.Shift{
 		dbtest.Shift(rota1.ID, "2026-08-02"),
 		dbtest.Shift(rota1.ID, "2026-08-09"),
-	}, nil))
+	}, nil, nil))
 
 	// The second rota overlaps rota1 on one date only; the shared date must
 	// sink the whole insert, including the non-overlapping shift.
@@ -219,7 +219,7 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	err := database.InsertDefinedRota(ctx, rota2, []db.Shift{
 		dbtest.Shift(rota2.ID, "2026-08-09"),
 		dbtest.Shift(rota2.ID, "2026-08-16"),
-	}, nil)
+	}, nil, nil)
 	require.Error(t, err)
 
 	rotations, err := database.GetRotations(ctx)
@@ -256,7 +256,7 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 		StartAt: "2026-08-09T19:30:00",
 		EndAt:   "2026-08-09T21:30:00",
 	}
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{later, earlier}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{later, earlier}, nil, nil))
 
 	byRota, err := database.GetShiftsByRotaID(ctx, rota.ID)
 	require.NoError(t, err)
@@ -319,7 +319,7 @@ func TestShiftTimesRoundTrip(t *testing.T) {
 		StartAt: "2026-07-12T19:30:00",
 		EndAt:   "2026-07-12T21:30:00",
 	}
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 
 	byID, err := database.GetShiftByID(ctx, shift.ID)
 	require.NoError(t, err)
@@ -359,13 +359,13 @@ func TestShiftTimesConstraints(t *testing.T) {
 	untimed := &db.Rotation{ID: uuid.New().String()}
 	err := database.InsertDefinedRota(ctx, untimed, []db.Shift{
 		{ID: uuid.New().String(), Date: "2026-07-12", RotaID: untimed.ID},
-	}, nil)
+	}, nil, nil)
 	require.Error(t, err, "a shift with no times must be rejected")
 
 	halfSet := &db.Rotation{ID: uuid.New().String()}
 	err = database.InsertDefinedRota(ctx, halfSet, []db.Shift{
 		{ID: uuid.New().String(), RotaID: halfSet.ID, StartAt: "2026-07-12T19:30:00"},
-	}, nil)
+	}, nil, nil)
 	require.Error(t, err, "a start with no end must be rejected")
 
 	backwards := &db.Rotation{ID: uuid.New().String()}
@@ -376,7 +376,7 @@ func TestShiftTimesConstraints(t *testing.T) {
 			StartAt: "2026-07-12T21:30:00",
 			EndAt:   "2026-07-12T19:30:00",
 		},
-	}, nil)
+	}, nil, nil)
 	require.Error(t, err, "an end before the start must be rejected")
 }
 
@@ -390,7 +390,7 @@ func TestSetShiftTimes(t *testing.T) {
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
 		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Team lead", VolunteerID: "alice"}},
 		rota.ID, time.Now()))
@@ -436,12 +436,12 @@ func TestSetShiftTimesRejectsTakenDate(t *testing.T) {
 	rota := &db.Rotation{ID: uuid.New().String()}
 	first := dbtest.Shift(rota.ID, "2026-08-02")
 	second := dbtest.Shift(rota.ID, "2026-08-09")
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{first, second}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{first, second}, nil, nil))
 
 	other := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, other, []db.Shift{
 		dbtest.Shift(other.ID, "2026-08-16"),
-	}, nil))
+	}, nil, nil))
 
 	err := database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
 		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-02T18:00:00", "2026-08-02T20:00:00")

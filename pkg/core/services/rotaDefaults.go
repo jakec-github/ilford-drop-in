@@ -55,13 +55,6 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 	}, nil
 }
 
-// AllocationSettingsStore is everything the allocation gate reads: the settings
-// record itself, and the default Shape, which is stored beside it as rows.
-type AllocationSettingsStore interface {
-	RotaDefaultsStore
-	DefaultShapeStore
-}
-
 // parseAllocationSettings reads the stored document, and answers "no rules"
 // for anything it cannot make sense of.
 //
@@ -100,7 +93,7 @@ func parseAllocationSettings(document string) model.AllocationSettings {
 // It reads the settings itself and hands back what it read, so a caller cannot
 // allocate by forgetting to check — the only way to get the settings for a
 // solve is to go through the gate.
-func settingsForAllocation(ctx context.Context, store AllocationSettingsStore, logger *zap.Logger) (model.RotaDefaults, error) {
+func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger *zap.Logger) (model.RotaDefaults, error) {
 	defaults, err := RotaDefaults(ctx, store)
 	if err != nil {
 		return model.RotaDefaults{}, err
@@ -109,17 +102,6 @@ func settingsForAllocation(ctx context.Context, store AllocationSettingsStore, l
 	// Every section at once, so an admin is told everything they have to go
 	// and fill in rather than one thing per attempt.
 	missing := append(defaults.MissingShiftTimes(), defaults.AllocationSettings.Missing()...)
-
-	// A Shape asking for nobody solves perfectly and staffs nothing, which is
-	// the worst way for an unset setting to behave: a rota comes back empty and
-	// nothing says why.
-	shape, err := DefaultShape(ctx, store)
-	if err != nil {
-		return model.RotaDefaults{}, err
-	}
-	if len(shape) == 0 {
-		missing = append(missing, "the default shape")
-	}
 
 	if len(missing) > 0 {
 		return model.RotaDefaults{}, wrapf(ErrInvalidInput,
