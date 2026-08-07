@@ -5,7 +5,7 @@ import ResponseGrid from "./ResponseGrid";
 import { useAvailabilityRound } from "../hooks/useAvailabilityRound";
 import { useAvailabilitySend } from "../hooks/useAvailabilitySend";
 import type { AvailabilityRound, AvailabilitySend, SendMode } from "../types";
-import "./AdminAvailability.css";
+import "./AvailabilityPanel.css";
 
 // A send the admin has asked for but not yet given a deadline to. The deadline
 // is the one thing a send cannot be started without, so it is what the dialog
@@ -149,15 +149,20 @@ function SendReport({
   );
 }
 
-// AdminAvailability is the availability tab: start a round for the latest rota,
-// send everyone their link, then read whether the answers coming back can
-// actually staff it.
+// AvailabilityPanel is the asking half of the Allocation tab: start a round for
+// the rota in flight, send everyone their link, then read whether the answers
+// coming back can actually staff it.
 //
 // This component owns the round and the sending; reading it belongs to the grid.
-// The two questions the tab used to answer in two lists — "is this rota covered"
+// The two questions this used to answer in two lists — "is this rota covered"
 // and "who still owes me an answer" — are one matrix now, because they are the
 // same question read in two directions.
-export default function AdminAvailability() {
+//
+// A section rather than a tab of its own (issue #145). Asking is not a step to
+// be finished before the next one starts: the shifts keep being edited while the
+// answers come in, and the draft is re-solved as they land, so the round belongs
+// on the screen those are on.
+export default function AvailabilityPanel() {
   const { round, error, mintState, mint, reload } = useAvailabilityRound();
   const {
     send,

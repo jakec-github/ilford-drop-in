@@ -148,6 +148,39 @@ func TestGetDraftRotaAllocationReportsACleanDraft(t *testing.T) {
 	assert.Len(t, store.storedDrafts, 1, "the draft that was there, and no second one")
 }
 
+// A rota nobody has solved for yet is dirty by definition, so reading its draft
+// tries to solve it — and on a rota with no availability round yet, that solve
+// is refused. The read still answers: the draft as it stands is exactly what was
+// asked for, and what stopped the solve is reported beside it.
+//
+// This is the state every rota is in between being defined and its round being
+// minted, which is the whole first day of one. A 400 there would make the
+// Allocation tab's draft panel unreachable on a screen whose job is to say what
+// to do next (issue #145).
+func TestGetDraftRotaAllocationWhenTheSolveIsRefused(t *testing.T) {
+	store := &mockStore{
+		rotations: []db.Rotation{{
+			ID: "rota-1", Start: "2026-08-02", ShiftCount: 2,
+			InputsChangedAt: time.Date(2026, 8, 5, 11, 0, 0, 0, time.UTC),
+		}},
+		shifts: []db.Shift{
+			{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02", StartAt: "2026-08-02T19:30:00", EndAt: "2026-08-02T21:30:00"},
+		},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.False(t, body.Solved, "nothing has been solved for this rota")
+	assert.True(t, body.Dirty, "and the inputs still stand ahead of the draft")
+	assert.False(t, body.Solving, "no solve is running — one was refused")
+	assert.Contains(t, body.SolveError, "availability round",
+		"the step that has not been taken, named")
+	assert.Empty(t, store.storedDrafts, "a refused solve stores nothing")
+}
+
 // With no unallocated Rotation there is nothing to draft, and nothing solves.
 // The endpoint says which step is missing rather than answering with an empty
 // draft, which would read as "solved, and it staffed nobody".

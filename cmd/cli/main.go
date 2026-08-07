@@ -25,9 +25,11 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "cli",
 		Short: "Ilford Drop-In CLI - Manage volunteer rotas",
-		Long: `A CLI tool for defining, allocating and publishing volunteer rotas.
+		Long: `A CLI tool for the Google Sheets around the Ilford Drop-in rota.
 
-Availability is collected and chased through the web app, not here.`,
+The rota itself lives in the web app: defining it, preparing its shifts, asking
+volunteers, allocating it and changing it afterwards all happen there. What is
+left here reads or writes a Sheet.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Skip initialization for help commands - no need for OAuth/API clients or env flag
 			helpFlag, _ := cmd.Flags().GetBool("help")
@@ -52,13 +54,16 @@ Availability is collected and chased through the web app, not here.`,
 
 	// Add commands with lazy initialization
 	// These will use the app context after it's initialized by PersistentPreRunE
-	rootCmd.AddCommand(newLazyCommand(commands.DefineRotaCmd))
-	// There is no allocateRota command. Allocating happens in the app, where it
-	// re-solves and commits only the rota the admin was shown; a command that
-	// solved and committed in one step could not honour that, and two paths
-	// where one breaks the rule is worse than one path (issue #144, ADR 0008).
+	// There is no defineRota, allocateRota or changeRota command. The whole life
+	// of a rota is in the app: it is defined on Admin → Allocation, allocated
+	// from the draft on the same screen, and altered a person at a time on the
+	// rota page (issues #140, #144, #145; #64 for the editor).
+	//
+	// Allocating is the one that could never come back. It re-solves and commits
+	// only the rota the admin was shown, and a command that solved and committed
+	// in one step could not honour that — two paths where one breaks the rule is
+	// worse than one path (ADR 0008).
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.ChangeRotaCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
 

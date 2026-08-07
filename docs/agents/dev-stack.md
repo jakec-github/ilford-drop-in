@@ -82,8 +82,8 @@ field left out is a 400 rather than a default quietly applied — that is the
 point of the endpoint (issue #140).
 
 That mints six weekly shifts and returns them with their ids; `GET /api/shifts`
-then serves them. The Rota tab in the admin area does the same thing through the
-UI, with the proposal already filled into the form.
+then serves them. The Allocation tab in the admin area does the same thing
+through the UI, with the proposal already filled into the form.
 
 The shift times and the default Shape come from the settings, which a fresh dev
 database has none of — the proposal comes back with empty times and an empty
@@ -105,9 +105,9 @@ curl -b cookies.txt localhost:8080/api/rotations/in-flight   # what is in flight
 curl -b cookies.txt -X DELETE localhost:8080/api/rotations/<rota-id>
 ```
 
-Reach for that rather than emptying tables by hand: it is the same path the Rota
-tab's Discard button takes, and it cannot leave a rotation behind without its
-shifts.
+Reach for that rather than emptying tables by hand: it is the same path the
+Allocation tab's Discard button takes, and it cannot leave a rotation behind
+without its shifts.
 
 ## Collect availability
 
@@ -190,7 +190,7 @@ curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=reminder&deadline=Friday+
 curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=resend&volunteerId=<id>&deadline=Friday+28+August'
 ```
 
-Each redirects to `/admin/availability?send=<job id>` and the emails go out
+Each redirects to `/admin/allocation?send=<job id>` and the emails go out
 behind it — a send is a background job, not the body of the request, because
 thirty of them at Gmail's three-second throttle takes about ninety seconds.
 `GET /api/availability-sends/<job id>` reports how far it has got and, once it
@@ -255,24 +255,25 @@ restart.
 Shifts you can seed yourself (see [Define a rota](#define-a-rota)) and so can
 availability answers (see [Collect availability](#collect-availability)).
 Drafting a rota works too — the solver is a local subprocess, not a Google
-call — so the whole journey up to the moment of allocation is reachable here.
-Allocation itself is not: the web server does not expose it. So:
+call — and so does allocating it, which is an app action rather than a Google
+one (#144). The whole journey is reachable here, end to end. So:
 
 | Works | |
 | --- | --- |
 | Login and logout | The header shows the signed-in address and a Log out button |
 | Header nav | Rota ↔ Admin |
-| `/admin` tab routing | Redirects to `/admin/volunteers`; Config is still an unbuilt stub |
-| The availability tab | Starts a round for the latest rota and shows it as a grid — groups down the side, shifts along the top, each Role's surplus or deficit above the answers. Rows open to their members' links. Desktop first: it scrolls sideways on a phone |
+| `/admin` tab routing | Redirects to `/admin/volunteers`. Three tabs: Volunteers, Settings, Allocation |
+| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form, prefilled from `GET /api/rotations/proposed` and editable, plus a pointer to the rota already out. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireAdmin` |
+| The availability round | Part of the Allocation tab. Starts a round for the rota in flight and shows it as a grid — groups down the side, shifts along the top, each Role's surplus or deficit above the answers. Rows open to their members' links. Desktop first: it scrolls sideways on a phone |
 | The volunteer's form | `/availability/<token>`, public — no session, no header, mobile first |
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /api/volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |
-| The rota tab | Two states: the define form when nothing is in flight, otherwise the rota being worked on with its round and a Discard button. The form states the whole rota — count, start date, hours and Shape — prefilled from `GET /api/rotations/proposed` and editable. Behind `requireAdmin` |
 | `POST /api/rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight, or when a start date lands on a day the drop-in already runs |
 | `DELETE /api/rotations/{id}` | Discards an unallocated rota and everything hanging off it — the way to start over |
 | `POST /api/draft-rota-allocation` | Runs the real CP-SAT solve over the rota in flight and stores it as the draft. Needs Roles, the settings, a Shape on every open shift and an availability round — it names whichever step is missing |
-| The draft on the rota page | With a draft solved, an admin sees who it put where as dashed chips, under a panel saying when it solved and how many seats it filled. Logged out, none of it |
+| The draft on the rota page | With a draft solved, an admin sees who it put where as dashed chips, with a line pointing at the Allocation tab. Logged out, none of it |
+| Allocating | The Allocation tab's Allocate button re-solves, compares the answer with the draft on screen and commits it on a match. On a mismatch nothing is written and the panel says what changed |
 | The 404 route | Any unmatched path renders "Page not found" |
 
 | Does not | |

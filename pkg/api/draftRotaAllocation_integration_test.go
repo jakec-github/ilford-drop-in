@@ -214,9 +214,15 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 
 	// The same read now solves — and runs headlong into the gate that stops a
 	// rota whose Shifts ask for nobody, which is reachable from nowhere but the
-	// solve. A read that had merely reported the stored draft would have
-	// answered 200 with the numbers above.
+	// solve. That refusal is what proves the read tried: a read that had merely
+	// reported the stored draft would have come back clean.
+	//
+	// It comes back beside the draft rather than instead of it. The read
+	// succeeded; the solve it attempted on the way did not, and both of those
+	// are worth saying.
 	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	assert.Contains(t, rec.Body.String(), "for nobody")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Contains(t, body.SolveError, "for nobody")
+	assert.True(t, body.Dirty, "and the inputs still stand ahead of the draft")
 }
