@@ -970,7 +970,7 @@ export default function RotaViewer({
 
   const draftByShiftID = useMemo(() => {
     const byShift = new Map<string, Assignee[]>();
-    for (const shift of draftState?.draft?.shifts ?? []) {
+    for (const shift of draftState?.shifts ?? []) {
       byShift.set(shift.shiftId, shift.assignees);
     }
     return byShift;

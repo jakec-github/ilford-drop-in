@@ -21,13 +21,13 @@ type Store interface {
 	services.ChangeRotaStore
 	services.DefaultShapeWriteStore
 	services.DefineRotaStore
-	services.DraftRotaAllocationReadStore
 	services.DraftRotaAllocationStore
 	services.ListShiftsStore
 	services.PreallocationStore
 	services.RoleWriteStore
 	services.RotaDefaultsStore
 	services.RotaLifecycleStore
+	services.RotaProposalStore
 	services.RotaDefaultsWriteStore
 	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
@@ -60,6 +60,10 @@ type Handler struct {
 	// sends holds the availability sends in flight. They are jobs rather than
 	// requests because a round takes about ninety seconds — see sendjobs.go.
 	sends *sendJobs
+	// drafts is the one solve slot draft solves take turns in, so that two
+	// admins reading the rota at once do not start two solvers over the same
+	// inputs — see draftsolves.go.
+	drafts *draftSolves
 }
 
 // NewHandler creates an API handler with its dependencies. frontend is the
@@ -83,6 +87,7 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 		logger:     logger,
 		newMailer:  newMailer,
 		sends:      newSendJobs(),
+		drafts:     newDraftSolves(),
 	}
 
 	// The gmail.send grant comes back through the login callback, which the
@@ -152,21 +157,29 @@ func (h *Handler) Routes() http.Handler {
 	// to be mistaken for an id under.
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("GET /rotations/in-flight", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaInFlight)))
+	// What defining one right now would produce: the two states of the define
+	// screen read one of these each (issue #140).
+	api.Handle("GET /rotations/proposed", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaProposal)))
 	api.Handle("DELETE /rotations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDiscardRota)))
 	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has
-	// decided yet, and it is replaced wholesale every few hours. Publishing one
-	// would tell a volunteer they are working a shift they may well not be
-	// (ADR 0008).
+	// decided yet, and it is replaced wholesale every time an input moves.
+	// Publishing one would tell a volunteer they are working a shift they may
+	// well not be (ADR 0008).
 	//
 	// Singular because there is one, for the one unallocated Rotation. POST
 	// rather than PUT: the request states no body — the inputs are already in
 	// the database — and what comes back is a solve that has just run.
 	//
-	// The GET is where the draft is actually read from, and it is a resource of
-	// its own rather than a field on GET /shifts on purpose: that listing is
-	// public, and keeping it clear of the draft tables is what makes the leak
-	// unrepresentable rather than merely forbidden.
+	// The GET beside it reads the draft — its state and the rota it drafted —
+	// and re-solves first when the inputs have moved (issue #142). Both facts
+	// are why it is here rather than a field of some other read: that other
+	// read would be GET /shifts, which is public, and keeping it clear of the
+	// draft tables is what makes the leak unrepresentable rather than merely
+	// forbidden; and solving on a GET is a surprising thing for an endpoint to
+	// do, so it should be the endpoint plainly about the draft that does it.
+	// The POST re-solves whether or not anything moved, for the changes no
+	// stamp can catch: the roster is a Google Sheet.
 	api.Handle("GET /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleGetDraftRotaAllocation)))
 	api.Handle("POST /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))

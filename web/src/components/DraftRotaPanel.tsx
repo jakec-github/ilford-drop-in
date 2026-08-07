@@ -1,4 +1,4 @@
-import type { DraftRotaState, SolvedDraft } from "../types";
+import type { DraftRotaState } from "../types";
 import Button from "../ui/Button";
 import "./DraftRotaPanel.css";
 
@@ -31,27 +31,27 @@ function timeAgo(iso: string): string {
 // sentences rather than as a status with a number beside it. Unfilled Seats are
 // people to chase; an infeasible solve is a conflict in the inputs to go and
 // resolve, and no amount of chasing fixes it.
-function describeOutcome(draft: SolvedDraft, seatsAsked: number): string {
-  if (!draft.success) {
+function describeOutcome(state: DraftRotaState): string {
+  if (!state.success) {
     return (
       "No rota is possible from the availability, pins and shapes as they stand " +
-      `(the solver said ${draft.solverStatus}).`
+      `(the solver said ${state.solverStatus}).`
     );
   }
-  const unfilled = seatsAsked - draft.seatsFilled;
+  const unfilled = state.seatsAsked - state.seatsFilled;
   if (unfilled <= 0) {
-    return `Every seat is filled — all ${seatsAsked} of them.`;
+    return `Every seat is filled — all ${state.seatsAsked} of them.`;
   }
-  return `${draft.seatsFilled} of ${seatsAsked} seats filled, ${unfilled} still empty.`;
+  return `${state.seatsFilled} of ${state.seatsAsked} seats filled, ${unfilled} still empty.`;
 }
 
 // DraftRotaPanel is what the draft has to say for itself, above the rota it is
 // drawn onto: when it was last solved, how much of the rota it staffed, whether
 // a rota was possible at all, and the control that solves it again.
 //
-// Admin-only, like everything else about a draft. It renders nothing at all when
-// no rota is in flight — there is then nothing to draft, and a panel saying so
-// on the public rota page would be a permanent empty box.
+// Admin-only, like everything else about a draft. Its caller renders it only
+// when a rota is in flight — there is otherwise nothing to draft, and a panel
+// saying so on the public rota page would be a permanent empty box.
 export default function DraftRotaPanel({
   state,
   solving,
@@ -63,33 +63,38 @@ export default function DraftRotaPanel({
   solveError: string | null;
   onSolve: () => void;
 }) {
-  if (state.rota === null) return null;
-  const { draft } = state;
-
   return (
     <section className="draft-panel">
       <div className="draft-panel-head">
         <h2 className="draft-panel-title">Draft rota</h2>
         <Button size="small" onClick={onSolve} disabled={solving}>
-          {solving ? "Solving…" : draft ? "Solve again" : "Solve now"}
+          {solving ? "Solving…" : state.solved ? "Solve again" : "Solve now"}
         </Button>
       </div>
 
-      {draft === null ? (
+      {state.solved && state.solvedAt !== null ? (
         <p className="draft-panel-state">
-          Nothing has been solved for this rota yet.{" "}
-          {state.rota.seatsAsked > 0
-            ? `It is asking for ${state.rota.seatsAsked} seats.`
-            : "Its shifts are not asking for anybody yet."}
+          {describeOutcome(state)}{" "}
+          {/* The instant in the title, so the exact time is a hover away
+              without putting a timestamp nobody reads in the sentence. */}
+          <span className="draft-panel-when" title={state.solvedAt}>
+            Solved {timeAgo(state.solvedAt)}.
+          </span>
         </p>
       ) : (
         <p className="draft-panel-state">
-          {describeOutcome(draft, state.rota.seatsAsked)}{" "}
-          {/* The instant in the title, so the exact time is a hover away
-              without putting a timestamp nobody reads in the sentence. */}
-          <span className="draft-panel-when" title={draft.solvedAt}>
-            Solved {timeAgo(draft.solvedAt)}.
-          </span>
+          Nothing has been solved for this rota yet.
+        </p>
+      )}
+
+      {/* A solve was already running when this page read the draft, so what is
+          above is the previous answer. Worth saying rather than leaving an
+          admin to wonder why a re-solve changed nothing: the answer they want
+          is being computed, and reloading is what collects it. */}
+      {state.solving && (
+        <p className="draft-panel-state">
+          A fresher draft is being solved right now — reload in a moment to see
+          it.
         </p>
       )}
 
@@ -99,8 +104,9 @@ export default function DraftRotaPanel({
       <p className="draft-panel-note">
         A draft is what the solver makes of the availability, pins and shapes as
         they stood when it ran &mdash; not the rota, until it is allocated. It
-        is solved again every few hours, and solving now takes in anything that
-        has changed since. To hold somebody to a shift, pin them.
+        is solved again whenever one of those moves, so opening this page is
+        usually enough to bring it up to date. To hold somebody to a shift, pin
+        them.
       </p>
 
       {/* A refused solve names the step that has not been taken — an

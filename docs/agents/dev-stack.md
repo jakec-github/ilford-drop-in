@@ -59,15 +59,37 @@ every request. What you are looking at is the real gate, not an open door.
 ## Define a rota
 
 The database starts empty, so nothing downstream of a shift is reachable until a
-rota exists. Define one over the API — with the session from above:
+rota exists. Defining one states the whole rota — when it starts, what hours its
+shifts run and what each asks for — so the way to do it by hand is to ask what
+the define screen would start from and send that straight back:
 
 ```bash
-curl -b cookies.txt -X POST localhost:8080/api/rotations -d '{"shiftCount": 6}'
+curl -b cookies.txt localhost:8080/api/rotations/proposed
+curl -b cookies.txt -X POST localhost:8080/api/rotations -d '{
+  "shiftCount": 6,
+  "startDate": "2026-09-06",
+  "shiftStartTime": "19:30",
+  "shiftEndTime": "21:30",
+  "shape": [{"roleId": "<team-lead-id>", "count": 1},
+            {"roleId": "<service-volunteer-id>", "count": 4}]
+}'
 ```
 
-That mints six weekly shifts and returns them with their ids;
-`GET /api/shifts` then serves them. The Rota tab in the admin area does the same
-thing through the UI.
+`GET /api/rotations/proposed` answers with the Sunday after the last rota and
+the Rota Defaults, in the fields the POST takes; the ids come from
+`GET /api/roles`. Nothing falls back to the settings on the way through, so a
+field left out is a 400 rather than a default quietly applied — that is the
+point of the endpoint (issue #140).
+
+That mints six weekly shifts and returns them with their ids; `GET /api/shifts`
+then serves them. The Rota tab in the admin area does the same thing through the
+UI, with the proposal already filled into the form.
+
+The shift times and the default Shape come from the settings, which a fresh dev
+database has none of — the proposal comes back with empty times and an empty
+shape, and defining is refused until they are stated. Set them on Admin →
+Settings, or over `PUT /api/rota-defaults/shift-times` and
+`PUT /api/rota-defaults/shape`.
 
 Seed through the endpoints rather than by writing rows into Postgres by hand:
 fixtures that bypass the code go stale as the schema moves, and a rota assembled
@@ -246,8 +268,8 @@ Allocation itself is not: the web server does not expose it. So:
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /api/volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |
-| The rota tab | Two states: the define form when nothing is in flight, otherwise the rota being worked on with its round and a Discard button. Behind `requireAdmin` |
-| `POST /api/rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight |
+| The rota tab | Two states: the define form when nothing is in flight, otherwise the rota being worked on with its round and a Discard button. The form states the whole rota — count, start date, hours and Shape — prefilled from `GET /api/rotations/proposed` and editable. Behind `requireAdmin` |
+| `POST /api/rotations` | Mints a rota's shifts with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight, or when a start date lands on a day the drop-in already runs |
 | `DELETE /api/rotations/{id}` | Discards an unallocated rota and everything hanging off it — the way to start over |
 | `POST /api/draft-rota-allocation` | Runs the real CP-SAT solve over the rota in flight and stores it as the draft. Needs Roles, the settings, a Shape on every open shift and an availability round — it names whichever step is missing |
 | The draft on the rota page | With a draft solved, an admin sees who it put where as dashed chips, under a panel saying when it solved and how many seats it filled. Logged out, none of it |

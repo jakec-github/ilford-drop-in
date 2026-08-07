@@ -202,12 +202,23 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 // setShiftClosed writes a shift's closed flag, reporting whether a row matched.
 // It carries no freeze check of its own: the caller holds the rota's row lock
 // and has already established that the rota is unallocated.
+//
+// Whether the drop-in runs that day is an allocator input, so the rota's draft
+// is stamped stale. Closing a Shift that was already closed stamps it too: the
+// alternative is a read-before-write to find out, and the cost of being wrong
+// is one re-solve.
 func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (bool, error) {
 	tag, err := q.Exec(ctx, `UPDATE shift SET closed = $2 WHERE id = $1`, id, closed)
 	if err != nil {
 		return false, fmt.Errorf("failed to set closed on shift %s: %w", id, err)
 	}
-	return tag.RowsAffected() > 0, nil
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if err := markRotaInputsChangedForShift(ctx, q, id); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // setShiftTimes writes a shift's start and end, reporting whether a row
@@ -222,7 +233,26 @@ func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (boo
 // There is no freeze check here and none above: a Shift's times are descriptive
 // rather than an allocator input, so they stay editable after the Rotation is
 // allocated (ADR 0007).
+//
+// The day the Shift starts on is the exception, and it is the one thing here
+// that stamps the rota's draft stale (issue #142). The solver is told dates and
+// never times, so moving a session from 19:30 to 20:00 cannot change the rota it
+// would produce, while moving it to the following Sunday changes which
+// volunteers are free for it. The stamp goes first, while the old start is still
+// there to compare against; if the write below is then refused, the whole
+// transaction goes with it.
 func setShiftTimes(ctx context.Context, q querier, id, startAt, endAt string) (bool, error) {
+	if _, err := q.Exec(ctx, `
+		UPDATE rotation SET inputs_changed_at = now()
+		WHERE allocated_datetime IS NULL
+		  AND id = (
+			SELECT s.rota_id FROM shift s
+			WHERE s.id = $1 AND `+shiftDateExpr+` IS DISTINCT FROM ($2::timestamp)::date
+		  )
+	`, id, startAt); err != nil {
+		return false, fmt.Errorf("failed to mark the inputs of the rota holding shift %s as changed: %w", id, err)
+	}
+
 	tag, err := q.Exec(ctx, `
 		UPDATE shift
 		SET start_at = $2::timestamp, end_at = $3::timestamp
@@ -251,7 +281,9 @@ func setShiftTimes(ctx context.Context, q querier, id, startAt, endAt string) (b
 // Concurrency (issue #41, hazard B1): the one-Shift-per-date unique index is
 // what makes concurrent runs safe — two rotas minting the same date cannot both
 // commit, and the losing transaction writes nothing. Any change that relaxes
-// that index must introduce a replacement guard here.
+// that index must introduce a replacement guard here. That refusal comes back
+// as ErrShiftDateTaken, since it is also how a rota defined to start on a day
+// the drop-in already runs is turned away.
 func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation, requirements []ShiftRequirement) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -285,6 +317,14 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	for range shifts {
 		if _, err := results.Exec(); err != nil {
 			results.Close()
+			// A date this rota would have shared with one that already exists is
+			// reported as itself. It became an ordinary mistake when the start
+			// date became an admin's to state (issue #140): a rota begun a week
+			// too early overlaps the last one, and "failed to insert shift"
+			// would tell nobody that.
+			if isShiftDateTaken(err) {
+				return ErrShiftDateTaken
+			}
 			return fmt.Errorf("failed to insert shift: %w", err)
 		}
 	}

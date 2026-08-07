@@ -3,9 +3,10 @@ import { fetchDraftRotaAllocation, solveDraftRotaAllocation } from "../api";
 import type { DraftRotaState } from "../types";
 
 interface UseDraftRotaAllocation {
-  // null while the first load is still in flight. Loaded, it always answers:
-  // a null rota inside it is "nothing in flight", which is a state rather than
-  // an absence.
+  // null while the first load is still in flight, and null when no rota is in
+  // flight — the state between one rota going out and the next being defined.
+  // The two are one thing to a caller: there is nothing to show either way, and
+  // neither is a failure.
   state: DraftRotaState | null;
   error: string | null;
   // True while a solve is running. It is a CP-SAT subprocess capped at thirty

@@ -17,6 +17,31 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// inTx runs fn inside a transaction, committing when it returns nil and rolling
+// back on any error.
+//
+// It is for the writes that are one statement plus the stamp that makes the rota
+// in flight's draft stale (issue #142) — a Role, the Allocation Settings. They
+// take no rota lock, because neither belongs to a rota; what they need is for
+// the change and the stamp to land together, so that a draft can never be solved
+// from settings nobody has recorded a change to.
+func (d *DB) inTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
 // RotaChangeStore is the transaction-bound view of the store that WithRotaLock
 // hands to its callback: every read and write issued through it runs inside
 // the locking transaction, so a flow's validation and insert see one

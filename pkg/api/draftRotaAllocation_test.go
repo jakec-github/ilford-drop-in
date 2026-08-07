@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -25,84 +26,9 @@ func TestSolveDraftRotaAllocationRequiresAdmin(t *testing.T) {
 	assert.Empty(t, store.storedDrafts, "nothing was solved, let alone stored")
 }
 
-// draftedRotaStore is one rota in flight of two Shifts, with a draft solved
-// against it: Alice leading and Bob beside her on the first, nobody on the
-// second. Each Shift asks for one Team lead and four Service volunteers, so the
-// rota is asking for ten Seats and two of them are filled.
-func draftedRotaStore() *mockStore {
-	return &mockStore{
-		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", End: "2026-08-09", ShiftCount: 2}},
-		shifts: []db.Shift{
-			{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02", StartAt: "2026-08-02T19:30:00", EndAt: "2026-08-02T21:30:00"},
-			{ID: "shift-2", RotaID: "rota-1", Date: "2026-08-09", StartAt: "2026-08-09T19:30:00", EndAt: "2026-08-09T21:30:00"},
-		},
-		draft: &db.DraftRotaAllocation{
-			RotaID:       "rota-1",
-			SolvedAt:     time.Date(2026, 8, 5, 6, 0, 0, 0, time.UTC),
-			Success:      true,
-			SolverStatus: "OPTIMAL",
-		},
-		draftSeats: []db.DraftAllocation{
-			{ID: "seat-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "seat-2", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
-		},
-	}
-}
-
-// draftReadResponse is the read endpoint's body as a test reads it.
-type draftReadResponse struct {
-	Rota *struct {
-		ID         string `json:"id"`
-		SeatsAsked int    `json:"seatsAsked"`
-	} `json:"rota"`
-	Draft *struct {
-		SolvedAt     string `json:"solvedAt"`
-		Success      bool   `json:"success"`
-		SolverStatus string `json:"solverStatus"`
-		SeatsFilled  int    `json:"seatsFilled"`
-		Shifts       []struct {
-			ShiftID   string `json:"shiftId"`
-			Assignees []struct {
-				VolunteerID string `json:"volunteerId"`
-				Name        string `json:"name"`
-				Role        string `json:"role"`
-			} `json:"assignees"`
-		} `json:"shifts"`
-	} `json:"draft"`
-}
-
-// The rota an admin watches take shape: who the solver put where, keyed by Shift
-// so the page can lay the draft over the rota it is already showing.
-func TestGetDraftRotaAllocation(t *testing.T) {
-	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp draftReadResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-
-	require.NotNil(t, resp.Rota)
-	assert.Equal(t, "rota-1", resp.Rota.ID)
-	assert.Equal(t, 10, resp.Rota.SeatsAsked, "two shifts asking for five Seats each")
-
-	require.NotNil(t, resp.Draft)
-	assert.Equal(t, "2026-08-05T06:00:00Z", resp.Draft.SolvedAt)
-	assert.True(t, resp.Draft.Success)
-	assert.Equal(t, "OPTIMAL", resp.Draft.SolverStatus)
-	assert.Equal(t, 2, resp.Draft.SeatsFilled)
-
-	// Only the Shift the draft placed anybody on, its people in the order the
-	// rota shows them — by Role priority, so the team lead leads.
-	require.Len(t, resp.Draft.Shifts, 1)
-	assert.Equal(t, "shift-1", resp.Draft.Shifts[0].ShiftID)
-	require.Len(t, resp.Draft.Shifts[0].Assignees, 2)
-	assert.Equal(t, "Alice", resp.Draft.Shifts[0].Assignees[0].Name)
-	assert.Equal(t, "Team lead", resp.Draft.Shifts[0].Assignees[0].Role)
-	assert.Equal(t, "Bob", resp.Draft.Shifts[0].Assignees[1].Name)
-}
-
-// An anonymous visitor sees nothing of the draft. This is the gate ADR 0008 is
-// built around: a draft names people against Shifts nobody has decided yet, and
-// the rota page and its calendar feed are read by the very volunteers it names.
+// Reading the draft is admin-only for the same reason as solving it: what comes
+// back names people against Shifts nobody has decided yet, and the rota page and
+// its calendar feed are read by the very volunteers it names (ADR 0008).
 func TestGetDraftRotaAllocationRequiresAdmin(t *testing.T) {
 	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "")
 
@@ -111,36 +37,194 @@ func TestGetDraftRotaAllocationRequiresAdmin(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "shift-1")
 }
 
-// A rota nobody has solved for yet. The rota comes back — what it is asking for
-// is worth saying on its own — and the draft is null rather than an empty one,
-// because "not solved" and "solved and found nothing" are different answers.
-func TestGetDraftRotaAllocation_NotSolvedYet(t *testing.T) {
+// draftedRotaStore is one rota in flight of two Shifts, with a clean draft solved
+// against it: Alice leading and Bob beside her on the first Shift, nobody on the
+// second. Clean so that reading it reports rather than re-solves — the mock would
+// take a solve as far as the CP-SAT subprocess, which no Go test runs.
+func draftedRotaStore() *mockStore {
+	moved := time.Date(2026, 8, 5, 6, 0, 0, 0, time.UTC)
+	return &mockStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", End: "2026-08-09", ShiftCount: 2, InputsChangedAt: moved}},
+		shifts: []db.Shift{
+			{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02", StartAt: "2026-08-02T19:30:00", EndAt: "2026-08-02T21:30:00"},
+			{ID: "shift-2", RotaID: "rota-1", Date: "2026-08-09", StartAt: "2026-08-09T19:30:00", EndAt: "2026-08-09T21:30:00"},
+		},
+		storedDrafts: []db.DraftRotaAllocation{{
+			RotaID:          "rota-1",
+			SolvedAt:        time.Date(2026, 8, 5, 6, 0, 30, 0, time.UTC),
+			Success:         true,
+			SolverStatus:    "OPTIMAL",
+			Diagnostics:     []byte(`{}`),
+			InputsChangedAt: moved,
+			SeatsAsked:      10,
+			SeatsFilled:     2,
+		}},
+		draftSeats: []db.DraftAllocation{
+			{ID: "seat-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "seat-2", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
+		},
+	}
+}
+
+// The rota an admin watches take shape: who the solver put where, keyed by Shift
+// so the page can lay the draft over the rota it is already showing.
+func TestGetDraftRotaAllocationReportsTheRotaItDrafted(t *testing.T) {
+	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	// Only the Shift the draft placed anybody on, its people in the order the
+	// rota shows them — by Role priority, so the team lead leads.
+	require.Len(t, body.Shifts, 1, "the Shift the solver staffed, not the one it left empty")
+	assert.Equal(t, "shift-1", body.Shifts[0].ShiftID)
+	require.Len(t, body.Shifts[0].Assignees, 2)
+	assert.Equal(t, "Alice", body.Shifts[0].Assignees[0].Name)
+	assert.Equal(t, "Team lead", body.Shifts[0].Assignees[0].Role)
+	assert.Equal(t, "Bob", body.Shifts[0].Assignees[1].Name)
+	assert.Equal(t, 2, body.SeatsFilled)
+	assert.Equal(t, 10, body.SeatsAsked)
+}
+
+// A solve that staffed nobody — an infeasible one — is a draft with no Shifts
+// rather than an absent list. It reads differently from a rota nobody has solved
+// for, which is the distinction the stored outcome exists to make (ADR 0008).
+func TestGetDraftRotaAllocationWithAnInfeasibleDraft(t *testing.T) {
 	store := draftedRotaStore()
-	store.draft = nil
+	store.storedDrafts[0].Success = false
+	store.storedDrafts[0].SolverStatus = "INFEASIBLE"
+	store.storedDrafts[0].SeatsFilled = 0
 	store.draftSeats = nil
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
-	require.Equal(t, http.StatusOK, rec.Code)
 
-	var resp draftReadResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.NotNil(t, resp.Rota)
-	assert.Equal(t, 10, resp.Rota.SeatsAsked)
-	assert.Nil(t, resp.Draft)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.True(t, body.Solved, "solved, and the answer was that there is no rota")
+	assert.False(t, body.Success)
+	assert.Equal(t, "INFEASIBLE", body.SolverStatus)
+	assert.NotNil(t, body.Shifts)
+	assert.Empty(t, body.Shifts)
 }
 
-// Nothing in flight: the state between one rota going out and the next being
-// defined. The endpoint answers rather than 404s — there is nothing to draft, and
-// that is something the screen says.
-func TestGetDraftRotaAllocation_NothingInFlight(t *testing.T) {
-	store := draftedRotaStore()
-	store.allocate("rota-1")
+// A draft solved from the inputs as they stand is reported, not re-solved. This
+// is the test that nothing solves needlessly: the mock store would take a solve
+// as far as the CP-SAT subprocess, which no Go test runs, so a request that
+// returns the stored draft is a request that did not try.
+func TestGetDraftRotaAllocationReportsACleanDraft(t *testing.T) {
+	moved := time.Date(2026, 8, 5, 11, 0, 0, 0, time.UTC)
+	solvedAt := time.Date(2026, 8, 5, 11, 0, 30, 0, time.UTC)
+	store := &mockStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2, InputsChangedAt: moved}},
+		storedDrafts: []db.DraftRotaAllocation{{
+			RotaID:          "rota-1",
+			SolvedAt:        solvedAt,
+			Success:         true,
+			SolverStatus:    "OPTIMAL",
+			Diagnostics:     []byte(`{"solve_time_seconds":2.5}`),
+			InputsChangedAt: moved,
+			SeatsAsked:      10,
+			SeatsFilled:     8,
+		}},
+	}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
-	require.Equal(t, http.StatusOK, rec.Code)
 
-	var resp draftReadResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Nil(t, resp.Rota)
-	assert.Nil(t, resp.Draft)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "rota-1", body.RotaID)
+	assert.Equal(t, "2026-08-02", body.RotaStart)
+	assert.True(t, body.Solved)
+	assert.False(t, body.Dirty)
+	assert.False(t, body.Solving)
+	assert.Equal(t, solvedAt.Format(time.RFC3339), body.SolvedAt)
+	assert.Equal(t, "OPTIMAL", body.SolverStatus)
+	assert.Equal(t, 10, body.SeatsAsked)
+	assert.Equal(t, 8, body.SeatsFilled)
+	assert.Equal(t, 2.5, body.SolveTimeSeconds)
+	assert.Len(t, store.storedDrafts, 1, "the draft that was there, and no second one")
+}
+
+// With no unallocated Rotation there is nothing to draft, and nothing solves.
+// The endpoint says which step is missing rather than answering with an empty
+// draft, which would read as "solved, and it staffed nobody".
+func TestGetDraftRotaAllocationWithNoRotaInFlight(t *testing.T) {
+	store := &mockStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2, AllocatedDatetime: "2026-08-01T10:00:00Z"},
+		},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "no rota in flight")
+	assert.Empty(t, store.storedDrafts)
+}
+
+// A dirty draft with a solve already running comes back as it stands, marked
+// solving. Not queued behind the running solve, and not solved a second time:
+// the answer already on its way is the answer this reader wants, and a screen
+// has something to show in the meantime.
+func TestGetDraftRotaAllocationWhileASolveIsRunning(t *testing.T) {
+	moved := time.Date(2026, 8, 5, 11, 0, 0, 0, time.UTC)
+	store := &mockStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2, InputsChangedAt: moved}},
+		storedDrafts: []db.DraftRotaAllocation{{
+			RotaID:       "rota-1",
+			SolvedAt:     time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC),
+			Success:      true,
+			SolverStatus: "OPTIMAL",
+			Diagnostics:  []byte(`{}`),
+			SeatsAsked:   10,
+			SeatsFilled:  8,
+			// Solved before the change above landed.
+		}},
+	}
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	require.True(t, handler.drafts.begin(), "a solve is now running in this process")
+	defer handler.drafts.end()
+
+	rec := doRequest(t, handler.Routes(), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body draftRotaAllocationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.True(t, body.Dirty, "the inputs have moved, and the reader is told so")
+	assert.True(t, body.Solving, "a fresher answer is on its way")
+	assert.True(t, body.Solved, "with the previous one to show until it lands")
+	assert.Equal(t, 8, body.SeatsFilled)
+	assert.Len(t, store.storedDrafts, 1, "no second solve was started")
+}
+
+// Asking for a re-solve while one is running is refused rather than queued. The
+// solve already going produces the same answer from the same inputs, so a second
+// subprocess would be work done twice to replace the first one's result.
+func TestSolveDraftRotaAllocationWhileASolveIsRunning(t *testing.T) {
+	store := &mockStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
+	}
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	require.True(t, handler.drafts.begin())
+	defer handler.drafts.end()
+
+	rec := doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+
+	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "already running")
+	assert.Empty(t, store.storedDrafts)
+}
+
+// The slot is given back when a solve finishes, however it finished: a solve
+// that failed must not wedge every later one out of the process.
+func TestTheSolveSlotIsReleased(t *testing.T) {
+	slot := newDraftSolves()
+
+	require.True(t, slot.begin())
+	assert.False(t, slot.begin(), "one at a time")
+	slot.end()
+	assert.True(t, slot.begin(), "and free again afterwards")
 }

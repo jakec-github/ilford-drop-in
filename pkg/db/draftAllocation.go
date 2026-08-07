@@ -18,8 +18,10 @@ import (
 func (d *DB) GetDraftRotaAllocation(ctx context.Context, rotaID string) (*DraftRotaAllocation, error) {
 	var draft DraftRotaAllocation
 	var objectiveValue int64
+	var inputsChangedAt *time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT rota_id, solved_at, success, solver_status, objective_value, diagnostics
+		SELECT rota_id, solved_at, success, solver_status, objective_value, diagnostics,
+		       inputs_changed_at, seats_asked, seats_filled
 		FROM draft_rota_allocation
 		WHERE rota_id = $1
 	`, rotaID).Scan(
@@ -29,6 +31,9 @@ func (d *DB) GetDraftRotaAllocation(ctx context.Context, rotaID string) (*DraftR
 		&draft.SolverStatus,
 		&objectiveValue,
 		&draft.Diagnostics,
+		&inputsChangedAt,
+		&draft.SeatsAsked,
+		&draft.SeatsFilled,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -37,6 +42,9 @@ func (d *DB) GetDraftRotaAllocation(ctx context.Context, rotaID string) (*DraftR
 		return nil, fmt.Errorf("failed to query draft rota allocation for rota %s: %w", rotaID, err)
 	}
 	draft.ObjectiveValue = int(objectiveValue)
+	if inputsChangedAt != nil {
+		draft.InputsChangedAt = inputsChangedAt.UTC()
+	}
 	return &draft, nil
 }
 
@@ -130,10 +138,20 @@ func (d *DB) ReplaceDraftRotaAllocation(ctx context.Context, draft DraftRotaAllo
 		return fmt.Errorf("failed to clear the previous draft: %w", err)
 	}
 
+	// The inputs stamp is stored as the Rotation holds it, NULL and all: a rota
+	// nothing has moved under yet has no stamp, and a draft of it has to record
+	// that rather than a zero time, or the two could never read as equal.
+	var inputsChangedAt *time.Time
+	if !draft.InputsChangedAt.IsZero() {
+		stamp := draft.InputsChangedAt.UTC()
+		inputsChangedAt = &stamp
+	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO draft_rota_allocation (rota_id, solved_at, success, solver_status, objective_value, diagnostics)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, draft.RotaID, draft.SolvedAt.UTC(), draft.Success, draft.SolverStatus, int64(draft.ObjectiveValue), draft.Diagnostics); err != nil {
+		INSERT INTO draft_rota_allocation (rota_id, solved_at, success, solver_status, objective_value, diagnostics,
+		                                   inputs_changed_at, seats_asked, seats_filled)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, draft.RotaID, draft.SolvedAt.UTC(), draft.Success, draft.SolverStatus, int64(draft.ObjectiveValue), draft.Diagnostics,
+		inputsChangedAt, draft.SeatsAsked, draft.SeatsFilled); err != nil {
 		return fmt.Errorf("failed to write the draft for rota %s: %w", draft.RotaID, err)
 	}
 

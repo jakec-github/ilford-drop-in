@@ -124,6 +124,7 @@ type mockAllocateRotaStore struct {
 	storedDrafts             []db.DraftRotaAllocation
 	storedDraftSeats         [][]db.DraftAllocation
 	replaceDraftErr          error
+	getDraftErr              error
 	getRotationsErr          error
 	getAvailabilityErr       error
 	getLatestAvailabilityErr error
@@ -238,6 +239,64 @@ func (m *mockAllocateRotaStore) ReplaceDraftRotaAllocation(ctx context.Context, 
 	m.storedDrafts = append(m.storedDrafts, draft)
 	m.storedDraftSeats = append(m.storedDraftSeats, seats)
 	return nil
+}
+
+// GetRotaInFlight answers with the earliest unallocated rota the store holds,
+// mirroring the real one rather than keeping a field of its own: which rota is
+// in flight is a fact about the rotas, not a separate dial to set.
+func (m *mockAllocateRotaStore) GetRotaInFlight(ctx context.Context) (*db.RotaInFlight, error) {
+	if m.getRotationsErr != nil {
+		return nil, m.getRotationsErr
+	}
+	var earliest *db.Rotation
+	for i, r := range m.rotations {
+		if r.AllocatedDatetime != "" {
+			continue
+		}
+		if earliest == nil || r.Start < earliest.Start {
+			earliest = &m.rotations[i]
+		}
+	}
+	if earliest == nil {
+		return nil, nil
+	}
+	return &db.RotaInFlight{Rotation: *earliest}, nil
+}
+
+// GetDraftRotaAllocation reads back the last draft stored for a rota, which is
+// what a status read compares the Rotation's inputs stamp against.
+func (m *mockAllocateRotaStore) GetDraftRotaAllocation(ctx context.Context, rotaID string) (*db.DraftRotaAllocation, error) {
+	if m.getDraftErr != nil {
+		return nil, m.getDraftErr
+	}
+	for i := len(m.storedDrafts) - 1; i >= 0; i-- {
+		if m.storedDrafts[i].RotaID == rotaID {
+			draft := m.storedDrafts[i]
+			return &draft, nil
+		}
+	}
+	return nil, nil
+}
+
+// GetDraftAllocationsByShiftIDs answers with the last stored draft's Seats on the
+// Shifts asked for. Read back from what was stored rather than from a field of
+// its own, for the same reason as the draft above it: the Seats a status reports
+// are the Seats the solve wrote.
+func (m *mockAllocateRotaStore) GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.DraftAllocation, error) {
+	if len(m.storedDraftSeats) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		wanted[id] = true
+	}
+	var out []db.DraftAllocation
+	for _, seat := range m.storedDraftSeats[len(m.storedDraftSeats)-1] {
+		if wanted[seat.ShiftID] {
+			out = append(out, seat)
+		}
+	}
+	return out, nil
 }
 
 // mockVolClient implements VolunteerClient for testing

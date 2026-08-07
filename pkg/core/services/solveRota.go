@@ -40,6 +40,12 @@ type rotaSolve struct {
 	// the allocator's own types.
 	output       *allocator.CpsatOutput
 	solvedShifts []*allocator.Shift
+	// roles and volunteersByID are what turn the answer back into names, for the
+	// caller that reports the rota it drafted rather than only storing it. Kept
+	// from the assembly rather than re-read: the roster is a Google Sheet, and a
+	// second read of it could name the Seats after somebody the solve never saw.
+	roles          model.Roles
+	volunteersByID map[string]model.Volunteer
 }
 
 // solveRotaInFlight assembles the allocator's input for the latest rota and runs
@@ -249,38 +255,38 @@ func solveRotaInFlight(
 		return nil, fmt.Errorf("failed to convert cpsat output: %w", err)
 	}
 
+	volunteersByID := make(map[string]model.Volunteer, len(allVolunteers))
+	for _, v := range allVolunteers {
+		volunteersByID[v.ID] = v
+	}
+
 	return &rotaSolve{
-		rota:          targetRota,
-		shifts:        shifts,
-		shiftDates:    shiftDates,
-		shiftIDByDate: shiftIDByDate,
-		shapes:        shapes,
-		output:        output,
-		solvedShifts:  solvedShifts,
+		rota:           targetRota,
+		shifts:         shifts,
+		shiftDates:     shiftDates,
+		shiftIDByDate:  shiftIDByDate,
+		shapes:         shapes,
+		output:         output,
+		solvedShifts:   solvedShifts,
+		roles:          roles,
+		volunteersByID: volunteersByID,
 	}, nil
 }
 
-// seatsAsked is how many Seats the solve was asked to fill.
-func (s *rotaSolve) seatsAsked() int {
-	return countSeatsAsked(s.shifts, s.shapes)
-}
-
-// countSeatsAsked is how many Seats a rota is asking to have filled: every Seat
-// of every open Shift's Shape. A closed Shift asks for nobody however it is
-// shaped, so it counts for nothing.
+// seatsAsked is how many Seats the solve was asked to fill: every Seat of every
+// open Shift's Shape. A closed Shift asks for nobody however it is shaped, so it
+// counts for nothing.
 //
 // It is the denominator of "four Seats unfilled" — the thing an admin most wants
 // from a draft — and it is derived rather than stored, since the Shapes it comes
-// from are right there on the Shifts. Shared with the draft read, which puts the
-// same number beside a stored solve's: two ways of counting what the rota needs
-// would make that fraction meaningless.
-func countSeatsAsked(shifts []db.Shift, shapes map[string]model.Shape) int {
+// from are right there on the Shifts.
+func (s *rotaSolve) seatsAsked() int {
 	total := 0
-	for _, shift := range shifts {
+	for _, shift := range s.shifts {
 		if shift.Closed {
 			continue
 		}
-		for _, seat := range shapes[shift.ID] {
+		for _, seat := range s.shapes[shift.ID] {
 			total += seat.Count
 		}
 	}

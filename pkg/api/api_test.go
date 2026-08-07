@@ -47,12 +47,11 @@ type mockStore struct {
 	deletedStandingIDs      []string
 	storedDrafts            []db.DraftRotaAllocation
 	storedDraftSeats        [][]db.DraftAllocation
-	// draft and draftSeats are the Draft Rota Allocation already held for a rota,
-	// which is what the read endpoint answers with. draftErr makes that read fail.
-	draft            *db.DraftRotaAllocation
-	draftSeats       []db.DraftAllocation
-	draftErr         error
-	discardedRotaIDs []string
+	// draftSeats are the Seats of the draft held in storedDrafts: who the solve
+	// put where, which is the rota the read endpoint reports.
+	draftSeats              []db.DraftAllocation
+	getDraftErr             error
+	discardedRotaIDs        []string
 	// discardErr is what the database says to a discard that fails outright, as
 	// opposed to one it refuses (db.ErrRotaAllocated).
 	discardErr error
@@ -132,7 +131,7 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 		// it with, as a real one does — every Shift has them (ADR 0007). An
 		// explicit shiftsInRange is left exactly as the test wrote it.
 		// apiTestDefaults always answers, so there is no error a test can reach.
-		startAt, endAt, _ := apiTestDefaults.ShiftTimestamps(date)
+		startAt, endAt, _ := model.ShiftTimestamps(date, apiTestDefaults.ShiftStartTime, apiTestDefaults.ShiftEndTime)
 		out = append(out, db.ShiftInRange{
 			Shift:     db.Shift{ID: id, Date: date, StartAt: startAt, EndAt: endAt},
 			Allocated: true,
@@ -636,18 +635,24 @@ func (m *mockStore) ReplaceDraftRotaAllocation(_ context.Context, draft db.Draft
 	return nil
 }
 
-// GetDraftRotaAllocation answers with the draft held for that rota, or nothing —
-// a Rotation nobody has solved for yet, which is where every rota starts.
+// GetDraftRotaAllocation reads back the draft stored against a rota, which is
+// what the status endpoint reports and what its dirty check compares against.
 func (m *mockStore) GetDraftRotaAllocation(_ context.Context, rotaID string) (*db.DraftRotaAllocation, error) {
-	if m.draftErr != nil {
-		return nil, m.draftErr
+	if m.getDraftErr != nil {
+		return nil, m.getDraftErr
 	}
-	if m.draft == nil || m.draft.RotaID != rotaID {
-		return nil, nil
+	for i := len(m.storedDrafts) - 1; i >= 0; i-- {
+		if m.storedDrafts[i].RotaID == rotaID {
+			draft := m.storedDrafts[i]
+			return &draft, nil
+		}
 	}
-	return m.draft, nil
+	return nil, nil
 }
 
+// GetDraftAllocationsByShiftIDs answers with the stored draft's Seats on the
+// Shifts asked for, mirroring the real store: the caller has already resolved
+// which Shifts it means.
 func (m *mockStore) GetDraftAllocationsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.DraftAllocation, error) {
 	wanted := make(map[string]bool, len(shiftIDs))
 	for _, id := range shiftIDs {

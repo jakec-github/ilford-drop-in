@@ -10,6 +10,7 @@ import type {
   DefinedRota,
   DraftRotaState,
   NewPreallocation,
+  NewRota,
   NewStandingPreallocation,
   PersonRef,
   Preallocation,
@@ -18,6 +19,7 @@ import type {
   RotaChange,
   RotaDefaults,
   RotaInFlight,
+  RotaProposal,
   RotaShift,
   SendMode,
   SendOutcome,
@@ -481,15 +483,28 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
   return data.volunteers.map(toVolunteer);
 }
 
-// defineRota defines the next rota — the weeks after the latest existing one —
-// and returns the shifts it minted. Admin-only, and deliberately not idempotent:
-// two calls define two consecutive rotas, so the caller is expected to show what
-// came back rather than treat it as a repeatable action.
-export async function defineRota(shiftCount: number): Promise<DefinedRota> {
+// fetchRotaProposal reads what the define form starts from: where the next rota
+// would begin, and the hours and Shape the Rota Defaults say it would run.
+// Admin-only, like the settings it draws half its answer from.
+export async function fetchRotaProposal(): Promise<RotaProposal> {
+  const res = await fetch("/api/rotations/proposed");
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load the next rota"));
+  }
+  return (await res.json()) as RotaProposal;
+}
+
+// defineRota defines the rota it is given and returns the shifts it minted.
+//
+// The whole rota is stated: nothing here falls back to the settings, so what an
+// admin edited on the form is what gets made. Admin-only, and deliberately not
+// idempotent — the caller is expected to show what came back rather than treat
+// it as a repeatable action.
+export async function defineRota(rota: NewRota): Promise<DefinedRota> {
   const res = await fetch("/api/rotations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ shiftCount }),
+    body: JSON.stringify(rota),
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to define the rota"));
@@ -543,35 +558,55 @@ interface ApiDraftShift {
 }
 
 interface DraftRotaAllocationResponse {
-  rota: { id: string; seatsAsked: number } | null;
-  draft: {
-    solvedAt: string;
-    success: boolean;
-    solverStatus: string;
-    seatsFilled: number;
-    shifts: ApiDraftShift[];
-  } | null;
+  rotaId: string;
+  rotaStart: string;
+  solved: boolean;
+  solvedAt: string;
+  success: boolean;
+  solverStatus: string;
+  seatsAsked: number;
+  seatsFilled: number;
+  solving: boolean;
+  shifts: ApiDraftShift[];
 }
 
-// fetchDraftRotaAllocation reads the rota in flight and its Draft Rota
-// Allocation. Admin-only, and the endpoint is separate from the shift listing
-// for that reason: the listing is public, and keeping it clear of the draft is
-// what stops a speculative rota reaching the volunteers named in it (ADR 0008).
-export async function fetchDraftRotaAllocation(): Promise<DraftRotaState> {
+// fetchDraftRotaAllocation reads where the rota in flight's Draft Rota
+// Allocation has got to, and the rota it drafted. Admin-only, and the endpoint
+// is separate from the shift listing for that reason: the listing is public, and
+// keeping it clear of the draft is what stops a speculative rota reaching the
+// volunteers named in it (ADR 0008).
+//
+// It resolves with null when no rota is in flight — the state between one rota
+// going out and the next being defined. The server says that as a 404, because
+// there is no draft resource to answer with, and it is the one failure here that
+// is not a failure: there is nothing to show, rather than something that could
+// not be loaded.
+//
+// Reading is also what re-solves a draft whose inputs have moved (issue #142),
+// so this call takes as long as the solver does when it does solve.
+export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null> {
   const res = await fetch("/api/draft-rota-allocation");
+  if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the draft rota"));
   }
   const data = (await res.json()) as DraftRotaAllocationResponse;
   return {
-    rota: data.rota,
-    draft: data.draft && {
-      ...data.draft,
-      shifts: data.draft.shifts.map((shift) => ({
-        shiftId: shift.shiftId,
-        assignees: shift.assignees.map(toAssignee),
-      })),
-    },
+    rotaId: data.rotaId,
+    rotaStart: data.rotaStart,
+    solved: data.solved,
+    // An unsolved rota carries no moment, and "" would be a date nobody can
+    // read rather than an absence anybody can test.
+    solvedAt: data.solved ? data.solvedAt : null,
+    success: data.success,
+    solverStatus: data.solverStatus,
+    seatsAsked: data.seatsAsked,
+    seatsFilled: data.seatsFilled,
+    solving: data.solving,
+    shifts: data.shifts.map((shift) => ({
+      shiftId: shift.shiftId,
+      assignees: shift.assignees.map(toAssignee),
+    })),
   };
 }
 

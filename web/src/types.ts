@@ -186,6 +186,32 @@ export interface DefinedRota {
   shiftDates: string[];
 }
 
+// RotaProposal is the define form before anybody has touched it: the rota that
+// would be made by defining one right now.
+//
+// The start date is the Sunday after the last rota; the hours and the Shape are
+// the Rota Defaults. Both come from the server because both are its arithmetic
+// to do — and neither binds anything, since the form may contradict every field
+// before it submits.
+//
+// Times and Shape may be empty, meaning the Rota Defaults have not been stated.
+// That is a state the form renders as empty boxes rather than an error: an admin
+// can say what this rota runs without visiting the settings screen first.
+export interface RotaProposal extends Omit<ShiftTimes, "shiftTimezone"> {
+  startDate: string;
+  shape: ShapeSeat[];
+}
+
+// NewRota is a rota an admin has stated, as POST /api/rotations takes it.
+//
+// Everything the minted shifts will carry is here, because nothing falls back to
+// the settings on the way through: what was on the screen is what is made.
+export interface NewRota extends Omit<ShiftTimes, "shiftTimezone"> {
+  shiftCount: number;
+  startDate: string;
+  shape: { roleId: string; count: number }[];
+}
+
 // RotaInFlight is the rota being worked on: the one Rotation that has not been
 // allocated yet. There is at most one, because defining a second is refused
 // while this exists — which is what lets every admin screen say "the rota"
@@ -215,41 +241,45 @@ export interface DraftShift {
   assignees: Assignee[];
 }
 
-// SolvedDraft is one run of the solver over the rota in flight, stored so an
-// admin can watch the rota take shape rather than discovering it at the moment
-// of allocation (ADR 0008).
+// DraftRotaState is where the rota in flight's Draft Rota Allocation has got to,
+// and the rota it drafted. There is one draft, for the one rota in flight, so
+// this is the whole of what the rota page knows about drafting.
 //
-// success false with a status of INFEASIBLE is the outcome that matters most: no
-// rota is possible from the current availability, pins and Shapes, and there is
-// still time to change them. It carries no shifts, which is exactly what a rota
-// nobody has solved for carries — the outcome is what tells the two apart, which
-// is why a draft is never inferred from its shifts.
-export interface SolvedDraft {
-  // When the solve ran, as an instant. A draft is only ever read against how old
-  // it is: the inputs move under it all through the availability window.
-  solvedAt: string;
+// Admin-only, all of it. A draft names people against shifts nobody has decided
+// yet and is replaced wholesale every time an input moves, so showing one to a
+// volunteer would tell them they are working a shift they may well not be
+// (ADR 0008).
+export interface DraftRotaState {
+  rotaId: string;
+  rotaStart: string;
+  // False for a rota nobody has solved for yet, where every rota starts and
+  // where everything below says nothing. Reading the rota normally solves it on
+  // the spot, so this is only seen when a solve is already running.
+  solved: boolean;
+  // When the solve ran, or null for a rota nobody has solved for. A draft is
+  // only ever read against how old it is: the inputs move under it all through
+  // the availability window.
+  solvedAt: string | null;
+  // success false with a status of INFEASIBLE is the outcome that matters most:
+  // no rota is possible from the current availability, pins and Shapes, and
+  // there is still time to change them. It carries no shifts, which is exactly
+  // what a rota nobody has solved for carries — the outcome is what tells the
+  // two apart, which is why a draft is never inferred from its shifts.
   success: boolean;
   // CP-SAT's own verdict — OPTIMAL, FEASIBLE, INFEASIBLE — kept verbatim, so a
   // status this build has never heard of still shows rather than disappearing.
   solverStatus: string;
+  seatsAsked: number;
   seatsFilled: number;
+  // A solve is running now, so a fresher draft is on its way and what is here is
+  // the previous one.
+  //
+  // The server also reports `dirty` — an allocator input having moved since the
+  // solve — and nothing here reads it. Reading is what re-solves a dirty draft,
+  // so by the time a response reaches this page dirty is only ever true
+  // alongside solving: the re-solve was handed to the one already running.
+  solving: boolean;
   shifts: DraftShift[];
-}
-
-// DraftRotaState is the rota being worked on and whatever has been drafted for
-// it. Both halves are nullable and mean different things: no rota is the state
-// between one rota going out and the next being defined, and a rota with no
-// draft is one nobody has solved for yet.
-//
-// Admin-only, all of it. A draft names people against shifts nobody has decided
-// yet and is replaced wholesale every few hours, so showing one to a volunteer
-// would tell them they are working a shift they may well not be.
-export interface DraftRotaState {
-  // seatsAsked is what the rota asks for now rather than what it asked when the
-  // draft was solved, which is what makes "two of ten Seats filled" honest when
-  // a Shape has been edited since.
-  rota: { id: string; seatsAsked: number } | null;
-  draft: SolvedDraft | null;
 }
 
 // PersonRef identifies someone on a shift for the purpose of changing it. A
