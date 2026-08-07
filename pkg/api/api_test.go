@@ -47,7 +47,12 @@ type mockStore struct {
 	deletedStandingIDs      []string
 	storedDrafts            []db.DraftRotaAllocation
 	storedDraftSeats        [][]db.DraftAllocation
-	discardedRotaIDs        []string
+	// draft and draftSeats are the Draft Rota Allocation already held for a rota,
+	// which is what the read endpoint answers with. draftErr makes that read fail.
+	draft            *db.DraftRotaAllocation
+	draftSeats       []db.DraftAllocation
+	draftErr         error
+	discardedRotaIDs []string
 	// discardErr is what the database says to a discard that fails outright, as
 	// opposed to one it refuses (db.ErrRotaAllocated).
 	discardErr error
@@ -629,6 +634,32 @@ func (m *mockStore) ReplaceDraftRotaAllocation(_ context.Context, draft db.Draft
 	m.storedDrafts = append(m.storedDrafts, draft)
 	m.storedDraftSeats = append(m.storedDraftSeats, seats)
 	return nil
+}
+
+// GetDraftRotaAllocation answers with the draft held for that rota, or nothing —
+// a Rotation nobody has solved for yet, which is where every rota starts.
+func (m *mockStore) GetDraftRotaAllocation(_ context.Context, rotaID string) (*db.DraftRotaAllocation, error) {
+	if m.draftErr != nil {
+		return nil, m.draftErr
+	}
+	if m.draft == nil || m.draft.RotaID != rotaID {
+		return nil, nil
+	}
+	return m.draft, nil
+}
+
+func (m *mockStore) GetDraftAllocationsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.DraftAllocation, error) {
+	wanted := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		wanted[id] = true
+	}
+	var out []db.DraftAllocation
+	for _, seat := range m.draftSeats {
+		if wanted[seat.ShiftID] {
+			out = append(out, seat)
+		}
+	}
+	return out, nil
 }
 
 // WithRotaLock hands the mock itself to the callback as the transaction-bound

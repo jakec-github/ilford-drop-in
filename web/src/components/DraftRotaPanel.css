@@ -1,0 +1,57 @@
+/* The draft's own summary, above the rota it is drawn onto. Bordered rather
+   than tinted: the accent-tinted strips on this page (the upcoming strip, the
+   carrying banner) are things the reader just did, and this is a standing
+   report on the rota. */
+.draft-panel {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.draft-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.draft-panel-title {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+/* The one line an admin is here for, so it carries the weight the heading
+   would otherwise take. */
+.draft-panel-state {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.draft-panel-when {
+  color: var(--text);
+}
+
+.draft-panel-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.draft-panel-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+@media (min-width: 700px) {
+  .draft-panel {
+    padding: 14px 18px;
+    margin-bottom: 24px;
+  }
+}

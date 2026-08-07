@@ -207,6 +207,51 @@ export interface RotaInFlight {
   replied: number;
 }
 
+// DraftShift is one shift of a Draft Rota Allocation: who the solver put on it,
+// keyed by the shift's id so the rota page lays the draft over the shifts it is
+// already showing.
+export interface DraftShift {
+  shiftId: string;
+  assignees: Assignee[];
+}
+
+// SolvedDraft is one run of the solver over the rota in flight, stored so an
+// admin can watch the rota take shape rather than discovering it at the moment
+// of allocation (ADR 0008).
+//
+// success false with a status of INFEASIBLE is the outcome that matters most: no
+// rota is possible from the current availability, pins and Shapes, and there is
+// still time to change them. It carries no shifts, which is exactly what a rota
+// nobody has solved for carries — the outcome is what tells the two apart, which
+// is why a draft is never inferred from its shifts.
+export interface SolvedDraft {
+  // When the solve ran, as an instant. A draft is only ever read against how old
+  // it is: the inputs move under it all through the availability window.
+  solvedAt: string;
+  success: boolean;
+  // CP-SAT's own verdict — OPTIMAL, FEASIBLE, INFEASIBLE — kept verbatim, so a
+  // status this build has never heard of still shows rather than disappearing.
+  solverStatus: string;
+  seatsFilled: number;
+  shifts: DraftShift[];
+}
+
+// DraftRotaState is the rota being worked on and whatever has been drafted for
+// it. Both halves are nullable and mean different things: no rota is the state
+// between one rota going out and the next being defined, and a rota with no
+// draft is one nobody has solved for yet.
+//
+// Admin-only, all of it. A draft names people against shifts nobody has decided
+// yet and is replaced wholesale every few hours, so showing one to a volunteer
+// would tell them they are working a shift they may well not be.
+export interface DraftRotaState {
+  // seatsAsked is what the rota asks for now rather than what it asked when the
+  // draft was solved, which is what makes "two of ten Seats filled" honest when
+  // a Shape has been edited since.
+  rota: { id: string; seatsAsked: number } | null;
+  draft: SolvedDraft | null;
+}
+
 // PersonRef identifies someone on a shift for the purpose of changing it. A
 // real volunteer is keyed by id; a custom (manual) entry has none, so it is
 // keyed by the text itself — which is also how the API removes one.

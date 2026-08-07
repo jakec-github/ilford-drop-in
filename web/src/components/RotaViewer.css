@@ -475,6 +475,25 @@
   color: #fff;
 }
 
+/* A drafted name (admin-only, unallocated shifts): the same chip as an
+   allocated one, dashed. Solid means somebody is on the rota; dashed means
+   somebody might be — the same distinction .prealloc-chip draws, and drawn the
+   same way on purpose, since a pin and a draft Seat are both pencilled in. What
+   tells them apart is the label on the list, not the border.
+
+   A list item, not a button: a draft is read-only until the rota is allocated,
+   because a hand placement would be destroyed by the next solve (ADR 0008). So
+   the interactive bits of .chip come back off. */
+.chip.draft {
+  border-style: dashed;
+  cursor: default;
+  user-select: auto;
+}
+
+.chip.draft:hover {
+  background: transparent;
+}
+
 /* Editing (admin only) ------------------------------------------------------
 
    Everything below is only rendered while an admin has editing turned on. */

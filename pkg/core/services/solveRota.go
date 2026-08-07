@@ -260,20 +260,27 @@ func solveRotaInFlight(
 	}, nil
 }
 
-// seatsAsked is how many Seats the solve was asked to fill: every Seat of every
-// open Shift's Shape. A closed Shift asks for nobody however it is shaped, so it
-// counts for nothing.
+// seatsAsked is how many Seats the solve was asked to fill.
+func (s *rotaSolve) seatsAsked() int {
+	return countSeatsAsked(s.shifts, s.shapes)
+}
+
+// countSeatsAsked is how many Seats a rota is asking to have filled: every Seat
+// of every open Shift's Shape. A closed Shift asks for nobody however it is
+// shaped, so it counts for nothing.
 //
 // It is the denominator of "four Seats unfilled" — the thing an admin most wants
 // from a draft — and it is derived rather than stored, since the Shapes it comes
-// from are right there on the Shifts.
-func (s *rotaSolve) seatsAsked() int {
+// from are right there on the Shifts. Shared with the draft read, which puts the
+// same number beside a stored solve's: two ways of counting what the rota needs
+// would make that fraction meaningless.
+func countSeatsAsked(shifts []db.Shift, shapes map[string]model.Shape) int {
 	total := 0
-	for _, shift := range s.shifts {
+	for _, shift := range shifts {
 		if shift.Closed {
 			continue
 		}
-		for _, seat := range s.shapes[shift.ID] {
+		for _, seat := range shapes[shift.ID] {
 			total += seat.Count
 		}
 	}

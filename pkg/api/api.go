@@ -21,6 +21,7 @@ type Store interface {
 	services.ChangeRotaStore
 	services.DefaultShapeWriteStore
 	services.DefineRotaStore
+	services.DraftRotaAllocationReadStore
 	services.DraftRotaAllocationStore
 	services.ListShiftsStore
 	services.PreallocationStore
@@ -161,6 +162,12 @@ func (h *Handler) Routes() http.Handler {
 	// Singular because there is one, for the one unallocated Rotation. POST
 	// rather than PUT: the request states no body — the inputs are already in
 	// the database — and what comes back is a solve that has just run.
+	//
+	// The GET is where the draft is actually read from, and it is a resource of
+	// its own rather than a field on GET /shifts on purpose: that listing is
+	// public, and keeping it clear of the draft tables is what makes the leak
+	// unrepresentable rather than merely forbidden.
+	api.Handle("GET /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleGetDraftRotaAllocation)))
 	api.Handle("POST /draft-rota-allocation", h.auth.requireAdmin(http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
 	api.Handle("POST /alterations", h.auth.requireAdmin(http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is admin-only alongside writing them: a listing names people
