@@ -44,9 +44,6 @@ func TestValidate_ValidConfig(t *testing.T) {
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
 		GmailSender:          "sender@example.com",
-		RotaOverrides: []RotaOverride{
-			{RRule: "FREQ=WEEKLY;BYDAY=SU"},
-		},
 	}
 
 	err := Validate(cfg)
@@ -80,84 +77,6 @@ func TestValidate_MissingRequiredField(t *testing.T) {
 	assert.Contains(t, err.Error(), "validation failed")
 }
 
-func TestValidate_InvalidRRule(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-		RotaOverrides: []RotaOverride{
-			{
-				RRule: "INVALID_RRULE_SYNTAX",
-			},
-		},
-	}
-
-	err := Validate(cfg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid rrule")
-}
-
-func TestValidate_MultipleInvalidRRules(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-		RotaOverrides: []RotaOverride{
-			{
-				RRule: "FREQ=WEEKLY;BYDAY=SU",
-			},
-			{
-				RRule: "INVALID_RRULE",
-			},
-		},
-	}
-
-	err := Validate(cfg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid rrule")
-}
-
-func TestValidate_EmptyRRule(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-		RotaOverrides: []RotaOverride{
-			{
-				RRule: "",
-			},
-		},
-	}
-
-	err := Validate(cfg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "validation failed")
-}
-
-func TestValidate_ComplexValidRRule(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-		RotaOverrides: []RotaOverride{
-			{
-				RRule: "FREQ=MONTHLY;BYDAY=1SU;BYMONTH=1,4,7,10",
-			},
-		},
-	}
-
-	err := Validate(cfg)
-	assert.NoError(t, err)
-}
-
 func TestLoadFromPath_ValidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "test_config.yaml")
@@ -169,14 +88,6 @@ rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
-rotaOverrides:
-  - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    preallocations:
-      - custom: "John Doe"
-        role: "Service volunteer"
-      - custom: "Jane Smith"
-        role: "Service volunteer"
-    shiftSize: 5
 `
 
 	err := os.WriteFile(configPath, []byte(validConfig), 0644)
@@ -192,40 +103,6 @@ rotaOverrides:
 	assert.Equal(t, "postgres://localhost:5432/test", cfg.DatabaseURL)
 	assert.Equal(t, "user@example.com", cfg.GmailUserID)
 	assert.Equal(t, "sender@example.com", cfg.GmailSender)
-
-	// Verify optional rotaOverrides
-	require.Len(t, cfg.RotaOverrides, 1)
-	override := cfg.RotaOverrides[0]
-	assert.Equal(t, "FREQ=WEEKLY;BYDAY=SU", override.RRule)
-	// Neither the `preallocations:` block in that file nor its `shiftSize:`
-	// configures anything now — Config Preallocations were deleted in issue #131
-	// and the shift size in #129 — and an unknown key is warned about rather
-	// than rejected, so the rest of the file still loads.
-}
-
-func TestLoadFromPath_InvalidRRule(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "invalid_rrule.yaml")
-
-	invalidConfig := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
-rotaOverrides:
-  - rrule: "INVALID_RRULE_SYNTAX"
-    preallocations:
-      - custom: "John Doe"
-        role: "Service volunteer"
-`
-
-	err := os.WriteFile(configPath, []byte(invalidConfig), 0644)
-	require.NoError(t, err)
-
-	_, err = LoadFromPath(configPath)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid rrule")
 }
 
 func TestLoadFromPath_MinimalConfig(t *testing.T) {
@@ -240,7 +117,6 @@ func TestLoadFromPath_MinimalConfig(t *testing.T) {
 
 	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	assert.Empty(t, cfg.GmailSender)
-	assert.Empty(t, cfg.RotaOverrides)
 }
 
 func TestLoadFromPath_MissingRequiredField(t *testing.T) {
@@ -313,9 +189,9 @@ func TestLoadFromPath_UnknownKey(t *testing.T) {
 			wantKey: "customPreallocations",
 		},
 		{
-			name:    "inside a rota override",
-			extra:   "rotaOverrides:\n  - rrule: 'FREQ=WEEKLY'\n    preallocatedTeamLeadID: 'V1'\n",
-			wantKey: "preallocatedTeamLeadID",
+			name:    "inside a nested block",
+			extra:   "server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  adminEmails:\n    - 'admin@example.com'\n  tlsCertPath: '/etc/ssl/cert.pem'\n",
+			wantKey: "tlsCertPath",
 		},
 	}
 
@@ -451,29 +327,53 @@ func captureWarnings(t *testing.T) *bytes.Buffer {
 
 	return &buf
 }
-func TestLoadFromPath_RotaOverrideWithoutRRule(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "invalid_override.yaml")
 
-	invalidOverride := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
-rotaOverrides:
-  - preallocations:
-      - custom: "John Doe"
-        role: "Service volunteer"
+// `rotaOverrides` is the last of the domain settings to leave the config file
+// (#136), and every deployed config still carries it on the day the build that
+// ignores it lands — including, in one case, an override whose rrule never
+// parsed. So it must load: the key is warned about like any other this build
+// does not know, whatever it says.
+func TestLoadFromPath_RotaOverridesKeyIsIgnoredNotRejected(t *testing.T) {
+	tests := []struct {
+		name     string
+		leftover string
+	}{
+		{
+			name: "the whole block it used to carry",
+			leftover: `rotaOverrides:
+  - rrule: "FREQ=WEEKLY;BYDAY=SU"
+    closed: true
     shiftSize: 5
-`
+    preallocations:
+      - custom: "OC Church"
+        role: "Service volunteer"
+`,
+		},
+		{
+			// Nothing reads the rule any more, so nothing can object to it.
+			name:     "an rrule that never parsed",
+			leftover: "rotaOverrides:\n  - rrule: \"INVALID_RRULE_SYNTAX\"\n",
+		},
+		{
+			// The rrule was a required field right up until it was deleted.
+			name:     "an override with no rrule at all",
+			leftover: "rotaOverrides:\n  - shiftSize: 5\n",
+		},
+	}
 
-	err := os.WriteFile(configPath, []byte(invalidOverride), 0644)
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+tt.leftover), 0644))
 
-	_, err = LoadFromPath(configPath)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "validation failed")
+			logged := captureWarnings(t)
+
+			cfg, err := LoadFromPath(configPath)
+			require.NoError(t, err)
+			assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+			assert.Contains(t, logged.String(), "rotaOverrides")
+		})
+	}
 }
 
 func TestValidate_ServerConfig(t *testing.T) {
@@ -611,27 +511,20 @@ devMode:
 	assert.Equal(t, "agent@example.com", loaded.DevMode.AdminEmail)
 }
 
-// `defaultShiftSize` and the `shiftSize` inside a rota override were how big a
-// Shift was until ticket #129. What a Shift asks for is the default Shape now,
-// stated Role by Role in the Rota Defaults (ADR 0006) — so both keys configure
-// nothing, and both have to be ignored rather than rejected: every deployed
-// config still carries them on the day the build that drops them lands.
-func TestLoadFromPath_ShiftSizeKeysAreIgnoredNotRejected(t *testing.T) {
+// `defaultShiftSize` was how big a Shift was until ticket #129. What a Shift
+// asks for is the default Shape now, stated Role by Role in the Rota Defaults
+// (ADR 0006) — so the key configures nothing, and has to be ignored rather than
+// rejected: every deployed config still carries it on the day the build that
+// drops it lands. The `shiftSize` that sat inside a rota override goes the same
+// way, under the departed `rotaOverrides` key above.
+func TestLoadFromPath_ShiftSizeKeyIsIgnoredNotRejected(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	legacySizes := `defaultShiftSize: 4
-rotaOverrides:
-  - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    shiftSize: 5
-`
-	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+legacySizes), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+"defaultShiftSize: 4\n"), 0644))
 
 	logged := captureWarnings(t)
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
 	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
-	require.Len(t, cfg.RotaOverrides, 1)
-	for _, key := range []string{"defaultShiftSize", "shiftSize"} {
-		assert.Contains(t, logged.String(), key)
-	}
+	assert.Contains(t, logged.String(), "defaultShiftSize")
 }

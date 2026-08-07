@@ -6,20 +6,25 @@ import (
 	"github.com/teambition/rrule-go"
 )
 
+// Recurrence rules say which of a rota's Shifts a Standing Preallocation lands
+// on — every one, the first Sunday of the month, and so on. They were how the
+// config file described rota overrides too, until #136 deleted that key; a
+// Standing Preallocation is the one thing left that states itself as a rule.
+
 // rruleSearchBufferDays widens the occurrence search window by a week on each
-// side of the rota so overrides still land on shifts at the very edges of the
+// side of the rota so a rule still lands on shifts at the very edges of the
 // rota's date range.
 const rruleSearchBufferDays = 7
 
-// ParseRRule parses a rota-override rrule string, returning an error if the
-// syntax is invalid. It is the single place rrule strings are parsed, shared by
-// config validation and the shift-override matchers; callers wrap the error
-// with whatever context they need.
+// ParseRRule parses an rrule string, returning an error if the syntax is
+// invalid. It is the single place rrule strings are parsed, shared by the
+// matcher below and by whatever validates a rule on the way in; callers wrap
+// the error with whatever context they need.
 func ParseRRule(rruleStr string) (*rrule.RRule, error) {
 	return rrule.StrToRRule(rruleStr)
 }
 
-// NewRRuleMatcher parses an override's rrule and returns a matcher reporting
+// NewRRuleMatcher parses a recurrence rule and returns a matcher reporting
 // whether a date (formatted "2006-01-02") falls on one of the rrule's
 // occurrences across the span of shiftDates, widened by a one-week buffer at
 // each end. shiftDates is expected in ascending order — its first and last
