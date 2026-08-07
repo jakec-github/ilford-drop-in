@@ -160,9 +160,9 @@ gmailSender: 'your-email@gmail.com'          # optional
 # allocator rules apply, and the share of a rota one volunteer may work) are
 # rows in the database (ADR 0006), set on the Settings screen rather than in
 # this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:`,
-# `defaultShiftSize:`, `shiftSize:`, `maxAllocationFrequency:`,
-# `requiresMale:` or `preallocations:` key left over from an older config is
-# ignored with a warning — see "Creating the Roles" below.
+# `defaultShiftSize:`, `maxAllocationFrequency:`, `requiresMale:` or
+# `rotaOverrides:` key left over from an older config is ignored with a
+# warning — see "Creating the Roles" below.
 
 # HTTP server (required to run the web server)
 server:
@@ -170,14 +170,6 @@ server:
   sessionSecret: 'change-me-min-16-chars'     # signs admin session cookies; ≥16 chars
   adminEmails:                                 # Google accounts allowed to log in as admin
     - 'your-email@gmail.com'
-
-# Optional, and vestigial: an override has nothing left to say. How big a shift
-# is comes from the default Shape, who is pinned to one from a Standing
-# Preallocation, and whether it runs from the Shift itself — all three on
-# Admin → Settings or the rota screen. The key is removed altogether in a later
-# ticket.
-rotaOverrides:
-  - rrule: 'FREQ=MONTHLY;BYDAY=3SU'            # third Sunday monthly
 ```
 
 The `test` suffix in the filename matches the `-e test` / `-env test` flag you
@@ -231,13 +223,18 @@ When the drop-in runs is set on the same screen, under **Rota Defaults**: a
 start time, an end time and the timezone they are read in. Like the Roles, no
 migration seeds them.
 
-Until they are set, allocation refuses and names what is missing. Nothing else
-is gated: the rota renders without an hour against each date, and a volunteer's
-calendar subscription shows each shift as an all-day event until the times
-arrive.
+Until they are set, defining a rota and allocating one both refuse and name what
+is missing. A shift's date is the date it starts, so a shift cannot be minted
+without knowing when it runs. Nothing else is gated: everything that only reads
+still reads.
 
 A shift has to end the evening it starts — a session running past midnight is
 refused rather than stored as one ending before it began.
+
+These are the times each *new* shift is minted with, not a live setting the
+shifts follow. A shift keeps the times it was minted with when they change
+later, and an admin who wants one evening to run differently edits that shift on
+the rota, under **Edit rota** → the date.
 
 ### Setting the default Shape
 

@@ -115,12 +115,10 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 		}
 		seen[id] = true
 		// A synthesised shift carries the times the settings would have minted
-		// it with, as a real one does. An explicit shiftsInRange is left
-		// exactly as the test wrote it, so a test can still say "untimed".
-		startAt, endAt, err := apiTestDefaults.ShiftTimestamps(date)
-		if err != nil {
-			startAt, endAt = "", ""
-		}
+		// it with, as a real one does — every Shift has them (ADR 0007). An
+		// explicit shiftsInRange is left exactly as the test wrote it.
+		// apiTestDefaults always answers, so there is no error a test can reach.
+		startAt, endAt, _ := apiTestDefaults.ShiftTimestamps(date)
 		out = append(out, db.ShiftInRange{
 			Shift:     db.Shift{ID: id, Date: date, StartAt: startAt, EndAt: endAt},
 			Allocated: true,
@@ -323,6 +321,26 @@ func (m *mockStore) SetShiftClosed(ctx context.Context, shiftID string, closed b
 	for i := range m.shifts {
 		if m.shifts[i].ID == shiftID {
 			m.shifts[i].Closed = closed
+			found = true
+		}
+	}
+	return found, nil
+}
+
+// SetShiftTimes likewise, with the date following the start as the derived
+// column does. dateTaken stands in for the one-Shift-per-date index.
+func (m *mockStore) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
+	day := startAt[:len("2006-01-02")]
+	for _, s := range m.shiftsInRange {
+		if s.ID != shiftID && s.Date == day {
+			return false, db.ErrShiftDateTaken
+		}
+	}
+	found := false
+	for i := range m.shiftsInRange {
+		if m.shiftsInRange[i].ID == shiftID {
+			m.shiftsInRange[i].StartAt, m.shiftsInRange[i].EndAt = startAt, endAt
+			m.shiftsInRange[i].Date = day
 			found = true
 		}
 	}
@@ -702,10 +720,8 @@ func TestListShiftsEndpoint(t *testing.T) {
 	first := resp.Shifts[0]
 	assert.Equal(t, "2026-01-11", first.Date)
 	assert.True(t, first.Allocated)
-	// 19:30 Europe/London in January is 19:30 UTC
-	start, err := time.Parse(time.RFC3339, first.Start)
-	require.NoError(t, err)
-	assert.Equal(t, "2026-01-11T19:30:00Z", start.UTC().Format(time.RFC3339))
+	// The shift's own wall-clock time, with no offset on the end of it.
+	assert.Equal(t, "2026-01-11T19:30:00", first.Start)
 	require.Len(t, first.Assignees, 2)
 	assert.Equal(t, "alice", first.Assignees[0].VolunteerID)
 
@@ -719,6 +735,9 @@ func TestListShiftsEndpoint(t *testing.T) {
 // than recomputing the settings against its date (issue #134, ADR 0007). The
 // fixture's Shift runs an hour earlier than the current defaults, so a listing
 // still reading the settings gets 19:30 and this catches it.
+//
+// They cross as wall-clock time with no offset: what the listing says is when
+// the drop-in runs in Ilford, whoever is reading it and wherever from.
 func TestListShiftsEndpointReadsTheShiftsOwnTimes(t *testing.T) {
 	store := &mockStore{
 		shiftsInRange: []db.ShiftInRange{{
@@ -745,38 +764,8 @@ func TestListShiftsEndpointReadsTheShiftsOwnTimes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Len(t, resp.Shifts, 1)
 
-	// Read in Europe/London, where January is UTC+0.
-	assert.Equal(t, "2026-01-11T18:00:00Z", resp.Shifts[0].Start)
-	assert.Equal(t, "2026-01-11T20:00:00Z", resp.Shifts[0].End)
-}
-
-// A Shift minted before an admin set the shift times has none to render, and
-// says so by leaving them out. The day is still known, and a rota that names
-// the day but not the hour beats one that will not load (ADR 0006).
-func TestListShiftsEndpointUntimedShift(t *testing.T) {
-	store := &mockStore{
-		shiftsInRange: []db.ShiftInRange{{
-			Shift:     db.Shift{ID: "s1", Date: "2026-01-11", RotaID: "rota-1"},
-			Allocated: true,
-		}},
-	}
-
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp struct {
-		Shifts []struct {
-			Date  string `json:"date"`
-			Start string `json:"start"`
-			End   string `json:"end"`
-		} `json:"shifts"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Len(t, resp.Shifts, 1)
-
-	assert.Equal(t, "2026-01-11", resp.Shifts[0].Date)
-	assert.Empty(t, resp.Shifts[0].Start)
-	assert.Empty(t, resp.Shifts[0].End)
+	assert.Equal(t, "2026-01-11T18:00:00", resp.Shifts[0].Start)
+	assert.Equal(t, "2026-01-11T20:00:00", resp.Shifts[0].End)
 }
 
 func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {

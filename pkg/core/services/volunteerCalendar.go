@@ -73,24 +73,11 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 // setEventDates gives one event its span and reports the moment DTSTAMP falls
 // back to for an unaltered shift.
 //
-// A shift minted before an admin set the drop-in's shift times carries none,
-// and gets an all-day event on its date. That is the honest rendering — the day
-// is known and the hours are not — and it keeps the promise that incomplete
-// settings block allocation and nothing else: a volunteer's subscription still
-// works.
+// This is the one place in the app that turns a Shift's wall-clock times into
+// instants, which is exactly what ADR 0007 said would happen: the drop-in
+// happens in one place, so a Shift's start is a fact about Ilford, and the zone
+// is applied where somebody outside Ilford is going to read it.
 func setEventDates(event *ics.VEvent, shift Shift, defaults model.RotaDefaults) (time.Time, error) {
-	if shift.StartAt == "" {
-		day, err := time.Parse("2006-01-02", shift.Date)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to read the date of shift %s: %w", shift.Date, err)
-		}
-		event.SetAllDayStartAt(day)
-		// DTEND is exclusive for an all-day event: the day after is what makes
-		// it one day long rather than none.
-		event.SetAllDayEndAt(day.AddDate(0, 0, 1))
-		return day, nil
-	}
-
 	start, end, err := defaults.ShiftInstants(shift.StartAt, shift.EndAt)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to read the times of shift %s: %w", shift.Date, err)

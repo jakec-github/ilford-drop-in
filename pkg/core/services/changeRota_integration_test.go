@@ -23,10 +23,9 @@ func seedAllocatedRota(t *testing.T, database *db.DB) string {
 	ctx := context.Background()
 
 	rotaID := uuid.New().String()
-	shiftID := uuid.New().String()
-	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, []db.Shift{
-		{ID: shiftID, Date: "2026-08-02", RotaID: rotaID},
-	}, nil, nil))
+	shift := dbtest.Shift(rotaID, "2026-08-02")
+	shiftID := shift.ID
+	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, []db.Shift{shift}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
 		{ID: uuid.New().String(), ShiftID: shiftID, Role: "Service volunteer", VolunteerID: "alice"},
 	}, rotaID, time.Now()))
@@ -113,10 +112,9 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 
 	// An unallocated rota with one shift
 	rotaID := uuid.New().String()
-	shiftID := uuid.New().String()
-	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, []db.Shift{
-		{ID: shiftID, Date: "2026-08-02", RotaID: rotaID},
-	}, nil, nil))
+	shift := dbtest.Shift(rotaID, "2026-08-02")
+	shiftID := shift.ID
+	require.NoError(t, database.InsertDefinedRota(ctx, &db.Rotation{ID: rotaID}, []db.Shift{shift}, nil, nil))
 
 	// Simulate an in-flight allocation: a raw transaction that has taken the
 	// issue #8 rotation-row lock and written dave's allocation but not yet

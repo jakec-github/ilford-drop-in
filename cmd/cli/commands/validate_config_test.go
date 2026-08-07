@@ -22,8 +22,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
 gmailUserID: "user@example.com"
-rotaOverrides:
-  - rrule: "FREQ=MONTHLY;BYDAY=3SU"
 `
 
 // runValidateConfig executes the command the way main.go wires it: under a root
@@ -58,10 +56,12 @@ func TestValidateConfigCmd_ValidConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, out, path)
-	// The counts are what the operator checks against the change they meant to
-	// make — the failure this command exists for dropped a whole section
-	// silently.
-	assert.Contains(t, out, "1 rota override")
+	assert.Contains(t, out, "is a valid prod config")
+	// What a file this command can read still configures is the deployment, so
+	// the server block is the whole of the summary now. The counts that used to
+	// sit above it described domain settings, which are rows in the database
+	// (ADR 0006) and not this command's to report.
+	assert.Contains(t, out, "server:")
 }
 
 // `roles:` left config for the database in ticket #126, and a deployed file
@@ -82,11 +82,11 @@ func TestValidateConfigCmd_LegacyRolesKeyIsReportedNotRejected(t *testing.T) {
 	assert.Contains(t, out, "roles")
 }
 
-// `defaultShiftSize` and the `shiftSize` on a rota override left config for the
-// database in ticket #129 — what a Shift asks for is the default Shape now — so
-// a deployed file still carrying them validates, and the summary is where an
-// operator finds out they configure nothing.
-func TestValidateConfigCmd_LegacyShiftSizeKeysAreReportedNotRejected(t *testing.T) {
+// `defaultShiftSize` left config for the database in ticket #129 — what a Shift
+// asks for is the default Shape now — so a deployed file still carrying it
+// validates, and the summary is where an operator finds out it configures
+// nothing.
+func TestValidateConfigCmd_LegacyShiftSizeKeyIsReportedNotRejected(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+"defaultShiftSize: 4\n")
 
 	out, err := runValidateConfig(t, "-e", "prod", path)
@@ -94,7 +94,6 @@ func TestValidateConfigCmd_LegacyShiftSizeKeysAreReportedNotRejected(t *testing.
 
 	assert.Contains(t, out, "1 unknown key")
 	assert.Contains(t, out, "defaultShiftSize")
-	assert.Contains(t, out, "1 rota override")
 }
 
 // An unknown key is reported, not rejected — it may be one another build knows.
@@ -108,23 +107,29 @@ func TestValidateConfigCmd_UnknownKey(t *testing.T) {
 	assert.Contains(t, out, "1 unknown key")
 	assert.Contains(t, out, "preallocatedTeamLeadID")
 	// The rest of the file still configured what it says.
-	assert.Contains(t, out, "1 rota override")
+	assert.Contains(t, out, "is a valid prod config")
 }
 
-// `preallocations:` under a rota override left config for the database in ticket
-// #131 — the pins an admin makes every rota are Standing Preallocations now — so
-// a deployed file still carrying one has to validate rather than fail. This is
-// the case that matters most: it is what every existing deployment's config
-// looks like on the day this ships.
-func TestValidateConfigCmd_LegacyPreallocationsKeyIsReportedNotRejected(t *testing.T) {
-	path := writeConfig(t, prodConfigYAML+"  - rrule: 'FREQ=WEEKLY'\n    preallocations:\n      - custom: 'X'\n        role: 'Service volunteer'\n")
+// `rotaOverrides:` left config altogether in ticket #136, taking the last of
+// the domain settings with it. This is the case that matters most: every
+// deployed config carries the block on the day this ships — one of them with an
+// rrule that never parsed — so it has to be reported rather than rejected, and
+// the whole block reads as the one key it now is.
+func TestValidateConfigCmd_LegacyRotaOverridesKeyIsReportedNotRejected(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+`rotaOverrides:
+  - rrule: 'FREQ=MONTHLY;BYDAY=3SU'
+    shiftSize: 5
+    preallocations:
+      - custom: 'X'
+        role: 'Service volunteer'
+`)
 
 	out, err := runValidateConfig(t, "-e", "prod", path)
 	require.NoError(t, err)
 
+	assert.Contains(t, out, "is a valid prod config")
 	assert.Contains(t, out, "1 unknown key")
-	assert.Contains(t, out, "preallocations")
-	assert.Contains(t, out, "2 rota overrides")
+	assert.Contains(t, out, "rotaOverrides")
 }
 
 // devMode is env-dependent, so the command has to know which environment the

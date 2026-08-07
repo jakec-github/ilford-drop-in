@@ -22,10 +22,10 @@ func TestGetShiftsInRange(t *testing.T) {
 
 	// rota1 is allocated; rota2 is minted but left unallocated.
 	rota1 := &db.Rotation{ID: uuid.New().String()}
-	shift1 := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota1.ID}
+	shift1 := dbtest.Shift(rota1.ID, "2026-08-02")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota1, []db.Shift{
 		shift1,
-		{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota1.ID},
+		dbtest.Shift(rota1.ID, "2026-08-09"),
 	}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
 		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift1.ID, Role: "team-lead", VolunteerID: "alice"}},
@@ -33,7 +33,7 @@ func TestGetShiftsInRange(t *testing.T) {
 
 	rota2 := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota2, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-16", RotaID: rota2.ID},
+		dbtest.Shift(rota2.ID, "2026-08-16"),
 	}, nil, nil))
 
 	// All three shifts, unbounded, ordered by date.
@@ -65,8 +65,8 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shiftA := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID}
-	shiftB := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
+	shiftA := dbtest.Shift(rota.ID, "2026-08-02")
+	shiftB := dbtest.Shift(rota.ID, "2026-08-09")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
 		{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "team-lead", VolunteerID: "alice"},
@@ -123,7 +123,7 @@ func TestInsertAllocationsUnknownShiftIDFails(t *testing.T) {
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID},
+		dbtest.Shift(rota.ID, "2026-08-02"),
 	}, nil, nil))
 
 	err := database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
@@ -145,7 +145,7 @@ func TestShiftClosedRoundTrips(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), Date: "2026-12-27", RotaID: rota.ID}
+	shift := dbtest.Shift(rota.ID, "2026-12-27")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 
 	minted, err := database.GetShiftByID(ctx, shift.ID)
@@ -193,29 +193,32 @@ func TestGetShiftByIDUnknownReturnsNil(t *testing.T) {
 }
 
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
-// shift.date UNIQUE constraint (issue #41, hazard B1): two rotas minting the
-// same shift date cannot both commit. The constraint exists for ADR 0001
-// reasons, but it is also the only thing making concurrent DefineRota runs
-// safe — the losing insert fails wholesale, writing neither the rotation nor
-// its non-overlapping shifts. If a schema change ever relaxes the constraint
-// (e.g. multiple shifts per day), this test flags that the define-rota race
-// needs a replacement guard.
+// one-Shift-per-date unique index (issue #41, hazard B1): two rotas minting the
+// same shift date cannot both commit. The index exists for ADR 0001 reasons,
+// but it is also the only thing making concurrent DefineRota runs safe — the
+// losing insert fails wholesale, writing neither the rotation nor its
+// non-overlapping shifts. If a schema change ever relaxes it (e.g. multiple
+// shifts per day), this test flags that the define-rota race needs a
+// replacement guard.
+//
+// The index moved from the stored date column onto `start_at::date` in the
+// contract phase (issue #135, ADR 0007); the guarantee it gives here did not.
 func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
 	rota1 := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota1, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota1.ID},
-		{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota1.ID},
+		dbtest.Shift(rota1.ID, "2026-08-02"),
+		dbtest.Shift(rota1.ID, "2026-08-09"),
 	}, nil, nil))
 
 	// The second rota overlaps rota1 on one date only; the shared date must
 	// sink the whole insert, including the non-overlapping shift.
 	rota2 := &db.Rotation{ID: uuid.New().String()}
 	err := database.InsertDefinedRota(ctx, rota2, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota2.ID},
-		{ID: uuid.New().String(), Date: "2026-08-16", RotaID: rota2.ID},
+		dbtest.Shift(rota2.ID, "2026-08-09"),
+		dbtest.Shift(rota2.ID, "2026-08-16"),
 	}, nil, nil)
 	require.Error(t, err)
 
@@ -226,14 +229,14 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	assert.Equal(t, 2, rotations[0].ShiftCount, "winning rota's shifts must be untouched")
 }
 
-// TestShiftDateComesFromStartAt pins the migrate phase (issue #134, ADR 0007):
-// a Shift's date is the date of its start, not the date column. Every shift
-// here is written with a date column that deliberately disagrees with its
-// start — a row no writer produces, and one that can only be written while the
-// column still exists, which is exactly what makes this phase checkable.
+// TestShiftDateComesFromStartAt pins the contract phase (issue #135, ADR 0007):
+// a Shift's date is the date of its start, and there is nothing else it could
+// be — the stored column is gone. Setting Date on the way in is ignored, which
+// is what these two shifts prove: each carries a Date naming a different day
+// from its start, and every read answers with the start's.
 //
-// The two shifts are ordered one way by the column and the other way by their
-// starts, so ordering alone catches a read that has not moved over.
+// They are also inserted in the reverse of their date order, so ordering alone
+// catches a read taking the rows as the planner hands them back.
 func TestShiftDateComesFromStartAt(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
@@ -248,7 +251,7 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 	}
 	earlier := db.Shift{
 		ID:      uuid.New().String(),
-		Date:    "2026-08-09",
+		Date:    "2026-08-30",
 		RotaID:  rota.ID,
 		StartAt: "2026-08-09T19:30:00",
 		EndAt:   "2026-08-09T21:30:00",
@@ -268,7 +271,7 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 		[]string{inRange[0].Date, inRange[1].Date})
 
 	// Bounding the range covers only the derived date: the later shift's own
-	// column says 2 August, which is outside this window.
+	// Date said 2 August, which is outside this window.
 	bounded, err := database.GetShiftsInRange(ctx,
 		time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC))
@@ -282,7 +285,7 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 	assert.Equal(t, "2026-08-16", byID.Date)
 
 	// The lookup that resolves a date to its shift answers on the start's date
-	// and is silent on the column's.
+	// and is silent on the one that was handed in.
 	found, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
 	require.NotNil(t, found)
@@ -290,7 +293,7 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 
 	missing, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
-	assert.Nil(t, missing, "the date column is not what a date resolves against")
+	assert.Nil(t, missing, "a Date handed in is not what a date resolves against")
 
 	// A rotation's span is derived from its shifts, so it moves with them.
 	rotations, err := database.GetRotations(ctx)
@@ -298,36 +301,6 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 	require.Len(t, rotations, 1)
 	assert.Equal(t, "2026-08-09", rotations[0].Start)
 	assert.Equal(t, "2026-08-16", rotations[0].End)
-}
-
-// A Shift minted before an admin set the drop-in's shift times has no start to
-// take a date from, and falls back to the column until #135 drops it. This is
-// the ordinary state of a deployment whose settings are still empty — the point
-// of the migrate phase keeping the column is that these rows keep working.
-func TestShiftDateFallsBackToColumnWhenUntimed(t *testing.T) {
-	database, _ := dbtest.New(t)
-	ctx := context.Background()
-
-	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
-
-	byID, err := database.GetShiftByID(ctx, shift.ID)
-	require.NoError(t, err)
-	require.NotNil(t, byID)
-	assert.Equal(t, "2026-08-09", byID.Date)
-
-	found, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	require.NotNil(t, found)
-	assert.Equal(t, shift.ID, found.ID)
-
-	inRange, err := database.GetShiftsInRange(ctx,
-		time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	require.Len(t, inRange, 1)
-	assert.Equal(t, "2026-08-09", inRange[0].Date)
 }
 
 // TestShiftTimesRoundTrip checks a Shift's own start and end through every read
@@ -342,7 +315,6 @@ func TestShiftTimesRoundTrip(t *testing.T) {
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := db.Shift{
 		ID:      uuid.New().String(),
-		Date:    "2026-07-12",
 		RotaID:  rota.ID,
 		StartAt: "2026-07-12T19:30:00",
 		EndAt:   "2026-07-12T21:30:00",
@@ -373,35 +345,26 @@ func TestShiftTimesRoundTrip(t *testing.T) {
 	assert.Equal(t, "2026-07-12T21:30:00", inRange[0].EndAt)
 }
 
-// A Shift minted while the settings are empty carries no times, and reads back
-// as empty rather than as a midnight nobody chose. This is the ordinary state
-// of a deployment whose admin has yet to fill the settings in — the expand
-// phase tolerates it because shift.date is still authoritative.
-func TestShiftTimesUnset(t *testing.T) {
-	database, _ := dbtest.New(t)
-	ctx := context.Background()
-
-	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), Date: "2026-07-12", RotaID: rota.ID}
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
-
-	byID, err := database.GetShiftByID(ctx, shift.ID)
-	require.NoError(t, err)
-	require.NotNil(t, byID)
-	assert.Empty(t, byID.StartAt)
-	assert.Empty(t, byID.EndAt)
-}
-
-// The database refuses the two states a Shift's times have no meaning in: half
-// set, and ending before it starts. Both are constraints rather than checks in
-// the app, so no writer can reintroduce them.
+// The database refuses the three states a Shift's times have no meaning in: not
+// set at all, half set, and ending before it starts. All three are constraints
+// rather than checks in the app, so no writer can reintroduce them.
+//
+// "Not set at all" was an ordinary state through the expand phase — a Shift
+// minted while the settings were empty — and stopped being one here: a Shift
+// with no start has no date either (issue #135).
 func TestShiftTimesConstraints(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
+	untimed := &db.Rotation{ID: uuid.New().String()}
+	err := database.InsertDefinedRota(ctx, untimed, []db.Shift{
+		{ID: uuid.New().String(), Date: "2026-07-12", RotaID: untimed.ID},
+	}, nil, nil)
+	require.Error(t, err, "a shift with no times must be rejected")
+
 	halfSet := &db.Rotation{ID: uuid.New().String()}
-	err := database.InsertDefinedRota(ctx, halfSet, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-07-12", RotaID: halfSet.ID, StartAt: "2026-07-12T19:30:00"},
+	err = database.InsertDefinedRota(ctx, halfSet, []db.Shift{
+		{ID: uuid.New().String(), RotaID: halfSet.ID, StartAt: "2026-07-12T19:30:00"},
 	}, nil, nil)
 	require.Error(t, err, "a start with no end must be rejected")
 
@@ -409,11 +372,97 @@ func TestShiftTimesConstraints(t *testing.T) {
 	err = database.InsertDefinedRota(ctx, backwards, []db.Shift{
 		{
 			ID:      uuid.New().String(),
-			Date:    "2026-07-12",
 			RotaID:  backwards.ID,
 			StartAt: "2026-07-12T21:30:00",
 			EndAt:   "2026-07-12T19:30:00",
 		},
 	}, nil, nil)
 	require.Error(t, err, "an end before the start must be rejected")
+}
+
+// TestSetShiftTimes moves a Shift onto another evening and onto another day
+// entirely, and checks the date moves with it. Times are descriptive rather
+// than an allocator input (ADR 0007), so the rota being allocated is no bar —
+// which is what the allocation here is for.
+func TestSetShiftTimes(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	shift := dbtest.Shift(rota.ID, "2026-08-02")
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
+	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Team lead", VolunteerID: "alice"}},
+		rota.ID, time.Now()))
+
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		updated, err := tx.SetShiftTimes(ctx, shift.ID, "2026-08-05T18:00:00", "2026-08-05T20:00:00")
+		require.NoError(t, err)
+		assert.True(t, updated)
+		return nil
+	}))
+
+	moved, err := database.GetShiftByID(ctx, shift.ID)
+	require.NoError(t, err)
+	require.NotNil(t, moved)
+	assert.Equal(t, "2026-08-05T18:00:00", moved.StartAt)
+	assert.Equal(t, "2026-08-05T20:00:00", moved.EndAt)
+	assert.Equal(t, "2026-08-05", moved.Date, "the date follows the start")
+
+	// The rotation's span is derived from its shifts, so it moved too.
+	rotations, err := database.GetRotations(ctx)
+	require.NoError(t, err)
+	require.Len(t, rotations, 1)
+	assert.Equal(t, "2026-08-05", rotations[0].Start)
+
+	// An id nothing matches is reported as such rather than as a failure, which
+	// is what lets the caller answer 404.
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		updated, err := tx.SetShiftTimes(ctx, uuid.New().String(), "2026-09-06T19:30:00", "2026-09-06T21:30:00")
+		require.NoError(t, err)
+		assert.False(t, updated)
+		return nil
+	}))
+}
+
+// Moving a Shift onto a day another Shift already starts on is refused by the
+// one-Shift-per-date index, and comes back named rather than as a driver error
+// code — including when the Shift in the way belongs to another rota, which no
+// read taken under this rota's lock could have seen.
+func TestSetShiftTimesRejectsTakenDate(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	first := dbtest.Shift(rota.ID, "2026-08-02")
+	second := dbtest.Shift(rota.ID, "2026-08-09")
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{first, second}, nil, nil))
+
+	other := &db.Rotation{ID: uuid.New().String()}
+	require.NoError(t, database.InsertDefinedRota(ctx, other, []db.Shift{
+		dbtest.Shift(other.ID, "2026-08-16"),
+	}, nil, nil))
+
+	err := database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-02T18:00:00", "2026-08-02T20:00:00")
+		return err
+	})
+	require.ErrorIs(t, err, db.ErrShiftDateTaken)
+
+	err = database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-16T18:00:00", "2026-08-16T20:00:00")
+		return err
+	})
+	require.ErrorIs(t, err, db.ErrShiftDateTaken, "a clash in another rota is still a clash")
+
+	// The refusal left the shift where it was.
+	unmoved, err := database.GetShiftByID(ctx, second.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-08-09", unmoved.Date)
+
+	// Moving it onto its own date is not a clash: the index sees one row.
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-09T18:00:00", "2026-08-09T20:00:00")
+		return err
+	}))
 }

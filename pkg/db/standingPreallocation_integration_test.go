@@ -100,7 +100,7 @@ func TestInsertDefinedRotaWritesSeededPreallocations(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID}
+	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	pin := db.Preallocation{
 		ID: uuid.New().String(), ShiftID: shift.ID, Role: "Service volunteer", CustomValue: "St John's team",
 	}
@@ -120,7 +120,7 @@ func TestInsertDefinedRotaRollsBackOnABadPin(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID}
+	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	pin := db.Preallocation{
 		ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "Service volunteer", VolunteerID: "alice",
 	}

@@ -21,7 +21,7 @@ func TestInsertDefinedRotaWritesShiftShapes(t *testing.T) {
 	ids := roleIDsByName(t, database)
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), RotaID: rota.ID, Date: "2026-09-06"}
+	shift := dbtest.Shift(rota.ID, "2026-09-06")
 
 	// Lowest priority first, so the ordering under test is the read's.
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, []db.ShiftRequirement{
@@ -50,7 +50,7 @@ func TestEditingTheDefaultShapeLeavesAnExistingShiftAlone(t *testing.T) {
 	ids := roleIDsByName(t, database)
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), RotaID: rota.ID, Date: "2026-09-06"}
+	shift := dbtest.Shift(rota.ID, "2026-09-06")
 	minted := []db.ShiftRequirement{
 		{ShiftID: shift.ID, RoleID: ids["Team lead"], Seats: 1},
 		{ShiftID: shift.ID, RoleID: ids["Service volunteer"], Seats: 4},
@@ -76,8 +76,8 @@ func TestGetShiftShapesKeepsShiftsApart(t *testing.T) {
 	ids := roleIDsByName(t, database)
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	first := db.Shift{ID: uuid.New().String(), RotaID: rota.ID, Date: "2026-09-06"}
-	second := db.Shift{ID: uuid.New().String(), RotaID: rota.ID, Date: "2026-09-13"}
+	first := dbtest.Shift(rota.ID, "2026-09-06")
+	second := dbtest.Shift(rota.ID, "2026-09-13")
 
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{first, second}, nil, []db.ShiftRequirement{
 		{ShiftID: first.ID, RoleID: ids["Service volunteer"], Seats: 4},
@@ -100,7 +100,7 @@ func TestGetShiftShapesOmitsShiftsWithNoSeats(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), RotaID: rota.ID, Date: "2026-09-06"}
+	shift := dbtest.Shift(rota.ID, "2026-09-06")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 
 	shapes, err := database.GetShiftShapes(ctx, []string{shift.ID})
@@ -128,7 +128,7 @@ func TestInsertDefinedRotaRollsBackOnABadSeat(t *testing.T) {
 	ids := roleIDsByName(t, database)
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), RotaID: rota.ID, Date: "2026-09-06"}
+	shift := dbtest.Shift(rota.ID, "2026-09-06")
 
 	require.Error(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, []db.ShiftRequirement{
 		{ShiftID: shift.ID, RoleID: ids["Team lead"], Seats: 1},

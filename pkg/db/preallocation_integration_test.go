@@ -22,8 +22,8 @@ func TestPreallocationInsertReadDelete(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shiftA := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID}
-	shiftB := db.Shift{ID: uuid.New().String(), Date: "2026-08-09", RotaID: rota.ID}
+	shiftA := dbtest.Shift(rota.ID, "2026-08-02")
+	shiftB := dbtest.Shift(rota.ID, "2026-08-09")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil, nil))
 
 	volPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "Team lead", VolunteerID: "alice"}
@@ -109,7 +109,7 @@ func TestPreallocationFrozenAfterAllocation(t *testing.T) {
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
-	shift := db.Shift{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID}
+	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 
 	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
@@ -139,7 +139,7 @@ func TestPreallocationUnknownShiftIDFails(t *testing.T) {
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{
-		{ID: uuid.New().String(), Date: "2026-08-02", RotaID: rota.ID},
+		dbtest.Shift(rota.ID, "2026-08-02"),
 	}, nil, nil))
 
 	err := database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {

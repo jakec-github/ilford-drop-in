@@ -62,6 +62,14 @@
   color: var(--text-h);
 }
 
+/* Under the date, and quieter than it: the date is what a volunteer scans the
+   list by, the hours are the detail they read once they have found their row. */
+.shift-choice-time {
+  font-size: 0.75rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* A row moved since the last send. The tint and the bar are the glance; the
    "Changed from …" line under the date is what actually says so, and is the only
    part of it a screen reader or a colourblind eye can use. */

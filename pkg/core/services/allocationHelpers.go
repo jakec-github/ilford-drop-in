@@ -185,13 +185,6 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 	return allocations, nil
 }
 
-// `rotaOverrides` in the config file no longer converts to anything. Everything
-// an override could say has moved into the app: closures are a field on the
-// Shift (#132), the pins an admin expects to make every rota are Standing
-// Preallocations (#131), and the shift size it could adjust is the default
-// Shape (#129). The key itself, and the rrule validation behind it, are deleted
-// in #136 — the tidy-up that could only happen once all three had landed.
-
 // buildHistoricalShifts fetches allocations from the previous rota, applies that
 // rota's alterations (covers/swaps) so history reflects who actually worked, and
 // builds historical shift objects sorted ascending by date. Only includes Date

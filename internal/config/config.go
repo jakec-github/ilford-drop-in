@@ -14,28 +14,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
-
-	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 )
-
-// RotaOverride is what is left of the overrides that used to shape a rota from
-// the config file: a recurrence rule and nothing to apply to the dates it
-// matches.
-//
-// It has nothing to say about whether the drop-in runs on a date: Closed is a
-// field on the Shift, set by hand while the rota is unallocated (issue #132,
-// amending ADR 0001). It does not pin anybody: Config Preallocations were
-// deleted in issue #131, replaced by Standing Preallocations in the Rota
-// Defaults. And it no longer resizes a Shift: what a Shift asks for is the
-// default Shape in the Rota Defaults, stated Role by Role (issue #129). A
-// `closed`, `preallocations` or `shiftSize` key left in a config file is an
-// unknown key now, which is warned about rather than rejected.
-//
-// The key itself goes in #136, once there is nothing left that could have
-// wanted it.
-type RotaOverride struct {
-	RRule string `yaml:"rrule" validate:"required"`
-}
 
 // ServerConfig holds settings for the HTTP server
 type ServerConfig struct {
@@ -79,7 +58,6 @@ type Config struct {
 	ServiceVolunteersTab string         `yaml:"serviceVolunteersTab" validate:"required"`
 	RotaSheetID          string         `yaml:"rotaSheetID" validate:"required"`
 	DatabaseURL          string         `yaml:"databaseURL" validate:"required"`
-	RotaOverrides        []RotaOverride `yaml:"rotaOverrides,omitempty" validate:"dive"`
 	GmailUserID          string         `yaml:"gmailUserID" validate:"required"`
 	GmailSender          string         `yaml:"gmailSender,omitempty"`
 	Server               *ServerConfig  `yaml:"server,omitempty"`
@@ -100,8 +78,19 @@ type Config struct {
 	// every other Role's count was its ceiling by construction; the default
 	// Shape states every Role's Seats.
 	//
-	// A config file still carrying any of them warns and is otherwise ignored,
-	// like any key this build does not know.
+	// rotaOverrides is gone too (#136), and with it the last domain setting in
+	// this file. Everything an override could say has a home an admin can reach:
+	// whether the drop-in runs on a date is Closed on the Shift (#132), who is
+	// pinned to it comes from the Standing Preallocations (#131), and how big it
+	// is comes from the default Shape (#129). It was a list of recurrence rules
+	// because there was no screen to state any of that on; there is one now.
+	//
+	// What is left is deployment: which sheets to read, which database to talk
+	// to, which mailbox to send from, and how to run the server. Those are an
+	// operator's, and a redeploy is the right way to change them.
+	//
+	// A config file still carrying any of the departed keys warns and is
+	// otherwise ignored, like any key this build does not know.
 }
 
 var validate *validator.Validate
@@ -286,23 +275,20 @@ func unknownKeys(data []byte) []UnknownKey {
 	return unknown
 }
 
-// Validate validates the configuration struct and checks rrule syntax
+// Validate checks the configuration struct against its field tags.
+//
+// There is nothing else left to check. It used to parse the rrule on every
+// rota override as well — a cross-field rule validator.v10's tags cannot
+// express — but overrides went in #136 along with the rest of the domain
+// settings, and what remains is deployment keys, each of which its own tag
+// describes completely.
+//
+// It deliberately touches nothing but the config it was handed:
+// scripts/deploy-config.sh runs it from a laptop against a production config,
+// which is only safe because it connects to nothing.
 func Validate(cfg *Config) error {
-	// Run struct validation
 	if err := validate.Struct(cfg); err != nil {
 		return fmt.Errorf("config validation failed: %w", err)
-	}
-
-	// An rrule that parses is a cross-field rule validator.v10 tags cannot
-	// express, so it runs here.
-	//
-	// This function deliberately touches nothing but the file it was handed:
-	// scripts/deploy-config.sh runs it from a laptop against a production
-	// config, which is only safe because it connects to nothing.
-	for i, override := range cfg.RotaOverrides {
-		if _, err := utils.ParseRRule(override.RRule); err != nil {
-			return fmt.Errorf("invalid rrule in rotaOverrides[%d]: %w", i, err)
-		}
 	}
 
 	return nil

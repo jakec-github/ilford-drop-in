@@ -533,6 +533,85 @@ export function ClosureDialog({
 // UnpinDialog confirms taking one manual pin off a shift. Removing a pin is not
 // removing anyone from the rota — nobody has been allocated yet — so the
 // summary says what is actually being given up: the guarantee, not the shift.
+// A datetime-local field carries minutes, not seconds, so a shift's stored
+// "2026-02-02T19:30:00" has to lose its tail to land in one. What comes back is
+// the shorter spelling, which the API also accepts.
+function toLocalInput(timestamp: string): string {
+  return timestamp.slice(0, "2026-02-02T19:30".length);
+}
+
+// ShiftTimesDialog moves one shift's start and end.
+//
+// The fields carry a date as well as a time, which is not decoration: a shift's
+// date *is* the date of its start, so moving the start to another day moves the
+// shift there. Two shifts cannot share a day, and where that is what an edit
+// would do the server refuses it and names the day — which is why nothing is
+// checked here beyond the end following the start.
+//
+// Unlike closing a shift, this stays available after the rota has been
+// allocated. The times describe when to turn up; the solver worked in dates.
+export function ShiftTimesDialog({
+  dateLabel,
+  start,
+  end,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  dateLabel: string;
+  // The shift's current times, local wall-clock, as the API spells them.
+  start: string;
+  end: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (start: string, end: string) => void;
+}) {
+  const [from, setFrom] = useState(toLocalInput(start));
+  const [to, setTo] = useState(toLocalInput(end));
+
+  const stated = from !== "" && to !== "";
+  const backwards = stated && to <= from;
+
+  return (
+    <Dialog title={`When does ${dateLabel} run?`} onClose={onCancel}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onConfirm(from, to);
+        }}
+      >
+        <label className="rota-edit-field">
+          Starts
+          <input
+            type="datetime-local"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </label>
+        <label className="rota-edit-field">
+          Ends
+          <input
+            type="datetime-local"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </label>
+        <p className="rota-edit-note">
+          {backwards
+            ? "A shift has to end after it starts."
+            : "Times are the drop-in's own local time. Moving the start to another day moves the shift to that day."}
+        </p>
+        <DialogActions
+          confirmLabel="Save times"
+          busy={busy}
+          canConfirm={stated && !backwards}
+          onCancel={onCancel}
+        />
+      </form>
+    </Dialog>
+  );
+}
+
 export function UnpinDialog({
   name,
   dateLabel,

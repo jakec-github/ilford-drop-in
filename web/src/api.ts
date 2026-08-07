@@ -100,6 +100,8 @@ function toRotaShift(shift: ApiShift): RotaShift {
   return {
     id: shift.id,
     date: shift.date,
+    start: shift.start,
+    end: shift.end,
     closed: shift.closed,
     allocated: shift.allocated,
     // Closed shifts carry no meaningful assignees.
@@ -526,30 +528,55 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   }
 }
 
-// setShiftClosed closes or reopens one shift, which is a change to what
-// allocation will do rather than to a rota that has been run. It resolves on
-// success and throws the server's own message otherwise — a 409 says the rota
-// has already been allocated, which is exactly what the admin needs to read.
+// patchShift is the one write behind every per-shift edit. Each field is
+// optional and an omitted one is left alone, so the two wrappers below can send
+// only what they change.
 //
-// Like createAlteration it returns nothing: the caller re-reads the rota, since
-// closing a shift changes what else is shown against it.
-export async function setShiftClosed(
+// None of them return anything: the caller re-reads the rota, since a shift's
+// state changes what else is shown against it.
+async function patchShift(
   shiftId: string,
-  closed: boolean,
+  body: { closed?: boolean; start?: string; end?: string },
+  fallback: string,
 ): Promise<void> {
   const res = await fetch(`/api/shifts/${encodeURIComponent(shiftId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ closed }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(
-      await errorMessage(
-        res,
-        closed ? "Failed to close the shift" : "Failed to reopen the shift",
-      ),
-    );
+    throw new Error(await errorMessage(res, fallback));
   }
+}
+
+// setShiftClosed closes or reopens one shift, which is a change to what
+// allocation will do rather than to a rota that has been run. It throws the
+// server's own message on a refusal — a 409 says the rota has already been
+// allocated, which is exactly what the admin needs to read.
+export function setShiftClosed(
+  shiftId: string,
+  closed: boolean,
+): Promise<void> {
+  return patchShift(
+    shiftId,
+    { closed },
+    closed ? "Failed to close the shift" : "Failed to reopen the shift",
+  );
+}
+
+// setShiftTimes moves one shift's start and end. Unlike closing it, this is
+// allowed after the rota has been allocated: the times are descriptive, and the
+// rota was not solved around them. A 409 means the new start lands on a day
+// another shift already holds, and says which day.
+//
+// The times are local wall-clock, spelled as the listing spells them and as a
+// datetime-local field carries them — never an instant.
+export function setShiftTimes(
+  shiftId: string,
+  start: string,
+  end: string,
+): Promise<void> {
+  return patchShift(shiftId, { start, end }, "Failed to save the shift times");
 }
 
 interface ApiAvailabilityEntry {
@@ -599,7 +626,13 @@ interface ApiAvailabilityRound {
 interface ApiAvailabilityForm {
   volunteerName: string;
   groupMembers: string[] | null;
-  shifts: { id: string; date: string; closed: boolean }[];
+  shifts: {
+    id: string;
+    date: string;
+    start: string;
+    end: string;
+    closed: boolean;
+  }[];
   selectedShiftIds: string[] | null;
   submitted: boolean;
   submittedAt?: string;
