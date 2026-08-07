@@ -94,6 +94,34 @@ func TestAllocateRotaRefusesWhenTheShiftTimesAreNotSet(t *testing.T) {
 	}
 }
 
+// A Shape nobody has stated is the one unset setting that would not fail
+// loudly: the solve succeeds and staffs nobody. It is part of the same gate, so
+// allocation refuses and says which setting is empty (issue #129).
+func TestAllocateRotaRefusesWhenTheDefaultShapeIsNotSet(t *testing.T) {
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
+		shifts:    sundayShifts("rota-1", "2026-08-02", 2),
+	}
+	store.noShape = true
+
+	result, err := AllocateRota(
+		context.Background(),
+		store,
+		&mockVolClient{},
+		&config.Config{},
+		zap.NewNop(),
+		false, // dryRun
+		false, // forceCommit
+		"",    // pythonFlag
+	)
+
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "default shape")
+	assert.Contains(t, err.Error(), "settings screen")
+	assert.Empty(t, store.insertedAllocations, "nothing is written")
+}
+
 // The mirror of the above: settings an admin has filled in do not stop
 // allocation before it starts. Whatever this run fails on afterwards, it is not
 // the settings gate.

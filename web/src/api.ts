@@ -242,19 +242,37 @@ export async function fetchRotaDefaults(): Promise<RotaDefaults> {
 // three go at once because they are one form and one idea: a time of day means
 // nothing without the zone it is read in.
 //
-// Resolves with what was stored rather than with nothing, because the server
-// fills in a timezone an admin left blank and the form should show what it
-// actually holds.
+// Each section of the settings has its own endpoint, and each resolves with the
+// whole record rather than with nothing — partly because the server fills in a
+// timezone an admin left blank, and partly so a caller holds one thing after
+// saving any section.
 export async function saveShiftTimeDefaults(
   times: ShiftTimes,
 ): Promise<RotaDefaults> {
-  const res = await fetch("/api/rota-defaults", {
+  const res = await fetch("/api/rota-defaults/shift-times", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(times),
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to save the shift times"));
+  }
+  return (await res.json()) as RotaDefaults;
+}
+
+// saveDefaultShape writes what every shift asks for, stated whole: a Role
+// missing from `seats` is a Role the Shape no longer asks for, which is the only
+// way to say it.
+export async function saveDefaultShape(
+  seats: { roleId: string; count: number }[],
+): Promise<RotaDefaults> {
+  const res = await fetch("/api/rota-defaults/shape", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seats }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to save the shape"));
   }
   return (await res.json()) as RotaDefaults;
 }

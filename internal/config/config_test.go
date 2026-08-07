@@ -23,7 +23,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-defaultShiftSize: 2
 `
 
 // baseConfig is a valid config the role tests vary one field of.
@@ -34,12 +33,10 @@ func baseConfig() *Config {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 	}
 }
 
 func TestValidate_ValidConfig(t *testing.T) {
-	shiftSize := 5
 	cfg := &Config{
 		VolunteerSheetID:     "sheet123",
 		ServiceVolunteersTab: "Volunteers",
@@ -47,12 +44,8 @@ func TestValidate_ValidConfig(t *testing.T) {
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
 		GmailSender:          "sender@example.com",
-		DefaultShiftSize:     2,
 		RotaOverrides: []RotaOverride{
-			{
-				RRule:     "FREQ=WEEKLY;BYDAY=SU",
-				ShiftSize: &shiftSize,
-			},
+			{RRule: "FREQ=WEEKLY;BYDAY=SU"},
 		},
 	}
 
@@ -67,7 +60,6 @@ func TestValidate_MinimalConfig(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 	}
 
 	err := Validate(cfg)
@@ -95,7 +87,6 @@ func TestValidate_InvalidRRule(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "INVALID_RRULE_SYNTAX",
@@ -115,7 +106,6 @@ func TestValidate_MultipleInvalidRRules(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=WEEKLY;BYDAY=SU",
@@ -138,7 +128,6 @@ func TestValidate_EmptyRRule(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "",
@@ -158,7 +147,6 @@ func TestValidate_ComplexValidRRule(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 		RotaOverrides: []RotaOverride{
 			{
 				RRule: "FREQ=MONTHLY;BYDAY=1SU;BYMONTH=1,4,7,10",
@@ -181,7 +169,6 @@ rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
 gmailSender: "sender@example.com"
-defaultShiftSize: 2
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
     preallocations:
@@ -210,11 +197,10 @@ rotaOverrides:
 	require.Len(t, cfg.RotaOverrides, 1)
 	override := cfg.RotaOverrides[0]
 	assert.Equal(t, "FREQ=WEEKLY;BYDAY=SU", override.RRule)
-	// The `preallocations:` block in that file configures nothing now — Config
-	// Preallocations were deleted in issue #131 — and an unknown key is warned
-	// about rather than rejected, so the rest of the file still loads.
-	require.NotNil(t, override.ShiftSize)
-	assert.Equal(t, 5, *override.ShiftSize)
+	// Neither the `preallocations:` block in that file nor its `shiftSize:`
+	// configures anything now — Config Preallocations were deleted in issue #131
+	// and the shift size in #129 — and an unknown key is warned about rather
+	// than rejected, so the rest of the file still loads.
 }
 
 func TestLoadFromPath_InvalidRRule(t *testing.T) {
@@ -227,7 +213,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-defaultShiftSize: 2
 rotaOverrides:
   - rrule: "INVALID_RRULE_SYNTAX"
     preallocations:
@@ -344,7 +329,7 @@ func TestLoadFromPath_UnknownKey(t *testing.T) {
 			cfg, err := LoadFromPath(configPath)
 			require.NoError(t, err)
 			// The keys either side of the unknown one still configure what they say.
-			assert.Equal(t, 2, cfg.DefaultShiftSize)
+			assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 
 			assert.Contains(t, logged.String(), tt.wantKey)
 		})
@@ -373,7 +358,7 @@ func TestLoadFromPath_RolesKeyIsIgnoredNotRejected(t *testing.T) {
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, 2, cfg.DefaultShiftSize)
+	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	assert.Contains(t, logged.String(), "roles")
 }
 
@@ -393,7 +378,7 @@ shiftTimezone: "Europe/London"
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, 2, cfg.DefaultShiftSize)
+	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	for _, key := range []string{"shiftStartTime", "shiftEndTime", "shiftTimezone"} {
 		assert.Contains(t, logged.String(), key)
 	}
@@ -429,7 +414,7 @@ requiresMale: true
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, 2, cfg.DefaultShiftSize)
+	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	for _, key := range []string{"maxAllocationFrequency", "requiresMale"} {
 		assert.Contains(t, logged.String(), key)
 	}
@@ -476,7 +461,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-defaultShiftSize: 2
 rotaOverrides:
   - preallocations:
       - custom: "John Doe"
@@ -499,7 +483,6 @@ func TestValidate_ServerConfig(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 	}
 
 	validServer := func() *ServerConfig {
@@ -542,7 +525,6 @@ func TestValidate_DevMode(t *testing.T) {
 		RotaSheetID:          "rota456",
 		DatabaseURL:          "postgres://localhost:5432/test",
 		GmailUserID:          "user@example.com",
-		DefaultShiftSize:     2,
 	}
 
 	validDevMode := func() *DevModeConfig {
@@ -605,7 +587,6 @@ serviceVolunteersTab: "Volunteers"
 rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
 gmailUserID: "user@example.com"
-defaultShiftSize: 2
 server:
   port: 8080
   sessionSecret: "a-sufficiently-long-secret"
@@ -630,30 +611,27 @@ devMode:
 	assert.Equal(t, "agent@example.com", loaded.DevMode.AdminEmail)
 }
 
-func TestRotaOverride_NilShiftSize(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "nil_shiftsize.yaml")
-
-	configWithNilShiftSize := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
-defaultShiftSize: 2
+// `defaultShiftSize` and the `shiftSize` inside a rota override were how big a
+// Shift was until ticket #129. What a Shift asks for is the default Shape now,
+// stated Role by Role in the Rota Defaults (ADR 0006) — so both keys configure
+// nothing, and both have to be ignored rather than rejected: every deployed
+// config still carries them on the day the build that drops them lands.
+func TestLoadFromPath_ShiftSizeKeysAreIgnoredNotRejected(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	legacySizes := `defaultShiftSize: 4
 rotaOverrides:
   - rrule: "FREQ=WEEKLY;BYDAY=SU"
-    preallocations:
-      - custom: "John Doe"
-        role: "Service volunteer"
+    shiftSize: 5
 `
+	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+legacySizes), 0644))
 
-	err := os.WriteFile(configPath, []byte(configWithNilShiftSize), 0644)
-	require.NoError(t, err)
+	logged := captureWarnings(t)
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-
+	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	require.Len(t, cfg.RotaOverrides, 1)
-	assert.Nil(t, cfg.RotaOverrides[0].ShiftSize)
+	for _, key := range []string{"defaultShiftSize", "shiftSize"} {
+		assert.Contains(t, logged.String(), key)
+	}
 }

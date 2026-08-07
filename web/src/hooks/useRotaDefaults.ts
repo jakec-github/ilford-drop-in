@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchRotaDefaults,
   saveAllocationSettings,
+  saveDefaultShape,
   saveShiftTimeDefaults,
 } from "../api";
 import type { AllocationSettings, RotaDefaults, ShiftTimes } from "../types";
@@ -15,6 +16,9 @@ interface UseRotaDefaults {
   // timezone it filled in for a blank field. Rejects with the server's own
   // message, which names the field that was wrong.
   saveShiftTimes: (times: ShiftTimes) => Promise<void>;
+  // Writes the Shape whole: the Seats given here are the Seats a shift asks
+  // for, and a Role left out is one it no longer asks for.
+  saveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
   // Writes which optional allocator rules apply and holds what the server
   // stored — which is not always what was sent, since an answer naming a rule
   // this server does not have is dropped.
@@ -57,6 +61,15 @@ export function useRotaDefaults(): UseRotaDefaults {
     setError(null);
   }, []);
 
+  const saveShape = useCallback(
+    async (seats: { roleId: string; count: number }[]) => {
+      const saved = await saveDefaultShape(seats);
+      setDefaults(saved);
+      setError(null);
+    },
+    [],
+  );
+
   // The allocation-settings write answers with its own section rather than the
   // whole record, so this one merges instead of replacing. The rest of the
   // record is untouched by it, which is the point of saving sections apart.
@@ -68,5 +81,5 @@ export function useRotaDefaults(): UseRotaDefaults {
     setError(null);
   }, []);
 
-  return { defaults, error, saveShiftTimes, saveAllocationRules };
+  return { defaults, error, saveShiftTimes, saveShape, saveAllocationRules };
 }

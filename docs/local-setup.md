@@ -154,15 +154,13 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?ssl
 gmailUserID: 'me'
 gmailSender: 'your-email@gmail.com'          # optional
 
-# Allocation
-defaultShiftSize: 4                           # volunteers per shift (excluding team lead)
-
 # What the drop-in decides about itself is not configured here. The Roles
 # volunteers hold, the Rota Defaults (the default shift start, end and
-# timezone) and the Allocation Settings (which optional allocator rules apply,
-# and the share of a rota one volunteer may work) are rows in the database
-# (ADR 0006), set on the Settings screen rather than in this file. A `roles:`,
-# `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:`, `maxAllocationFrequency:`,
+# timezone, and the default Shape) and the Allocation Settings (which optional
+# allocator rules apply, and the share of a rota one volunteer may work) are
+# rows in the database (ADR 0006), set on the Settings screen rather than in
+# this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:`,
+# `defaultShiftSize:`, `shiftSize:`, `maxAllocationFrequency:`,
 # `requiresMale:` or `preallocations:` key left over from an older config is
 # ignored with a warning — see "Creating the Roles" below.
 
@@ -173,12 +171,13 @@ server:
   adminEmails:                                 # Google accounts allowed to log in as admin
     - 'your-email@gmail.com'
 
-# Optional: overrides for specific recurring shifts. An override says how big a
-# shift is and nothing else — who is pinned to one is a Standing Preallocation,
-# set on Admin → Settings, and it seeds ordinary pins when a rota is defined.
+# Optional, and vestigial: an override has nothing left to say. How big a shift
+# is comes from the default Shape, who is pinned to one from a Standing
+# Preallocation, and whether it runs from the Shift itself — all three on
+# Admin → Settings or the rota screen. The key is removed altogether in a later
+# ticket.
 rotaOverrides:
   - rrule: 'FREQ=MONTHLY;BYDAY=3SU'            # third Sunday monthly
-    shiftSize: 5
 ```
 
 The `test` suffix in the filename matches the `-e test` / `-env test` flag you
@@ -204,8 +203,8 @@ the app shipped with is:
 The names have to match the values in the roster sheet's `Roles` column
 exactly, and should be the options that column's dropdown offers. The ceiling is
 how many of that Role a shift may ever hold; leaving it blank is no ceiling, and
-it is the uncapped Role's seats that `defaultShiftSize` buys. Priority orders
-the filling of seats. Colour is one of twelve palette tokens rather than a
+it is the uncapped Role a shift's remaining places go to. Priority orders the
+filling of seats. Colour is one of twelve palette tokens rather than a
 colour value, because the app owns what each looks like in light and dark mode:
 
 ```
@@ -244,6 +243,21 @@ These are the times each *new* shift is minted with, not a live setting the
 shifts follow. A shift keeps the times it was minted with when they change
 later, and an admin who wants one evening to run differently edits that shift on
 the rota, under **Edit rota** → the date.
+
+### Setting the default Shape
+
+What a shift asks for is set on the same screen, under **Rota Defaults**: how
+many Seats of each Role, stated Role by Role. It replaced `defaultShiftSize`,
+which could only ever describe a rota with one Role — every other Role got its
+ceiling whether that was wanted or not.
+
+A Shape cannot ask for more of a Role than that Role's ceiling, and a Role it
+does not name has no Seats on a shift. Like the times, nothing seeds it, and
+until it is set allocation refuses and says so; a rota with no Seats would
+otherwise solve perfectly and staff nobody.
+
+Every shift of a rota asks for the same thing today. Per-shift Shapes are a
+later ticket.
 
 ### Choosing the allocation rules
 

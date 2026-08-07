@@ -21,6 +21,7 @@ import (
 // volunteer who already holds a request, and reads take the newest generation.
 type mockAvailabilityStore struct {
 	testRoleStore
+	testDefaultShapeStore
 
 	rotations   []db.Rotation
 	shifts      []db.Shift

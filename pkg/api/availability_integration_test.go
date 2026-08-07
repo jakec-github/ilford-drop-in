@@ -23,6 +23,9 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
+	// What a Shift asks for is the stored default Shape (#129), so the round's
+	// coverage numbers are zero until one is stated.
+	dbtest.SeedDefaultShape(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
