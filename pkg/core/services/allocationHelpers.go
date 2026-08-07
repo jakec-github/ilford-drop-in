@@ -16,8 +16,17 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// AllocateRotaStore defines the database operations needed for allocating a rota
-type AllocateRotaStore interface {
+// SolveRotaStore is everything assembling and solving the rota in flight reads:
+// the rota and its Shifts, what those Shifts ask for, who is available, what the
+// previous rota did, and which Seats are already promised.
+//
+// It reads and nothing else, because a solve writes nothing. What is done with
+// the answer is the caller's, and the two callers write to different places —
+// allocating commits it as the rota, drafting stores it as a Draft Rota
+// Allocation (ADR 0008). Each names its own write below, so no caller holds a
+// writer it has no business using: the HTTP API can solve a draft without
+// thereby being able to allocate.
+type SolveRotaStore interface {
 	RotaDefaultsStore
 	ShiftShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
@@ -27,6 +36,11 @@ type AllocateRotaStore interface {
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
 	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
+}
+
+// AllocateRotaStore defines the database operations needed for allocating a rota
+type AllocateRotaStore interface {
+	SolveRotaStore
 	InsertAllocationsAndSetAllocated(ctx context.Context, allocations []db.Allocation, rotaID string, datetime time.Time) error
 }
 
@@ -46,7 +60,7 @@ type AllocateRotaStore interface {
 // index means to it.
 func fetchGroupAvailability(
 	ctx context.Context,
-	database AllocateRotaStore,
+	database SolveRotaStore,
 	rotaID string,
 	activeVolunteers []allocator.Volunteer,
 	orderedShiftIDs []string,
@@ -57,7 +71,7 @@ func fetchGroupAvailability(
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
 	if len(requests) == 0 {
-		return nil, fmt.Errorf("no availability round has been minted for rota %s - mint one before allocating", rotaID)
+		return nil, wrapf(ErrInvalidInput, "no availability round has been minted for rota %s - mint one before allocating", rotaID)
 	}
 
 	requestIDs := make([]string, 0, len(requests))
@@ -195,7 +209,7 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 // skipped; a date is still emitted even if no groups remain.
 func buildHistoricalShifts(
 	ctx context.Context,
-	database AllocateRotaStore,
+	database SolveRotaStore,
 	allRotations []db.Rotation,
 	targetRota *db.Rotation,
 	volunteers []allocator.Volunteer,
@@ -423,7 +437,7 @@ func checkPreallocationsResolve(
 	}
 
 	if len(offenders) > 0 {
-		return fmt.Errorf("preallocated volunteers are no longer active: %s", strings.Join(offenders, "; "))
+		return wrapf(ErrInvalidInput, "preallocated volunteers are no longer active: %s", strings.Join(offenders, "; "))
 	}
 	return nil
 }

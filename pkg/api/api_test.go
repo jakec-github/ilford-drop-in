@@ -42,6 +42,8 @@ type mockStore struct {
 	deletedPreallocationIDs []string
 	insertedStanding        []db.StandingPreallocation
 	deletedStandingIDs      []string
+	storedDrafts            []db.DraftRotaAllocation
+	storedDraftSeats        [][]db.DraftAllocation
 	// standingWriteErr is what the database says to a Standing Preallocation
 	// write — db.ErrDuplicateStandingPreallocation for a promise already made.
 	standingWriteErr error
@@ -474,6 +476,16 @@ func shiftDateInRange(dateStr string, from, to time.Time) bool {
 
 func (m *mockStore) Ping(ctx context.Context) error {
 	return m.pingErr
+}
+
+// ReplaceDraftRotaAllocation is the only draft write the API can reach — there
+// is deliberately no allocation writer here (services.DraftRotaAllocationStore).
+// Nothing in these tests gets far enough to call it: solving runs the CP-SAT
+// subprocess, which no Go test does.
+func (m *mockStore) ReplaceDraftRotaAllocation(_ context.Context, draft db.DraftRotaAllocation, seats []db.DraftAllocation) error {
+	m.storedDrafts = append(m.storedDrafts, draft)
+	m.storedDraftSeats = append(m.storedDraftSeats, seats)
+	return nil
 }
 
 // WithRotaLock hands the mock itself to the callback as the transaction-bound

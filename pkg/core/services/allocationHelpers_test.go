@@ -121,6 +121,9 @@ type mockAllocateRotaStore struct {
 	alterations              []db.Alteration
 	manualPreallocations     []db.Preallocation
 	insertedAllocations      []db.Allocation
+	storedDrafts             []db.DraftRotaAllocation
+	storedDraftSeats         [][]db.DraftAllocation
+	replaceDraftErr          error
 	getRotationsErr          error
 	getAvailabilityErr       error
 	getLatestAvailabilityErr error
@@ -225,6 +228,15 @@ func (m *mockAllocateRotaStore) InsertAllocationsAndSetAllocated(ctx context.Con
 		return m.insertAllocationsErr
 	}
 	m.insertedAllocations = append(m.insertedAllocations, allocations...)
+	return nil
+}
+
+func (m *mockAllocateRotaStore) ReplaceDraftRotaAllocation(ctx context.Context, draft db.DraftRotaAllocation, seats []db.DraftAllocation) error {
+	if m.replaceDraftErr != nil {
+		return m.replaceDraftErr
+	}
+	m.storedDrafts = append(m.storedDrafts, draft)
+	m.storedDraftSeats = append(m.storedDraftSeats, seats)
 	return nil
 }
 
