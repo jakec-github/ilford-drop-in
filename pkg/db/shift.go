@@ -251,7 +251,9 @@ func setShiftTimes(ctx context.Context, q querier, id, startAt, endAt string) (b
 // Concurrency (issue #41, hazard B1): the one-Shift-per-date unique index is
 // what makes concurrent runs safe — two rotas minting the same date cannot both
 // commit, and the losing transaction writes nothing. Any change that relaxes
-// that index must introduce a replacement guard here.
+// that index must introduce a replacement guard here. That refusal comes back
+// as ErrShiftDateTaken, since it is also how a rota defined to start on a day
+// the drop-in already runs is turned away.
 func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation, requirements []ShiftRequirement) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -285,6 +287,14 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	for range shifts {
 		if _, err := results.Exec(); err != nil {
 			results.Close()
+			// A date this rota would have shared with one that already exists is
+			// reported as itself. It became an ordinary mistake when the start
+			// date became an admin's to state (issue #140): a rota begun a week
+			// too early overlaps the last one, and "failed to insert shift"
+			// would tell nobody that.
+			if isShiftDateTaken(err) {
+				return ErrShiftDateTaken
+			}
 			return fmt.Errorf("failed to insert shift: %w", err)
 		}
 	}

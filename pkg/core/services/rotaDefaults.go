@@ -164,25 +164,41 @@ type ShiftTimeParams struct {
 	Timezone string
 }
 
-// validate turns an admin's answers into the row to write, or says why it will
-// not.
-func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
-	start, err := parseShiftTime(strings.TrimSpace(p.Start), "start")
+// shiftTimesOfDay reads a pair of stated shift times, or says why it will not,
+// and hands them back spelled in ShiftTimeLayout.
+//
+// Both places an admin states shift times come here: the settings screen, which
+// says what every rota starts from, and the define form, which says what one
+// rota runs (issue #140). It is the same question in both, so it has one answer
+// and one wording.
+func shiftTimesOfDay(statedStart, statedEnd string) (start, end string, err error) {
+	from, err := parseShiftTime(strings.TrimSpace(statedStart), "start")
 	if err != nil {
-		return db.RotaDefaults{}, err
+		return "", "", err
 	}
 
-	end, err := parseShiftTime(strings.TrimSpace(p.End), "end")
+	to, err := parseShiftTime(strings.TrimSpace(statedEnd), "end")
 	if err != nil {
-		return db.RotaDefaults{}, err
+		return "", "", err
 	}
 
 	// A shift ends the evening it starts. Forbidding one that runs past
 	// midnight is deliberate: the times become a start and an end on the
 	// Shift's own date, so "22:00 to 00:30" would describe a shift ending
 	// before it began rather than one lasting half an hour.
-	if !end.After(start) {
-		return db.RotaDefaults{}, wrapf(ErrInvalidInput, "a shift has to end after it starts, and %s is not after %s", p.End, p.Start)
+	if !to.After(from) {
+		return "", "", wrapf(ErrInvalidInput, "a shift has to end after it starts, and %s is not after %s", statedEnd, statedStart)
+	}
+
+	return from.Format(model.ShiftTimeLayout), to.Format(model.ShiftTimeLayout), nil
+}
+
+// validate turns an admin's answers into the row to write, or says why it will
+// not.
+func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
+	start, end, err := shiftTimesOfDay(p.Start, p.End)
+	if err != nil {
+		return db.RotaDefaults{}, err
 	}
 
 	timezone := strings.TrimSpace(p.Timezone)
@@ -194,8 +210,8 @@ func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
 	}
 
 	return db.RotaDefaults{
-		ShiftStartTime: start.Format(model.ShiftTimeLayout),
-		ShiftEndTime:   end.Format(model.ShiftTimeLayout),
+		ShiftStartTime: start,
+		ShiftEndTime:   end,
 		ShiftTimezone:  timezone,
 	}, nil
 }
@@ -208,7 +224,7 @@ func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
 // leaving a box blank.
 func parseShiftTime(value, which string) (time.Time, error) {
 	if value == "" {
-		return time.Time{}, wrapf(ErrInvalidInput, "a shift needs a %s time", which)
+		return time.Time{}, wrapf(ErrInvalidInput, "a shift needs both a start and an end time, and the %s is missing", which)
 	}
 
 	parsed, err := time.Parse(model.ShiftTimeLayout, value)

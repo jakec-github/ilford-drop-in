@@ -2,10 +2,22 @@ import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { useDefineRota } from "../hooks/useDefineRota";
+import { useRoles } from "../hooks/useRoles";
 import { useRotaInFlight } from "../hooks/useRotaInFlight";
-import type { RotaInFlight } from "../types";
+import ShapeForm from "./ShapeForm";
+import { describeShape } from "./shape";
+import type {
+  ConfiguredRole,
+  NewRota,
+  RotaInFlight,
+  RotaProposal,
+  ShapeSeat,
+} from "../types";
 import "./AdminRota.css";
 
+// How many shifts a rota has when nobody has said. The server has no opinion —
+// no rota implies how long the next one should be — so the number lives here,
+// where it is a starting point rather than a rule.
 const DEFAULT_SHIFT_COUNT = "6";
 
 // "Sun 2 Aug 2026" — the weekday is worth showing here, unlike on the rota
@@ -185,6 +197,177 @@ function InFlightPanel({
   );
 }
 
+// DefineRotaForm is the define screen: the whole of the rota about to be made,
+// on one form (issue #140).
+//
+// Every field starts from the proposal and every field can be changed. The
+// start date is the one an admin is most likely to touch — a rota can begin
+// after a break rather than the week after the last one — but the hours and the
+// Shape are here too, so a rota that runs differently for a few weeks does not
+// need the settings edited and put back.
+//
+// What is stated here applies to this rota alone. The Rota Defaults are what the
+// form began from, not what it writes to, and the note under the form is the one
+// place that is said.
+//
+// It is mounted on a loaded proposal and never sees a null one, which is what
+// lets each field initialise from it directly: a re-read unmounts the form
+// rather than trying to reconcile new answers with what somebody has typed.
+function DefineRotaForm({
+  proposal,
+  roles,
+  defining,
+  onDefine,
+}: {
+  proposal: RotaProposal;
+  // null while the Roles are still loading; empty on a deployment that has
+  // stated none, where there is nothing a shift could ask for.
+  roles: ConfiguredRole[] | null;
+  defining: boolean;
+  onDefine: (rota: NewRota) => void;
+}) {
+  const [shiftCount, setShiftCount] = useState(DEFAULT_SHIFT_COUNT);
+  const [startDate, setStartDate] = useState(proposal.startDate);
+  const [startTime, setStartTime] = useState(proposal.shiftStartTime);
+  const [endTime, setEndTime] = useState(proposal.shiftEndTime);
+  const [shape, setShape] = useState<ShapeSeat[]>(proposal.shape);
+  const [editingShape, setEditingShape] = useState(false);
+
+  return (
+    <>
+      <p className="define-rota-intro">
+        One shift a week from the date below. Once the rota is defined it is the
+        rota in flight, and the next cannot be defined until it is allocated.
+      </p>
+
+      {/* noValidate deliberately: min below floors the spinner, but native
+          validation would answer a bad count with a transient browser bubble in
+          some cases and the server's message in others. Submitting regardless
+          means one field is only ever rejected in one place, with one
+          wording. */}
+      <form
+        className="define-rota-form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          onDefine({
+            shiftCount: Number(shiftCount),
+            startDate,
+            shiftStartTime: startTime,
+            shiftEndTime: endTime,
+            shape: shape.map((seat) => ({
+              roleId: seat.roleId,
+              count: seat.count,
+            })),
+          });
+        }}
+      >
+        <div className="define-rota-fields">
+          <label className="define-rota-field">
+            Shifts
+            <input
+              className="define-rota-count"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              value={shiftCount}
+              onChange={(e) => setShiftCount(e.target.value)}
+            />
+          </label>
+
+          <label className="define-rota-field">
+            First shift
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </label>
+
+          {/* Native time inputs read and write the same 24-hour "HH:MM" the
+              server stores, so nothing here parses or formats a time. */}
+          <label className="define-rota-field">
+            Starts
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
+          </label>
+
+          <label className="define-rota-field">
+            Ends
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {/* The Shape is a summary and a button rather than a row of counters,
+            for the same reason it is on the settings screen: it is a handful of
+            numbers an admin reads and rarely changes, and inlining them would
+            bury the two fields that matter under a list of Roles. */}
+        <div className="define-rota-shape">
+          <span className="define-rota-shape-label">Every shift asks for</span>
+          <span className="define-rota-shape-value">
+            {shape.length > 0 ? (
+              describeShape(shape)
+            ) : (
+              <span className="define-rota-unset">Nobody yet</span>
+            )}
+          </span>
+          {/* Nothing to shape until Roles exist, and the note below says so —
+              offering the button here would open a dialog with no rows in it. */}
+          {roles !== null && roles.length > 0 && (
+            <Button size="small" onClick={() => setEditingShape(true)}>
+              Edit shape
+            </Button>
+          )}
+        </div>
+
+        <div className="define-rota-actions">
+          <Button type="submit" disabled={defining}>
+            {defining ? "Defining…" : "Define rota"}
+          </Button>
+        </div>
+      </form>
+
+      <p className="define-rota-note">
+        {roles !== null && roles.length === 0
+          ? "No roles have been added yet, so there is nothing a shift can ask for. Add them on Settings first."
+          : "The times and the shape apply to this rota only — changing them here does not change the Rota Defaults on Settings. Each shift can be changed on its own once the rota exists."}
+      </p>
+
+      {editingShape && roles && (
+        <ShapeForm
+          title="What each shift asks for"
+          intro="How many places of each Role every shift of this rota starts with. Leave a Role at 0 if these shifts do not need one; a single shift can be changed on its own once the rota exists."
+          saveLabel="Use this shape"
+          roles={roles}
+          shape={shape}
+          // Held rather than saved: this Shape is part of the rota being
+          // defined, and nothing exists to write it to until the rota does.
+          // ShapeForm cannot tell the difference, since all it ever does is hand
+          // back the Seats and close.
+          onSave={(seats) => {
+            setShape(
+              seats.map((seat) => ({
+                roleId: seat.roleId,
+                role: roles.find((r) => r.id === seat.roleId)?.name ?? "",
+                count: seat.count,
+              })),
+            );
+            return Promise.resolve();
+          }}
+          onClose={() => setEditingShape(false)}
+        />
+      )}
+    </>
+  );
+}
+
 // AdminRota is the rota tab, and it has two states because the rota does: one
 // rota is in flight at a time, so either there is one — and this shows it, with
 // the discard that ends it — or there is not, and this offers the form that
@@ -194,8 +377,9 @@ function InFlightPanel({
 // refused server-side while one exists, and a form that is only ever going to
 // be rejected is worse than a sentence saying why there is no form.
 export default function AdminRota() {
-  const [shiftCount, setShiftCount] = useState(DEFAULT_SHIFT_COUNT);
-  const { rota, error, defining, define } = useDefineRota();
+  const { proposal, reloadProposal, rota, error, defining, define } =
+    useDefineRota();
+  const { roles } = useRoles();
   const {
     inFlight,
     loading,
@@ -220,49 +404,28 @@ export default function AdminRota() {
         <InFlightPanel
           rota={inFlight}
           discard={discard}
-          onDiscarded={() => setShiftCount(DEFAULT_SHIFT_COUNT)}
+          // The discarded rota is the one the proposal counted forward from, so
+          // the date it named is now too late by the length of that rota.
+          onDiscarded={reloadProposal}
         />
       )}
 
-      {!loading && inFlight === null && (
-        <>
-          <p className="define-rota-intro">
-            A new rota starts the Sunday after the last one ends, with one shift
-            a week. Once it is defined it is the rota in flight, and the next
-            cannot be defined until it is allocated.
-          </p>
+      {!loading && inFlight === null && proposal === null && !error && (
+        <p className="define-rota-intro">Working out the next rota…</p>
+      )}
 
-          {/* noValidate deliberately: min below floors the spinner, but native
-              validation would answer a bad count with a transient browser bubble
-              in some cases and the server's message in others. Submitting
-              regardless means one count is only ever rejected in one place, with
-              one wording. */}
-          <form
-            className="define-rota-form"
-            noValidate
-            onSubmit={(e) => {
-              e.preventDefault();
-              // Reloading whatever the outcome: a define that succeeded put a
-              // rota in flight, and one that was refused most likely means one
-              // already was.
-              void define(Number(shiftCount)).then(reload);
-            }}
-          >
-            <label className="define-rota-field">
-              Shifts
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                value={shiftCount}
-                onChange={(e) => setShiftCount(e.target.value)}
-              />
-            </label>
-            <Button type="submit" disabled={defining}>
-              {defining ? "Defining…" : "Define rota"}
-            </Button>
-          </form>
-        </>
+      {!loading && inFlight === null && proposal !== null && (
+        <DefineRotaForm
+          proposal={proposal}
+          roles={roles}
+          defining={defining}
+          onDefine={(next) => {
+            // Reloading whatever the outcome: a define that succeeded put a
+            // rota in flight, and one that was refused most likely means one
+            // already was.
+            void define(next).then(reload);
+          }}
+        />
       )}
 
       {/* aria-live so the outcome reaches a screen reader: submitting moves

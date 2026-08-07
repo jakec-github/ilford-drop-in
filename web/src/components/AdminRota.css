@@ -3,10 +3,19 @@
   font-size: 0.875rem;
 }
 
-/* The count and the button sit on one line: the field is a couple of characters
-   wide, so they fit side by side even on a narrow phone. */
+/* The whole rota on one form: the four fields that say when it runs on one
+   line, then what its shifts ask for, then the button. Admin tools are desktop
+   first, and on a desk these four fit across — the row wraps rather than
+   stacking, so a narrow window loses one field to the next line at a time. */
 .define-rota-form {
   display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.define-rota-fields {
+  display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.75rem;
 }
@@ -19,15 +28,78 @@
 }
 
 .define-rota-field input {
-  /* Wide enough for two digits plus the spinner, so it reads as a small number
-     rather than a text field. */
-  width: 5rem;
   padding: 0.5rem;
-  font: inherit;
+  /* 16px keeps iOS Safari from zooming the page on focus. */
+  font: 16px/1.4 var(--sans);
   color: var(--text-h);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.define-rota-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Wide enough for two digits plus the spinner, so the count reads as a small
+   number rather than as another text field. */
+.define-rota-count {
+  width: 5rem;
+}
+
+/* What the shifts ask for: a label, the Shape in prose, and the one thing that
+   can be done to it. The value takes the slack so the button stays at the
+   right-hand edge, where every other section's action is. */
+.define-rota-shape {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.define-rota-shape-label {
+  flex: none;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.define-rota-shape-value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A Shape nobody has stated is the ordinary state of a deployment nobody has
+   configured, so it is quieter than the rest of the row rather than louder. */
+.define-rota-unset {
+  font-style: italic;
+}
+
+.define-rota-actions {
+  display: flex;
+}
+
+/* What the form does not do, which is the thing an admin is most likely to
+   assume it does: editing the times or the shape here changes this rota and no
+   other. */
+.define-rota-note {
+  margin: 1rem 0 0;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 30rem) {
+  /* The Shape's three parts have nowhere to go across a phone, so the button
+     drops under the sentence it acts on rather than squeezing it. */
+  .define-rota-shape {
+    flex-wrap: wrap;
+  }
+
+  .define-rota-shape-value {
+    flex-basis: 100%;
+  }
 }
 
 .define-rota-error {

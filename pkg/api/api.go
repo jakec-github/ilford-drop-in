@@ -27,6 +27,7 @@ type Store interface {
 	services.RoleWriteStore
 	services.RotaDefaultsStore
 	services.RotaLifecycleStore
+	services.RotaProposalStore
 	services.RotaDefaultsWriteStore
 	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
@@ -151,6 +152,9 @@ func (h *Handler) Routes() http.Handler {
 	// to be mistaken for an id under.
 	api.Handle("POST /rotations", h.auth.requireAdmin(http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("GET /rotations/in-flight", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaInFlight)))
+	// What defining one right now would produce: the two states of the define
+	// screen read one of these each (issue #140).
+	api.Handle("GET /rotations/proposed", h.auth.requireAdmin(http.HandlerFunc(h.handleGetRotaProposal)))
 	api.Handle("DELETE /rotations/{id}", h.auth.requireAdmin(http.HandlerFunc(h.handleDiscardRota)))
 	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has

@@ -26,7 +26,7 @@ func calendarTestVolunteer() model.Volunteer {
 // drop-in's default times written onto its date, which is what defineRota does.
 func calendarShift(t *testing.T, date string) Shift {
 	t.Helper()
-	start, end, err := calendarTestDefaults.ShiftTimestamps(date)
+	start, end, err := model.ShiftTimestamps(date, calendarTestDefaults.ShiftStartTime, calendarTestDefaults.ShiftEndTime)
 	require.NoError(t, err)
 	return Shift{Date: date, StartAt: start, EndAt: end}
 }

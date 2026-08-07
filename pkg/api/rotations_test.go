@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -25,16 +26,27 @@ type defineRotaResponse struct {
 	} `json:"shifts"`
 }
 
+// defineBody is a whole stated rota, which is the only kind the endpoint takes:
+// the screen reads the proposal, shows it, and sends back what it showed
+// (issue #140). Tests that care about one field write the body out themselves.
+func defineBody(shiftCount int, startDate string) string {
+	return fmt.Sprintf(
+		`{"shiftCount":%d,"startDate":%q,"shiftStartTime":"19:30","shiftEndTime":"21:30",`+
+			`"shape":[{"roleId":"role-team-lead","count":1},{"roleId":"role-service-volunteer","count":4}]}`,
+		shiftCount, startDate)
+}
+
 func TestDefineRotaEndpoint(t *testing.T) {
 	store := &mockStore{}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", `{"shiftCount":6}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(6, "2026-08-02"), adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp defineRotaResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.NotEmpty(t, resp.Rotation.ID)
 	assert.Equal(t, 6, resp.Rotation.ShiftCount)
+	assert.Equal(t, "2026-08-02", resp.Rotation.Start, "the stated date, not one the server worked out")
 	require.Len(t, resp.Shifts, 6)
 	assert.Equal(t, resp.Rotation.Start, resp.Shifts[0].Date, "the rota starts on its first shift")
 	assert.Equal(t, resp.Rotation.End, resp.Shifts[5].Date, "and ends on its last")
@@ -50,24 +62,53 @@ func TestDefineRotaEndpoint(t *testing.T) {
 	require.Len(t, store.insertedShifts, 6)
 	assert.Equal(t, resp.Shifts[0].ID, store.insertedShifts[0].ID)
 	assert.Equal(t, resp.Shifts[0].Date, store.insertedShifts[0].Date)
+	assert.Equal(t, "2026-08-02T19:30:00", store.insertedShifts[0].StartAt, "minted with the hours the request stated")
+}
+
+// The times and the Shape are the request's, not the settings'. An admin who
+// changed either on the define form gets the rota they were looking at, and the
+// Rota Defaults are left exactly as they were.
+func TestDefineRotaEndpoint_MintsWhatWasStatedRatherThanTheDefaults(t *testing.T) {
+	store := &mockStore{}
+
+	body := `{"shiftCount":2,"startDate":"2026-08-02","shiftStartTime":"18:00","shiftEndTime":"20:00",` +
+		`"shape":[{"roleId":"role-service-volunteer","count":2}]}`
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", body, adminCookie())
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	require.Len(t, store.insertedShifts, 2)
+	for i, s := range store.insertedShifts {
+		assert.Equal(t, s.Date+"T18:00:00", s.StartAt, "shift %d runs the stated hours", i)
+		assert.Equal(t, s.Date+"T20:00:00", s.EndAt, "shift %d runs the stated hours", i)
+	}
+
+	for _, s := range store.insertedShifts {
+		assert.Equal(t,
+			[]db.ShiftRequirement{{ShiftID: s.ID, RoleID: "role-service-volunteer", Seats: 2}},
+			store.shiftRequirements[s.ID],
+			"the shift asks for the stated shape and nothing else")
+	}
+
+	assert.Empty(t, store.savedRotaDefaults, "defining states this rota's hours; it does not save them")
+	assert.Empty(t, store.savedShapes, "nor its shape")
 }
 
 // TestDefineRotaEndpoint_NotIdempotent pins the deliberate semantics: defining
-// again takes the weeks after the last rota rather than re-answering with the
-// one that exists (issue #75). What has changed since is when a second define is
-// allowed at all — the first rota has to have been allocated (issue #139).
+// again makes a second rota rather than re-answering with the one that exists
+// (issue #75). What has changed since is when a second define is allowed at
+// all — the first rota has to have been allocated (issue #139).
 func TestDefineRotaEndpoint_NotIdempotent(t *testing.T) {
 	store := &mockStore{}
 	handler := newTestHandler(store, testVolunteers())
 
-	first := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
+	first := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), adminCookie())
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
 
 	var a, b defineRotaResponse
 	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &a))
 	store.allocate(a.Rotation.ID)
 
-	second := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
+	second := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-16"), adminCookie())
 	require.Equal(t, http.StatusCreated, second.Code, second.Body.String())
 	require.NoError(t, json.Unmarshal(second.Body.Bytes(), &b))
 
@@ -83,10 +124,10 @@ func TestDefineRotaEndpoint_RefusedWhileARotaIsInFlight(t *testing.T) {
 	store := &mockStore{}
 	handler := newTestHandler(store, testVolunteers())
 
-	first := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
+	first := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), adminCookie())
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
 
-	second := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
+	second := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-16"), adminCookie())
 	require.Equal(t, http.StatusConflict, second.Code, second.Body.String())
 	assert.Contains(t, second.Body.String(), "already in flight")
 	assert.Len(t, store.insertedRotations, 1, "the refused define minted nothing")
@@ -101,19 +142,37 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 	}{
 		{
 			name:       "zero shifts",
-			body:       `{"shiftCount":0}`,
+			body:       defineBody(0, "2026-08-02"),
 			store:      &mockStore{},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "negative shifts",
-			body:       `{"shiftCount":-5}`,
+			body:       defineBody(-5, "2026-08-02"),
 			store:      &mockStore{},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "missing shift count",
 			body:       `{}`,
+			store:      &mockStore{},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "missing start date",
+			body:       `{"shiftCount":6,"shiftStartTime":"19:30","shiftEndTime":"21:30","shape":[{"roleId":"role-team-lead","count":1}]}`,
+			store:      &mockStore{},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "missing shift times",
+			body:       `{"shiftCount":6,"startDate":"2026-08-02","shape":[{"roleId":"role-team-lead","count":1}]}`,
+			store:      &mockStore{},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "missing shape",
+			body:       `{"shiftCount":6,"startDate":"2026-08-02","shiftStartTime":"19:30","shiftEndTime":"21:30"}`,
 			store:      &mockStore{},
 			wantStatus: http.StatusBadRequest,
 		},
@@ -137,7 +196,7 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name: "store insert failure",
-			body: `{"shiftCount":6}`,
+			body: defineBody(6, "2026-08-02"),
 			store: func() *mockStore {
 				s := &mockStore{}
 				s.insertErr = errors.New("disk full")
@@ -146,8 +205,18 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 		},
 		{
+			name: "a date the drop-in already runs on",
+			body: defineBody(6, "2026-08-02"),
+			store: func() *mockStore {
+				s := &mockStore{}
+				s.insertErr = db.ErrShiftDateTaken
+				return s
+			}(),
+			wantStatus: http.StatusConflict,
+		},
+		{
 			name: "store read failure",
-			body: `{"shiftCount":6}`,
+			body: defineBody(6, "2026-08-02"),
 			store: func() *mockStore {
 				s := &mockStore{}
 				s.getRotationsErr = errors.New("connection refused")
@@ -166,30 +235,12 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 	}
 }
 
-// TestDefineRotaEndpoint_ExistingRota checks the start date is derived from the
-// rota already in the store, not from today.
-func TestDefineRotaEndpoint_ExistingRota(t *testing.T) {
-	store := &mockStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2026-08-02", End: "2026-08-09", ShiftCount: 2, AllocatedDatetime: "2026-07-26T09:00:00Z"},
-		},
-	}
-
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-
-	var resp defineRotaResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, "2026-08-16", resp.Rotation.Start, "the Sunday after the existing rota's last shift")
-	assert.Equal(t, "2026-08-23", resp.Rotation.End)
-}
-
 // TestDefineRotaRequiresAdmin proves the route is gated: without a session the
 // request is rejected and no rota is defined.
 func TestDefineRotaRequiresAdmin(t *testing.T) {
 	store := &mockStore{}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", `{"shiftCount":6}`)
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(6, "2026-08-02"))
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, store.insertedRotations, "an unauthenticated request must not define a rota")
 }
@@ -197,6 +248,63 @@ func TestDefineRotaRequiresAdmin(t *testing.T) {
 func TestRotationsMethodNotAllowed(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/rotations", "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+type rotaProposalBody struct {
+	StartDate      string `json:"startDate"`
+	ShiftStartTime string `json:"shiftStartTime"`
+	ShiftEndTime   string `json:"shiftEndTime"`
+	Shape          []struct {
+		RoleID string `json:"roleId"`
+		Role   string `json:"role"`
+		Count  int    `json:"count"`
+	} `json:"shape"`
+}
+
+// The proposal is what the define form starts from: the Rota Defaults, plus the
+// one thing they do not hold — where the next rota would begin.
+func TestRotaProposalEndpoint(t *testing.T) {
+	store := &mockStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2026-08-02", End: "2026-08-09", ShiftCount: 2, AllocatedDatetime: "2026-07-26T09:00:00Z"},
+		},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp rotaProposalBody
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "2026-08-16", resp.StartDate, "the Sunday after the existing rota's last shift")
+	assert.Equal(t, "19:30", resp.ShiftStartTime)
+	assert.Equal(t, "21:30", resp.ShiftEndTime)
+	require.Len(t, resp.Shape, 2)
+	assert.Equal(t, "role-team-lead", resp.Shape[0].RoleID)
+	assert.Equal(t, "Team lead", resp.Shape[0].Role, "named as well as identified, so the form can label the row")
+	assert.Equal(t, 1, resp.Shape[0].Count)
+	assert.Equal(t, 4, resp.Shape[1].Count)
+}
+
+// Settings nobody has stated come back empty rather than as a refusal: the form
+// renders empty boxes and an admin fills them in there (ADR 0006).
+func TestRotaProposalEndpoint_UnsetSettings(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{}, noShape: true}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp rotaProposalBody
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Empty(t, resp.ShiftStartTime)
+	assert.Empty(t, resp.ShiftEndTime)
+	assert.Empty(t, resp.Shape)
+	assert.NotEmpty(t, resp.StartDate, "a date is arithmetic, and needs no settings")
+	assert.NotNil(t, resp.Shape, "an empty shape is a list, never null")
+}
+
+func TestRotaProposalRequiresAdmin(t *testing.T) {
+	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 type rotaInFlightBodyResponse struct {

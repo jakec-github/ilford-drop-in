@@ -76,40 +76,9 @@ func (d RotaDefaults) MissingShiftTimes() []string {
 	return missing
 }
 
-// HasShiftTimes reports whether ShiftTimes can answer.
+// HasShiftTimes reports whether both times of day have been stated.
 func (d RotaDefaults) HasShiftTimes() bool {
 	return len(d.MissingShiftTimes()) == 0
-}
-
-// ShiftTimes turns a Shift's date ("2006-01-02") into the moment it starts and
-// the moment it ends, by reading the stored times of day in the drop-in's
-// timezone. It is the successor to config.ShiftTimes — the times moved out of
-// the config file and into the settings in ticket #128.
-//
-// Callers that merely render should ask HasShiftTimes first and leave the time
-// out when the answer is no; an error here means the settings are unusable, not
-// that this particular date is.
-func (d RotaDefaults) ShiftTimes(dateStr string) (start, end time.Time, err error) {
-	if !d.HasShiftTimes() {
-		return time.Time{}, time.Time{}, fmt.Errorf("the drop-in's shift times have not been set")
-	}
-
-	loc, err := time.LoadLocation(d.Timezone())
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("failed to load shift timezone %q: %w", d.Timezone(), err)
-	}
-
-	start, err = time.ParseInLocation("2006-01-02 "+ShiftTimeLayout, dateStr+" "+d.ShiftStartTime, loc)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse shift start for %q: %w", dateStr, err)
-	}
-
-	end, err = time.ParseInLocation("2006-01-02 "+ShiftTimeLayout, dateStr+" "+d.ShiftEndTime, loc)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse shift end for %q: %w", dateStr, err)
-	}
-
-	return start, end, nil
 }
 
 // ShiftInstants reads a Shift's own start and end — the local wall-clock times
@@ -145,19 +114,37 @@ func (d RotaDefaults) ShiftInstants(startAt, endAt string) (start, end time.Time
 	return start, end, nil
 }
 
-// ShiftTimestamps turns a Shift's date ("2006-01-02") into the local times the
-// Shift itself carries: the default times of day written onto that date, in
-// ShiftTimestampLayout. This is what a Shift stores (ADR 0007), and it is a
-// different answer from ShiftTimes — no zone is applied, because none has been
-// resolved. The stored zone says how to read these later; it does not move them.
+// ShiftTimestamps writes two times of day onto a date, giving the local times a
+// Shift carries: what it stores (ADR 0007), spelled in ShiftTimestampLayout.
 //
-// It refuses when the settings are unset rather than writing half a Shift's
-// times, so a caller with times to write should ask HasShiftTimes first and
-// leave both columns unset when the answer is no.
-func (d RotaDefaults) ShiftTimestamps(dateStr string) (start, end string, err error) {
-	startTime, endTime, err := d.ShiftTimes(dateStr)
+// No zone is applied, and none is asked for. A Shift's times are wall-clock
+// facts about Ilford — 19:30 on the second of August — and the stored zone says
+// how to read them later rather than moving them, so a shift in July and one in
+// January come out the same.
+//
+// A free function rather than a method on the settings, because the times a
+// Shift is minted with are not the settings': defining a rota states them, and
+// the Rota Defaults are only what that form starts from (issue #140).
+func ShiftTimestamps(dateStr, startTime, endTime string) (start, end string, err error) {
+	start, err = shiftTimestamp(dateStr, startTime, "start")
 	if err != nil {
 		return "", "", err
 	}
-	return startTime.Format(ShiftTimestampLayout), endTime.Format(ShiftTimestampLayout), nil
+
+	end, err = shiftTimestamp(dateStr, endTime, "end")
+	if err != nil {
+		return "", "", err
+	}
+
+	return start, end, nil
+}
+
+// shiftTimestamp writes one time of day onto a date, naming which one it was
+// when it cannot.
+func shiftTimestamp(dateStr, timeOfDay, which string) (string, error) {
+	parsed, err := time.Parse("2006-01-02 "+ShiftTimeLayout, dateStr+" "+timeOfDay)
+	if err != nil {
+		return "", fmt.Errorf("failed to read the shift %s %q on %q: %w", which, timeOfDay, dateStr, err)
+	}
+	return parsed.Format(ShiftTimestampLayout), nil
 }
