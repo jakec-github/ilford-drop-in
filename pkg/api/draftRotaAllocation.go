@@ -35,6 +35,17 @@ type draftRotaAllocationResponse struct {
 	// Solving says a solve is running now, so a fresher answer is on its way and
 	// asking again shortly will get it.
 	Solving bool `json:"solving"`
+	// SolveError is why the re-solve this read would have run did not happen —
+	// most often a step nobody has taken yet, like an availability round nobody
+	// has minted. Empty when there was nothing to re-solve or the re-solve
+	// worked.
+	//
+	// It reports rather than fails, because it is about the solve and not about
+	// the read: what comes back is the draft as it stands, which is exactly what
+	// was asked for. A rota between being defined and its round being minted is
+	// permanently in this state, and it is a state with something to say rather
+	// than an error to show instead of the panel (issue #145).
+	SolveError string `json:"solveError"`
 	// Hash fingerprints the rota below. It is what a client says back when it
 	// allocates, which is how "allocate the rota you were shown" is enforced:
 	// allocating re-solves and commits only if the answer fingerprints the same
@@ -85,21 +96,30 @@ func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	response := draftStatus(status)
+
 	if status.Dirty {
 		if h.drafts.begin() {
 			defer h.drafts.end()
 			solved, err := h.solveDraftRotaAllocation(r)
 			if err != nil {
-				h.writeServiceError(w, err)
-				return
+				// Reported, not returned. The draft as it stands is what was
+				// asked for and it is still worth showing; what failed is the
+				// courtesy this endpoint performs on the way. Every rota is in
+				// exactly this state between being defined and its availability
+				// round being minted, and answering that with an error would
+				// take the draft panel off the one screen that says what to do
+				// about it.
+				response.SolveError = err.Error()
+			} else {
+				response = draftStatus(solved)
 			}
-			status = solved
 		} else {
-			status.Solving = true
+			response.Solving = true
 		}
 	}
 
-	h.writeJSON(w, http.StatusOK, draftStatus(status))
+	h.writeJSON(w, http.StatusOK, response)
 }
 
 // handleSolveDraftRotaAllocation re-solves the rota in flight and stores the

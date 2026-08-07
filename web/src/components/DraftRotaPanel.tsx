@@ -184,14 +184,16 @@ function ChangeReport({
 // a rota was possible at all, and the two controls that act on it — solve it
 // again, or allocate it.
 //
-// Allocating lives here rather than on the admin area's rota tab because this
-// is where the rota being allocated is on screen. The whole design rests on
-// allocating the rota you were shown (ADR 0008), and a button somewhere else
-// would be a button to allocate a rota you were not looking at.
+// Allocating lives here, in the panel, because this is where the rota being
+// allocated is on screen: the Allocation tab draws the draft into the shift
+// table directly below (issue #145). The whole design rests on allocating the
+// rota you were shown (ADR 0008), and a button somewhere else would be a button
+// to allocate a rota you were not looking at.
 //
-// Admin-only, like everything else about a draft. Its caller renders it only
-// when a rota is in flight — there is otherwise nothing to draft, and a panel
-// saying so on the public rota page would be a permanent empty box.
+// Admin-only, like everything else about a draft, and mounted on the Allocation
+// tab alone. The public rota page shows the drafted names as dashed chips but
+// never this: a panel about solving and committing is not something a volunteer
+// reading the rota has any use for.
 export default function DraftRotaPanel({
   state,
   solving,

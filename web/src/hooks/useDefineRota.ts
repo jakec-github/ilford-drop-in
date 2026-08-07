@@ -7,10 +7,6 @@ interface UseDefineRota {
   // the view renders as "loading", and what makes a reload remount the form on
   // the new answer rather than leaving it on the old one.
   proposal: RotaProposal | null;
-  // Re-reads the proposal. Wanted after a discard: the rota that was destroyed
-  // is the rota this counted forward from, so the date it named is now a week
-  // or more too late.
-  reloadProposal: () => void;
   // The rota defined by the last successful call, or null before there is one.
   // Not a cache of server state: defining is not idempotent, so this is a record
   // of what this admin just created.
@@ -34,10 +30,12 @@ export function useDefineRota(): UseDefineRota {
   const [rota, setRota] = useState<DefinedRota | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [defining, setDefining] = useState(false);
-  // Bumped to ask for the proposal again. The read lives in one effect either
-  // way, so a reload cancels an in-flight one exactly as unmounting does.
-  const [attempt, setAttempt] = useState(0);
 
+  // Read once, on mount, and never refreshed. The proposal counts forward from
+  // the last rota, so it goes stale the moment one is defined or discarded —
+  // but the screen that shows it is the Allocation tab with nothing in flight,
+  // which is unmounted on the first of those and remounted on the second. A
+  // remount is the reload.
   useEffect(() => {
     let cancelled = false;
     fetchRotaProposal()
@@ -54,15 +52,6 @@ export function useDefineRota(): UseDefineRota {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
-
-  // Clearing the proposal is what makes this a reload rather than a second
-  // answer arriving beside the first: the form is unmounted while the read is
-  // on its way and remounts on the new one. A form left standing would keep
-  // every field initialised from an answer that has been superseded.
-  const reloadProposal = useCallback(() => {
-    setProposal(null);
-    setAttempt((n) => n + 1);
   }, []);
 
   const define = useCallback(async (next: NewRota) => {
@@ -79,5 +68,5 @@ export function useDefineRota(): UseDefineRota {
     }
   }, []);
 
-  return { proposal, reloadProposal, rota, error, defining, define };
+  return { proposal, rota, error, defining, define };
 }

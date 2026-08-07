@@ -30,10 +30,11 @@ const gmailStatePrefix = "send."
 // screen before its state stops being accepted.
 const gmailStateMaxAge = 10 * time.Minute
 
-// sendReturnPath is where the browser lands once a send has been started. The
-// job id goes in the query so the page can pick the send back up: the redirect
+// sendReturnPath is where the browser lands once a send has been started: the
+// Allocation tab, which is where the round is asked from (issue #145). The job
+// id goes in the query so the page can pick the send back up — the redirect
 // returns immediately and the emails go out behind it.
-const sendReturnPath = "/admin/availability"
+const sendReturnPath = "/admin/allocation"
 
 // gmailSendState is the pending send, carried through Google and back. It is
 // signed rather than stored: the round trip is the only thing that needs to

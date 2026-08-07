@@ -17,9 +17,7 @@ allocation is solved by a Python CP-SAT service (`pyallocator/`).
 ## Quick start
 
 ```bash
-scripts/test-db.sh start     # local Postgres in Docker
-go build -o cli ./cmd/cli
-./cli -e test defineRota 12   # create a rota with 12 weekly shifts
+scripts/test-db.sh start      # local Postgres in Docker
 scripts/dev.sh test           # run server + frontend → http://localhost:5173
 ```
 
@@ -65,16 +63,15 @@ All commands take `-e`/`--env` to pick the config environment
 | Command | Description |
 | --- | --- |
 | `listVolunteers` | List volunteers from the volunteer sheet. |
-| `defineRota <n>` | Create a rotation with `n` weekly shifts (DB only). |
 | `publishRota` | Publish the latest rota to the rota sheet. |
-| `changeRota ...` | Apply post-allocation changes (covers/alterations). |
 | `viewHistoricalResponses ...` | Inspect past availability responses. |
 
-Allocating is not among them. It happens in the app, where it re-solves and
-commits only the rota the admin was shown; a command that solved and committed
-in one step could not honour that (ADR 0008). Availability is likewise collected
-and chased through the web app: mint a round and send the links from the
-availability tab. The commands that remain read the volunteer sheet; see
+The whole life of a rota is in the app now — defining it, preparing its shifts,
+asking volunteers, allocating and changing it afterwards all happen on Admin →
+Allocation and the rota page. Allocating in particular could never be a command:
+it re-solves and commits only the rota the admin was shown, and a command that
+solved and committed in one step could not honour that (ADR 0008). What is left
+here reads or writes the Google Sheets; see
 [`docs/local-setup.md`](docs/local-setup.md) for what they need.
 
 ## Requirements

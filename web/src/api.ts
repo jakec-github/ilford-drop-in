@@ -568,6 +568,8 @@ interface DraftRotaAllocationResponse {
   seatsAsked: number;
   seatsFilled: number;
   solving: boolean;
+  // Empty when the read had nothing to re-solve, or re-solved successfully.
+  solveError?: string;
   hash: string;
   shifts: ApiDraftShift[];
 }
@@ -589,6 +591,9 @@ function toDraftRotaState(data: DraftRotaAllocationResponse): DraftRotaState {
     seatsAsked: data.seatsAsked,
     seatsFilled: data.seatsFilled,
     solving: data.solving,
+    // "" is the server saying there was nothing to report, which is an absence
+    // rather than a message worth rendering.
+    solveError: data.solveError ? data.solveError : null,
     hash: data.hash,
     shifts: data.shifts.map((shift) => ({
       shiftId: shift.shiftId,

@@ -296,7 +296,7 @@ It listens on `localhost:5432` with database `ilford_dropin_test`
 Migrations run automatically the first time the CLI or server connects — there
 is no separate migrate step.
 
-## 6. Build the CLI and populate the database
+## 6. Build the CLI
 
 Build:
 
@@ -304,19 +304,15 @@ Build:
 go build -o cli ./cmd/cli
 ```
 
-The rota page reads shifts from the database, which starts empty. Create a
-rotation and its weekly shifts:
+The rota page reads shifts from the database, which starts empty. Filling it is
+a job for the app rather than the CLI: log in as an admin, fill in the Rota
+Defaults on Admin → Settings, and define the first rota on Admin → Allocation.
 
-```bash
-./cli -e test defineRota 12
-```
+The CLI authenticates with Google on **every** command, so the first run opens a
+browser for the OAuth flow (step 2's desktop client). After that the token is
+cached and subsequent commands are quiet.
 
-`defineRota` writes straight to Postgres, but note the CLI authenticates with
-Google on **every** command — so this first run opens a browser for the OAuth
-flow (step 2's desktop client). After that the token is cached and subsequent
-commands are quiet.
-
-Other read-only commands to explore:
+Commands to explore:
 
 ```bash
 ./cli -e test listVolunteers    # prints the roster from the volunteer sheet
@@ -377,7 +373,7 @@ building `pyallocator/.venv` first if it is not there yet.
 | `missing required field in header` | The volunteer sheet header row must contain the exact column names in [§3](#volunteer-sheet-format). |
 | `volunteer sheet names a Role no configured Role matches` (warning) | A value in a `Roles` cell isn't one of the roles in your config. The volunteer loads without it. |
 | Nobody gets allocated to a role | Check the `Roles` column actually names it — a role nobody holds has no one to fill its seats. |
-| Empty rota page | Run `./cli -e test defineRota 12` to create shifts. |
+| Empty rota page | No rota has been defined yet — do it on Admin → Allocation, after filling in Admin → Settings. |
 | Empty roster / `failed to fetch volunteers` | Share the volunteer sheet with the service account email; check `volunteerSheetID` and `serviceVolunteersTab`. |
 | OAuth loops or missing scopes | Delete `~/.ilford-drop-in/tokens/token-test.json` and re-run to re-authorise. |
 | `redirect_uri_mismatch` on admin login | The web OAuth client needs `http://localhost:5173/auth/callback` registered ([§2](#2-google-cloud-project)) — the frontend's port, not the server's. |

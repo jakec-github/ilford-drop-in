@@ -30,6 +30,10 @@ interface UseDraftRotaAllocation {
   // The message from a solve that was refused, kept apart from `error` above:
   // that one means the draft could not be read, this one means the rota cannot
   // be solved yet and names the step that is missing.
+  //
+  // It covers both ways a solve is refused: one this hook asked for, and the
+  // one the read itself attempts when a draft's inputs have moved. They are the
+  // same refusal for the same reason, so they are one message.
   solveError: string | null;
   // Re-solves the rota in flight and re-reads the draft it wrote. Never
   // rejects — the outcome is in solveError, because the control that starts it
@@ -184,7 +188,10 @@ export function useDraftRotaAllocation({
     state: enabled ? loaded : null,
     error: enabled ? loadError : null,
     solving: enabled && solving,
-    solveError: enabled ? solveFailure : null,
+    // The read's own refusal is the fallback rather than the override: a solve
+    // this admin asked for is the more recent of the two, and it is the one
+    // they are waiting on an answer to.
+    solveError: enabled ? (solveFailure ?? loaded?.solveError ?? null) : null,
     solve,
     allocating: enabled && allocating,
     allocateError: enabled ? allocateFailure : null,

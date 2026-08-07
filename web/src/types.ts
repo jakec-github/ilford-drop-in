@@ -279,6 +279,12 @@ export interface DraftRotaState {
   // so by the time a response reaches this page dirty is only ever true
   // alongside solving: the re-solve was handed to the one already running.
   solving: boolean;
+  // Why the re-solve that reading this would have run did not happen, or null
+  // when there was nothing to re-solve or it worked. Almost always a step
+  // nobody has taken yet — an availability round nobody has minted — which is
+  // the state every rota is in for its first day. Not a failed read: what came
+  // back is the draft as it stands, and this says why it is not fresher.
+  solveError: string | null;
   // Fingerprints the rota below, and is what allocating says back to the
   // server: it re-solves and commits only if its answer fingerprints the same,
   // which is how "allocate the rota you were shown" is enforced (ADR 0008).
