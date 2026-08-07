@@ -127,7 +127,7 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 		// it with, as a real one does — every Shift has them (ADR 0007). An
 		// explicit shiftsInRange is left exactly as the test wrote it.
 		// apiTestDefaults always answers, so there is no error a test can reach.
-		startAt, endAt, _ := apiTestDefaults.ShiftTimestamps(date)
+		startAt, endAt, _ := model.ShiftTimestamps(date, apiTestDefaults.ShiftStartTime, apiTestDefaults.ShiftEndTime)
 		out = append(out, db.ShiftInRange{
 			Shift:     db.Shift{ID: id, Date: date, StartAt: startAt, EndAt: endAt},
 			Allocated: true,

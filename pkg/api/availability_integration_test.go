@@ -28,7 +28,7 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	dbtest.SeedDefaultShape(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
+	rec := defineFromProposal(t, handler, 3)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	// Minting a round asks every active volunteer, each with their own link.
@@ -163,7 +163,7 @@ func TestAvailabilityLinkOpensThePage(t *testing.T) {
 	dbtest.SeedRotaDefaults(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())
+	rec := defineFromProposal(t, handler, 1)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	round := mintRoundOverHTTP(t, handler)
 	token := tokenFromLink(roundMembers(round)[0].Link)

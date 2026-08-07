@@ -3,7 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +18,33 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
+
+// defineFromProposal defines a rota the way the define screen does: read what
+// the form would start from, then send it straight back (issue #140).
+//
+// Every integration test below defines one this way rather than writing a body
+// out, because the round trip is the thing worth exercising — the two endpoints
+// have to agree field for field, and a proposal the define call would refuse
+// would be a broken screen rather than a broken test.
+func defineFromProposal(t *testing.T, handler http.Handler, shiftCount int) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rec := doRequest(t, handler, http.MethodGet, "/api/rotations/proposed", "", adminCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var proposal rotaProposalBody
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &proposal))
+
+	seats := make([]string, 0, len(proposal.Shape))
+	for _, seat := range proposal.Shape {
+		seats = append(seats, fmt.Sprintf(`{"roleId":%q,"count":%d}`, seat.RoleID, seat.Count))
+	}
+
+	body := fmt.Sprintf(
+		`{"shiftCount":%d,"startDate":%q,"shiftStartTime":%q,"shiftEndTime":%q,"shape":[%s]}`,
+		shiftCount, proposal.StartDate, proposal.ShiftStartTime, proposal.ShiftEndTime, strings.Join(seats, ","))
+	return doRequest(t, handler, http.MethodPost, "/api/rotations", body, adminCookie())
+}
 
 // TestDefineRotaEndpointIntegration drives POST /rotations against a real
 // Postgres, proving the rotation and shift rows actually land — the mock store
@@ -29,7 +59,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 	ctx := context.Background()
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
+	rec := defineFromProposal(t, handler, 3)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp defineRotaResponse
@@ -55,7 +85,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 	}
 
 	// A second call is refused while the first rota is in flight (issue #139).
-	rec = doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())
+	rec = defineFromProposal(t, handler, 1)
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 
 	// Once the first rota has been allocated it defines the following rota
@@ -64,7 +94,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 		[]db.Allocation{{ID: uuid.New().String(), ShiftID: resp.Shifts[0].ID, Role: "Service volunteer", VolunteerID: "alice"}},
 		resp.Rotation.ID, time.Now()))
 
-	rec = doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())
+	rec = defineFromProposal(t, handler, 1)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var second defineRotaResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &second))
@@ -119,7 +149,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &inFlight))
 	assert.Nil(t, inFlight.Rotation)
 
-	rec = doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":3}`, adminCookie())
+	rec = defineFromProposal(t, handler, 3)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var defined defineRotaResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &defined))
@@ -177,7 +207,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	assert.Nil(t, request)
 
 	// And the next rota can be defined, because nothing is in flight any more.
-	rec = doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":1}`, adminCookie())
+	rec = defineFromProposal(t, handler, 1)
 	assert.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }
 
@@ -192,7 +222,7 @@ func TestDiscardRotaEndpointIntegration_RefusesAnAllocatedRota(t *testing.T) {
 	ctx := context.Background()
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/rotations", `{"shiftCount":2}`, adminCookie())
+	rec := defineFromProposal(t, handler, 2)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var defined defineRotaResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &defined))

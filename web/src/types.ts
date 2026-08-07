@@ -186,6 +186,32 @@ export interface DefinedRota {
   shiftDates: string[];
 }
 
+// RotaProposal is the define form before anybody has touched it: the rota that
+// would be made by defining one right now.
+//
+// The start date is the Sunday after the last rota; the hours and the Shape are
+// the Rota Defaults. Both come from the server because both are its arithmetic
+// to do — and neither binds anything, since the form may contradict every field
+// before it submits.
+//
+// Times and Shape may be empty, meaning the Rota Defaults have not been stated.
+// That is a state the form renders as empty boxes rather than an error: an admin
+// can say what this rota runs without visiting the settings screen first.
+export interface RotaProposal extends Omit<ShiftTimes, "shiftTimezone"> {
+  startDate: string;
+  shape: ShapeSeat[];
+}
+
+// NewRota is a rota an admin has stated, as POST /api/rotations takes it.
+//
+// Everything the minted shifts will carry is here, because nothing falls back to
+// the settings on the way through: what was on the screen is what is made.
+export interface NewRota extends Omit<ShiftTimes, "shiftTimezone"> {
+  shiftCount: number;
+  startDate: string;
+  shape: { roleId: string; count: number }[];
+}
+
 // RotaInFlight is the rota being worked on: the one Rotation that has not been
 // allocated yet. There is at most one, because defining a second is refused
 // while this exists — which is what lets every admin screen say "the rota"

@@ -10,49 +10,18 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// The stored times are wall-clock in the drop-in's zone, so the same 19:30
-// shift is a different moment in winter and in summer. This is the whole reason
-// the zone is stored rather than an offset.
-func TestShiftTimesFollowsTheZone(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
-
-	// GMT date: London is UTC+0
-	start, end, err := defaults.ShiftTimes("2026-01-12")
-	require.NoError(t, err)
-	assert.Equal(t, "2026-01-12T19:30:00Z", start.UTC().Format(time.RFC3339))
-	assert.Equal(t, "2026-01-12T21:30:00Z", end.UTC().Format(time.RFC3339))
-
-	// BST date: London is UTC+1
-	start, end, err = defaults.ShiftTimes("2026-07-13")
-	require.NoError(t, err)
-	assert.Equal(t, "2026-07-13T18:30:00Z", start.UTC().Format(time.RFC3339))
-	assert.Equal(t, "2026-07-13T20:30:00Z", end.UTC().Format(time.RFC3339))
-}
-
 // A zone an admin has chosen is used; no zone falls back rather than failing,
 // because without one a time of day cannot become a moment at all.
-func TestShiftTimesTimezone(t *testing.T) {
+func TestShiftTimezone(t *testing.T) {
 	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
 	assert.Equal(t, model.DefaultShiftTimezone, defaults.Timezone())
 
 	defaults.ShiftTimezone = "UTC"
 	assert.Equal(t, "UTC", defaults.Timezone())
-
-	start, _, err := defaults.ShiftTimes("2026-07-13")
-	require.NoError(t, err)
-	assert.Equal(t, "2026-07-13T19:30:00Z", start.UTC().Format(time.RFC3339))
 }
 
-func TestShiftTimesRejectsAMalformedDate(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
-
-	_, _, err := defaults.ShiftTimes("13/07/2026")
-	assert.Error(t, err)
-}
-
-// Settings nobody has filled in are the ordinary first state of a deployment.
-// Asking for a time is answered with a refusal, and the caller is expected to
-// have asked HasShiftTimes first.
+// Settings nobody has filled in are the ordinary first state of a deployment,
+// named a section at a time so the refusal an allocation gives can be acted on.
 func TestShiftTimesUnset(t *testing.T) {
 	var defaults model.RotaDefaults
 
@@ -61,9 +30,6 @@ func TestShiftTimesUnset(t *testing.T) {
 		"the default shift start time",
 		"the default shift end time",
 	}, defaults.MissingShiftTimes())
-
-	_, _, err := defaults.ShiftTimes("2026-07-13")
-	assert.Error(t, err)
 }
 
 // Half-filled settings name only the half that is missing — the message an
@@ -82,42 +48,33 @@ func TestHasShiftTimes(t *testing.T) {
 	assert.Empty(t, defaults.MissingShiftTimes())
 }
 
-// A Shift's own start and end are wall-clock, so they carry no zone at all —
-// the same 19:30 on a winter date and a summer date spell the same timestamp,
-// where ShiftTimes gives two different moments (ADR 0007).
+// A Shift's own start and end are wall-clock, so they carry no zone at all: the
+// same 19:30 on a winter date and a summer date spell the same timestamp, and
+// only ShiftInstants below turns either into a moment (ADR 0007).
 func TestShiftTimestampsAreWallClock(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
-
-	start, end, err := defaults.ShiftTimestamps("2026-01-12")
+	start, end, err := model.ShiftTimestamps("2026-01-12", "19:30", "21:30")
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-12T19:30:00", start)
 	assert.Equal(t, "2026-01-12T21:30:00", end)
 
-	start, end, err = defaults.ShiftTimestamps("2026-07-13")
+	start, end, err = model.ShiftTimestamps("2026-07-13", "19:30", "21:30")
 	require.NoError(t, err)
 	assert.Equal(t, "2026-07-13T19:30:00", start)
 	assert.Equal(t, "2026-07-13T21:30:00", end)
 }
 
-// The zone setting cannot move a Shift's stated times, because they are not a
-// moment: it is the calendar feed's job to turn them into one.
-func TestShiftTimestampsIgnoreTheZone(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Pacific/Auckland"}
-
-	start, _, err := defaults.ShiftTimestamps("2026-07-13")
-	require.NoError(t, err)
-	assert.Equal(t, "2026-07-13T19:30:00", start)
-}
-
-// Unset settings and an unreadable date are refused the same way ShiftTimes
-// refuses them: a caller with no times to write must not write half of them.
+// A caller with no readable times to write must not write half of them, and is
+// told which half it got wrong.
 func TestShiftTimestampsRefuses(t *testing.T) {
-	var unset model.RotaDefaults
-	_, _, err := unset.ShiftTimestamps("2026-07-13")
-	assert.Error(t, err)
+	_, _, err := model.ShiftTimestamps("2026-07-13", "", "21:30")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "start")
 
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
-	_, _, err = defaults.ShiftTimestamps("13/07/2026")
+	_, _, err = model.ShiftTimestamps("2026-07-13", "19:30", "half nine")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "end")
+
+	_, _, err = model.ShiftTimestamps("13/07/2026", "19:30", "21:30")
 	assert.Error(t, err)
 }
 

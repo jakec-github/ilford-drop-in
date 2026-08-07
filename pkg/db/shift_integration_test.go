@@ -220,7 +220,10 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 		dbtest.Shift(rota2.ID, "2026-08-09"),
 		dbtest.Shift(rota2.ID, "2026-08-16"),
 	}, nil, nil)
-	require.Error(t, err)
+	// Named rather than merely refused: an admin who started a rota a week too
+	// early has made an ordinary mistake, and the define service turns this into
+	// a message pointing at the day and the rota holding it (issue #140).
+	require.ErrorIs(t, err, db.ErrShiftDateTaken)
 
 	rotations, err := database.GetRotations(ctx)
 	require.NoError(t, err)

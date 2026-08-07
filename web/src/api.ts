@@ -8,6 +8,7 @@ import type {
   ConfiguredRole,
   DefinedRota,
   NewPreallocation,
+  NewRota,
   NewStandingPreallocation,
   PersonRef,
   Preallocation,
@@ -16,6 +17,7 @@ import type {
   RotaChange,
   RotaDefaults,
   RotaInFlight,
+  RotaProposal,
   RotaShift,
   SendMode,
   SendOutcome,
@@ -474,15 +476,28 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
   return data.volunteers.map(toVolunteer);
 }
 
-// defineRota defines the next rota — the weeks after the latest existing one —
-// and returns the shifts it minted. Admin-only, and deliberately not idempotent:
-// two calls define two consecutive rotas, so the caller is expected to show what
-// came back rather than treat it as a repeatable action.
-export async function defineRota(shiftCount: number): Promise<DefinedRota> {
+// fetchRotaProposal reads what the define form starts from: where the next rota
+// would begin, and the hours and Shape the Rota Defaults say it would run.
+// Admin-only, like the settings it draws half its answer from.
+export async function fetchRotaProposal(): Promise<RotaProposal> {
+  const res = await fetch("/api/rotations/proposed");
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to load the next rota"));
+  }
+  return (await res.json()) as RotaProposal;
+}
+
+// defineRota defines the rota it is given and returns the shifts it minted.
+//
+// The whole rota is stated: nothing here falls back to the settings, so what an
+// admin edited on the form is what gets made. Admin-only, and deliberately not
+// idempotent — the caller is expected to show what came back rather than treat
+// it as a repeatable action.
+export async function defineRota(rota: NewRota): Promise<DefinedRota> {
   const res = await fetch("/api/rotations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ shiftCount }),
+    body: JSON.stringify(rota),
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to define the rota"));
