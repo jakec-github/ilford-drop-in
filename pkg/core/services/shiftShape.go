@@ -3,6 +3,9 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
+
+	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -59,6 +62,205 @@ func ShiftShapes(ctx context.Context, store ShiftShapeStore, shiftIDs []string) 
 		shapes[shiftID] = shape
 	}
 	return shapes, nil
+}
+
+// ShiftShapeWriteStore is what editing one Shift's Shape needs, kept apart from
+// reading Shapes for the reason DefaultShapeWriteStore is: one screen writes,
+// and the paths that spend a Shape only read. The lookup resolves the Shift to
+// its Rotation; the checks and the write then happen under that Rotation's row
+// lock.
+type ShiftShapeWriteStore interface {
+	ShiftShapeStore
+	GetShiftByID(ctx context.Context, id string) (*db.ShiftInRange, error)
+	WithRotaShapeLock(ctx context.Context, rotaIDs []string, fn func(store db.ShapeTxStore) error) error
+}
+
+// SaveShiftShape rewrites what one Shift asks for, and returns it as it now
+// stands (issue #138).
+//
+// Whole rather than a Seat at a time, exactly as the default Shape is written:
+// a Role dropped from the list is a Role this Shift no longer asks for, and
+// there is no way to say that one Seat at a time. Sending nothing leaves it
+// asking for nobody, which allocation refuses over and nothing else minds.
+//
+// Two things can stop an edit, and both are about the rota rather than the
+// Shape:
+//
+// The Rotation being allocated freezes it. The solver filled Seats against this
+// Shape, so afterwards it is not a request but the record of what the rota was
+// made from — changing it would leave the rota describing a Shift that never
+// asked for those people.
+//
+// A Preallocation promising a Role more Seats than the new Shape offers is
+// refused, naming them (the alternative — letting the edit through and
+// surfacing the pin — was the other half of the ticket's choice). A pin says
+// somebody will do a named job on this Shift; the solver treats a pin naming a
+// Role the Shift has no Seat for as an error rather than a rota it can produce,
+// and fewer Seats than pins is a Shift it cannot fill legally. Refusing here
+// means the admin reads the pin's name now, rather than an infeasible solve
+// later; removing the pin is the way through, and every pin can be removed.
+//
+// Being closed does not freeze anything. A closed Shift's Shape is what it will
+// ask for when it reopens, and an admin fixing one should not have to reopen it
+// first. Its pins are ignored for the same reason allocation strips them:
+// nobody works a day the drop-in is shut, so a pin there promises nothing.
+func SaveShiftShape(
+	ctx context.Context,
+	store ShiftShapeWriteStore,
+	shiftID string,
+	seats []SeatParams,
+	logger *zap.Logger,
+) (model.Shape, error) {
+	roles, err := RoleTable(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+
+	stated, err := statedSeats(seats, roles)
+	if err != nil {
+		return nil, err
+	}
+
+	shift, err := store.GetShiftByID(ctx, shiftID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up shift %s: %w", shiftID, err)
+	}
+	if shift == nil {
+		return nil, wrapf(ErrNotFound, "shift %s not found", shiftID)
+	}
+
+	rows := make([]db.ShiftRequirement, 0, len(stated))
+	for _, seat := range stated {
+		rows = append(rows, db.ShiftRequirement{ShiftID: shiftID, RoleID: seat.RoleID, Seats: seat.Seats})
+	}
+
+	err = store.WithRotaShapeLock(ctx, []string{shift.RotaID}, func(tx db.ShapeTxStore) error {
+		allocated, err := tx.RotaAllocated(ctx, shift.RotaID)
+		if err != nil {
+			return err
+		}
+		if allocated {
+			// Said as what it means rather than as a rule: the rota was worked
+			// out around this shift asking for these people.
+			return wrapf(ErrConflict,
+				"the rota covering %s has already been allocated, so what its shifts ask for is fixed",
+				readableDate(shift.Date))
+		}
+
+		if !shift.Closed {
+			pins, err := tx.GetPreallocationsByShiftIDs(ctx, []string{shiftID})
+			if err != nil {
+				return err
+			}
+			if err := seatsHoldThePins(stated, pins, roles, shift.Date); err != nil {
+				return err
+			}
+		}
+
+		written, err := tx.SetShiftShape(ctx, shiftID, rows)
+		if err != nil {
+			return err
+		}
+		if !written {
+			// Lost a race with something that removed the shift under the lock.
+			return wrapf(ErrNotFound, "shift %s not found", shiftID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Info("Shift shape saved",
+		zap.String("shift_id", shiftID),
+		zap.String("date", shift.Date),
+		zap.Int("roles", len(rows)))
+
+	return resolveShape(stated, roles, fmt.Sprintf("the shape of shift %s", shiftID))
+}
+
+// seatsHoldThePins refuses a Shape offering a Role fewer Seats than the people
+// already promised it, saying how many are promised.
+//
+// Pins carry a Role by name, because a pin records what somebody was asked to
+// do (issue #109); the stated Seats carry a Role by id, because a live question
+// has to survive a rename. They meet through the Roles table — and a pin naming
+// a Role that no longer exists is counted under its own name rather than
+// dropped, since that pin is exactly the one the solve will fail on and letting
+// its Seat go would hide the reason.
+func seatsHoldThePins(stated []storedSeat, pins []db.Preallocation, roles model.Roles, date string) error {
+	seatsByRole := make(map[string]int, len(stated))
+	for _, seat := range stated {
+		role, ok := roles.ByID(seat.RoleID)
+		if !ok {
+			// statedSeats resolved every one of these already.
+			continue
+		}
+		seatsByRole[role.Name] = seat.Seats
+	}
+
+	pinnedByRole := make(map[string]int)
+	for _, pin := range pins {
+		pinnedByRole[pin.Role]++
+	}
+
+	// In the order the Seats are filled, so a Shift short of two Roles names the
+	// more senior first and the message does not shuffle between reads. A Role
+	// nobody offers any more has no place in that order and is answered for
+	// after it, sorted so the message is the same every time.
+	named := make([]string, 0, len(pinnedByRole))
+	for _, role := range roles.ByPriority() {
+		if _, pinned := pinnedByRole[role.Name]; pinned {
+			named = append(named, role.Name)
+			delete(pinnedByRole, role.Name)
+		}
+	}
+	retired := make([]string, 0, len(pinnedByRole))
+	for role := range pinnedByRole {
+		retired = append(retired, role)
+	}
+	sort.Strings(retired)
+
+	for _, role := range append(named, retired...) {
+		if pinned := pinsForRole(pins, role); pinned > seatsByRole[role] {
+			return pinsWithoutSeats(role, pinned, seatsByRole[role], date)
+		}
+	}
+	return nil
+}
+
+func pinsForRole(pins []db.Preallocation, role string) int {
+	count := 0
+	for _, pin := range pins {
+		if pin.Role == role {
+			count++
+		}
+	}
+	return count
+}
+
+// pinsWithoutSeats says which promises the new Shape would break, and what to
+// do about it. Losing the Role altogether and merely running short of it are
+// worth saying differently: one is a Seat that would stop existing, the other a
+// count that does not go round.
+//
+// It counts the pins rather than naming who holds them. A pin stores a
+// volunteer id, so naming one would mean fetching the whole roster to word a
+// refusal — and the screen this refusal lands on is already listing every pin
+// on that shift by name, directly under the row being edited.
+func pinsWithoutSeats(role string, pinned, seats int, date string) error {
+	who := fmt.Sprintf("%d people are", pinned)
+	if pinned == 1 {
+		who = "somebody is"
+	}
+	if seats == 0 {
+		return wrapf(ErrConflict,
+			"%s pinned as %s on %s, so the shift cannot stop asking for a %s: remove the %s first",
+			who, role, readableDate(date), role, plural(pinned, "pin", "pins"))
+	}
+	return wrapf(ErrConflict,
+		"%s pinned as %s on %s, so the shift needs at least %d of them: remove a pin first",
+		who, role, readableDate(date), pinned)
 }
 
 // shapesForAllocation reads the rota's Shapes and refuses when an open Shift

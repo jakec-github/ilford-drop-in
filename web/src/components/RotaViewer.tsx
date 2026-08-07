@@ -6,6 +6,7 @@ import type {
   Role,
   RotaChange,
   RotaShift,
+  ShapeSeat,
   Volunteer,
 } from "../types";
 import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
@@ -23,6 +24,8 @@ import {
   ShiftTimesDialog,
   UnpinDialog,
 } from "./RotaEditDialogs";
+import ShapeForm from "./ShapeForm";
+import { describeShape } from "./shape";
 import { formatShiftTimes } from "./shiftTimes";
 import "./RotaViewer.css";
 
@@ -43,6 +46,12 @@ interface RotaViewerProps {
   // alteration, and unlike a closure not frozen at allocation: the times say
   // when to turn up, and the rota was solved in dates.
   onSetTimes: (shiftId: string, start: string, end: string) => Promise<void>;
+  // Rewrites what one shift asks for. Frozen at allocation like a closure, and
+  // for the same reason: the solver filled Seats against it.
+  onSetShape: (
+    shiftId: string,
+    seats: { roleId: string; count: number }[],
+  ) => Promise<void>;
 }
 
 // A shift that exists but has not been through allocation yet: no assignees,
@@ -258,6 +267,14 @@ interface RowEdit {
   // Editing the hours is offered on every row, allocated or not: the times are
   // descriptive, so nothing about them froze when the rota was solved.
   onEditTimes: () => void;
+  // Whether the Shape can be edited from here at all. False while the Roles
+  // have not loaded: the form asks how many of each Role the shift wants, and
+  // there is nothing to ask about until the list arrives.
+  canEditShape: boolean;
+  // Changing what the shift asks for. Offered on the same terms as the closure
+  // beside it — while the rota is unallocated — because a Shape is an allocator
+  // input too.
+  onEditShape: () => void;
 }
 
 function Chip({
@@ -486,6 +503,21 @@ function PreallocationList({
   );
 }
 
+// ShiftAsksFor says what an unallocated shift is waiting to be filled with.
+// Worth a line of its own on those rows because it is the one thing about them
+// an admin can still change and cannot see anywhere else — and because a shift
+// asking for nobody looks exactly like every other unallocated row until it
+// stops the rota being allocated, so it says so here instead.
+function ShiftAsksFor({ shape }: { shape: ShapeSeat[] }) {
+  return (
+    <span className="shift-shape">
+      {shape.length > 0
+        ? `Asks for ${describeShape(shape)}`
+        : "Asks for nobody — the rota cannot be allocated until it does"}
+    </span>
+  );
+}
+
 // ShiftWhen is a row's first column: the day, and under it the hours. Both come
 // from the shift itself, which is what makes them worth showing per row — a
 // shift keeps the times it was minted with, so one evening running differently
@@ -579,6 +611,7 @@ function ShiftRow({
     body = (
       <div className="shift-unallocated">
         <span className="shift-note">Not yet allocated</span>
+        <ShiftAsksFor shape={shift.shape} />
         {pins.length > 0 && (
           <PreallocationList
             date={shift.date}
@@ -602,6 +635,20 @@ function ShiftRow({
             >
               + Pin
             </button>
+            {/* Only on these rows: the branch this sits in is exactly the open,
+                unallocated shifts, which is where a Shape can still change. An
+                allocated rota was solved against its Shapes, and a closed shift
+                is not asking anybody for anything. */}
+            {edit.canEditShape && (
+              <button
+                type="button"
+                className="shift-add shift-shape-edit"
+                aria-label={`Change what ${formatShiftDateLong(shift.date)} asks for`}
+                onClick={edit.onEditShape}
+              >
+                Shape
+              </button>
+            )}
             {closureButton}
           </div>
         )}
@@ -768,7 +815,10 @@ type EditDialog =
   // pin: it changes whether the drop-in runs that day at all.
   | { kind: "closure"; shift: RotaShift }
   // A shift's hours being moved, which may move the shift to another day.
-  | { kind: "times"; shift: RotaShift };
+  | { kind: "times"; shift: RotaShift }
+  // What a shift asks for, which is neither of the above: it is what allocation
+  // will try to fill, and it is fixed once allocation has.
+  | { kind: "shape"; shift: RotaShift };
 
 export default function RotaViewer({
   rotaShifts,
@@ -776,6 +826,7 @@ export default function RotaViewer({
   onChange,
   onSetClosed,
   onSetTimes,
+  onSetShape,
 }: RotaViewerProps) {
   const [selectedName, setSelectedName] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -807,7 +858,9 @@ export default function RotaViewer({
   // What each Role is drawn in. Public, and fetched whoever is looking: the
   // chips are the rota. A failure leaves every chip in the default colour,
   // which is a rota that reads fine, so it is not reported here.
-  const { colourOf } = useRoles();
+  // The Roles themselves, not only their colours: editing a Shape asks how many
+  // of each Role a shift wants, so it needs the list and each Role's ceiling.
+  const { roles, colourOf } = useRoles();
 
   // The roster is only needed to add someone, and it is admin-only, so it is
   // not fetched until an admin turns editing on.
@@ -1166,6 +1219,12 @@ export default function RotaViewer({
         setOpenMenu(null);
         setDialog({ kind: "times", shift });
       },
+      canEditShape: roles !== null,
+      onEditShape: () => {
+        setChangeError(null);
+        setOpenMenu(null);
+        setDialog({ kind: "shape", shift });
+      },
     };
   }
 
@@ -1323,7 +1382,8 @@ export default function RotaViewer({
             <>
               {" "}
               Shifts the rota has not been run for take pins instead: whoever
-              you pin there is guaranteed the shift when it is allocated.
+              you pin there is guaranteed the shift when it is allocated, and
+              Shape changes how many places of each Role that shift has.
             </>
           )}
           {hasClosable && (
@@ -1441,6 +1501,22 @@ export default function RotaViewer({
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={(start, end) => void submitTimes(dialog.shift, start, end)}
+        />
+      )}
+
+      {/* Its own dialog rather than one of the confirm ones, and its errors are
+          its own too: a refusal here names the Role whose ceiling was hit or
+          the person pinned to a Seat that would go, and the form stays open on
+          what was typed so the number can be corrected rather than retyped. */}
+      {editing && dialog?.kind === "shape" && roles && (
+        <ShapeForm
+          title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
+          intro="How many places of each Role this shift has. It starts from the default shape and can differ from every other shift; leave a Role at 0 if this one does not need it."
+          saveLabel="Save shape"
+          roles={roles}
+          shape={dialog.shift.shape}
+          onSave={(seats) => onSetShape(dialog.shift.id, seats)}
+          onClose={() => setDialog(null)}
         />
       )}
 

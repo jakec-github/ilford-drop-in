@@ -27,6 +27,9 @@ type mockListShiftsStore struct {
 	shifts      []db.ShiftInRange
 	allocations []db.Allocation
 	alterations []db.Alteration
+	// What each shift asks for, by shift id. Absent means a shift asking for
+	// nobody, which is what a shift minted before Shapes existed looks like.
+	shapes map[string][]db.ShiftRequirement
 }
 
 // allShifts is the canonical shift set the store would hold, each with an id.
@@ -100,6 +103,17 @@ func (m *mockListShiftsStore) GetAlterationsByShiftIDs(ctx context.Context, shif
 		}
 	}
 	return filtered, nil
+}
+
+func (m *mockListShiftsStore) GetShiftShapes(_ context.Context, shiftIDs []string) (map[string][]db.ShiftRequirement, error) {
+	want := idSet(shiftIDs)
+	shapes := make(map[string][]db.ShiftRequirement)
+	for id, seats := range m.shapes {
+		if want[id] {
+			shapes[id] = seats
+		}
+	}
+	return shapes, nil
 }
 
 // listShiftsVolunteers returns a volunteer client with display names computed
@@ -203,6 +217,47 @@ func TestListShifts_BaseAllocationsReportAllocated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, shifts, 1)
 	assert.True(t, shifts[0].Allocated)
+}
+
+// Each shift carries the Shape it holds rather than the settings' one, so two
+// shifts of a rota can legitimately differ — which is the whole point of
+// editing one (issue #138). A shift with no stored Seats asks for nobody, and
+// says so by carrying nothing rather than by being absent from the listing.
+func TestListShifts_CarriesEachShiftsOwnShape(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockListShiftsStore{
+		shifts: []db.ShiftInRange{
+			{Shift: db.Shift{ID: "shift-1", Date: "2025-01-05", RotaID: "rota-1"}},
+			{Shift: db.Shift{ID: "shift-2", Date: "2025-01-12", RotaID: "rota-1"}},
+			{Shift: db.Shift{ID: "shift-3", Date: "2025-01-19", RotaID: "rota-1"}},
+		},
+		shapes: map[string][]db.ShiftRequirement{
+			"shift-1": {
+				{ShiftID: "shift-1", RoleID: "role-team-lead", Seats: 1},
+				{ShiftID: "shift-1", RoleID: "role-service-volunteer", Seats: 4},
+			},
+			"shift-2": {
+				{ShiftID: "shift-2", RoleID: "role-service-volunteer", Seats: 2},
+			},
+		},
+	}
+
+	shifts, err := ListShifts(ctx, store, listShiftsVolunteers(), testCfg, ListShiftsParams{}, logger)
+	require.NoError(t, err)
+	require.Len(t, shifts, 3)
+
+	require.Len(t, shifts[0].Shape, 2)
+	assert.Equal(t, "Team lead", shifts[0].Shape[0].Role.Name)
+	assert.Equal(t, 1, shifts[0].Shape[0].Count)
+	assert.Equal(t, "Service volunteer", shifts[0].Shape[1].Role.Name)
+	assert.Equal(t, 4, shifts[0].Shape[1].Count)
+
+	require.Len(t, shifts[1].Shape, 1)
+	assert.Equal(t, 2, shifts[1].Shape[0].Count)
+
+	assert.Empty(t, shifts[2].Shape)
 }
 
 func TestListShifts_AlterationsApplied(t *testing.T) {

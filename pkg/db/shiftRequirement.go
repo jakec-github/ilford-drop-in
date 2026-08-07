@@ -2,7 +2,10 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ShiftRequirement is one entry of one Shift's stored Shape: how many Seats of
@@ -60,8 +63,9 @@ func (d *DB) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string]
 }
 
 // insertShiftRequirements writes Seats onto Shifts within a caller's
-// transaction. It is unexported and takes a querier because the only moment a
-// Shape is written is the moment its Shift is (InsertDefinedRota), and a Shape
+// transaction. It is unexported and takes a querier because a Shape is only
+// ever written alongside something else — its Shift, when the rota is defined
+// (InsertDefinedRota), or the Shape it replaces (setShiftShape) — and a Shape
 // arriving without its Shift is the state this table must never be in.
 func insertShiftRequirements(ctx context.Context, q querier, requirements []ShiftRequirement) error {
 	for _, seat := range requirements {
@@ -73,4 +77,35 @@ func insertShiftRequirements(ctx context.Context, q querier, requirements []Shif
 		}
 	}
 	return nil
+}
+
+// setShiftShape replaces one Shift's Shape with the Seats given, reporting
+// whether the Shift exists at all (issue #138).
+//
+// Replaced rather than merged, for the reason SaveDefaultShape is: a Role
+// dropped from a Shape is a Role that Shift no longer asks for, and no upsert
+// can say that. Passing nothing leaves the Shift asking for nobody, which is a
+// state the table can hold and allocation refuses over.
+//
+// The existence check is a separate statement because the delete cannot answer
+// it: a Shift with no Seats and a Shift that does not exist both delete nought
+// rows, and only one of them is a caller's mistake. It runs inside the caller's
+// locking transaction, so nothing can remove the Shift between the two.
+func setShiftShape(ctx context.Context, q querier, shiftID string, seats []ShiftRequirement) (bool, error) {
+	var exists bool
+	if err := q.QueryRow(ctx, `SELECT true FROM shift WHERE id = $1`, shiftID).Scan(&exists); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to look up shift %s: %w", shiftID, err)
+	}
+
+	if _, err := q.Exec(ctx, `DELETE FROM shift_requirement WHERE shift_id = $1`, shiftID); err != nil {
+		return false, fmt.Errorf("failed to clear the shape of shift %s: %w", shiftID, err)
+	}
+
+	if err := insertShiftRequirements(ctx, q, seats); err != nil {
+		return false, err
+	}
+	return true, nil
 }

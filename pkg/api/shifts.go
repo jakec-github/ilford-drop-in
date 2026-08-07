@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -23,9 +24,19 @@ type shiftResponse struct {
 	// drop-in runs. Conversion to a moment belongs where it is actually needed,
 	// and the one place that needs it is the calendar feed, which does it
 	// server-side.
-	Start     string             `json:"start"`
-	End       string             `json:"end"`
-	Closed    bool               `json:"closed"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	Closed bool   `json:"closed"`
+	// Shape is what this shift asks for, in the order its Seats are filled. It
+	// is the shift's own copy rather than the settings' one, so two shifts of a
+	// rota may differ — which is what per-shift editing is for (issue #138).
+	// Never null: a shift nobody has stated a Shape for asks for nobody, which
+	// is an empty list rather than an absence to guard against.
+	//
+	// Public, like the roles it names: what a shift is asking for is the same
+	// kind of fact as when it runs, and the rota page renders it for whoever is
+	// looking. Editing it is admin-only.
+	Shape     []seatResponse     `json:"shape"`
 	Allocated bool               `json:"allocated"`
 	Assignees []assigneeResponse `json:"assignees"`
 }
@@ -73,6 +84,7 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 			Start:     shift.StartAt,
 			End:       shift.EndAt,
 			Closed:    shift.Closed,
+			Shape:     toSeatResponses(shift.Shape),
 			Allocated: shift.Allocated,
 			Assignees: assignees,
 		})
@@ -137,4 +149,61 @@ func (h *Handler) handleUpdateShift(w http.ResponseWriter, r *http.Request) {
 		End:    shift.EndAt,
 		Closed: shift.Closed,
 	})
+}
+
+// shiftShapeRequest is what one Shift asks for, stated whole. A Role missing
+// from `seats` is a Role that Shift no longer asks for — there is no other way
+// to say it, and no way to say it one Seat at a time, which is why this is a
+// PUT of the Shape rather than a PATCH of the Shift beside the fields above.
+type shiftShapeRequest struct {
+	Seats []seatRequest `json:"seats"`
+}
+
+// shiftShapeResponse is the Shape as it now stands, in the order its Seats are
+// filled. Not the whole shift: the client re-reads the rota anyway, and the one
+// thing this endpoint changed is the one thing worth answering with.
+type shiftShapeResponse struct {
+	Shape []seatResponse `json:"shape"`
+}
+
+// handleSaveShiftShape rewrites what one Shift asks for. Refusals map to
+// 400/404/409 via writeServiceError — a Seat past a Role's ceiling, an unknown
+// shift, an allocated rota whose Shapes are fixed, or a Preallocation the new
+// Shape would leave without a Seat.
+func (h *Handler) handleSaveShiftShape(w http.ResponseWriter, r *http.Request) {
+	var req shiftShapeRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	seats := make([]services.SeatParams, 0, len(req.Seats))
+	for _, seat := range req.Seats {
+		seats = append(seats, services.SeatParams{RoleID: seat.RoleID, Count: seat.Count})
+	}
+
+	shape, err := services.SaveShiftShape(r.Context(), h.store, r.PathValue("id"), seats, h.logger)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, shiftShapeResponse{Shape: toSeatResponses(shape)})
+}
+
+// toSeatResponses renders a Shape as the Seats a client reads. Never null, so a
+// Shape asking for nobody is an empty list on the wire rather than a null a
+// caller has to guard against.
+func toSeatResponses(shape model.Shape) []seatResponse {
+	seats := make([]seatResponse, 0, len(shape))
+	for _, seat := range shape {
+		seats = append(seats, seatResponse{
+			RoleID: seat.Role.ID,
+			Role:   seat.Role.Name,
+			Count:  seat.Count,
+		})
+	}
+	return seats
 }

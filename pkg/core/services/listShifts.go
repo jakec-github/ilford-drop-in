@@ -21,7 +21,7 @@ import (
 // not a second date scan), and supply the effective assignees for shifts whose
 // rota has been allocated.
 type ListShiftsStore interface {
-	RoleStore
+	ShiftShapeStore
 	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
@@ -53,9 +53,17 @@ type Shift struct {
 	// shift minted before an admin set the drop-in's times; readers that need a
 	// moment turn these into one with model.RotaDefaults.ShiftInstants, and
 	// leave the time out when they are empty.
-	StartAt         string
-	EndAt           string
-	Closed          bool
+	StartAt string
+	EndAt   string
+	Closed  bool
+	// Shape is what this shift asks for: which Roles, and how many Seats of
+	// each, in the order they are filled. It is the shift's own — copied from
+	// the default Shape when the rota was defined and editable per shift until
+	// the rota is allocated (issues #137, #138) — so two shifts of one rota may
+	// legitimately differ. Empty for a shift nobody has stated a Shape for,
+	// which is a shift asking for nobody and the one thing allocation refuses
+	// over.
+	Shape           model.Shape
 	Allocated       bool // rota's allocated_datetime is set; assignees are meaningful only when true
 	Assignees       []ShiftAssignee
 	AlterationCount int       // number of alterations recorded for the date
@@ -107,6 +115,14 @@ func ListShifts(
 		return nil, err
 	}
 
+	// What each shift asks for, read here rather than left to a second call: it
+	// is a property of the shift, and the screen that edits one Shape shows the
+	// rota it belongs to.
+	shapes, err := ShiftShapes(ctx, database, shiftIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
@@ -150,6 +166,7 @@ func ListShifts(
 			StartAt:         s.StartAt,
 			EndAt:           s.EndAt,
 			Closed:          s.Closed,
+			Shape:           shapes[s.ID],
 			Allocated:       s.Allocated,
 			AlterationCount: alterationCounts[s.ID],
 			LastChanged:     lastChanged[s.ID],

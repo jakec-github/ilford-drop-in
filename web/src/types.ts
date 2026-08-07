@@ -392,6 +392,12 @@ export interface RotaShift {
   // allocated is false for a minted shift whose rota has not been run yet: it
   // exists but has no assignees. Shown only to admins (with a distinct style).
   allocated: boolean;
+  // What this shift asks for, in the order its Seats are filled. The shift's
+  // own — a copy of the default Shape taken when the rota was defined, editable
+  // per shift until the rota is allocated — so two shifts of one rota may
+  // legitimately differ. Empty means a shift asking for nobody, which is the
+  // one thing that stops the rota being allocated.
+  shape: ShapeSeat[];
   assignees: Assignee[];
 }
 

@@ -312,6 +312,13 @@
   min-width: 0;
 }
 
+/* What the shift is waiting to be filled with. Quieter than the note above it:
+   the state of the shift is the headline, and this is a detail of it. */
+.shift-shape {
+  font-size: 13px;
+  color: var(--text);
+}
+
 .prealloc {
   display: flex;
   flex-wrap: wrap;

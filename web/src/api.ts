@@ -18,6 +18,7 @@ import type {
   RotaShift,
   SendMode,
   SendOutcome,
+  ShapeSeat,
   ShiftTimes,
   StandingPreallocation,
   Volunteer,
@@ -43,6 +44,10 @@ interface ApiShift {
   end: string;
   closed: boolean;
   allocated: boolean;
+  // What the shift asks for. Absent from a server that predates per-shift
+  // Shapes, which reads as a shift asking for nobody — the same thing the
+  // server says with an empty list.
+  shape?: ShapeSeat[];
   assignees: ApiAssignee[];
 }
 
@@ -104,6 +109,7 @@ function toRotaShift(shift: ApiShift): RotaShift {
     end: shift.end,
     closed: shift.closed,
     allocated: shift.allocated,
+    shape: shift.shape ?? [],
     // Closed shifts carry no meaningful assignees.
     assignees: shift.closed
       ? []
@@ -577,6 +583,29 @@ export function setShiftTimes(
   end: string,
 ): Promise<void> {
   return patchShift(shiftId, { start, end }, "Failed to save the shift times");
+}
+
+// setShiftShape rewrites what one shift asks for, stated whole for the same
+// reason the default Shape is: a Role missing from `seats` is a Role that shift
+// no longer asks for.
+//
+// Its own endpoint rather than another field of the PATCH above, because those
+// two absences would mean opposite things in one body — an omitted field is
+// left alone, an omitted Role is dropped. A 409 means the rota has been
+// allocated, so its Shapes are what it was made from, or somebody is pinned to
+// a Seat the new Shape does not offer; either way the message says which.
+export async function setShiftShape(
+  shiftId: string,
+  seats: { roleId: string; count: number }[],
+): Promise<void> {
+  const res = await fetch(`/api/shifts/${encodeURIComponent(shiftId)}/shape`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seats }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to save the shift shape"));
+  }
 }
 
 interface ApiAvailabilityEntry {

@@ -206,15 +206,6 @@ func (h *Handler) writeSettings(w http.ResponseWriter, r *http.Request, defaults
 }
 
 func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rotaDefaultsResponse {
-	seats := make([]seatResponse, 0, len(shape))
-	for _, seat := range shape {
-		seats = append(seats, seatResponse{
-			RoleID: seat.Role.ID,
-			Role:   seat.Role.Name,
-			Count:  seat.Count,
-		})
-	}
-
 	constraints := make([]switchableConstraint, 0, len(model.SwitchableConstraints))
 	for _, c := range model.SwitchableConstraints {
 		constraints = append(constraints, switchableConstraint{
@@ -229,7 +220,7 @@ func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rota
 		ShiftStartTime:        defaults.ShiftStartTime,
 		ShiftEndTime:          defaults.ShiftEndTime,
 		ShiftTimezone:         defaults.Timezone(),
-		DefaultShape:          seats,
+		DefaultShape:          toSeatResponses(shape),
 		AllocationSettings:    toAllocationSettingsResponse(defaults.AllocationSettings),
 		SwitchableConstraints: constraints,
 	}
