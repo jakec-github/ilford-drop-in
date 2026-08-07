@@ -64,6 +64,7 @@ does not apply to you.
 - Never commit directly to main. Start each ticket on a branch named
   `issue-<n>-<slug>`, cut from up-to-date main. Ensure that main is up-to-date
   with origin/main.
+- Unless asked otherwise complete work in a worktree.
 - When the ticket's acceptance criteria pass, run `scripts/check.sh` — build,
   vet, tests (with the database up, so they cannot silently skip), the
   pyallocator suite, frontend typecheck and lint, in one exit code. Then push the branch and open a PR with
