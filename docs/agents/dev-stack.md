@@ -263,7 +263,7 @@ one (#144). The whole journey is reachable here, end to end. So:
 | Login and logout | The header shows the signed-in address and a Log out button |
 | Header nav | Rota ↔ Admin |
 | `/admin` tab routing | Redirects to `/admin/volunteers`. Three tabs: Volunteers, Settings, Allocation |
-| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form, prefilled from `GET /api/rotations/proposed` and editable, plus a pointer to the rota already out. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireAdmin` |
+| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form on its own, prefilled from `GET /api/rotations/proposed` and editable — except the shift count, which starts empty. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireAdmin` |
 | The availability round | Part of the Allocation tab. Starts a round for the rota in flight and shows it as a grid — groups down the side, shifts along the top, each Role's surplus or deficit above the answers. Rows open to their members' links. Desktop first: it scrolls sideways on a phone |
 | The volunteer's form | `/availability/<token>`, public — no session, no header, mobile first |
 | Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |

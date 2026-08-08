@@ -399,9 +399,7 @@ export default function AdminAllocation() {
         />
       )}
 
-      {!loading && inFlight === null && (
-        <DefineRota shifts={shifts} onDefined={reloadBoth} />
-      )}
+      {!loading && inFlight === null && <DefineRota onDefined={reloadBoth} />}
     </>
   );
 }

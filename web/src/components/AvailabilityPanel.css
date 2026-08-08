@@ -1,3 +1,33 @@
+/* The responses panel is allowed out of the admin column when the desk has
+   room for it (issue #174).
+   The grid inside is as wide as the rota is long, so no fixed column can
+   promise it fits — a thirteen-week rota needs about 1250px and the wide admin
+   shell gives it 974. It used to scroll sideways on a screen with hundreds of
+   spare pixels either side of the page.
+   This wrapper reclaims those: it widens into the gutter the centred page
+   leaves, and centres the panel in what it has taken. The panel itself is a
+   flex item sized by its content, so a short rota still looks like every other
+   panel on the tab and only a long one uses the desk. `100vw` counts the
+   scrollbar on the browsers that reserve space for one, hence the rem of slack
+   over the 66rem the wide page occupies. */
+.round-bleed {
+  --bleed: max(0px, (100vw - 67rem) / 2);
+  display: flex;
+  justify-content: center;
+  margin-inline: calc(-1 * var(--bleed));
+}
+
+/* Named through the wrapper, because both halves of the sizing below are
+   written in terms of the bleed it declares. */
+.round-bleed > .round {
+  /* The panel's padding and border are inside the widths, which are measured
+     against the wrapper — so subtracting the bleed gives back exactly the
+     column the panel would have filled on its own. */
+  box-sizing: border-box;
+  min-width: calc(100% - 2 * var(--bleed));
+  max-width: 100%;
+}
+
 /* Title left, the one action top right — the same shape as the volunteers tab,
    so the admin area reads consistently. */
 .round-head {

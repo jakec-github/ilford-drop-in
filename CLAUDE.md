@@ -27,6 +27,10 @@ does not apply to you.
   desk. An admin tool comparing several things at once (the responses grid) is
   allowed to be wider than a phone and scroll sideways; do not fold it into one
   column to avoid that. `admin-page--wide` on a tab widens the shell for one.
+  A grid whose width is data — the responses grid is as wide as the rota is
+  long — needs more than a wider fixed shell: `.round-bleed` lets that one
+  panel out of the column as far as the viewport allows, so it only scrolls
+  sideways when the screen really is too narrow.
 
 # Maintainer & agent operations
 

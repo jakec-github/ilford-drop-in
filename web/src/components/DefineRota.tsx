@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "wouter";
 import Button from "../ui/Button";
 import { useDefineRota } from "../hooks/useDefineRota";
 import { useRoles } from "../hooks/useRoles";
@@ -9,15 +8,9 @@ import type {
   ConfiguredRole,
   NewRota,
   RotaProposal,
-  RotaShift,
   ShapeSeat,
 } from "../types";
 import "./DefineRota.css";
-
-// How many shifts a rota has when nobody has said. The server has no opinion —
-// no rota implies how long the next one should be — so the number lives here,
-// where it is a starting point rather than a rule.
-const DEFAULT_SHIFT_COUNT = "6";
 
 // "Sun 2 Aug 2026" — the weekday is worth showing here, unlike on the rota
 // itself: what an admin is checking is that the weeks they expected were taken.
@@ -59,7 +52,11 @@ function DefineRotaForm({
   defining: boolean;
   onDefine: (rota: NewRota) => void;
 }) {
-  const [shiftCount, setShiftCount] = useState(DEFAULT_SHIFT_COUNT);
+  // Empty, unlike every other field. The rest start from the proposal because
+  // there is a right answer to start from; how long the next rota should run is
+  // a decision nobody has made yet, and a number already in the box is one an
+  // admin can define a rota without ever reading (issue #174).
+  const [shiftCount, setShiftCount] = useState("");
   const [startDate, setStartDate] = useState(proposal.startDate);
   const [startTime, setStartTime] = useState(proposal.shiftStartTime);
   const [endTime, setEndTime] = useState(proposal.shiftEndTime);
@@ -202,45 +199,20 @@ function DefineRotaForm({
   );
 }
 
-// Where the rota that is already out lives. The Allocation tab has nothing to
-// say about an allocated rota — it is the rota now, and the rota page is what
-// shows one — so this is a pointer rather than a copy of it.
-//
-// The date is the last shift still to come, not the rota's end: what an admin
-// wants from this line is "how long have I got", and a rota that has run out is
-// exactly the case where the pointer matters most and has no date to give.
-function LastRotaPointer({ lastShiftDate }: { lastShiftDate: string | null }) {
-  return (
-    <p className="define-rota-last">
-      {lastShiftDate === null ? (
-        <>
-          There are no shifts left on the rota. Whatever was allocated last is on
-          the <Link href="/">rota page</Link>.
-        </>
-      ) : (
-        <>
-          The rota already allocated runs to {formatShiftDate(lastShiftDate)} —
-          see it on the <Link href="/">rota page</Link>.
-        </>
-      )}
-    </p>
-  );
-}
-
 // DefineRota is the Allocation tab with nothing in flight: the form that starts
-// the next rota, and a pointer to the one already out.
+// the next rota, and nothing else.
 //
-// There is no third thing here. Everything else the tab does — preparing the
-// shifts, the round, the draft, allocating — is about a rota that exists, and
-// none of it can be done to one that does not.
+// It used to carry a pointer to the rota already out under the form. That has
+// gone (issue #174): the rota page is one click away in the header and has far
+// more to say about an allocated rota than a date could, so the line was a
+// second place to look rather than an answer.
+//
+// Everything else the tab does — preparing the shifts, the round, the draft,
+// allocating — is about a rota that exists, and none of it can be done to one
+// that does not.
 export default function DefineRota({
-  shifts,
   onDefined,
 }: {
-  // The rota as the rota page shows it, or null while it is still loading. Used
-  // only to name the last shift still to come; a rota being defined here has
-  // none of its own yet.
-  shifts: RotaShift[] | null;
   // Called after a define that may have worked. The tab re-reads what is in
   // flight, which is what swaps this screen for the working one.
   onDefined: () => void;
@@ -248,66 +220,54 @@ export default function DefineRota({
   const { proposal, rota, error, defining, define } = useDefineRota();
   const { roles } = useRoles();
 
-  const lastShiftDate =
-    shifts !== null && shifts.length > 0
-      ? shifts[shifts.length - 1].date
-      : null;
-
   return (
-    <>
-      <section className="admin-panel define-rota">
-        <h2>Define the next rota</h2>
+    <section className="admin-panel define-rota">
+      <h2>Define the next rota</h2>
 
-        {proposal === null && !error && (
-          <p className="define-rota-intro">Working out the next rota…</p>
+      {proposal === null && !error && (
+        <p className="define-rota-intro">Working out the next rota…</p>
+      )}
+
+      {proposal !== null && (
+        <DefineRotaForm
+          proposal={proposal}
+          roles={roles}
+          defining={defining}
+          onDefine={(next) => {
+            // Reloading whatever the outcome: a define that succeeded put a
+            // rota in flight, and one that was refused most likely means one
+            // already was.
+            void define(next).then(onDefined);
+          }}
+        />
+      )}
+
+      {/* aria-live so the outcome reaches a screen reader: submitting moves
+          nothing into focus, so an unannounced result would go unnoticed. */}
+      <div aria-live="polite">
+        {error && (
+          <p className="define-rota-error">Could not define: {error}</p>
         )}
 
-        {proposal !== null && (
-          <DefineRotaForm
-            proposal={proposal}
-            roles={roles}
-            defining={defining}
-            onDefine={(next) => {
-              // Reloading whatever the outcome: a define that succeeded put a
-              // rota in flight, and one that was refused most likely means one
-              // already was.
-              void define(next).then(onDefined);
-            }}
-          />
+        {/* Only until the tab re-reads and swaps this whole screen for the
+            working one, which is the real confirmation. Worth showing in the
+            meantime: the dates are the one thing the form did not state
+            outright, and a shift landing on a day nobody expected is easiest
+            to see here. */}
+        {rota && (
+          <>
+            <p className="define-rota-result">
+              Defined {rota.shiftDates.length}{" "}
+              {rota.shiftDates.length === 1 ? "shift" : "shifts"}:
+            </p>
+            <ol className="define-rota-dates">
+              {rota.shiftDates.map((date) => (
+                <li key={date}>{formatShiftDate(date)}</li>
+              ))}
+            </ol>
+          </>
         )}
-
-        {/* aria-live so the outcome reaches a screen reader: submitting moves
-            nothing into focus, so an unannounced result would go unnoticed. */}
-        <div aria-live="polite">
-          {error && (
-            <p className="define-rota-error">Could not define: {error}</p>
-          )}
-
-          {/* Only until the tab re-reads and swaps this whole screen for the
-              working one, which is the real confirmation. Worth showing in the
-              meantime: the dates are the one thing the form did not state
-              outright, and a shift landing on a day nobody expected is easiest
-              to see here. */}
-          {rota && (
-            <>
-              <p className="define-rota-result">
-                Defined {rota.shiftDates.length}{" "}
-                {rota.shiftDates.length === 1 ? "shift" : "shifts"}:
-              </p>
-              <ol className="define-rota-dates">
-                {rota.shiftDates.map((date) => (
-                  <li key={date}>{formatShiftDate(date)}</li>
-                ))}
-              </ol>
-            </>
-          )}
-        </div>
-      </section>
-
-      <section className="admin-panel">
-        <h2>The rota that is out</h2>
-        <LastRotaPointer lastShiftDate={lastShiftDate} />
-      </section>
-    </>
+      </div>
+    </section>
   );
 }

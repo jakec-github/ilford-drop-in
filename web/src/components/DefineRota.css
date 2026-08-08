@@ -127,10 +127,3 @@
 .define-rota-dates li {
   padding: 0.125rem 0;
 }
-
-/* Where the rota already out lives. Quiet: it is a signpost, not a section —
-   the rota page is what has anything to say about an allocated rota. */
-.define-rota-last {
-  margin: 0;
-  font-size: 0.875rem;
-}
