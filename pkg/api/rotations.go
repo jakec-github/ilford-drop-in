@@ -99,8 +99,9 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 //
 // It mirrors the define request field for field, which is the point — the
 // screen shows what comes back, the admin edits what they like, and what goes
-// out is the same shape of thing. The shift count is not here: no rota implies
-// how long the next one should be, so the form starts on its own default.
+// out is the same shape of thing. The shift count is not here, and the form has
+// no default for it either: no rota implies how long the next one should be, so
+// it is the one field an admin has to state (issue #174).
 //
 // The times and the Shape may be empty, which means the Rota Defaults have not
 // been stated. The form renders that as empty boxes rather than refusing: an

@@ -191,107 +191,113 @@ export default function AvailabilityPanel() {
   };
 
   return (
-    <section className="admin-panel round">
-      <header className="round-head">
-        <h2>Availability</h2>
-        {round && !round.allocated && (
-          <Button
-            size="small"
-            onClick={() => void mint()}
-            disabled={mintState === "minting"}
-          >
-            {mintState === "minting"
-              ? "Starting…"
-              : total === 0
-                ? "Start round"
-                : "Top up round"}
-          </Button>
-        )}
-      </header>
+    // The panel is wrapped rather than laid out in place: the grid inside it is
+    // as wide as the rota is long, so this is the one panel on the tab that has
+    // to be able to leave the admin column. What that takes is a box wider than
+    // the column to centre it in — see the CSS (issue #174).
+    <div className="round-bleed">
+      <section className="admin-panel round">
+        <header className="round-head">
+          <h2>Availability</h2>
+          {round && !round.allocated && (
+            <Button
+              size="small"
+              onClick={() => void mint()}
+              disabled={mintState === "minting"}
+            >
+              {mintState === "minting"
+                ? "Starting…"
+                : total === 0
+                  ? "Start round"
+                  : "Top up round"}
+            </Button>
+          )}
+        </header>
 
-      {error && (
-        <p className="round-message round-message--error">
-          Could not load the round: {error}
-        </p>
-      )}
-
-      {sendError !== null && (
-        <p className="round-message round-message--error">{sendError}</p>
-      )}
-
-      {send !== null && <SendReport send={send} onDismiss={dismiss} />}
-
-      {pending !== null && (
-        <SendDialog
-          pending={pending}
-          onSend={startSend}
-          onClose={() => setPending(null)}
-        />
-      )}
-
-      {round === null && !error && (
-        <p className="round-message">Loading the round…</p>
-      )}
-
-      {round && (
-        <>
-          <p className="round-caption">
-            Rota {formatRange(round)} · {round.shifts.length} dates
-            {round.allocated && " · already allocated, links have closed"}
+        {error && (
+          <p className="round-message round-message--error">
+            Could not load the round: {error}
           </p>
+        )}
 
-          {/* Sending is separate from minting on purpose: minting writes the
-              links and needs no Google access, sending is a repeatable action
-              over links that already exist. An allocated round has none worth
-              sending, so the actions go with it. */}
-          {!round.allocated && total > 0 && (
-            <div className="round-actions">
-              <Button
-                size="small"
-                disabled={unsent === 0}
-                onClick={() => setPending({ mode: "round" })}
-              >
-                {unsent === 0 ? "All sent" : `Send round (${unsent})`}
-              </Button>
-              <Button
-                size="small"
-                disabled={toChase === 0}
-                onClick={() => setPending({ mode: "reminder" })}
-              >
-                {toChase === 0
-                  ? "Nobody to chase"
-                  : `Send reminders (${toChase})`}
-              </Button>
-            </div>
-          )}
+        {sendError !== null && (
+          <p className="round-message round-message--error">{sendError}</p>
+        )}
 
-          {total === 0 ? (
-            <p className="round-message">
-              Nobody has been asked yet. Starting a round gives every active
-              volunteer their own link.
+        {send !== null && <SendReport send={send} onDismiss={dismiss} />}
+
+        {pending !== null && (
+          <SendDialog
+            pending={pending}
+            onSend={startSend}
+            onClose={() => setPending(null)}
+          />
+        )}
+
+        {round === null && !error && (
+          <p className="round-message">Loading the round…</p>
+        )}
+
+        {round && (
+          <>
+            <p className="round-caption">
+              Rota {formatRange(round)} · {round.shifts.length} dates
+              {round.allocated && " · already allocated, links have closed"}
             </p>
-          ) : (
-            <>
-              <h3 className="round-section">
-                Responses
-                <span className="round-progress">
-                  {replied} of {total} groups replied
-                </span>
-              </h3>
-              <ResponseGrid
-                round={round}
-                onResend={(member) =>
-                  setPending({
-                    mode: "resend",
-                    volunteerId: member.volunteerId,
-                    volunteerName: member.volunteerName,
-                  })
-                }
-              />
-            </>
-          )}
-        </>
-      )}
-    </section>
+
+            {/* Sending is separate from minting on purpose: minting writes the
+                links and needs no Google access, sending is a repeatable action
+                over links that already exist. An allocated round has none worth
+                sending, so the actions go with it. */}
+            {!round.allocated && total > 0 && (
+              <div className="round-actions">
+                <Button
+                  size="small"
+                  disabled={unsent === 0}
+                  onClick={() => setPending({ mode: "round" })}
+                >
+                  {unsent === 0 ? "All sent" : `Send round (${unsent})`}
+                </Button>
+                <Button
+                  size="small"
+                  disabled={toChase === 0}
+                  onClick={() => setPending({ mode: "reminder" })}
+                >
+                  {toChase === 0
+                    ? "Nobody to chase"
+                    : `Send reminders (${toChase})`}
+                </Button>
+              </div>
+            )}
+
+            {total === 0 ? (
+              <p className="round-message">
+                Nobody has been asked yet. Starting a round gives every active
+                volunteer their own link.
+              </p>
+            ) : (
+              <>
+                <h3 className="round-section">
+                  Responses
+                  <span className="round-progress">
+                    {replied} of {total} groups replied
+                  </span>
+                </h3>
+                <ResponseGrid
+                  round={round}
+                  onResend={(member) =>
+                    setPending({
+                      mode: "resend",
+                      volunteerId: member.volunteerId,
+                      volunteerName: member.volunteerName,
+                    })
+                  }
+                />
+              </>
+            )}
+          </>
+        )}
+      </section>
+    </div>
   );
 }
