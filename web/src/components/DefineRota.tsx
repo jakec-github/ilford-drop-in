@@ -1,15 +1,8 @@
 import { useState } from "react";
 import Button from "../ui/Button";
 import { useDefineRota } from "../hooks/useDefineRota";
-import { useRoles } from "../hooks/useRoles";
-import ShapeForm from "./ShapeForm";
-import { describeShape } from "./shape";
-import type {
-  ConfiguredRole,
-  NewRota,
-  RotaProposal,
-  ShapeSeat,
-} from "../types";
+import RotaDefaultsCard from "./RotaDefaultsCard";
+import type { NewRota, RotaProposal } from "../types";
 import "./DefineRota.css";
 
 // "Sun 2 Aug 2026" — the weekday is worth showing here, unlike on the rota
@@ -23,52 +16,45 @@ function formatShiftDate(dateStr: string): string {
   });
 }
 
-// DefineRotaForm is the define screen: the whole of the rota about to be made,
-// on one form (issue #140).
+// DefineRotaForm is the define screen's form: how many shifts, and from when.
 //
-// Every field starts from the proposal and every field can be changed. The
-// start date is the one an admin is most likely to touch — a rota can begin
-// after a break rather than the week after the last one — but the hours and the
-// Shape are here too, so a rota that runs differently for a few weeks does not
-// need the settings edited and put back.
+// It used to carry the hours and the Shape as well, each prefilled from the
+// Rota Defaults and each a field of this rota alone (issue #140). They have
+// gone (issue #176). Two places to state the same thing was one too many: an
+// admin who set the hours here was surprised to find the settings unchanged,
+// and one who set them on Settings was surprised to find them changeable here.
+// The Rota Defaults card below the form is now the only place either is said,
+// and defining spends whatever it shows.
 //
-// What is stated here applies to this rota alone. The Rota Defaults are what the
-// form began from, not what it writes to, and the note under the form is the one
-// place that is said.
+// What is left is the two answers that are nobody's setting. The start date is
+// the one an admin is most likely to touch — a rota can begin after a break
+// rather than the week after the last one.
 //
 // It is mounted on a loaded proposal and never sees a null one, which is what
-// lets each field initialise from it directly: a re-read unmounts the form
-// rather than trying to reconcile new answers with what somebody has typed.
+// lets the date initialise from it directly: a re-read unmounts the form rather
+// than trying to reconcile a new answer with what somebody has typed.
 function DefineRotaForm({
   proposal,
-  roles,
   defining,
   onDefine,
 }: {
   proposal: RotaProposal;
-  // null while the Roles are still loading; empty on a deployment that has
-  // stated none, where there is nothing a shift could ask for.
-  roles: ConfiguredRole[] | null;
   defining: boolean;
   onDefine: (rota: NewRota) => void;
 }) {
-  // Empty, unlike every other field. The rest start from the proposal because
-  // there is a right answer to start from; how long the next rota should run is
-  // a decision nobody has made yet, and a number already in the box is one an
-  // admin can define a rota without ever reading (issue #174).
+  // Empty, unlike the date. That starts from the proposal because there is a
+  // right answer to start from; how long the next rota should run is a decision
+  // nobody has made yet, and a number already in the box is one an admin can
+  // define a rota without ever reading (issue #174).
   const [shiftCount, setShiftCount] = useState("");
   const [startDate, setStartDate] = useState(proposal.startDate);
-  const [startTime, setStartTime] = useState(proposal.shiftStartTime);
-  const [endTime, setEndTime] = useState(proposal.shiftEndTime);
-  const [shape, setShape] = useState<ShapeSeat[]>(proposal.shape);
-  const [editingShape, setEditingShape] = useState(false);
 
   return (
     <>
       <p className="define-rota-intro">
-        One shift a week from the date below. Once the rota is defined it is the
-        rota in flight, and this screen becomes the place it is prepared, asked
-        about and allocated.
+        One shift a week from the date below, each running the hours the Rota
+        Defaults state. Once the rota is defined it is the rota in flight, and
+        this screen becomes the place it is prepared, asked about and allocated.
       </p>
 
       {/* noValidate deliberately: min below floors the spinner, but native
@@ -81,16 +67,7 @@ function DefineRotaForm({
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          onDefine({
-            shiftCount: Number(shiftCount),
-            startDate,
-            shiftStartTime: startTime,
-            shiftEndTime: endTime,
-            shape: shape.map((seat) => ({
-              roleId: seat.roleId,
-              count: seat.count,
-            })),
-          });
+          onDefine({ shiftCount: Number(shiftCount), startDate });
         }}
       >
         <div className="define-rota-fields">
@@ -114,48 +91,6 @@ function DefineRotaForm({
               onChange={(e) => setStartDate(e.target.value)}
             />
           </label>
-
-          {/* Native time inputs read and write the same 24-hour "HH:MM" the
-              server stores, so nothing here parses or formats a time. */}
-          <label className="define-rota-field">
-            Starts
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </label>
-
-          <label className="define-rota-field">
-            Ends
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          </label>
-        </div>
-
-        {/* The Shape is a summary and a button rather than a row of counters,
-            for the same reason it is on the settings screen: it is a handful of
-            numbers an admin reads and rarely changes, and inlining them would
-            bury the two fields that matter under a list of Roles. */}
-        <div className="define-rota-shape">
-          <span className="define-rota-shape-label">Every shift asks for</span>
-          <span className="define-rota-shape-value">
-            {shape.length > 0 ? (
-              describeShape(shape)
-            ) : (
-              <span className="define-rota-unset">Nobody yet</span>
-            )}
-          </span>
-          {/* Nothing to shape until Roles exist, and the note below says so —
-              offering the button here would open a dialog with no rows in it. */}
-          {roles !== null && roles.length > 0 && (
-            <Button size="small" onClick={() => setEditingShape(true)}>
-              Edit shape
-            </Button>
-          )}
         </div>
 
         <div className="define-rota-actions">
@@ -166,41 +101,22 @@ function DefineRotaForm({
       </form>
 
       <p className="define-rota-note">
-        {roles !== null && roles.length === 0
-          ? "No roles have been added yet, so there is nothing a shift can ask for. Add them on Settings first."
-          : "The times and the shape apply to this rota only — changing them here does not change the Rota Defaults on Settings. Each shift can be changed on its own once the rota exists."}
+        Every shift is minted with the times and the shape below, as they stand
+        when the rota is defined. Changing them afterwards changes what the next
+        rota is made from; this one keeps what it was made with, and each of its
+        shifts can be changed on its own.
       </p>
-
-      {editingShape && roles && (
-        <ShapeForm
-          title="What each shift asks for"
-          intro="How many places of each Role every shift of this rota starts with. Leave a Role at 0 if these shifts do not need one; a single shift can be changed on its own once the rota exists."
-          saveLabel="Use this shape"
-          roles={roles}
-          shape={shape}
-          // Held rather than saved: this Shape is part of the rota being
-          // defined, and nothing exists to write it to until the rota does.
-          // ShapeForm cannot tell the difference, since all it ever does is hand
-          // back the Seats and close.
-          onSave={(seats) => {
-            setShape(
-              seats.map((seat) => ({
-                roleId: seat.roleId,
-                role: roles.find((r) => r.id === seat.roleId)?.name ?? "",
-                count: seat.count,
-              })),
-            );
-            return Promise.resolve();
-          }}
-          onClose={() => setEditingShape(false)}
-        />
-      )}
     </>
   );
 }
 
 // DefineRota is the Allocation tab with nothing in flight: the form that starts
-// the next rota, and nothing else.
+// the next rota, and the settings that rota will be made from.
+//
+// The Rota Defaults card is the same one the settings screen shows (issue
+// #176). It is here because this is the moment those settings are spent: an
+// admin about to define a rota is exactly the person who needs to see what its
+// shifts will run, and to fix it without leaving the screen if it is wrong.
 //
 // It used to carry a pointer to the rota already out under the form. That has
 // gone (issue #174): the rota page is one click away in the header and has far
@@ -218,56 +134,58 @@ export default function DefineRota({
   onDefined: () => void;
 }) {
   const { proposal, rota, error, defining, define } = useDefineRota();
-  const { roles } = useRoles();
 
   return (
-    <section className="admin-panel define-rota">
-      <h2>Define the next rota</h2>
+    <>
+      <section className="admin-panel define-rota">
+        <h2>Define the next rota</h2>
 
-      {proposal === null && !error && (
-        <p className="define-rota-intro">Working out the next rota…</p>
-      )}
-
-      {proposal !== null && (
-        <DefineRotaForm
-          proposal={proposal}
-          roles={roles}
-          defining={defining}
-          onDefine={(next) => {
-            // Reloading whatever the outcome: a define that succeeded put a
-            // rota in flight, and one that was refused most likely means one
-            // already was.
-            void define(next).then(onDefined);
-          }}
-        />
-      )}
-
-      {/* aria-live so the outcome reaches a screen reader: submitting moves
-          nothing into focus, so an unannounced result would go unnoticed. */}
-      <div aria-live="polite">
-        {error && (
-          <p className="define-rota-error">Could not define: {error}</p>
+        {proposal === null && !error && (
+          <p className="define-rota-intro">Working out the next rota…</p>
         )}
 
-        {/* Only until the tab re-reads and swaps this whole screen for the
-            working one, which is the real confirmation. Worth showing in the
-            meantime: the dates are the one thing the form did not state
-            outright, and a shift landing on a day nobody expected is easiest
-            to see here. */}
-        {rota && (
-          <>
-            <p className="define-rota-result">
-              Defined {rota.shiftDates.length}{" "}
-              {rota.shiftDates.length === 1 ? "shift" : "shifts"}:
-            </p>
-            <ol className="define-rota-dates">
-              {rota.shiftDates.map((date) => (
-                <li key={date}>{formatShiftDate(date)}</li>
-              ))}
-            </ol>
-          </>
+        {proposal !== null && (
+          <DefineRotaForm
+            proposal={proposal}
+            defining={defining}
+            onDefine={(next) => {
+              // Reloading whatever the outcome: a define that succeeded put a
+              // rota in flight, and one that was refused most likely means one
+              // already was.
+              void define(next).then(onDefined);
+            }}
+          />
         )}
-      </div>
-    </section>
+
+        {/* aria-live so the outcome reaches a screen reader: submitting moves
+            nothing into focus, so an unannounced result would go unnoticed. */}
+        <div aria-live="polite">
+          {error && (
+            <p className="define-rota-error">Could not define: {error}</p>
+          )}
+
+          {/* Only until the tab re-reads and swaps this whole screen for the
+              working one, which is the real confirmation. Worth showing in the
+              meantime: the dates are the one thing the form did not state
+              outright, and a shift landing on a day nobody expected is easiest
+              to see here. */}
+          {rota && (
+            <>
+              <p className="define-rota-result">
+                Defined {rota.shiftDates.length}{" "}
+                {rota.shiftDates.length === 1 ? "shift" : "shifts"}:
+              </p>
+              <ol className="define-rota-dates">
+                {rota.shiftDates.map((date) => (
+                  <li key={date}>{formatShiftDate(date)}</li>
+                ))}
+              </ol>
+            </>
+          )}
+        </div>
+      </section>
+
+      <RotaDefaultsCard />
+    </>
   );
 }

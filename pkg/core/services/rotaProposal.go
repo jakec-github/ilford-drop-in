@@ -5,30 +5,27 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// A rota proposal is the define form before an admin has touched it: the rota
-// that would be made if they pressed the button straight away (issue #140).
+// A rota proposal is the define form before an admin has touched it: where the
+// rota they are about to define would begin (issue #140).
 //
-// It exists because the answers come from two places an admin cannot see at
-// once. The start date is arithmetic over the rotas that already exist; the
-// hours and the Shape are the Rota Defaults. Working them out here rather than
-// in the browser keeps "the Sunday after the last rota" one rule in one place,
-// and it is the same rule whether a person or a script is asking.
+// It is arithmetic over the rotas that already exist, done here rather than in
+// the browser so that "the Sunday after the last rota" is one rule in one
+// place, and the same rule whether a person or a script is asking.
 //
-// Nothing about it is binding. What comes back is a suggestion the define
-// request may contradict in every field, which is the point of the ticket: a
-// rota can start after a break, and one week can run different hours from the
-// last, without the settings being edited first.
+// It used to carry the hours and the Shape as well, the two settings the form
+// filled itself in from. Those fields have gone with the boxes they filled
+// (issue #176): the hours and the Shape are stated in the Rota Defaults and
+// nowhere else, and defining spends them rather than restating them. What is
+// left is the one answer that is not a setting — and it is still not binding,
+// because a rota can begin after a break rather than the week after the last.
 
 // RotaProposalStore is what proposing a rota needs: the rotas that exist, to
-// count forward from, and the settings the form starts from.
+// count forward from.
 type RotaProposalStore interface {
-	RotaDefaultsStore
-	DefaultShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 }
 
@@ -37,15 +34,6 @@ type RotaProposal struct {
 	// StartDate is the Sunday after the last rota's last shift, or the next
 	// Sunday on a deployment with no rotas at all.
 	StartDate string
-	// ShiftStartTime and ShiftEndTime are the default hours, as times of day in
-	// model.ShiftTimeLayout. Empty where an admin has not stated them — the
-	// state every deployment starts in, and one the form renders as empty boxes
-	// rather than refusing over (ADR 0006).
-	ShiftStartTime string
-	ShiftEndTime   string
-	// Shape is the default Shape, with each Seat's Role resolved. Empty where
-	// none has been stated, for the same reason.
-	Shape model.Shape
 }
 
 // ProposeRota reads what the define form starts from.
@@ -55,16 +43,6 @@ type RotaProposal struct {
 // and this endpoint's job is that arithmetic rather than the lifecycle rule,
 // which DefineRota enforces and GET /rotations/in-flight reports.
 func ProposeRota(ctx context.Context, store RotaProposalStore) (*RotaProposal, error) {
-	defaults, err := RotaDefaults(ctx, store)
-	if err != nil {
-		return nil, err
-	}
-
-	shape, err := DefaultShape(ctx, store)
-	if err != nil {
-		return nil, err
-	}
-
 	rotations, err := store.GetRotations(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch rotations: %w", err)
@@ -75,12 +53,7 @@ func ProposeRota(ctx context.Context, store RotaProposalStore) (*RotaProposal, e
 		return nil, err
 	}
 
-	return &RotaProposal{
-		StartDate:      startDate,
-		ShiftStartTime: defaults.ShiftStartTime,
-		ShiftEndTime:   defaults.ShiftEndTime,
-		Shape:          shape,
-	}, nil
+	return &RotaProposal{StartDate: startDate}, nil
 }
 
 // nextRotaStart is the date a rota would begin on if one were defined now: the
