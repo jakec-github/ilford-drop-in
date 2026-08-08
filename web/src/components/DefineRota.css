@@ -3,10 +3,10 @@
   font-size: 0.875rem;
 }
 
-/* The whole rota on one form: the four fields that say when it runs on one
-   line, then what its shifts ask for, then the button. Admin tools are desktop
-   first, and on a desk these four fit across — the row wraps rather than
-   stacking, so a narrow window loses one field to the next line at a time. */
+/* The two fields that say how long the rota is and when it starts, on one line,
+   then the button. Admin tools are desktop first, and on a desk they fit
+   across — the row wraps rather than stacking, so a narrow window loses one
+   field to the next line at a time. */
 .define-rota-form {
   display: flex;
   flex-direction: column;
@@ -48,58 +48,16 @@
   width: 5rem;
 }
 
-/* What the shifts ask for: a label, the Shape in prose, and the one thing that
-   can be done to it. The value takes the slack so the button stays at the
-   right-hand edge, where every other section's action is. */
-.define-rota-shape {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.875rem;
-}
-
-.define-rota-shape-label {
-  flex: none;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.define-rota-shape-value {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* A Shape nobody has stated is the ordinary state of a deployment nobody has
-   configured, so it is quieter than the rest of the row rather than louder. */
-.define-rota-unset {
-  font-style: italic;
-}
-
 .define-rota-actions {
   display: flex;
 }
 
-/* What the form does not do, which is the thing an admin is most likely to
-   assume it does: editing the times or the shape here changes this rota and no
-   other. */
+/* Where the hours and the shape come from, which is the thing an admin is most
+   likely to go looking for on this form: the card underneath, and nowhere
+   else. */
 .define-rota-note {
   margin: 1rem 0 0;
   font-size: 0.8125rem;
-}
-
-@media (max-width: 30rem) {
-  /* The Shape's three parts have nowhere to go across a phone, so the button
-     drops under the sentence it acts on rather than squeezing it. */
-  .define-rota-shape {
-    flex-wrap: wrap;
-  }
-
-  .define-rota-shape-value {
-    flex-basis: 100%;
-  }
 }
 
 .define-rota-error {

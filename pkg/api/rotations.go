@@ -7,23 +7,18 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
-// defineRotaRequest is the rota being made, stated whole.
+// defineRotaRequest is the rota being made: the two things about it that are
+// nobody's setting.
 //
-// Nothing is optional and nothing falls back to the Rota Defaults. The screen
-// reads those from GET /rotations/proposed, shows them, and sends back what it
-// showed — so the rota that appears is the rota the admin was looking at, even
-// if somebody edited the settings in between (issue #140).
+// The hours every minted shift runs and what each of them asks for are not
+// here. They are the Rota Defaults, which are the only place they are stated
+// (issue #176), and defining spends whatever they say at the moment it runs.
+// The screen shows the settings card itself, so what an admin is looking at
+// when they press the button is the setting rather than a copy of it.
 type defineRotaRequest struct {
 	ShiftCount int `json:"shiftCount"`
 	// StartDate is the first shift's date, "2026-08-02". The rest follow weekly.
 	StartDate string `json:"startDate"`
-	// The hours every minted shift runs, as 24-hour times of day: "19:30".
-	ShiftStartTime string `json:"shiftStartTime"`
-	ShiftEndTime   string `json:"shiftEndTime"`
-	// Shape is what every minted shift asks for. A Role left out is one no shift
-	// of this rota asks for; a Seat of nought is refused rather than read as
-	// that, so the stated Shape and the minted one are the same thing.
-	Shape []seatRequest `json:"shape"`
 }
 
 type rotationResponse struct {
@@ -61,17 +56,9 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shape := make([]services.SeatParams, 0, len(req.Shape))
-	for _, seat := range req.Shape {
-		shape = append(shape, services.SeatParams{RoleID: seat.RoleID, Count: seat.Count})
-	}
-
 	result, err := services.DefineRota(r.Context(), h.store, h.logger, services.DefineRotaParams{
-		ShiftCount:     req.ShiftCount,
-		StartDate:      req.StartDate,
-		ShiftStartTime: req.ShiftStartTime,
-		ShiftEndTime:   req.ShiftEndTime,
-		Shape:          shape,
+		ShiftCount: req.ShiftCount,
+		StartDate:  req.StartDate,
 	})
 	if err != nil {
 		h.writeServiceError(w, err)
@@ -94,24 +81,16 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusCreated, resp)
 }
 
-// rotaProposalResponse is the define form before anybody has touched it: the
-// rota that would be made by defining one right now.
+// rotaProposalResponse is the define form before anybody has touched it: where
+// the rota made by defining one right now would begin.
 //
-// It mirrors the define request field for field, which is the point — the
-// screen shows what comes back, the admin edits what they like, and what goes
-// out is the same shape of thing. The shift count is not here, and the form has
-// no default for it either: no rota implies how long the next one should be, so
-// it is the one field an admin has to state (issue #174).
-//
-// The times and the Shape may be empty, which means the Rota Defaults have not
-// been stated. The form renders that as empty boxes rather than refusing: an
-// admin can state the hours for this rota without visiting the settings screen
-// first, and stating them here does not save them there.
+// The shift count is not here, and the form has no default for it either: no
+// rota implies how long the next one should be, so it is the one field an admin
+// has to state (issue #174). Neither are the hours or the Shape, which the form
+// no longer states at all — they are the Rota Defaults, read by the settings
+// card the define screen shows (issue #176).
 type rotaProposalResponse struct {
-	StartDate      string         `json:"startDate"`
-	ShiftStartTime string         `json:"shiftStartTime"`
-	ShiftEndTime   string         `json:"shiftEndTime"`
-	Shape          []seatResponse `json:"shape"`
+	StartDate string `json:"startDate"`
 }
 
 // handleGetRotaProposal reports what the define form starts from.
@@ -128,12 +107,7 @@ func (h *Handler) handleGetRotaProposal(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, rotaProposalResponse{
-		StartDate:      proposal.StartDate,
-		ShiftStartTime: proposal.ShiftStartTime,
-		ShiftEndTime:   proposal.ShiftEndTime,
-		Shape:          toSeatResponses(proposal.Shape),
-	})
+	h.writeJSON(w, http.StatusOK, rotaProposalResponse{StartDate: proposal.StartDate})
 }
 
 // rotaInFlightResponse is the rota being worked on, or nothing.

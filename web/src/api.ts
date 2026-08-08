@@ -485,8 +485,7 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
 }
 
 // fetchRotaProposal reads what the define form starts from: where the next rota
-// would begin, and the hours and Shape the Rota Defaults say it would run.
-// Admin-only, like the settings it draws half its answer from.
+// would begin. Admin-only, like everything else about defining one.
 export async function fetchRotaProposal(): Promise<RotaProposal> {
   const res = await fetch("/api/rotations/proposed");
   if (!res.ok) {
@@ -497,10 +496,11 @@ export async function fetchRotaProposal(): Promise<RotaProposal> {
 
 // defineRota defines the rota it is given and returns the shifts it minted.
 //
-// The whole rota is stated: nothing here falls back to the settings, so what an
-// admin edited on the form is what gets made. Admin-only, and deliberately not
-// idempotent — the caller is expected to show what came back rather than treat
-// it as a repeatable action.
+// The hours the shifts run and what each asks for are the Rota Defaults', and
+// the server reads them as it mints — so a define is refused, with the settings
+// named, on a deployment that has not stated them. Admin-only, and deliberately
+// not idempotent — the caller is expected to show what came back rather than
+// treat it as a repeatable action.
 export async function defineRota(rota: NewRota): Promise<DefinedRota> {
   const res = await fetch("/api/rotations", {
     method: "POST",

@@ -1,13 +1,12 @@
 import { useState } from "react";
-import type { ReactNode } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { useRoles } from "../hooks/useRoles";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useStandingPreallocations } from "../hooks/useStandingPreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
-import ShapeForm from "./ShapeForm";
-import { describeShape } from "./shape";
+import RotaDefaultsCard from "./RotaDefaultsCard";
+import SettingsSection from "./SettingsSection";
 import type {
   AllocationSettings,
   ConfiguredRole,
@@ -15,261 +14,11 @@ import type {
   PersonRef,
   RoleColour,
   RoleEdit,
-  ShiftTimes,
   SwitchableConstraint,
   Volunteer,
 } from "../types";
 import { CUSTOM_CHOICE, DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./AdminSettings.css";
-
-// SettingsSection is one thing an admin decides about how the drop-in runs.
-// Each is its own card because they are independent: Roles now, Rota Defaults
-// and Standing Preallocations later, and nothing about one section should have
-// to know how many others there are.
-function SettingsSection({
-  title,
-  blurb,
-  action,
-  children,
-}: {
-  title: string;
-  blurb: string;
-  // The one thing this section can be asked to do, in the header rather than
-  // below the list — a list that grows would otherwise walk its own button off
-  // the bottom of the screen.
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="admin-panel settings-section">
-      <header className="settings-section-head">
-        <div>
-          <h2>{title}</h2>
-          <p className="settings-blurb">{blurb}</p>
-        </div>
-        {action}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-// ShiftTimesForm is the shift-time half of the Rota Defaults: when the drop-in
-// starts, when it ends, and the zone those are read in. All three at once,
-// because a time of day means nothing without the zone it is read in.
-//
-// The time fields are native time inputs, which read and write the same 24-hour
-// "HH:MM" the server stores — so nothing here parses or formats a time, and a
-// phone offers its own picker.
-function ShiftTimesForm({
-  defaults,
-  onSave,
-  onClose,
-}: {
-  defaults: ShiftTimes;
-  onSave: (times: ShiftTimes) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [start, setStart] = useState(defaults.shiftStartTime);
-  const [end, setEnd] = useState(defaults.shiftEndTime);
-  const [timezone, setTimezone] = useState(defaults.shiftTimezone);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave({
-        shiftStartTime: start,
-        shiftEndTime: end,
-        shiftTimezone: timezone.trim(),
-      });
-      onClose();
-    } catch (err: unknown) {
-      // The server's own message names the field that was wrong — "a shift has
-      // to end after it starts" is the whole explanation — so it is shown as-is
-      // and the form stays open on what was typed.
-      setError(
-        err instanceof Error ? err.message : "Failed to save the shift times",
-      );
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog title="Shift times" onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <label className="settings-field">
-          Starts
-          <input
-            type="time"
-            value={start}
-            autoFocus
-            onChange={(e) => setStart(e.target.value)}
-          />
-        </label>
-
-        <label className="settings-field">
-          Ends
-          <input
-            type="time"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-          />
-        </label>
-        <p className="settings-hint">
-          A shift ends the evening it starts, so the end has to be later than
-          the start.
-        </p>
-
-        <label className="settings-field">
-          Timezone
-          <input
-            type="text"
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            placeholder="Europe/London"
-          />
-        </label>
-        <p className="settings-hint">
-          The zone the times above are read in. Leave it as Europe/London unless
-          the drop-in has moved.
-        </p>
-
-        {error && <p className="settings-error">{error}</p>}
-
-        <div className="settings-actions">
-          <Button onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={start === "" || end === "" || saving}>
-            {saving ? "Saving…" : "Save times"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-// What is being edited in the Rota Defaults: nothing, the times, or the Shape.
-// One value rather than two booleans, so two dialogs cannot be open at once.
-type EditingDefaults = "times" | "shape" | null;
-
-// RotaDefaultsSettings is the settings an admin keeps for the drop-in as a
-// whole: when the drop-in runs, and what a shift asks for. The allocation
-// toggles join them here.
-//
-// Nothing seeds these, so "not set yet" is the state a new deployment is in
-// rather than a fault — and the caption says what that costs, because
-// allocation is the only thing it stops and nothing else on the screen will
-// mention it.
-function RotaDefaultsSettings() {
-  const { defaults, error, saveShiftTimes, saveShape } = useRotaDefaults();
-  const { roles } = useRoles();
-  const [editing, setEditing] = useState<EditingDefaults>(null);
-
-  const timesSet =
-    defaults !== null &&
-    defaults.shiftStartTime !== "" &&
-    defaults.shiftEndTime !== "";
-  const shapeSet = defaults !== null && defaults.defaultShape.length > 0;
-
-  return (
-    <SettingsSection
-      title="Rota Defaults"
-      blurb="What every rota starts from. When the drop-in runs, and how many people each shift asks for."
-      action={
-        defaults && (
-          <span className="settings-section-actions">
-            <Button size="small" onClick={() => setEditing("times")}>
-              Edit times
-            </Button>
-            {/* Nothing to shape until Roles exist, and the section below says
-                so — offering the button here would open a dialog with no rows
-                in it. */}
-            {roles !== null && roles.length > 0 && (
-              <Button size="small" onClick={() => setEditing("shape")}>
-                Edit shape
-              </Button>
-            )}
-          </span>
-        )
-      }
-    >
-      {error && (
-        <p className="settings-error">Could not load the settings: {error}</p>
-      )}
-
-      {defaults === null && !error && (
-        <p className="settings-empty">Loading…</p>
-      )}
-
-      {defaults !== null && (
-        <>
-          <dl className="settings-facts">
-            <div className="settings-fact">
-              <dt>Shift times</dt>
-              <dd>
-                {timesSet ? (
-                  `${defaults.shiftStartTime} – ${defaults.shiftEndTime}`
-                ) : (
-                  <span className="settings-unset">Not set yet</span>
-                )}
-              </dd>
-            </div>
-            <div className="settings-fact">
-              <dt>Timezone</dt>
-              <dd>{defaults.shiftTimezone}</dd>
-            </div>
-            <div className="settings-fact">
-              <dt>Shape</dt>
-              <dd>
-                {shapeSet ? (
-                  describeShape(defaults.defaultShape)
-                ) : (
-                  <span className="settings-unset">Not set yet</span>
-                )}
-              </dd>
-            </div>
-          </dl>
-          {(!timesSet || !shapeSet) && (
-            <p className="settings-caption">
-              A rota cannot be allocated until the shift times and the shape are
-              set. Everything else — the rota, availability, the calendar feed —
-              works without them.
-            </p>
-          )}
-        </>
-      )}
-
-      {editing === "times" && defaults && (
-        <ShiftTimesForm
-          defaults={defaults}
-          onSave={saveShiftTimes}
-          onClose={() => setEditing(null)}
-        />
-      )}
-
-      {editing === "shape" && defaults && roles && (
-        <ShapeForm
-          title="Default shape"
-          intro="How many places of each Role a shift has. Every shift of a rota starts from this; leave a Role at 0 if a shift does not need one."
-          saveLabel="Save shape"
-          roles={roles}
-          shape={defaults.defaultShape}
-          onSave={saveShape}
-          onClose={() => setEditing(null)}
-        />
-      )}
-    </SettingsSection>
-  );
-}
 
 // How a Role's ceiling reads in a list. An uncapped Role is not "unlimited" so
 // much as the one a shift's size is spent on, which is a different thing to say
@@ -1014,10 +763,15 @@ function AllocationRulesSettings() {
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
 // of independent sections: the Rota Defaults the whole drop-in runs on, the
 // Roles volunteers hold, and the pins made every rota.
+//
+// The Rota Defaults card is the one section that is not only here — the define
+// screen shows the same component, because defining a rota is spending it
+// (issue #176). This screen remains where it belongs: an admin looking for a
+// setting finds every one of them in one place.
 export default function AdminSettings() {
   return (
     <>
-      <RotaDefaultsSettings />
+      <RotaDefaultsCard />
       <AllocationRulesSettings />
       <RolesSettings />
       <StandingPreallocationsSettings />

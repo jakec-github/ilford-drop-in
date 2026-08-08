@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,13 +18,13 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// defineFromProposal defines a rota the way the define screen does: read what
-// the form would start from, then send it straight back (issue #140).
+// defineFromProposal defines a rota the way the define screen does: read where
+// the next one would begin, and define that many shifts from there.
 //
-// Every integration test below defines one this way rather than writing a body
-// out, because the round trip is the thing worth exercising — the two endpoints
-// have to agree field for field, and a proposal the define call would refuse
-// would be a broken screen rather than a broken test.
+// Every integration test below defines one this way rather than writing a start
+// date out, because the round trip is the thing worth exercising — a proposal
+// the define call would refuse would be a broken screen rather than a broken
+// test.
 func defineFromProposal(t *testing.T, handler http.Handler, shiftCount int) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -35,14 +34,7 @@ func defineFromProposal(t *testing.T, handler http.Handler, shiftCount int) *htt
 	var proposal rotaProposalBody
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &proposal))
 
-	seats := make([]string, 0, len(proposal.Shape))
-	for _, seat := range proposal.Shape {
-		seats = append(seats, fmt.Sprintf(`{"roleId":%q,"count":%d}`, seat.RoleID, seat.Count))
-	}
-
-	body := fmt.Sprintf(
-		`{"shiftCount":%d,"startDate":%q,"shiftStartTime":%q,"shiftEndTime":%q,"shape":[%s]}`,
-		shiftCount, proposal.StartDate, proposal.ShiftStartTime, proposal.ShiftEndTime, strings.Join(seats, ","))
+	body := fmt.Sprintf(`{"shiftCount":%d,"startDate":%q}`, shiftCount, proposal.StartDate)
 	return doRequest(t, handler, http.MethodPost, "/api/rotations", body, adminCookie())
 }
 
