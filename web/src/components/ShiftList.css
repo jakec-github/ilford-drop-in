@@ -1,0 +1,413 @@
+/* Shift list: one flush, connected list at every width. Rows touch and share
+   hairline dividers; only the outer container is rounded.
+
+   Its own column width, rather than whatever the page around it is. The rota
+   page is already this narrow; the Allocation tab is a wide shell holding a
+   grid as wide as the rota is long, and a list of shifts stretched to match
+   would read worse for it. */
+.shift-list {
+  max-width: 40rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.shift-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shift-row:last-child {
+  border-bottom: none;
+}
+
+/* A closed row reads as dimmed, but the dimming is on what it says rather than
+   on the row: `opacity` on the row is a compositing group no child can escape,
+   and the one control a closed row carries is the way back out of it. A faded
+   "Reopen" would read as unavailable. */
+.shift-row.closed .shift-when,
+.shift-row.closed .shift-note {
+  opacity: 0.55;
+}
+
+/* The first column: the day, and under it the hours the shift runs. Wide enough
+   for "19:30–21:30", which is what sets the width now rather than "2 Feb". */
+.shift-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  flex-shrink: 0;
+  width: 5rem;
+  /* Own line at the top of the row: the row is baseline-aligned, and a
+     two-line cell would otherwise sit its second line below everything. */
+  align-self: flex-start;
+}
+
+.shift-date {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.shift-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+/* While editing, the cell is the way in to changing the hours. It is a button
+   with no chrome until it is reached for, so a rota being read looks the same
+   as one that is not. */
+.shift-when-editable {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.shift-when-editable:hover,
+.shift-when-editable:focus-visible {
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.shift-when-editable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.shift-note {
+  font-style: italic;
+  color: var(--text);
+}
+
+/* Unallocated shifts (admin-only): a faint diagonal hatch marks them as
+   "rota not run yet", distinct from a closed shift's flat dimming. */
+.shift-row.unallocated {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--border) 60%, transparent) 6px 7px
+  );
+}
+
+.shift-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Preallocations (admin-only, unallocated shifts) ---------------------------
+
+   Who allocation is already committed to placing here. They sit under the "not
+   yet allocated" note rather than beside it: the note is the state of the
+   shift, the pins are a qualification of it. */
+.shift-unallocated {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* What the shift is waiting to be filled with. Quieter than the note above it:
+   the state of the shift is the headline, and this is a detail of it. */
+.shift-shape {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.prealloc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+/* A draft the inputs have moved under: what the solver last said, still the
+   best guess on screen, waiting on the solve that answers for the edit. Faded
+   rather than blanked — an admin adding five pins would otherwise watch the
+   rota disappear five times. The transition is on the way in only, so the fresh
+   draft arrives at full strength rather than fading up into place. */
+.prealloc-stale {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.prealloc-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.prealloc-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Shaped like a chip so a pinned name reads as the same kind of thing as an
+   allocated one. Solid, unlike the drafted names below it: a pin is a decision
+   somebody made and it holds until they unmake it, where a draft Seat is a
+   guess the next solve may take back. The border is what tells the two apart,
+   which matters most where they sit one above the other on the same row.
+
+   The chip itself is never interactive — a pin cannot be dragged, searched for
+   or opened. In editing mode it grows a remove button inside it; that button is
+   the interactive part, not the chip. */
+.prealloc-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  border: 1.5px solid var(--chip);
+  color: var(--chip);
+}
+
+/* The Role's colour comes from the server as a palette token, which index.css
+   turns into --role-colour. The fallback is what a chip wears when no token
+   reached it: the roles are still loading, or the rota names a Role the config
+   no longer does. */
+.prealloc-chip {
+  --chip: var(--role-colour, var(--role-slate));
+}
+
+/* Matching .chip: volunteers are rounded pills, custom entries squared tags. */
+.prealloc-chip.volunteer {
+  border-radius: 12px;
+}
+
+.prealloc-chip.custom {
+  border-radius: 3px;
+  font-style: italic;
+}
+
+/* Sits inside the pin it removes, so it needs no label of its own on screen.
+   Padded out to a touch target the chip's own text size would not give it —
+   this is the primary way a pin comes off, and the rota page is mobile first. */
+.prealloc-unpin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  margin: -4px -5px -4px 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.prealloc-unpin:hover,
+.prealloc-unpin:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, var(--chip) 18%, transparent);
+}
+
+/* The unallocated row stacks its parts vertically, but the things it can do sit
+   side by side: they are alternatives, not steps. */
+.shift-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shift-actions,
+.shift-closure {
+  align-self: flex-start;
+}
+
+/* Chips: colour = role held on this shift. Outlined by default, light fill on
+   hover, solid fill when selected. Buttons rather than spans — they are
+   clickable on the public rota and are the handle for every edit on the admin
+   one, so they have to be reachable by keyboard either way. */
+.chip {
+  /* The Role's colour comes from the server as a palette token, which
+     index.css turns into --role-colour. The fallback is what a chip wears when
+     no token reached it: the roles are still loading, or the rota names a Role
+     the config no longer does. */
+  --chip: var(--role-colour, var(--role-slate));
+  position: relative;
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  border: 1.5px solid var(--chip);
+  color: var(--chip);
+  background: transparent;
+  cursor: pointer;
+  /* The drag handle is the chip itself; without this a drag starts by
+     selecting the name instead. */
+  user-select: none;
+}
+
+/* Volunteers are rounded pills; custom (manual) entries are squared tags. */
+.chip.volunteer {
+  border-radius: 12px;
+}
+
+.chip.custom {
+  border-radius: 3px;
+  font-style: italic;
+}
+
+/* Square the corner the group dot sits in so the dot tucks into a right angle
+   rather than floating off a rounded pill. */
+.chip.has-group {
+  border-top-right-radius: 3px;
+}
+
+.chip:hover:not(.selected) {
+  background: color-mix(in srgb, var(--chip) 14%, transparent);
+}
+
+.chip.selected {
+  background: var(--chip);
+  color: #fff;
+}
+
+/* A drafted name (admin-only, unallocated shifts): the same chip as an
+   allocated one, dashed. The dashes are what say "the solver put this here and
+   the next solve may not": a pin above it on the same row is solid because a
+   decision was made, and an allocated name elsewhere in the list is solid
+   because it is the rota. The border carries that distinction rather than the
+   label on the list, which is read once and then stopped being read.
+
+   A list item, not a button: a draft is read-only until the rota is allocated,
+   because a hand placement would be destroyed by the next solve (ADR 0008). So
+   the interactive bits of .chip come back off. */
+.chip.draft {
+  border-style: dashed;
+  cursor: default;
+  user-select: auto;
+}
+
+.chip.draft:hover {
+  background: transparent;
+}
+
+/* A shift that the person being carried can be dropped on. An outline rather
+   than a border so nothing reflows mid-drag. */
+.shift-row.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+}
+
+/* The chip currently being carried, left in place but visibly lifted out. */
+.chip.lifted {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+/* A chip that is not a destination for whoever is being carried. Still
+   focusable, and its label says why, but it does nothing. */
+.chip.chip-inert {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chip.chip-inert:hover {
+  background: transparent;
+}
+
+.shift-add {
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.shift-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.shift-move-here {
+  align-self: center;
+}
+
+/* The chip action menu and the inline error both take a whole line of the row,
+   under the chips they belong to. */
+.chip-menu,
+.shift-error {
+  flex-basis: 100%;
+  margin: 8px 0 0;
+}
+
+.chip-menu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.chip-menu-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.shift-error {
+  font-size: 13px;
+  color: var(--accent);
+}
+
+/* Group membership: a small corner dot, one stable colour per group. The ring
+   keeps it legible over both the page and a filled (selected) chip. */
+.chip-group-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+/* Desktop: same list, just roomier. */
+@media (min-width: 700px) {
+  .shift-row {
+    padding: 14px 18px;
+  }
+
+  .shift-when {
+    width: 5.5rem;
+  }
+
+  .chip {
+    font-size: 14px;
+    padding: 4px 12px;
+  }
+}

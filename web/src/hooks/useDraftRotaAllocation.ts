@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   allocateRotaInFlight,
   fetchDraftRotaAllocation,
@@ -56,7 +56,28 @@ interface UseDraftRotaAllocation {
   // resolved outcome is there for a caller with something else to do about it —
   // the rota page reloads, because allocating is what puts the rota on it.
   allocate: () => Promise<AllocateOutcome | null>;
+  // True from the moment an edit is reported until a read that accounts for it
+  // comes back. `state` is still the last answer and still worth showing; this
+  // says the solver has not had its say about what just changed, which is why
+  // the screen fades the drafted names and takes Allocate away rather than
+  // blanking anything.
+  stale: boolean;
+  // Says that something the solver reads has moved — a pin, a Shape, a closure,
+  // a shift's hours. Marks the draft stale at once and re-reads on a trailing
+  // debounce, so a burst of edits costs one solve rather than one each.
+  //
+  // Called once the edit has landed, not when it is fired: a read that overtook
+  // its own write would come back solved against the inputs as they were, clear
+  // `stale`, and leave the screen claiming to be current about a change it had
+  // not seen.
+  inputsMoved: () => void;
 }
+
+// How long after the last edit lands before the draft is re-read. Long enough
+// that pinning three people in a row is one solve, short enough that an admin
+// who made one change is not left watching a spinner they could have believed
+// was stuck.
+const RE_READ_DEBOUNCE_MS = 2000;
 
 interface UseDraftRotaAllocationOptions {
   // A draft is admin-only, so a view that shows it conditionally must be able
@@ -84,12 +105,35 @@ export function useDraftRotaAllocation({
   const [allocating, setAllocating] = useState(false);
   const [allocateFailure, setAllocateFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<AllocationAttempt | null>(null);
+  const [stale, setStale] = useState(false);
+
+  // One request at a time. Every request here can end in a solve, and a solve
+  // is a CP-SAT subprocess the server queues one at a time anyway — so a second
+  // would only wait in line behind the first while looking to this side like
+  // two things happening at once.
+  const inFlight = useRef(false);
+  // An edit that landed while a request was running. Remembered rather than
+  // fired: an abort would kill the solve the running read is waiting on, and an
+  // admin editing steadily would abort every read they started and never see a
+  // draft at all. At most one — what is wanted afterwards is a read of the
+  // inputs as they finally stand, however many times they moved.
+  const readAgain = useRef(false);
+  const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const read = useCallback(() => {
+    if (inFlight.current) {
+      readAgain.current = true;
+      return;
+    }
+    setReloads((n) => n + 1);
+  }, []);
 
   // Written with .then rather than await so no setState is reached
   // synchronously from the effect.
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    inFlight.current = true;
     void fetchDraftRotaAllocation()
       .then((draft) => {
         if (cancelled) return;
@@ -101,11 +145,35 @@ export function useDraftRotaAllocation({
         setLoadError(
           err instanceof Error ? err.message : "Failed to load the draft rota",
         );
+      })
+      .finally(() => {
+        inFlight.current = false;
+        if (cancelled) return;
+        // A read that came back with an edit still unaccounted for has not
+        // answered the question, so it goes round again and the draft stays
+        // stale. Reading is what makes a draft current (ADR 0008), so there is
+        // nothing else to ask.
+        if (readAgain.current) {
+          readAgain.current = false;
+          setReloads((n) => n + 1);
+        } else {
+          setStale(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [enabled, reloads]);
+
+  // Unmounting mid-debounce would otherwise re-read a draft nobody is looking
+  // at, and set state on a component that has gone.
+  useEffect(() => () => clearTimeout(debounce.current), []);
+
+  const inputsMoved = useCallback(() => {
+    setStale(true);
+    clearTimeout(debounce.current);
+    debounce.current = setTimeout(read, RE_READ_DEBOUNCE_MS);
+  }, [read]);
 
   // Re-reading whatever the solve said. A refusal leaves the previous draft in
   // place and is the case that most needs the re-read: the usual reason a solve
@@ -114,6 +182,7 @@ export function useDraftRotaAllocation({
   const solve = useCallback(async () => {
     setSolving(true);
     setSolveFailure(null);
+    inFlight.current = true;
     // Whatever the last allocation attempt found, a fresh solve has just
     // answered the same question again — so what it said about the rota moving
     // is about a rota two solves ago.
@@ -126,6 +195,11 @@ export function useDraftRotaAllocation({
       );
     } finally {
       setSolving(false);
+      inFlight.current = false;
+      // The re-read below is the one an edit during the solve was waiting for:
+      // a read re-checks dirtiness for itself and solves again if the answer it
+      // is about to return predates the edit (ADR 0008).
+      readAgain.current = false;
       setReloads((n) => n + 1);
     }
   }, []);
@@ -150,6 +224,7 @@ export function useDraftRotaAllocation({
     setAllocating(true);
     setAllocateFailure(null);
     setAttempt(null);
+    inFlight.current = true;
     try {
       const outcome = await allocateRotaInFlight(loaded.hash);
       if (outcome.allocated) {
@@ -174,6 +249,15 @@ export function useDraftRotaAllocation({
       return null;
     } finally {
       setAllocating(false);
+      inFlight.current = false;
+      // An edit that landed while the allocation ran is not answered by what it
+      // came back with: the refused case carries the solve the server had just
+      // done, which predates the edit. Bumping twice in one batch is one read,
+      // not two — React has not re-rendered in between.
+      if (readAgain.current) {
+        readAgain.current = false;
+        setReloads((n) => n + 1);
+      }
     }
   }, [loaded]);
 
@@ -197,5 +281,7 @@ export function useDraftRotaAllocation({
     allocateError: enabled ? allocateFailure : null,
     attempt: enabled ? attempt : null,
     allocate,
+    stale: enabled && stale,
+    inputsMoved,
   };
 }
