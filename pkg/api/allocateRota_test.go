@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,24 +82,39 @@ func TestAllocateRotaInFlightRefusesAnAllocatedRota(t *testing.T) {
 	assert.Empty(t, store.insertedAllocations)
 }
 
-// Allocating and drafting take the same solve slot. A draft solve running now
-// may be about to replace the very draft this request is confirming, so this
-// cannot queue behind it and compare its answer against what it set out with.
-func TestAllocateRotaInFlightRefusesWhileASolveIsRunning(t *testing.T) {
+// Allocating and drafting take the same solve slot, and allocating waits its
+// turn for it rather than being refused (issue #179). A solve landing while it
+// queues may have moved the rota, which is not a reason to refuse: it is the
+// hash guard's ordinary business, and what comes back is the fresh rota to
+// confirm instead.
+//
+// Nothing is committed here — the solve it eventually runs is refused at the
+// first gate the mock store presents — which is what proves it waited rather
+// than answered.
+func TestAllocateRotaInFlightWaitsForTheRunningSolve(t *testing.T) {
 	store := draftedRotaStore()
 	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
-	require.True(t, handler.drafts.begin(), "the slot starts free")
+	require.NoError(t, handler.drafts.acquire(t.Context()), "the slot starts free")
 
-	rec := doRequest(t, handler.Routes(), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, adminCookie())
+	answered := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		answered <- doRequest(t, handler.Routes(), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, adminCookie())
+	}()
 
-	assert.Equal(t, http.StatusConflict, rec.Code)
-	assert.Contains(t, rec.Body.String(), "already running")
-	assert.Empty(t, store.insertedAllocations)
+	select {
+	case rec := <-answered:
+		t.Fatalf("the allocation answered while a solve held the slot: %s", rec.Body.String())
+	case <-time.After(50 * time.Millisecond):
+	}
 
-	// And the slot is given back to whoever holds it, rather than released by
-	// the request that never had it.
-	handler.drafts.end()
-	assert.True(t, handler.drafts.begin())
+	handler.drafts.release()
+	select {
+	case rec := <-answered:
+		assert.NotContains(t, rec.Body.String(), "already running", "nothing is refused for being queued")
+		assert.Empty(t, store.insertedAllocations, "and the solve it went on to run committed nothing")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the allocation never took the slot it was waiting for")
+	}
 }
 
 // The draft an admin reads carries the fingerprint they allocate by. Without it

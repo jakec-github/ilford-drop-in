@@ -567,7 +567,6 @@ interface DraftRotaAllocationResponse {
   solverStatus: string;
   seatsAsked: number;
   seatsFilled: number;
-  solving: boolean;
   // Empty when the read had nothing to re-solve, or re-solved successfully.
   solveError?: string;
   hash: string;
@@ -590,7 +589,6 @@ function toDraftRotaState(data: DraftRotaAllocationResponse): DraftRotaState {
     solverStatus: data.solverStatus,
     seatsAsked: data.seatsAsked,
     seatsFilled: data.seatsFilled,
-    solving: data.solving,
     // "" is the server saying there was nothing to report, which is an absence
     // rather than a message worth rendering.
     solveError: data.solveError ? data.solveError : null,
@@ -615,7 +613,10 @@ function toDraftRotaState(data: DraftRotaAllocationResponse): DraftRotaState {
 // not be loaded.
 //
 // Reading is also what re-solves a draft whose inputs have moved (issue #142),
-// so this call takes as long as the solver does when it does solve.
+// so this call takes as long as the solver does when it does solve — and it
+// waits behind a solve already running rather than coming back stale (issue
+// #179). What resolves always speaks for the inputs as they stand, so there is
+// nothing here to poll and no retry policy to hold.
 export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null> {
   const res = await fetch("/api/draft-rota-allocation");
   if (res.status === 404) return null;
@@ -670,9 +671,8 @@ export async function allocateRotaInFlight(
   });
 
   // A 409 is either the rota having moved, which carries a draft, or a refusal
-  // that carries a message — no rota in flight, nothing drafted yet, a solve
-  // already running. The body tells them apart: only the first states whether
-  // it allocated.
+  // that carries a message — no rota in flight, nothing drafted yet. The body
+  // tells them apart: only the first states whether it allocated.
   if (res.status === 409) {
     const body = (await res.json()) as Partial<AllocateRotaResponse> & {
       error?: string;

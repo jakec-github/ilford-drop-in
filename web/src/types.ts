@@ -244,12 +244,18 @@ export interface DraftShift {
 // yet and is replaced wholesale every time an input moves, so showing one to a
 // volunteer would tell them they are working a shift they may well not be
 // (ADR 0008).
+//
+// It is never stale. Reading a draft waits for whatever solve is running and
+// re-solves if that one did not account for the inputs as they now stand
+// (issue #179), so what arrives here is an answer rather than a state to act
+// on: there is nothing to poll and no "a fresher one is coming" to render.
 export interface DraftRotaState {
   rotaId: string;
   rotaStart: string;
   // False for a rota nobody has solved for yet, where every rota starts and
-  // where everything below says nothing. Reading the rota normally solves it on
-  // the spot, so this is only seen when a solve is already running.
+  // where everything below says nothing. Reading the rota solves it on the
+  // spot, so this survives a read only when the solve it ran was refused —
+  // which is what solveError says.
   solved: boolean;
   // When the solve ran, or null for a rota nobody has solved for. A draft is
   // only ever read against how old it is: the inputs move under it all through
@@ -266,14 +272,6 @@ export interface DraftRotaState {
   solverStatus: string;
   seatsAsked: number;
   seatsFilled: number;
-  // A solve is running now, so a fresher draft is on its way and what is here is
-  // the previous one.
-  //
-  // The server also reports `dirty` — an allocator input having moved since the
-  // solve — and nothing here reads it. Reading is what re-solves a dirty draft,
-  // so by the time a response reaches this page dirty is only ever true
-  // alongside solving: the re-solve was handed to the one already running.
-  solving: boolean;
   // Why the re-solve that reading this would have run did not happen, or null
   // when there was nothing to re-solve or it worked. Almost always a step
   // nobody has taken yet — an availability round nobody has minted — which is

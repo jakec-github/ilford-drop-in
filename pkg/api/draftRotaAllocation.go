@@ -1,16 +1,23 @@
 package api
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
 // draftRotaAllocationResponse is what the rota in flight's draft has to say for
-// itself: whether it found a rota, how much of one it managed to staff, whether
-// it still speaks for the inputs as they now stand, and the rota it drafted.
+// itself: whether it found a rota, how much of one it managed to staff, and the
+// rota it drafted.
+//
+// It never says whether the draft is stale or whether a solve is running,
+// because by the time it is written neither can be true: a read waits for the
+// solve slot and re-solves if it needs to, so what comes back always speaks for
+// the inputs as they stood (issue #179).
 //
 // seatsFilled against seatsAsked is the number that changes what an admin does
 // next: four Seats unfilled is somebody to chase, INFEASIBLE is a conflict to go
@@ -28,13 +35,6 @@ type draftRotaAllocationResponse struct {
 	SolverStatus string `json:"solverStatus"`
 	SeatsAsked   int    `json:"seatsAsked"`
 	SeatsFilled  int    `json:"seatsFilled"`
-	// Dirty says an allocator input has moved since the draft was solved. A
-	// reader that finds this true has already caused a re-solve, unless solving
-	// says one was underway.
-	Dirty bool `json:"dirty"`
-	// Solving says a solve is running now, so a fresher answer is on its way and
-	// asking again shortly will get it.
-	Solving bool `json:"solving"`
 	// SolveError is why the re-solve this read would have run did not happen —
 	// most often a step nobody has taken yet, like an availability round nobody
 	// has minted. Empty when there was nothing to re-solve or the re-solve
@@ -80,9 +80,17 @@ type draftShiftResponse struct {
 // solves on a rota nobody is looking at. Reading is the moment the answer is
 // wanted, and the solve that produces it is quick enough to wait out.
 //
-// A solve already running is not waited for or duplicated: the draft as it
-// stands comes back with solving set, which is a screen's cue to show what is
-// there and ask again shortly.
+// A solve already running is waited for rather than reported (issue #179). What
+// comes back is never a stale draft, so a reader has no retry policy to hold:
+// the request takes as long as it takes, and the answer speaks for the inputs.
+//
+// Waiting alone would not be enough to make that true. The solve queued ahead
+// may have started before the edit that sent this reader here, so its answer
+// need not account for that edit — which is why the status is read again once
+// this request holds the slot, and solved only if it is *still* dirty. A reader
+// whose edit the running solve already covered returns at once with that
+// answer; one whose edit it predates gets its own solve. It terminates because
+// every solve captures the inputs stamp as it starts, so the queue drains.
 //
 // Admin-only, and that gate is the endpoint's whole reason to exist as its own
 // resource rather than as a field of GET /api/shifts. That listing is public and
@@ -95,28 +103,45 @@ func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Re
 		h.writeServiceError(w, err)
 		return
 	}
+	if !status.Dirty {
+		h.writeJSON(w, http.StatusOK, draftStatus(status))
+		return
+	}
+
+	if err := h.drafts.acquire(r.Context()); err != nil {
+		// The client gave up while queueing, so there is nobody to answer.
+		// Nothing is written: the connection this would be written to is the one
+		// that went away, and the solve this reader was waiting for carries on
+		// regardless.
+		h.logger.Debug("A draft read left the solve queue", zap.Error(err))
+		return
+	}
+	defer h.drafts.release()
+
+	// Read again, now that this request is the one solving. What was dirty when
+	// this reader arrived may have been answered by the solve it queued behind.
+	status, err = services.DraftRotaAllocationInFlight(r.Context(), h.store, h.volunteers, h.cfg, h.logger)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+	if !status.Dirty {
+		h.writeJSON(w, http.StatusOK, draftStatus(status))
+		return
+	}
 
 	response := draftStatus(status)
-
-	if status.Dirty {
-		if h.drafts.begin() {
-			defer h.drafts.end()
-			solved, err := h.solveDraftRotaAllocation(r)
-			if err != nil {
-				// Reported, not returned. The draft as it stands is what was
-				// asked for and it is still worth showing; what failed is the
-				// courtesy this endpoint performs on the way. Every rota is in
-				// exactly this state between being defined and its availability
-				// round being minted, and answering that with an error would
-				// take the draft panel off the one screen that says what to do
-				// about it.
-				response.SolveError = err.Error()
-			} else {
-				response = draftStatus(solved)
-			}
-		} else {
-			response.Solving = true
-		}
+	solved, err := h.solveDraftRotaAllocation(r)
+	if err != nil {
+		// Reported, not returned. The draft as it stands is what was asked for
+		// and it is still worth showing; what failed is the courtesy this
+		// endpoint performs on the way. Every rota is in exactly this state
+		// between being defined and its availability round being minted, and
+		// answering that with an error would take the draft panel off the one
+		// screen that says what to do about it.
+		response.SolveError = err.Error()
+	} else {
+		response = draftStatus(solved)
 	}
 
 	h.writeJSON(w, http.StatusOK, response)
@@ -139,15 +164,18 @@ func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Re
 // It runs inline rather than as a job, unlike an availability send. pyallocator
 // caps itself at thirty seconds, so this is a request an admin waits out with a
 // spinner rather than one they come back to.
+//
+// A solve already running is waited for and then solved past, rather than
+// refused (issue #179): unlike a read, this cannot be satisfied by the answer
+// the running solve produces, because the input that prompted it — a new
+// volunteer on the Sheet — moves no stamp in this database and so the running
+// solve may never have read it.
 func (h *Handler) handleSolveDraftRotaAllocation(w http.ResponseWriter, r *http.Request) {
-	if !h.drafts.begin() {
-		// Refused rather than queued behind the running solve. The answer that
-		// one produces is the answer this one would have produced, and an admin
-		// told "already solving" can watch it land.
-		h.writeServiceError(w, fmt.Errorf("a solve is already running for this rota - wait for it to finish%.0w", services.ErrConflict))
+	if err := h.drafts.acquire(r.Context()); err != nil {
+		h.logger.Debug("A solve left the queue before it ran", zap.Error(err))
 		return
 	}
-	defer h.drafts.end()
+	defer h.drafts.release()
 
 	status, err := h.solveDraftRotaAllocation(r)
 	if err != nil {
@@ -158,14 +186,27 @@ func (h *Handler) handleSolveDraftRotaAllocation(w http.ResponseWriter, r *http.
 	h.writeJSON(w, http.StatusOK, draftStatus(status))
 }
 
-// solveDraftRotaAllocation runs the solve both handlers share. The caller holds
-// the solve slot.
+// solveCeiling is how long a solve gets before it is taken to be wedged.
+//
+// pyallocator caps CP-SAT's *search* at thirty seconds (solver.py) but nothing
+// caps process start, model building or the IO either side of it. That was one
+// caller's problem while a solve nobody could get behind was refused; now that
+// callers queue, a wedged subprocess holds up every reader of the rota. So it
+// fails loudly and gives the slot back, at double the search cap — long enough
+// that a legitimately slow solve still lands.
+const solveCeiling = 60 * time.Second
+
+// solveDraftRotaAllocation runs the solve both handlers share, under the ceiling
+// and under the request's own context, so the subprocess dies with either. The
+// caller holds the solve slot.
 //
 // No python flag: the server has none to pass, and ResolvePythonInterpreter
 // falls back to $ILFORD_CPSAT_PYTHON, then the venv, then python3. The flag
 // belongs to the CLI, where a maintainer is choosing an interpreter by hand.
 func (h *Handler) solveDraftRotaAllocation(r *http.Request) (*services.DraftRotaAllocationStatus, error) {
-	return services.SolveDraftRotaAllocation(r.Context(), h.store, h.volunteers, h.cfg, h.logger, "")
+	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
+	defer cancel()
+	return services.SolveDraftRotaAllocation(ctx, h.store, h.volunteers, h.cfg, h.logger, "")
 }
 
 // draftStatus is the wire form of a draft's state, from either handler. One
@@ -180,8 +221,6 @@ func draftStatus(status *services.DraftRotaAllocationStatus) draftRotaAllocation
 		SolverStatus:     status.SolverStatus,
 		SeatsAsked:       status.SeatsAsked,
 		SeatsFilled:      status.SeatsFilled,
-		Dirty:            status.Dirty,
-		Solving:          status.Solving,
 		Hash:             status.Hash,
 		SolveTimeSeconds: status.Diagnostics.SolveTimeSeconds,
 		Shifts:           draftShifts(status.Shifts),

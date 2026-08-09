@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -96,7 +97,6 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &view))
 	assert.Equal(t, rota.ID, view.RotaID)
 	assert.True(t, view.Solved)
-	assert.False(t, view.Dirty)
 	require.Len(t, view.Shifts, 2, "the draft is there; it simply is not published")
 	assert.Equal(t, first.ID, view.Shifts[0].ShiftID)
 	assert.Equal(t, "Alice", view.Shifts[0].Assignees[0].Name)
@@ -202,7 +202,7 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	assert.False(t, body.Dirty, "nothing has moved, so the stored draft is the answer")
+	assert.Empty(t, body.SolveError, "nothing has moved, so the stored draft is the answer")
 	assert.Equal(t, 10, body.SeatsFilled)
 
 	// Close a Shift: the drop-in does not run that day, which is a different
@@ -224,5 +224,136 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Contains(t, body.SolveError, "for nobody")
-	assert.True(t, body.Dirty, "and the inputs still stand ahead of the draft")
+}
+
+// dirtyDraftedRota is a rota in flight of two Shifts with a draft against it,
+// and an edit landed since: the draft no longer speaks for the inputs, so
+// reading it is a read that wants to solve. Returns the handler and the rota.
+//
+// The draft is clean when it is stored and made dirty by closing a Shift, so
+// that the stamps are the ones the app itself writes rather than ones a test
+// invented.
+func dirtyDraftedRota(t *testing.T, database *db.DB) (*Handler, db.Rotation) {
+	t.Helper()
+	ctx := context.Background()
+	dbtest.SeedRoles(t, database)
+	dbtest.SeedRotaDefaults(t, database)
+
+	rota := db.Rotation{ID: uuid.New().String()}
+	first := dbtest.Shift(rota.ID, "2026-08-02")
+	second := dbtest.Shift(rota.ID, "2026-08-09")
+	require.NoError(t, database.InsertDefinedRota(ctx, &rota, []db.Shift{first, second}, nil, nil))
+	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
+		RotaID:       rota.ID,
+		SolvedAt:     time.Now().UTC(),
+		Success:      true,
+		SolverStatus: "OPTIMAL",
+		Diagnostics:  []byte(`{}`),
+		SeatsAsked:   10,
+		SeatsFilled:  10,
+	}, nil))
+
+	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+		_, err := tx.SetShiftClosed(ctx, first.ID, true)
+		return err
+	}))
+
+	return NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()), rota
+}
+
+// readDraftWhileTheSlotIsHeld starts a draft read against a handler whose solve
+// slot is already taken, proves it is waiting rather than answering, and hands
+// back the answer it eventually gives.
+//
+// The wait is the assertion. A read that came back at once would be a read that
+// had reported a stale draft, which is the whole thing this endpoint stopped
+// doing (issue #179).
+func readDraftWhileTheSlotIsHeld(t *testing.T, handler *Handler, release func()) draftRotaAllocationResponse {
+	t.Helper()
+	answered := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		answered <- doRequest(t, handler.Routes(), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	}()
+
+	select {
+	case rec := <-answered:
+		t.Fatalf("the read answered while a solve held the slot: %s", rec.Body.String())
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	release()
+
+	select {
+	case rec := <-answered:
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var body draftRotaAllocationResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		return body
+	case <-time.After(10 * time.Second):
+		t.Fatal("the read never took the slot it was waiting for")
+		return draftRotaAllocationResponse{}
+	}
+}
+
+// A read that arrives while a solve is running waits for it — and when that
+// solve turns out to have accounted for the inputs this reader came in with,
+// that is the answer, and nothing solves a second time (issue #179).
+//
+// This is the case that makes two tabs on one rota cheap: one solve, and one
+// instant return once it lands.
+//
+// What proves nothing solved is that nothing was refused. A solve on this rota
+// runs headlong into the gate on a rota whose Shifts ask for nobody — as the
+// test below it shows — so a clean answer with no solveError is an answer that
+// never went near the solver.
+func TestGetDraftRotaAllocationWaitsForASolveThatAlreadyCoversIt(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	handler, rota := dirtyDraftedRota(t, database)
+
+	require.NoError(t, handler.drafts.acquire(ctx), "a solve is now running for this rota")
+
+	body := readDraftWhileTheSlotIsHeld(t, handler, func() {
+		// The running solve finishes, having read the inputs as they now stand —
+		// including the edit that sent the reader here. Its answer is the
+		// reader's answer.
+		inFlight, err := database.GetRotaInFlight(ctx)
+		require.NoError(t, err)
+		require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
+			RotaID:          rota.ID,
+			SolvedAt:        time.Now().UTC(),
+			Success:         true,
+			SolverStatus:    "OPTIMAL",
+			Diagnostics:     []byte(`{}`),
+			InputsChangedAt: inFlight.InputsChangedAt,
+			SeatsAsked:      10,
+			SeatsFilled:     7,
+		}, nil))
+		handler.drafts.release()
+	})
+
+	assert.Empty(t, body.SolveError, "the running solve's answer was this reader's answer")
+	assert.Equal(t, 7, body.SeatsFilled, "and it is that solve's answer, not the one it replaced")
+}
+
+// The same wait, and the other outcome: the solve queued ahead of this reader
+// started before the edit that sent it here, so its answer says nothing about
+// that edit. The reader re-reads the status inside the slot, finds it still
+// dirty, and solves for itself.
+//
+// Without the re-read, "wait for the running solve and return that" would hand
+// back an answer to a question nobody asked — which is the stale draft this
+// endpoint stopped returning, arriving by a slower route.
+func TestGetDraftRotaAllocationWaitsAndThenSolvesForItself(t *testing.T) {
+	database, _ := dbtest.New(t)
+	handler, _ := dirtyDraftedRota(t, database)
+
+	require.NoError(t, handler.drafts.acquire(context.Background()))
+
+	// The running solve finishes and stores nothing this reader can use: the
+	// draft is still the one the edit moved past.
+	body := readDraftWhileTheSlotIsHeld(t, handler, handler.drafts.release)
+
+	assert.Contains(t, body.SolveError, "for nobody",
+		"it solved for itself, and its own solve met the gate that proves it ran")
 }

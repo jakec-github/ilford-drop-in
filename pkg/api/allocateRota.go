@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
@@ -52,9 +54,17 @@ type allocateRotaResponse struct {
 // point. Retrying the same request after a 409 with the same hash gets the same
 // 409, because the hash names a rota that is no longer what solving produces.
 //
-// It takes the same solve slot draft solves take. A solve is a subprocess, and
-// two of them over one rota would race to replace each other's draft — and one
-// of them could be replacing the draft this one is confirming.
+// It takes the same solve slot draft solves take, waiting its turn for it. A
+// solve is a subprocess, and two of them over one rota would race to replace
+// each other's draft — and one of them could be replacing the draft this one is
+// confirming.
+//
+// Waiting rather than refusing (issue #179) has one consequence worth stating:
+// a solve landing while this request is queued may have moved the rota, so the
+// hash the admin confirmed no longer matches and nothing is committed. That
+// makes the change report an ordinary outcome of allocating during a burst of
+// edits rather than a rare one — which is correct, and already what the report
+// is for.
 //
 // Admin-only, like everything else about the rota being decided. This is the
 // act that publishes it: after this the rota reaches GET /api/shifts and the
@@ -68,16 +78,24 @@ func (h *Handler) handleAllocateRotaInFlight(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if !h.drafts.begin() {
-		// The running solve may be the one about to replace the draft being
-		// confirmed, so this cannot queue behind it and compare against what it
-		// set out with.
-		h.writeServiceError(w, fmt.Errorf("a solve is already running for this rota - wait for it to finish and allocate the rota it produces%.0w", services.ErrConflict))
+	if err := h.drafts.acquire(r.Context()); err != nil {
+		// The admin closed the tab or gave up while queueing. Nothing is
+		// written, which is the whole answer: allocating is the one thing here
+		// that must not happen without somebody watching it.
+		h.logger.Debug("An allocation left the solve queue", zap.Error(err))
 		return
 	}
-	defer h.drafts.end()
+	defer h.drafts.release()
 
-	outcome, err := services.AllocateRotaInFlight(r.Context(), h.store, h.volunteers, h.cfg, h.logger, req.DraftHash, "")
+	// Under the same ceiling a draft solve runs under, and for the same reason:
+	// a wedged subprocess holding this slot holds up every reader of the rota.
+	// It bounds the commit as well as the solve, which is safe — the write is
+	// one transaction, so a cancelled one rolls back rather than half-allocating
+	// the rota.
+	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
+	defer cancel()
+
+	outcome, err := services.AllocateRotaInFlight(ctx, h.store, h.volunteers, h.cfg, h.logger, req.DraftHash, "")
 	if err != nil {
 		h.writeServiceError(w, err)
 		return

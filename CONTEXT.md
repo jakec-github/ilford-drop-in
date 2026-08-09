@@ -147,7 +147,9 @@ single one of them means anything on its own. It is **dirty** when an allocator
 input has moved under the Rotation since it was solved — an availability
 response, a Shape, a Shift opened, closed or moved to another day, a
 Preallocation, a Role, the Allocation Settings — and reading a dirty draft
-solves it again. It becomes the rota only when an Admin allocates, which
-re-solves and commits only if the result still matches what they were shown.
+solves it again, waiting for any solve already running first, so what a reader
+is handed is never stale. It becomes the rota only when an Admin allocates,
+which re-solves and commits only if the result still matches what they were
+shown.
 _Avoid_: draft allocation (that is one of its seats), speculative allocation,
 provisional rota, preview, stale (a draft is dirty)

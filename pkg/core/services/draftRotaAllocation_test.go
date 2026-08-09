@@ -141,7 +141,6 @@ func TestDraftRotaAllocationDirtiness(t *testing.T) {
 			assert.Equal(t, 10, status.SeatsAsked)
 			assert.Equal(t, 8, status.SeatsFilled, "two Seats short, which is what an admin acts on")
 			assert.Equal(t, 1.25, status.Diagnostics.SolveTimeSeconds, "read back out of the solver's own JSON")
-			assert.False(t, status.Solving, "reading does not start a solve; the caller decides that")
 		})
 	}
 }
