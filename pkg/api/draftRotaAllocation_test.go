@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -138,8 +140,6 @@ func TestGetDraftRotaAllocationReportsACleanDraft(t *testing.T) {
 	assert.Equal(t, "rota-1", body.RotaID)
 	assert.Equal(t, "2026-08-02", body.RotaStart)
 	assert.True(t, body.Solved)
-	assert.False(t, body.Dirty)
-	assert.False(t, body.Solving)
 	assert.Equal(t, solvedAt.Format(time.RFC3339), body.SolvedAt)
 	assert.Equal(t, "OPTIMAL", body.SolverStatus)
 	assert.Equal(t, 10, body.SeatsAsked)
@@ -174,8 +174,6 @@ func TestGetDraftRotaAllocationWhenTheSolveIsRefused(t *testing.T) {
 	var body draftRotaAllocationResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.False(t, body.Solved, "nothing has been solved for this rota")
-	assert.True(t, body.Dirty, "and the inputs still stand ahead of the draft")
-	assert.False(t, body.Solving, "no solve is running — one was refused")
 	assert.Contains(t, body.SolveError, "availability round",
 		"the step that has not been taken, named")
 	assert.Empty(t, store.storedDrafts, "a refused solve stores nothing")
@@ -198,14 +196,16 @@ func TestGetDraftRotaAllocationWithNoRotaInFlight(t *testing.T) {
 	assert.Empty(t, store.storedDrafts)
 }
 
-// A dirty draft with a solve already running comes back as it stands, marked
-// solving. Not queued behind the running solve, and not solved a second time:
-// the answer already on its way is the answer this reader wants, and a screen
-// has something to show in the meantime.
-func TestGetDraftRotaAllocationWhileASolveIsRunning(t *testing.T) {
+// A client that goes away while queueing for the slot leaves the queue. Nothing
+// is written back — there is nobody to write to — and, crucially, the solve it
+// was waiting for is untouched: it still holds the slot, and still has it to
+// give when it finishes.
+func TestGetDraftRotaAllocationWhenTheClientGivesUpWaiting(t *testing.T) {
 	moved := time.Date(2026, 8, 5, 11, 0, 0, 0, time.UTC)
 	store := &mockStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2, InputsChangedAt: moved}},
+		// Solved before that change landed, so the draft is dirty and the read
+		// of it queues rather than answering.
 		storedDrafts: []db.DraftRotaAllocation{{
 			RotaID:       "rota-1",
 			SolvedAt:     time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC),
@@ -214,41 +214,114 @@ func TestGetDraftRotaAllocationWhileASolveIsRunning(t *testing.T) {
 			Diagnostics:  []byte(`{}`),
 			SeatsAsked:   10,
 			SeatsFilled:  8,
-			// Solved before the change above landed.
 		}},
 	}
 	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
-	require.True(t, handler.drafts.begin(), "a solve is now running in this process")
-	defer handler.drafts.end()
+	require.NoError(t, handler.drafts.acquire(t.Context()), "a solve is now running in this process")
 
-	rec := doRequest(t, handler.Routes(), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	gone, disconnect := context.WithCancel(t.Context())
+	req := httptest.NewRequestWithContext(gone, http.MethodGet, "/api/draft-rota-allocation", nil)
+	req.AddCookie(adminCookie())
+	rec := httptest.NewRecorder()
 
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	var body draftRotaAllocationResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	assert.True(t, body.Dirty, "the inputs have moved, and the reader is told so")
-	assert.True(t, body.Solving, "a fresher answer is on its way")
-	assert.True(t, body.Solved, "with the previous one to show until it lands")
-	assert.Equal(t, 8, body.SeatsFilled)
-	assert.Len(t, store.storedDrafts, 1, "no second solve was started")
+	returned := make(chan struct{})
+	go func() {
+		handler.Routes().ServeHTTP(rec, req)
+		close(returned)
+	}()
+
+	select {
+	case <-returned:
+		t.Fatal("the read answered while a solve held the slot")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	disconnect()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("the read did not give up when its client did")
+	}
+
+	// The running solve is unaffected by its reader leaving: the slot is still
+	// held, and still comes back when the solve gives it back.
+	handler.drafts.release()
+	assert.NoError(t, handler.drafts.acquire(t.Context()), "the slot came back with the solve, not with the waiter")
+	assert.Empty(t, rec.Body.String(), "nothing was written back to a client that had gone")
+	assert.Len(t, store.storedDrafts, 1, "and the waiter solved nothing on its way out")
 }
 
-// Asking for a re-solve while one is running is refused rather than queued. The
-// solve already going produces the same answer from the same inputs, so a second
-// subprocess would be work done twice to replace the first one's result.
-func TestSolveDraftRotaAllocationWhileASolveIsRunning(t *testing.T) {
+// Asking for a re-solve while one is running waits for it and then solves
+// anyway. Unlike a read, this cannot be satisfied by the running solve's answer:
+// the change that prompts an admin to press the button is usually a new
+// volunteer on the roster Sheet, which moves no stamp here and which the running
+// solve may have started before.
+//
+// The store here has a rota and nothing else, so the solve it finally runs is
+// refused at the first gate it meets — which is what proves it ran at all.
+func TestSolveDraftRotaAllocationWaitsForTheRunningSolve(t *testing.T) {
 	store := &mockStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
 	}
 	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
-	require.True(t, handler.drafts.begin())
-	defer handler.drafts.end()
+	require.NoError(t, handler.drafts.acquire(t.Context()))
+
+	answered := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		answered <- doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+	}()
+
+	select {
+	case rec := <-answered:
+		t.Fatalf("the solve answered without waiting its turn: %s", rec.Body.String())
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	handler.drafts.release()
+	select {
+	case rec := <-answered:
+		assert.NotContains(t, rec.Body.String(), "already running", "nothing is refused for being queued")
+		assert.Contains(t, rec.Body.String(), "no shifts", "it waited, then solved, and the solve named its missing step")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the solve never took the slot it was waiting for")
+	}
+}
+
+// ceilingSpy records the deadline a solve is run under. Everything a solve
+// reads goes through the store, so the first read is where the ceiling — or its
+// absence — shows.
+type ceilingSpy struct {
+	*mockStore
+	deadline     time.Time
+	underCeiling bool
+}
+
+func (c *ceilingSpy) GetRotations(ctx context.Context) ([]db.Rotation, error) {
+	c.deadline, c.underCeiling = ctx.Deadline()
+	return c.mockStore.GetRotations(ctx)
+}
+
+// A solve runs under a ceiling, and gives the slot back when it hits one.
+//
+// pyallocator caps CP-SAT's search but not the process around it, and now that
+// callers queue for the slot rather than being turned away, a wedged subprocess
+// would hold up every reader of the rota rather than only its own caller. So it
+// has to fail rather than hang.
+func TestASolveRunsUnderACeiling(t *testing.T) {
+	store := &ceilingSpy{mockStore: &mockStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
+	}}
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
 
 	rec := doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+	require.NotEqual(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
 
-	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
-	assert.Contains(t, rec.Body.String(), "already running")
-	assert.Empty(t, store.storedDrafts)
+	require.True(t, store.underCeiling, "the solve ran with no deadline at all")
+	assert.WithinDuration(t, time.Now().Add(solveCeiling), store.deadline, 5*time.Second,
+		"and the deadline is the ceiling, not something inherited")
+
+	// And whatever the solve made of it, the slot came back.
+	assert.NoError(t, handler.drafts.acquire(t.Context()), "the slot was not left held")
 }
 
 // The slot is given back when a solve finishes, however it finished: a solve
@@ -256,8 +329,63 @@ func TestSolveDraftRotaAllocationWhileASolveIsRunning(t *testing.T) {
 func TestTheSolveSlotIsReleased(t *testing.T) {
 	slot := newDraftSolves()
 
-	require.True(t, slot.begin())
-	assert.False(t, slot.begin(), "one at a time")
-	slot.end()
-	assert.True(t, slot.begin(), "and free again afterwards")
+	require.NoError(t, slot.acquire(t.Context()))
+
+	gaveUp, cancel := context.WithCancel(t.Context())
+	cancel()
+	assert.Error(t, slot.acquire(gaveUp), "one at a time")
+
+	slot.release()
+	assert.NoError(t, slot.acquire(t.Context()), "and free again afterwards")
+}
+
+// A caller waiting for the slot takes it the moment the solve holding it
+// finishes. This is what a read does instead of coming back stale, and what a
+// re-solve does instead of being refused (issue #179).
+func TestTheSolveSlotIsHandedToWhoeverIsWaiting(t *testing.T) {
+	slot := newDraftSolves()
+	require.NoError(t, slot.acquire(t.Context()))
+
+	waiting := make(chan error, 1)
+	go func() { waiting <- slot.acquire(t.Context()) }()
+
+	select {
+	case <-waiting:
+		t.Fatal("the slot was taken while a solve still held it")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	slot.release()
+	select {
+	case err := <-waiting:
+		assert.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("the slot was never handed on")
+	}
+}
+
+// A caller that gives up while waiting leaves the queue rather than holding a
+// place in it. On the read path that is a client disconnecting: the solve it was
+// waiting for is unaffected — it holds the slot, not its readers — and the next
+// caller in line gets the slot rather than one nobody will read the answer of.
+func TestASolveSlotWaiterThatGivesUpLeavesTheQueue(t *testing.T) {
+	slot := newDraftSolves()
+	require.NoError(t, slot.acquire(t.Context()))
+
+	gone, disconnect := context.WithCancel(t.Context())
+	left := make(chan error, 1)
+	go func() { left <- slot.acquire(gone) }()
+	disconnect()
+
+	select {
+	case err := <-left:
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("the waiter never left the queue")
+	}
+
+	// And the slot is still the running solve's to give back, to whoever is
+	// there when it does.
+	slot.release()
+	assert.NoError(t, slot.acquire(t.Context()))
 }

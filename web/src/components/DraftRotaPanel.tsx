@@ -225,10 +225,11 @@ export default function DraftRotaPanel({
   const [confirming, setConfirming] = useState(false);
 
   // Nothing to allocate until there is a rota to allocate. An unsolved draft
-  // has none, an infeasible one is the solver saying there is none to be had,
-  // and a solve running now is about to replace whatever is on screen — so the
-  // button would be confirming a rota that is already being superseded.
-  const allocatable = state.solved && state.success && !state.solving;
+  // has none, and an infeasible one is the solver saying there is none to be
+  // had. Nothing here has to ask whether the draft is current: what was read is
+  // what the inputs say, and if it has moved since, allocating refuses and
+  // reports the difference (ADR 0008).
+  const allocatable = state.solved && state.success;
   const busy = solving || allocating;
 
   return (
@@ -262,17 +263,6 @@ export default function DraftRotaPanel({
       ) : (
         <p className="draft-panel-state">
           Nothing has been solved for this rota yet.
-        </p>
-      )}
-
-      {/* A solve was already running when this page read the draft, so what is
-          above is the previous answer. Worth saying rather than leaving an
-          admin to wonder why a re-solve changed nothing: the answer they want
-          is being computed, and reloading is what collects it. */}
-      {state.solving && (
-        <p className="draft-panel-state">
-          A fresher draft is being solved right now — reload in a moment to see
-          it.
         </p>
       )}
 

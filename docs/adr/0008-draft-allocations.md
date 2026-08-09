@@ -1,7 +1,9 @@
 # Draft Rota Allocations live in their own table and are confirmed by output hash
 
 Status: accepted. Amended 2026-08-07: drafts re-solve when they are read, not on
-a timer (#142) — see "Re-solves happen when a draft is read".
+a timer (#142) — see "Re-solves happen when a draft is read". Amended 2026-08-09:
+reading a draft waits for a solve already running rather than reporting one
+(#179) — same section.
 
 An unallocated Rotation continuously carries a **Draft Rota Allocation**: a
 speculative rota the solver produces from whatever availability, Shapes and
@@ -75,9 +77,30 @@ only if the fresh result hashes identically to the draft the admin was shown.
   a change that moves the Rotation's stamp past the one the draft captured simply
   leaves the draft dirty, costing a re-solve rather than losing the change.
 
-  One solve runs at a time per process. A reader arriving while one is running is
-  given the draft as it stands, told a solve is in flight, and left to ask
-  again — not queued behind a subprocess that is already computing its answer.
+  One solve runs at a time per process, and everything that solves — a read, the
+  re-solve control, allocating — queues for that one slot.
+
+  *Amended 2026-08-09 (#179). The superseded design* did not queue: a reader
+  arriving while a solve ran was given the draft as it stands, told a solve was
+  in flight, and left to ask again. That made a draft read two things — an
+  answer, or a state to act on — and left every screen holding a retry policy of
+  its own, with a re-solve refused outright as a third case. Reading now waits
+  for the slot and then **re-reads the dirtiness inside it**, solving only if it
+  is still dirty: the solve queued ahead may have started before the edit that
+  sent this reader here, so waiting for it is not on its own enough to make its
+  answer the right one. A reader whose edit that solve already covered returns at
+  once with its answer; one whose edit it predates gets its own solve. The cost
+  is that a slow solve and a hung server look alike to a client, which is
+  accepted — and a solve therefore runs under a ceiling of its own (60s), since a
+  wedged subprocess now holds up every reader rather than only its own caller.
+
+  The slot is per-process, which is a constraint on the deployment: it holds for
+  one app container, and `deploy/compose.yaml` runs exactly one. A second
+  instance would mean a second slot and so two concurrent solves racing to store
+  their answers — wasted CPU and a flapping draft, but not a wrong allocation,
+  because the hash guard still means only a rota that was shown can be committed.
+  Growing past one container means making the slot a Postgres advisory lock keyed
+  on the rota.
 
 - **Drafts are read-only.** No drag-and-drop before allocation: a hand
   placement would be destroyed by the next solve. The durable way to say "put

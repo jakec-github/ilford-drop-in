@@ -59,12 +59,11 @@ type DraftRotaAllocationStatus struct {
 	// Dirty reports that an allocator input has moved since the draft was
 	// solved, so it is a guess at a question nobody is asking any more. An
 	// undrafted rota is dirty: there is nothing that speaks for it at all.
+	//
+	// It is the caller's cue to solve and goes no further than that: it never
+	// reaches the wire, because a client is never handed a draft that is stale
+	// (issue #179).
 	Dirty bool
-	// Solving reports that a solve is running for this rota in this process, so
-	// what is above it is the previous answer and a fresher one is on its way.
-	// Set by the caller that owns the solve, since that is where the fact lives
-	// (api/draftsolves.go).
-	Solving bool
 	// Hash fingerprints the rota below: it is what an admin allocating says
 	// back, and what allocating re-solves and compares against before it
 	// commits anything (ADR 0008). Empty for a rota nobody has drafted, which

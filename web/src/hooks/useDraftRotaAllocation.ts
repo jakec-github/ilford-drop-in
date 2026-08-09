@@ -44,8 +44,8 @@ interface UseDraftRotaAllocation {
   // shown optimistically: what it does depends on what the solver says.
   allocating: boolean;
   // The message from an allocation that was refused outright — no rota in
-  // flight, nothing drafted yet, a solve already running. A rota that had moved
-  // is not one of these: that is an outcome, and it is in `attempt`.
+  // flight, nothing drafted yet. A rota that had moved is not one of these:
+  // that is an outcome, and it is in `attempt`.
   allocateError: string | null;
   // What came of the last allocation, or null if none has been attempted since
   // this page loaded — or since the last one was superseded by starting
