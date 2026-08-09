@@ -59,36 +59,30 @@ every request. What you are looking at is the real gate, not an open door.
 ## Define a rota
 
 The database starts empty, so nothing downstream of a shift is reachable until a
-rota exists. Defining one states the whole rota — when it starts, what hours its
-shifts run and what each asks for — so the way to do it by hand is to ask what
-the define screen would start from and send that straight back:
+rota exists. Defining one says how many shifts and from when; the hours they run
+and what each asks for are the Rota Defaults, which defining spends (issue
+#176):
 
 ```bash
 curl -b cookies.txt localhost:8080/api/rotations/proposed
 curl -b cookies.txt -X POST localhost:8080/api/rotations -d '{
   "shiftCount": 6,
-  "startDate": "2026-09-06",
-  "shiftStartTime": "19:30",
-  "shiftEndTime": "21:30",
-  "shape": [{"roleId": "<team-lead-id>", "count": 1},
-            {"roleId": "<service-volunteer-id>", "count": 4}]
+  "startDate": "2026-09-06"
 }'
 ```
 
-`GET /api/rotations/proposed` answers with the Sunday after the last rota and
-the Rota Defaults, in the fields the POST takes; the ids come from
-`GET /api/roles`. Nothing falls back to the settings on the way through, so a
-field left out is a 400 rather than a default quietly applied — that is the
-point of the endpoint (issue #140).
+`GET /api/rotations/proposed` answers with the Sunday after the last rota, which
+is what the form's date box starts from. A body naming anything else — the
+hours, the shape — is a 400 rather than a setting quietly overridden.
 
 That mints six weekly shifts and returns them with their ids; `GET /api/shifts`
 then serves them. The Allocation tab in the admin area does the same thing
-through the UI, with the proposal already filled into the form.
+through the UI, with the proposed date already in the form.
 
 The shift times and the default Shape come from the settings, which a fresh dev
-database has none of — the proposal comes back with empty times and an empty
-shape, and defining is refused until they are stated. Set them on Admin →
-Settings, or over `PUT /api/rota-defaults/shift-times` and
+database has none of, so defining is refused until they are stated. Set them on
+Admin → Settings — the same card sits under the define form on the Allocation
+tab — or over `PUT /api/rota-defaults/shift-times` and
 `PUT /api/rota-defaults/shape`.
 
 Seed through the endpoints rather than by writing rows into Postgres by hand:

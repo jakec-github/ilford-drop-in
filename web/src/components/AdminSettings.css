@@ -1,96 +1,7 @@
-/* Each settings section is its own card, so a later one can be added without
-   touching the ones already here. The heading and the section's one action sit
-   on the same line: the action belongs to the section, not to the list under
-   it, and a list that grows would otherwise push its own button off screen. */
-.settings-section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.settings-section-head h2 {
-  margin: 0;
-}
-
-/* The action keeps its words on one line: "New role" broken over two reads as
-   two buttons at a glance, and the blurb beside it is what should give way. */
-.settings-section-head > .button,
-.settings-section-actions > .button {
-  flex: none;
-  white-space: nowrap;
-}
-
-/* A section with two things to edit — the Rota Defaults have times and a shape
-   — keeps both buttons together on the heading line, dropping the second under
-   the first only when there is no room for it. */
-.settings-section-actions {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.settings-blurb {
-  margin: 0.25rem 0 0;
-  font-size: 0.875rem;
-}
-
-.settings-empty,
-.settings-caption {
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-.settings-caption {
-  margin-top: 0.75rem;
-}
-
-.settings-error {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
-  color: var(--role-rose);
-}
-
-/* What the drop-in as a whole runs on, read as a column of labelled facts
-   rather than a sentence: an admin checking the times is looking for one line,
-   and the section grows more of them as later settings land here. */
-.settings-facts {
-  margin: 0;
-}
-
-.settings-fact {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-  border-top: 1px solid var(--border);
-}
-
-.settings-fact:first-child {
-  border-top: none;
-}
-
-.settings-fact dt {
-  flex: none;
-  width: 8rem;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.settings-fact dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-/* A setting nobody has filled in is an ordinary state, not an error — it is
-   where every deployment starts — so it is quieter than the rest of the row
-   rather than louder. What it costs is said in the caption underneath. */
-.settings-unset {
-  font-style: italic;
-}
+/* What only the settings screen has: its Roles list, its Standing
+   Preallocations and its allocation rules. The chrome every settings card
+   shares — heads, facts, fields — is in SettingsSection.css, because the Rota
+   Defaults card is read on the Allocation tab too (issue #176). */
 
 .roles {
   list-style: none;
@@ -176,40 +87,6 @@
   }
 }
 
-.settings-field {
-  display: block;
-  margin-bottom: 0.875rem;
-  font-size: 0.875rem;
-}
-
-.settings-field input[type="text"],
-.settings-field input[type="number"],
-.settings-field input[type="time"],
-.settings-field select {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.5rem;
-  /* 16px keeps iOS Safari from zooming the page on focus. */
-  font: 16px/1.4 var(--sans);
-  color: var(--text-h);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.settings-field input:focus-visible,
-.settings-field select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.settings-hint {
-  margin: -0.625rem 0 0.875rem;
-  font-size: 0.8125rem;
-}
-
 /* The one thing this app cannot fix on its own: the roster names Roles by
    string, so a rename here is only half the edit. Loud enough to be read
    before the save, not so loud it reads as a refusal — renaming is allowed. */
@@ -273,13 +150,6 @@
   height: 0.875rem;
   border-radius: 50%;
   background: var(--role-colour);
-}
-
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
 }
 
 /* One optional allocator rule in the edit dialog: a switch, what the rule does

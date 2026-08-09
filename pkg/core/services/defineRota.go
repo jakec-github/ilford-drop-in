@@ -27,44 +27,36 @@ type RotaResult struct {
 }
 
 // DefineRotaParams is the rota an admin has decided to make: how many shifts,
-// from when, running what hours, asking for whom.
+// and from when.
 //
-// Every field is stated rather than resolved from the Rota Defaults, and that
-// is the whole of issue #140. The settings are what the define form *starts
-// from* — RotaProposal reads them — and an admin may change any of them before
-// submitting. Minting from the request rather than re-reading the settings is
-// what makes the rota that appears the rota that was shown: the same principle
-// ADR 0008 applies to allocating one.
+// The hours and the Shape are not here. They are the Rota Defaults, and the
+// Rota Defaults are the only place they are stated (issue #176) — defining
+// spends them rather than restating them. What made them fields of this request
+// was issue #140, which put the whole rota on the define form; the two ways to
+// say the same thing turned out to be one way too many, so the form now shows
+// the settings card itself and the settings are what the shifts are minted from.
 //
-// Nothing here writes back to the Rota Defaults. An admin who wants the next
-// rota to start from different hours says so on the settings screen; changing
-// them here changes this rota and no other.
+// The shift count and the start date stay stated, because neither is a setting:
+// how long the next rota runs is a decision nobody has made yet, and a rota can
+// begin after a break rather than the week after the last one.
 type DefineRotaParams struct {
 	ShiftCount int
 	// StartDate is the first shift's date, in "2006-01-02". Its weekday is the
 	// cadence: shifts are minted weekly from it. Deliberately stated rather
 	// than derived, so a rota can start after a break (issue #140).
 	StartDate string
-	// ShiftStartTime and ShiftEndTime are the hours every minted Shift runs,
-	// as times of day in model.ShiftTimeLayout ("19:30"). They are written onto
-	// each Shift's own date and stay editable per Shift afterwards.
-	ShiftStartTime string
-	ShiftEndTime   string
-	// Shape is what every minted Shift asks for. Each Shift is minted with its
-	// own copy (issue #137), so editing one afterwards changes that Shift alone.
-	Shape []SeatParams
 }
 
 // DefineRotaStore defines the database operations needed for defining a rota.
-// The Roles come with it because a stated Seat names a Role by id while the
-// pins seeded beside it record its name; the rotations, because one rota is in
-// flight at a time and this is where that is enforced.
-//
-// Notably absent are the Rota Defaults and the default Shape. Defining used to
-// spend them; it now mints what the request states, and reading the settings is
-// RotaProposal's job on the way in.
+// Defining a rota is where the Rota Defaults are spent, so it reads all of
+// them: the shift times, because minting a Shift means deciding when it runs
+// (ADR 0007), and the default Shape, which each Shift is minted with a copy of
+// (issue #137). The Roles come with the Shape, because a Seat names a Role by
+// id while the pins seeded beside it record its name; the rotations, because
+// one rota is in flight at a time and this is where that is enforced.
 type DefineRotaStore interface {
-	RoleStore
+	RotaDefaultsStore
+	DefaultShapeStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
 	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error
@@ -75,18 +67,14 @@ type DefineRotaStore interface {
 type definition struct {
 	shiftCount int
 	startDate  time.Time
-	// startTime and endTime are the stated times of day, re-spelled from
-	// whatever was sent.
-	startTime string
-	endTime   string
-	shape     []storedSeat
 }
 
 // validate reads a stated rota, or says why it will not.
 //
-// The checks are in the order an admin filled the form in, so the first thing
-// they are told about is the first thing they typed.
-func (p DefineRotaParams) validate(roles model.Roles) (definition, error) {
+// Only the two fields an admin states are checked here. The hours and the Shape
+// are read from the settings, which were validated where they were written, and
+// what defining asks of them is whether they were written at all.
+func (p DefineRotaParams) validate() (definition, error) {
 	if p.ShiftCount <= 0 {
 		return definition{}, wrapf(ErrInvalidInput, "shift count must be positive, got %d", p.ShiftCount)
 	}
@@ -97,46 +85,14 @@ func (p DefineRotaParams) validate(roles model.Roles) (definition, error) {
 			"%q is not a date — write the first shift's date as 2026-08-02", p.StartDate)
 	}
 
-	// A Shift's date is the date of its start (ADR 0007), so a rota with no
-	// times is not a rota with unknown hours, it is a rota on no days at all.
-	// The same rules as the settings screen's, because it is the same question.
-	start, end, err := shiftTimesOfDay(p.ShiftStartTime, p.ShiftEndTime)
-	if err != nil {
-		return definition{}, err
-	}
-
-	shape, err := statedSeats(p.Shape, roles)
-	if err != nil {
-		return definition{}, err
-	}
-	// A Shift asking for nobody solves perfectly and staffs nothing. One can be
-	// reached per Shift afterwards, deliberately (issue #138) — a week the
-	// drop-in is shut — but a whole rota of them is a mistake rather than an
-	// intention.
-	if len(shape) == 0 {
-		return definition{}, wrapf(ErrInvalidInput,
-			"a rota's shifts have to ask for somebody; say how many of each role each shift needs")
-	}
-
-	return definition{
-		shiftCount: p.ShiftCount,
-		startDate:  startDate,
-		startTime:  start,
-		endTime:    end,
-		shape:      shape,
-	}, nil
+	return definition{shiftCount: p.ShiftCount, startDate: startDate}, nil
 }
 
 // DefineRota creates the rota an admin has stated and mints its weekly shifts,
-// each carrying the stated hours and a copy of the stated Shape, with the
+// each carrying the default hours and a copy of the default Shape, with the
 // Standing Preallocations seeded onto the Shifts their rules land on.
 func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logger, params DefineRotaParams) (*RotaResult, error) {
-	roles, err := RoleTable(ctx, database)
-	if err != nil {
-		return nil, err
-	}
-
-	stated, err := params.validate(roles)
+	stated, err := params.validate()
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +100,41 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	logger.Debug("Defining new rota",
 		zap.Int("shift_count", stated.shiftCount),
 		zap.String("start_date", params.StartDate))
+
+	// The hours each minted shift will run come from the Rota Defaults, and
+	// nothing can be minted without them: a Shift's date is the date of its
+	// start, so a Shift with no start is not a Shift with unknown hours, it is
+	// a Shift on no day at all (issue #135, ADR 0007).
+	//
+	// This is the second path incomplete settings block, alongside allocation,
+	// and it is a narrowing of ADR 0006's "allocation and nothing else". The
+	// reason is the same one that made allocation the exception: defining a rota
+	// is an act that creates something people are told to turn up to, not a page
+	// that renders. Everything that only reads still reads.
+	defaults, err := RotaDefaults(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
+		return nil, wrapf(ErrInvalidInput,
+			"the drop-in's settings are incomplete - %s %s not been set; set the rota defaults before defining a rota",
+			joinWithAnd(missing), plural(len(missing), "has", "have"))
+	}
+
+	// The Shape each minted Shift will ask for, copied onto every one of them
+	// below. An unset one is a refusal for the same reason the times are: a
+	// rota whose shifts ask for nobody solves perfectly and staffs nothing.
+	// One Shift can be emptied afterwards, deliberately (issue #138) — a week
+	// the drop-in is shut — but a whole rota of them is a mistake rather than
+	// an intention.
+	shape, err := DefaultShape(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if len(shape) == 0 {
+		return nil, wrapf(ErrInvalidInput,
+			"the default shape has not been set, so there is nothing for these shifts to ask for; state it in the rota defaults before defining a rota")
+	}
 
 	rotations, err := database.GetRotations(ctx)
 	if err != nil {
@@ -179,7 +170,7 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	for i := range shifts {
 		date := stated.startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
 
-		startAt, endAt, err := model.ShiftTimestamps(date, stated.startTime, stated.endTime)
+		startAt, endAt, err := model.ShiftTimestamps(date, defaults.ShiftStartTime, defaults.ShiftEndTime)
 		if err != nil {
 			return nil, fmt.Errorf("failed to derive shift times for %s: %w", date, err)
 		}
@@ -198,18 +189,18 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	// which derives both ends from the shift rows.
 	rotation.End = shifts[len(shifts)-1].Date
 
-	// Copy the stated Shape onto every Shift. From here it is that Shift's Shape
-	// and nothing else's: editing it changes one evening, and editing the
-	// setting it was prefilled from changes what the *next* rota starts from.
-	// That is the whole of issue #137 in three lines, and the reason the copy is
-	// made here rather than being resolved from the settings on every read.
-	requirements := make([]db.ShiftRequirement, 0, len(shifts)*len(stated.shape))
+	// Copy the default Shape onto every Shift. From here it is that Shift's
+	// Shape and nothing else's: editing it changes one evening, and editing the
+	// setting it was copied from changes what the *next* rota asks for. That is
+	// the whole of issue #137 in three lines, and the reason the copy is made
+	// here rather than being resolved from the settings on every read.
+	requirements := make([]db.ShiftRequirement, 0, len(shifts)*len(shape))
 	for _, s := range shifts {
-		for _, seat := range stated.shape {
+		for _, seat := range shape {
 			requirements = append(requirements, db.ShiftRequirement{
 				ShiftID: s.ID,
-				RoleID:  seat.RoleID,
-				Seats:   seat.Seats,
+				RoleID:  seat.Role.ID,
+				Seats:   seat.Count,
 			})
 		}
 	}
@@ -222,6 +213,13 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 	standing, err := database.GetStandingPreallocations(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch standing preallocations: %w", err)
+	}
+	// A pin names its Role by id and records its name, so the Roles are read
+	// here rather than being read off the Shape: a Standing Preallocation may
+	// promise a Role this rota's Shape does not name.
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		return nil, err
 	}
 	preallocations, err := seedPreallocations(standing, shifts, roles, logger)
 	if err != nil {
