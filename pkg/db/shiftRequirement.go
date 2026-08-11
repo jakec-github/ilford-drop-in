@@ -31,11 +31,19 @@ type ShiftRequirement struct {
 // empty: there is one way to say "this Shift asks for nothing", and it is the
 // zero value a lookup already returns. Asking about no Shifts is not a query.
 func (d *DB) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]ShiftRequirement, error) {
+	return getShiftShapes(ctx, d.pool, shiftIDs)
+}
+
+// getShiftShapes is GetShiftShapes against any querier, so a caller holding the
+// rota lock reads the Shapes inside its transaction. Pinning somebody to a Role
+// checks the Seats that Role has, and a Shape edit checks the pins (issue #138)
+// — the two have to see each other or the pair of them could cross.
+func getShiftShapes(ctx context.Context, q querier, shiftIDs []string) (map[string][]ShiftRequirement, error) {
 	if len(shiftIDs) == 0 {
 		return map[string][]ShiftRequirement{}, nil
 	}
 
-	rows, err := d.pool.Query(ctx, `
+	rows, err := q.Query(ctx, `
 		SELECT sr.shift_id, sr.role_id, sr.seats
 		FROM shift_requirement sr
 		JOIN role r ON r.id = sr.role_id

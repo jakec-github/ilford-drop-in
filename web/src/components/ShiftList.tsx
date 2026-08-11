@@ -285,7 +285,7 @@ function swapBlockedReason(
 // Standing Preallocation seeded it when the rota was defined, so there is one
 // thing to say about it.
 function pinTitle(pin: Preallocation): string {
-  // Naming the uncapped Role would be noise — being pinned to a shift already
+  // Naming the ordinary Role would be noise — being pinned to a shift already
   // means being pinned to one of its ordinary Seats.
   const role =
     pin.role === SERVICE_VOLUNTEER_ROLE ? "" : ` as ${pin.role.toLowerCase()}`;

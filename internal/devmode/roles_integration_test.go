@@ -31,12 +31,11 @@ func TestSeedRoles(t *testing.T) {
 	require.Len(t, roles, 2)
 
 	assert.Equal(t, "Team lead", roles[0].Name)
-	require.NotNil(t, roles[0].Max)
-	assert.Equal(t, 1, *roles[0].Max)
+	assert.Equal(t, 1, roles[0].Priority)
 	assert.Equal(t, "violet", roles[0].Colour)
 
 	assert.Equal(t, "Service volunteer", roles[1].Name)
-	assert.Nil(t, roles[1].Max, "the Role a shift's remaining places go to has no ceiling")
+	assert.Equal(t, 2, roles[1].Priority)
 }
 
 // The seed runs on every dev-stack start, so it has to be a seed rather than a
@@ -47,7 +46,7 @@ func TestSeedRolesLeavesAnAlreadySeededDatabaseAlone(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, database.InsertRole(ctx, db.Role{
-		ID: uuid.New().String(), Name: "Food collector", Max: intPtr(2), Priority: 1, Colour: "amber",
+		ID: uuid.New().String(), Name: "Food collector", Priority: 1, Colour: "amber",
 	}))
 
 	seeded, err := devmode.SeedRoles(ctx, database)

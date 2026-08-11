@@ -116,13 +116,13 @@ type testRoleStore struct{}
 
 func (testRoleStore) ListRoles(context.Context) ([]db.Role, error) {
 	return []db.Role{
-		{ID: "role-team-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
+		{ID: "role-team-lead", Name: "Team lead", Priority: 1, Colour: "violet"},
 		{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
 	}, nil
 }
 
 var testRoles = model.NewRoles([]model.Role{
-	{ID: "role-team-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
+	{ID: "role-team-lead", Name: "Team lead", Priority: 1, Colour: "violet"},
 	{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
 })
 
@@ -763,8 +763,10 @@ func TestChangeRota_MoveCarriesTheRoleAcross(t *testing.T) {
 
 // With nobody to replace and nothing to carry across — the shift they are
 // leaving predates alterations having a Role at all — the incoming volunteer
-// takes the uncapped Role, the Seat every shift has spare.
-func TestChangeRota_MoveWithNothingToInheritTakesTheUncappedRole(t *testing.T) {
+// takes no Role, which is what the row they are inheriting from says. There is
+// nothing left to guess with (issue #185), and refusing is not the alternative
+// it looks like: a swap is the one change that may not name a Role.
+func TestChangeRota_MoveWithNothingToInheritTakesNoRole(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts:      sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{{ID: "a1", ShiftID: "2025-01-12", VolunteerID: "alice"}},
@@ -780,7 +782,7 @@ func TestChangeRota_MoveWithNothingToInheritTakesTheUncappedRole(t *testing.T) {
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
 	require.NoError(t, err)
-	assert.Equal(t, "Service volunteer", addedAlteration(t, store).Role)
+	assert.Equal(t, "", addedAlteration(t, store).Role)
 }
 
 // addedAlteration returns the single "add" alteration the store recorded.
@@ -795,10 +797,13 @@ func addedAlteration(t *testing.T, store *mockChangeRotaStore) db.Alteration {
 	return db.Alteration{}
 }
 
-// An explicit role beats every inference rule bar one: a shift has a single
-// team lead, so asking for a second is refused rather than quietly downgraded.
-// Changing who leads is a replacement, not an addition.
-func TestChangeRota_ExplicitTeamLeadRefusedWhenShiftHasOne(t *testing.T) {
+// A change records what happened on the day, so nothing here counts how many of
+// a Role the shift ends up with: a second team lead turned up, and an admin
+// saying so is not a mistake to refuse (issue #185). It used to be refused
+// against the Role's ceiling — and the Shape it would be checked against
+// instead is frozen the moment the rota is allocated, which would leave an
+// extra pair of hands unrecordable.
+func TestChangeRota_ExplicitRoleIsNotCountedAgainstTheShift(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
@@ -815,9 +820,8 @@ func TestChangeRota_ExplicitTeamLeadRefusedWhenShiftHasOne(t *testing.T) {
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
-	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "Alice", "the refusal should name the team lead already on the shift")
-	assert.Nil(t, store.insertedCover)
+	require.NoError(t, err)
+	assert.Equal(t, "Team lead", addedAlteration(t, store).Role)
 }
 
 // The lead a replacement removes does not block the lead it adds: the role is

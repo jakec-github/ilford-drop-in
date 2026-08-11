@@ -47,12 +47,11 @@ func openShifts(shape []allocator.Seat, dates ...string) []allocator.ShiftSpec {
 // contract. If this test breaks, pyallocator's serialization must change in
 // lockstep (see pyallocator/README.md).
 func TestCpsatInputContractGolden(t *testing.T) {
-	leadMax := 1
 	input := &allocator.CpsatInput{
 		MaxAllocationCount: 2,
 		Roles: []allocator.CpsatRole{
-			{Name: "Team lead", Max: &leadMax, Priority: 1},
-			{Name: "Service volunteer", Max: nil, Priority: 2},
+			{Name: "Team lead", Priority: 1},
+			{Name: "Service volunteer", Priority: 2},
 		},
 		EnabledConstraints: []string{"max_frequency", "male_required"},
 		Shifts: []allocator.CpsatShift{{
@@ -87,8 +86,8 @@ func TestCpsatInputContractGolden(t *testing.T) {
 	golden := `{
 		"max_allocation_count": 2,
 		"roles": [
-			{"name": "Team lead", "max": 1, "priority": 1},
-			{"name": "Service volunteer", "max": null, "priority": 2}
+			{"name": "Team lead", "priority": 1},
+			{"name": "Service volunteer", "priority": 2}
 		],
 		"enabled_constraints": ["max_frequency", "male_required"],
 		"shifts": [{
@@ -125,7 +124,7 @@ func TestCpsatOutputContractGolden(t *testing.T) {
 	payload := `{
 		"solver_status": "OPTIMAL", "success": true, "error": "", "objective_value": 23,
 		"shifts": [{
-			"index": 0, "date": "2026-07-13", "size": 4, "closed": false,
+			"index": 0, "date": "2026-07-13", "closed": false,
 			"assignments": [
 				{"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},
 				{"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
@@ -195,10 +194,9 @@ func TestBuildCpsatInput(t *testing.T) {
 		}},
 	}
 
-	leadMax := 1
 	roles := []allocator.Role{
-		{Name: "Team lead", Max: &leadMax, Priority: 1},
-		{Name: "Service volunteer", Max: nil, Priority: 2},
+		{Name: "Team lead", Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
 	}
 
 	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, overrides, historical, halfFrequencyWithMaleCover, roles)
@@ -235,8 +233,8 @@ func TestBuildCpsatInput(t *testing.T) {
 
 	// Roles travel with the problem, in priority order.
 	assert.Equal(t, []allocator.CpsatRole{
-		{Name: "Team lead", Max: &leadMax, Priority: 1},
-		{Name: "Service volunteer", Max: nil, Priority: 2},
+		{Name: "Team lead", Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
 	}, input.Roles)
 	// The optional rules travel with the problem too, in registry order, so
 	// the solver applies exactly what an admin switched on.
@@ -284,8 +282,7 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2026-07-13", ShiftCount: 1}
 	historical, err := buildHistoricalShifts(
-		context.Background(), store, store.rotations, targetRota, volunteers,
-		"Service volunteer", zap.NewNop())
+		context.Background(), store, store.rotations, targetRota, volunteers, zap.NewNop())
 	require.NoError(t, err)
 
 	groupAvailability := map[string][]int{
@@ -293,10 +290,9 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 		"Diana Green": {0},
 		"Eve Hall":    {0},
 	}
-	leadMax := 1
 	roles := []allocator.Role{
-		{Name: "Team lead", Max: &leadMax, Priority: 1},
-		{Name: "Service volunteer", Max: nil, Priority: 2},
+		{Name: "Team lead", Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
 	}
 
 	input, err := allocator.BuildCpsatInput(
@@ -371,10 +367,9 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		},
 	}
 
-	leadMax := 1
 	roles := []allocator.Role{
-		{Name: "Team lead", Max: &leadMax, Priority: 1},
-		{Name: "Service volunteer", Max: nil, Priority: 2},
+		{Name: "Team lead", Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
 	}
 
 	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, overrides, nil, halfFrequencyWithMaleCover, roles)
@@ -418,7 +413,7 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 		Preallocations: []allocator.Preallocation{{VolunteerID: "alice", Role: "Service volunteer"}},
 	}}
 
-	roles := []allocator.Role{{Name: "Service volunteer", Max: nil, Priority: 1}}
+	roles := []allocator.Role{{Name: "Service volunteer", Priority: 1}}
 
 	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability,
 		openShifts([]allocator.Seat{{Role: "Service volunteer", Count: 2}}, "2026-07-13", "2026-07-20"),
@@ -440,7 +435,6 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 		Shifts: []allocator.CpsatOutputShift{{
 			Index: 0,
 			Date:  "2026-07-13",
-			Size:  3,
 			Assignments: []allocator.CpsatAssignment{
 				{VolunteerID: "alice", Role: "Team lead"},
 				{VolunteerID: "bob", Role: "Service volunteer"},

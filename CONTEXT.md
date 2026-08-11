@@ -49,7 +49,8 @@ Shift, however many they hold. A Role has an identity of its own: its name is
 what the roster and past rotas record, but what a Shape asks for is the Role
 itself, so renaming one leaves both readable. A Role is permanent — once
 created it always exists, so no reference to one can ever dangle and a past
-rota always reads as it was made.
+rota always reads as it was made. A Role carries no count and no ceiling of its
+own: how many of it a Shift asks for is that Shift's Shape.
 _Avoid_: position, qualification, badge
 
 **Seat**:
@@ -58,7 +59,8 @@ One place on a Shift: one Role, at most one person.
 **Shape**:
 Which Roles a Shift needs and how many Seats of each. Owned by the Shift and
 editable until its Rotation is allocated, fixed thereafter. Its counts are what
-the allocator fills up to, not minimums — Seats are routinely left empty.
+the allocator fills up to, not minimums — Seats are routinely left empty — and
+the only ceiling on how many of a Role a Shift may hold.
 _Avoid_: shift size, template, structure
 
 **Rota Defaults**:

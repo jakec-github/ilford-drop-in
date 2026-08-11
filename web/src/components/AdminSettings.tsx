@@ -20,14 +20,6 @@ import type {
 import { CUSTOM_CHOICE, DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./AdminSettings.css";
 
-// How a Role's ceiling reads in a list. An uncapped Role is not "unlimited" so
-// much as the one a shift's size is spent on, which is a different thing to say
-// and is said in the caption under the list rather than on every row.
-function ceilingLabel(max: number | null): string {
-  if (max === null) return "No limit";
-  return max === 1 ? "1 per shift" : `${max} per shift`;
-}
-
 // The colour a new Role starts on: the dullest token, so an admin who does not
 // care about colour does not accidentally claim a distinctive one.
 const NEW_ROLE_COLOUR: RoleColour = DEFAULT_ROLE_COLOUR;
@@ -36,9 +28,6 @@ const NEW_ROLE_COLOUR: RoleColour = DEFAULT_ROLE_COLOUR;
 // edit says everything a creation says. `role` is the Role being edited, or
 // null when one is being made.
 //
-// It holds the ceiling as a string rather than a number so that "no ceiling"
-// has an obvious representation — an empty box — rather than being smuggled in
-// as 0, which is a ceiling no shift could ever satisfy.
 function RoleForm({
   role,
   nextPriority,
@@ -51,7 +40,6 @@ function RoleForm({
   onClose: () => void;
 }) {
   const [name, setName] = useState(role?.name ?? "");
-  const [max, setMax] = useState(role?.max == null ? "" : String(role.max));
   const [priority, setPriority] = useState(
     (role?.priority ?? nextPriority).toString(),
   );
@@ -72,7 +60,6 @@ function RoleForm({
     try {
       await onSave({
         name: trimmed,
-        max: max.trim() === "" ? null : Number(max),
         priority: Number(priority),
         colour,
       });
@@ -111,21 +98,6 @@ function RoleForm({
             do, nobody holds this Role.
           </p>
         )}
-
-        <label className="settings-field">
-          Most per shift
-          <input
-            type="number"
-            min={1}
-            value={max}
-            onChange={(e) => setMax(e.target.value)}
-            placeholder="No limit"
-          />
-        </label>
-        <p className="settings-hint">
-          Leave blank for no limit. The rest of a shift’s places are filled with
-          the Role that has no limit.
-        </p>
 
         <label className="settings-field">
           Priority
@@ -193,7 +165,6 @@ function RoleRow({
         {role.name}
       </span>
       <span className="role-facts">
-        <span className="role-fact">{ceilingLabel(role.max)}</span>
         <span className="role-fact">Priority {role.priority}</span>
       </span>
       <Button size="small" onClick={onEdit}>
@@ -220,8 +191,6 @@ function RolesSettings() {
     roles && roles.length > 0
       ? Math.max(...roles.map((r) => r.priority)) + 1
       : 1;
-
-  const uncapped = roles?.find((r) => r.max === null) ?? null;
 
   return (
     <SettingsSection
@@ -255,21 +224,10 @@ function RolesSettings() {
               />
             ))}
           </ul>
-          {/* Which Role has no ceiling decides where a shift's remaining places
-              go, and capping every Role leaves nowhere for them — a mistake
-              that would otherwise only show up at allocation. */}
+          {/* How many of each Role a shift asks for is the Shape's business,
+              not a Role's, and the Shape is stated right below this list. */}
           <p className="settings-caption">
-            {uncapped ? (
-              <>
-                A shift’s remaining places are filled with{" "}
-                <strong>{uncapped.name}</strong>.
-              </>
-            ) : (
-              <>
-                Every Role has a limit, so a shift has nowhere to put its
-                remaining places. Leave one Role without a limit.
-              </>
-            )}
+            How many of each Role a shift needs is set by its shape, below.
           </p>
         </>
       )}

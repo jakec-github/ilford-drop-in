@@ -25,6 +25,14 @@ func coverageOf(t *testing.T, round *AvailabilityRound, date string) ShiftCovera
 	return ShiftCoverage{}
 }
 
+// ordinaryOf is the Service volunteer's numbers on a date — the Role most of
+// these tests are about. A shift has no numbers of its own to read instead: a
+// Role at a time is the only arithmetic that means anything (issue #185).
+func ordinaryOf(t *testing.T, round *AvailabilityRound, date string) RoleCoverage {
+	t.Helper()
+	return roleCoverageOf(t, coverageOf(t, round, date), "Service volunteer")
+}
+
 // roleCoverageOf picks one Role's numbers out of a shift's picture.
 func roleCoverageOf(t *testing.T, shift ShiftCoverage, role string) RoleCoverage {
 	t.Helper()
@@ -76,7 +84,7 @@ func TestCoverageCountsOnlyRespondingGroups(t *testing.T) {
 
 	// Nobody has answered: no group is countable yet, so every date is empty.
 	fresh := readRound(t, store, volunteers, cfg)
-	assert.Equal(t, 0, coverageOf(t, fresh, "2026-08-02").Available)
+	assert.Equal(t, 0, ordinaryOf(t, fresh, "2026-08-02").Available)
 
 	// Michael is available for both open dates; Emma, his group partner, only
 	// for the first. Her no on the second takes the pair out of it.
@@ -84,9 +92,9 @@ func TestCoverageCountsOnlyRespondingGroups(t *testing.T) {
 	answer(t, store, volunteers, cfg, round, "emma", "shift-1")
 
 	updated := readRound(t, store, volunteers, cfg)
-	assert.Equal(t, 2, coverageOf(t, updated, "2026-08-02").Available,
+	assert.Equal(t, 2, ordinaryOf(t, updated, "2026-08-02").Available,
 		"both members of a group that said yes are available")
-	assert.Equal(t, 0, coverageOf(t, updated, "2026-08-09").Available,
+	assert.Equal(t, 0, ordinaryOf(t, updated, "2026-08-09").Available,
 		"one member's no takes the whole group out")
 }
 
@@ -102,9 +110,9 @@ func TestCoverageIgnoresASilentPartner(t *testing.T) {
 	answer(t, store, volunteers, cfg, round, "emma", "shift-1")
 
 	updated := readRound(t, store, volunteers, cfg)
-	assert.Equal(t, 2, coverageOf(t, updated, "2026-08-02").Available,
+	assert.Equal(t, 2, ordinaryOf(t, updated, "2026-08-02").Available,
 		"Michael is opted in by Emma's answer")
-	assert.Equal(t, 0, coverageOf(t, updated, "2026-08-09").Available)
+	assert.Equal(t, 0, ordinaryOf(t, updated, "2026-08-09").Available)
 }
 
 // TestCoverageReportsTeamLeadCover separates the two questions a shift asks: are
@@ -130,18 +138,17 @@ func TestCoverageReportsTeamLeadCover(t *testing.T) {
 		"the only team lead is not available on the first date")
 	assert.Equal(t, 1, roleCoverageOf(t, first, "Team lead").Needed,
 		"the lead Seat is still to be filled")
-	assert.Equal(t, 2, first.Available)
+	assert.Equal(t, 2, roleCoverageOf(t, first, "Service volunteer").Available)
 
 	second := coverageOf(t, updated, "2026-08-09")
 	assert.Equal(t, 1, roleCoverageOf(t, second, "Team lead").Available)
-	assert.Equal(t, 3, second.Available,
-		"a lead who also holds the uncapped Role could take one of its Seats")
+	assert.Equal(t, 3, roleCoverageOf(t, second, "Service volunteer").Available,
+		"a lead who also holds Service volunteer could take one of its Seats")
 }
 
 // TestCoverageShapesSeatsFromTheRoles: the Seats a shift reports are the Seats
-// the solver will be given — a capped Role's ceiling, and the shift's size for
-// the uncapped one. If these two ever disagree the page promises staffing the
-// solve cannot deliver.
+// the solver will be given, Role by Role. If these two ever disagree the page
+// promises staffing the solve cannot deliver.
 func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
 	store, cfg := availabilityFixture()
 	store.shape = shapeOfSize(4)
@@ -152,9 +159,9 @@ func TestCoverageShapesSeatsFromTheRoles(t *testing.T) {
 
 	require.Len(t, first.Roles, 2, "every configured Role is reported")
 	assert.Equal(t, "Team lead", first.Roles[0].Role, "priority order")
-	assert.Equal(t, 1, first.Roles[0].Seats, "the capped Role gets its ceiling")
+	assert.Equal(t, 1, first.Roles[0].Seats, "the Seats the Shape asks for")
 	assert.Equal(t, "Service volunteer", first.Roles[1].Role)
-	assert.Equal(t, 4, first.Roles[1].Seats, "the uncapped Role takes the shift's size")
+	assert.Equal(t, 4, first.Roles[1].Seats)
 }
 
 // The round reports each Shift against its own stored Shape (issue #137), not
@@ -171,8 +178,8 @@ func TestCoverageReadsEachShiftsOwnShape(t *testing.T) {
 	mintRound(t, store, volunteers, cfg)
 
 	round := readRound(t, store, volunteers, cfg)
-	assert.Equal(t, 2, coverageOf(t, round, "2026-08-02").Needed)
-	assert.Equal(t, 6, coverageOf(t, round, "2026-08-09").Needed)
+	assert.Equal(t, 2, ordinaryOf(t, round, "2026-08-02").Needed)
+	assert.Equal(t, 6, ordinaryOf(t, round, "2026-08-09").Needed)
 }
 
 // TestCoverageReportsTheDelta is the number an admin is really after: how far
@@ -186,7 +193,7 @@ func TestCoverageReportsTheDelta(t *testing.T) {
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1", "shift-2")
 
 	updated := readRound(t, store, volunteers, cfg)
-	first := coverageOf(t, updated, "2026-08-02")
+	first := ordinaryOf(t, updated, "2026-08-02")
 	assert.Equal(t, 3, first.Needed)
 	assert.Equal(t, 2, first.Available)
 	assert.Equal(t, -1, first.Delta, "two people for a shift of three is one short")
@@ -207,15 +214,15 @@ func TestCoverageReadsTheDefaultShape(t *testing.T) {
 
 	round := readRound(t, store, volunteers, cfg)
 	first := coverageOf(t, round, "2026-08-02")
-	assert.Equal(t, 6, first.Needed, "the uncapped Role's Seats are the headline number")
+	assert.Equal(t, 6, roleCoverageOf(t, first, "Service volunteer").Needed)
 	assert.Equal(t, 1, roleCoverageOf(t, first, "Team lead").Seats)
-	assert.Equal(t, 6, coverageOf(t, round, "2026-08-09").Needed,
+	assert.Equal(t, 6, ordinaryOf(t, round, "2026-08-09").Needed,
 		"every shift of a rota asks for the same thing")
 }
 
 // A Role the Shape does not name has no Seats, so nobody is chased for it. That
 // is a Shape an admin can state now — the derivation this replaced gave every
-// capped Role its ceiling whether it was wanted or not.
+// Role a Seat count whether it was wanted or not.
 func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
 	store, cfg := availabilityFixture()
 	store.shape = []db.DefaultShapeSeat{
@@ -228,7 +235,7 @@ func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
 	first := coverageOf(t, round, "2026-08-02")
 	assert.Equal(t, 0, roleCoverageOf(t, first, "Team lead").Seats)
 	assert.Equal(t, 0, roleCoverageOf(t, first, "Team lead").Needed)
-	assert.Equal(t, 3, first.Needed)
+	assert.Equal(t, 3, roleCoverageOf(t, first, "Service volunteer").Needed)
 }
 
 // TestCoverageSubtractsPreallocations: a pinned seat is already filled. The seat
@@ -252,13 +259,13 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 
 	updated := readRound(t, store, volunteers, cfg)
 
-	first := coverageOf(t, updated, "2026-08-02")
+	first := ordinaryOf(t, updated, "2026-08-02")
 	assert.Equal(t, 2, first.Pinned, "the custom entry and Michael each hold a seat")
 	assert.Equal(t, 2, first.Needed, "a shift of four with two seats taken needs two more")
 	assert.Equal(t, 1, first.Available, "Michael already holds a seat, so only Emma is left to fill one")
 	assert.Equal(t, -1, first.Delta)
 
-	second := coverageOf(t, updated, "2026-08-09")
+	second := ordinaryOf(t, updated, "2026-08-09")
 	assert.Equal(t, 0, second.Pinned, "the pins are for the other date")
 	assert.Equal(t, 4, second.Needed)
 	assert.Equal(t, 2, second.Available)
@@ -283,8 +290,9 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	lead := roleCoverageOf(t, first, "Team lead")
 	assert.Equal(t, 1, lead.Pinned)
 	assert.Equal(t, 0, lead.Needed, "the lead Seat is spoken for")
-	assert.Equal(t, 0, first.Pinned, "a Seat in a capped Role is not one of the uncapped Role's")
-	assert.Equal(t, 2, first.Needed)
+	ordinary := roleCoverageOf(t, first, "Service volunteer")
+	assert.Equal(t, 0, ordinary.Pinned, "a Seat in one Role is not a Seat in another")
+	assert.Equal(t, 2, ordinary.Needed)
 }
 
 // TestCoverageShowsAClosedShiftAsClosed: a date the drop-in is not running is
@@ -300,10 +308,7 @@ func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {
 	updated := readRound(t, store, volunteers, cfg)
 	closed := coverageOf(t, updated, "2026-08-16")
 	assert.True(t, closed.Closed)
-	assert.Equal(t, 0, closed.Needed, "a closed shift needs nobody")
-	assert.Equal(t, 0, closed.Available)
-	assert.Equal(t, 0, closed.Delta)
-	assert.Empty(t, closed.Roles, "a closed shift has no Seats of any Role")
+	assert.Empty(t, closed.Roles, "a closed shift needs nobody, in any Role")
 }
 
 // TestCoverageSkipsVolunteersWhoHaveStopped: a round is minted against the
@@ -317,7 +322,7 @@ func TestCoverageSkipsVolunteersWhoHaveStopped(t *testing.T) {
 	round := mintRound(t, store, volunteers, cfg)
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1")
 
-	assert.Equal(t, 2, coverageOf(t, readRound(t, store, volunteers, cfg), "2026-08-02").Available)
+	assert.Equal(t, 2, ordinaryOf(t, readRound(t, store, volunteers, cfg), "2026-08-02").Available)
 
 	for i := range volunteers.volunteers {
 		if volunteers.volunteers[i].ID == "emma" {
@@ -325,7 +330,7 @@ func TestCoverageSkipsVolunteersWhoHaveStopped(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, 1, coverageOf(t, readRound(t, store, volunteers, cfg), "2026-08-02").Available,
+	assert.Equal(t, 1, ordinaryOf(t, readRound(t, store, volunteers, cfg), "2026-08-02").Available,
 		"a volunteer who has stopped is no longer available to allocate")
 }
 

@@ -84,16 +84,15 @@ func TestSaveShiftShapeRefusedOnAnAllocatedRota(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 }
 
-// A Role's ceiling holds however the Shape is edited, so a second Team lead is
-// not addable here either.
-func TestSaveShiftShapeRespectsTheRoleCeiling(t *testing.T) {
+// What a Shift asks for is its Shape and nothing above it, so an evening that
+// wants two Team leads says so (issue #185).
+func TestSaveShiftShapeTakesAnyCountOfAnyRole(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
 		`{"seats":[{"roleId":"role-team-lead","count":2}]}`, adminCookie())
-	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	assert.Contains(t, rec.Body.String(), "Team lead")
+	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
 
 // A pin promises somebody a named job on this shift, and the solver refuses a

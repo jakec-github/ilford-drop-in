@@ -709,7 +709,7 @@ func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config, roles model.Rol
 // against the database, so the mock store serves these and a store that serves
 // none is not a usable fixture.
 var apiTestRoles = []db.Role{
-	{ID: "role-team-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
+	{ID: "role-team-lead", Name: "Team lead", Priority: 1, Colour: "violet"},
 	{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
 }
 

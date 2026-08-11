@@ -25,13 +25,6 @@
   color: var(--role-colour, var(--text-h));
 }
 
-/* The ceiling sits with the name rather than the box, so the numbers stay a
-   column of one figure each. */
-.shape-form-max {
-  flex: none;
-  font-size: 0.75rem;
-}
-
 .shape-form-seat input[type="number"] {
   box-sizing: border-box;
   flex: none;

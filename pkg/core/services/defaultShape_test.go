@@ -23,7 +23,7 @@ var (
 
 func shapeRoles() []db.Role {
 	return []db.Role{
-		{ID: leadRoleID, Name: "Team lead", Max: &shapeTestMax1, Priority: 1, Colour: "violet"},
+		{ID: leadRoleID, Name: "Team lead", Priority: 1, Colour: "violet"},
 		{ID: ordinaryRole, Name: "Service volunteer", Priority: 2, Colour: "teal"},
 	}
 }
@@ -138,29 +138,20 @@ func TestSaveDefaultShapeAcceptsNothing(t *testing.T) {
 	assert.Empty(t, store.saved[0])
 }
 
-// A Role's ceiling is what a Shift may ever hold, so a Shape cannot ask for
-// more than it — the mistake is caught where it is made rather than at the
-// solve, where it would read as an infeasible rota.
-func TestSaveDefaultShapeRespectsTheRoleCeiling(t *testing.T) {
+// The Shape is the only thing that says how many of a Role a Shift asks for, so
+// there is no ceiling above it to bump into: an admin who wants two Team leads
+// on a shift says so here (issue #185).
+func TestSaveDefaultShapeAllowsAnyCountOfAnyRole(t *testing.T) {
 	store := &stubDefaultShapeStore{roles: shapeRoles()}
 
-	_, err := SaveDefaultShape(context.Background(), store, []SeatParams{
+	shape, err := SaveDefaultShape(context.Background(), store, []SeatParams{
 		{RoleID: leadRoleID, Count: 2},
-	}, zap.NewNop())
-	require.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "Team lead")
-	assert.Empty(t, store.saved)
-}
-
-// The uncapped Role is the one a Shift's places used to be spent on, and it
-// still has no ceiling to bump into.
-func TestSaveDefaultShapeAllowsAnyCountOfAnUncappedRole(t *testing.T) {
-	store := &stubDefaultShapeStore{roles: shapeRoles()}
-
-	_, err := SaveDefaultShape(context.Background(), store, []SeatParams{
 		{RoleID: ordinaryRole, Count: 40},
 	}, zap.NewNop())
 	require.NoError(t, err)
+	require.Len(t, shape, 2)
+	assert.Equal(t, 2, shape[0].Count)
+	assert.Equal(t, 40, shape[1].Count)
 }
 
 func TestSaveDefaultShapeRefusesBadInput(t *testing.T) {
@@ -204,7 +195,7 @@ func TestSaveDefaultShapeSurfacesAWriteFailure(t *testing.T) {
 // the roster and the pins name a Role.
 func TestShapeSeatsForAllocator(t *testing.T) {
 	shape := model.Shape{
-		{Role: model.Role{Name: "Team lead", Max: &shapeTestMax1}, Count: 1},
+		{Role: model.Role{Name: "Team lead"}, Count: 1},
 		{Role: model.Role{Name: "Service volunteer"}, Count: 4},
 	}
 

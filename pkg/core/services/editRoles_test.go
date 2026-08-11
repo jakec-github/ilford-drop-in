@@ -43,7 +43,7 @@ func (s *stubRoleWriteStore) UpdateRole(_ context.Context, role db.Role) (bool, 
 }
 
 func roleParams() RoleParams {
-	return RoleParams{Name: "Food collector", Max: intPtr(2), Priority: 3, Colour: model.ColourAmber}
+	return RoleParams{Name: "Food collector", Priority: 3, Colour: model.ColourAmber}
 }
 
 // Creating a Role mints its identity here rather than taking one from the
@@ -61,8 +61,6 @@ func TestCreateRole(t *testing.T) {
 	_, parseErr := uuid.Parse(written.ID)
 	assert.NoError(t, parseErr, "the id is a UUID, which is what the column holds")
 	assert.Equal(t, "Food collector", written.Name)
-	require.NotNil(t, written.Max)
-	assert.Equal(t, 2, *written.Max)
 	assert.Equal(t, 3, written.Priority)
 	assert.Equal(t, model.ColourAmber, written.Colour)
 
@@ -91,32 +89,6 @@ func TestCreateRoleRejectsABlankName(t *testing.T) {
 	store := &stubRoleWriteStore{}
 	params := roleParams()
 	params.Name = "   "
-
-	_, err := CreateRole(context.Background(), store, params, zap.NewNop())
-	require.ErrorIs(t, err, ErrInvalidInput)
-	assert.Empty(t, store.inserted)
-}
-
-// A Role with no ceiling is the ordinary case — it is the Role a Shift's size
-// is spent on — so an absent max is not a missing field.
-func TestCreateRoleWithoutACeiling(t *testing.T) {
-	store := &stubRoleWriteStore{}
-	params := roleParams()
-	params.Max = nil
-
-	role, err := CreateRole(context.Background(), store, params, zap.NewNop())
-	require.NoError(t, err)
-	assert.Nil(t, store.inserted[0].Max)
-	assert.Nil(t, role.Max)
-}
-
-// A ceiling of zero is a Role no Shift may ever hold, which is a Role that does
-// nothing; the database refuses it too, and being told why here is better than
-// a constraint violation.
-func TestCreateRoleRejectsACeilingBelowOne(t *testing.T) {
-	store := &stubRoleWriteStore{}
-	params := roleParams()
-	params.Max = intPtr(0)
 
 	_, err := CreateRole(context.Background(), store, params, zap.NewNop())
 	require.ErrorIs(t, err, ErrInvalidInput)
@@ -178,13 +150,13 @@ func TestUpdateRole(t *testing.T) {
 	id := uuid.New().String()
 
 	role, err := UpdateRole(context.Background(), store, id, RoleParams{
-		Name: "Shift lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet,
+		Name: "Shift lead", Priority: 1, Colour: model.ColourViolet,
 	}, zap.NewNop())
 	require.NoError(t, err)
 
 	require.Len(t, store.updated, 1)
 	assert.Equal(t, db.Role{
-		ID: id, Name: "Shift lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet,
+		ID: id, Name: "Shift lead", Priority: 1, Colour: model.ColourViolet,
 	}, store.updated[0])
 	assert.Equal(t, id, role.ID)
 }
@@ -199,7 +171,6 @@ func TestUpdateRoleValidatesTheSameWayAsCreate(t *testing.T) {
 		params RoleParams
 	}{
 		{"blank name", RoleParams{Name: " ", Colour: model.ColourTeal}},
-		{"ceiling below one", RoleParams{Name: "Team lead", Max: intPtr(0), Colour: model.ColourTeal}},
 		{"colour outside the palette", RoleParams{Name: "Team lead", Colour: "puce"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

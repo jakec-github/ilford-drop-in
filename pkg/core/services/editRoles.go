@@ -30,10 +30,9 @@ type RoleWriteStore interface {
 // what the Role is addressed by rather than something being set.
 type RoleParams struct {
 	Name string
-	// Max is the ceiling — how many of this Role a Shift may ever hold. Nil is
-	// uncapped, and is an answer rather than an omission: the Role a Shift's
-	// size is spent on is the uncapped one.
-	Max      *int
+	// Priority orders the filling of Seats, lowest first. There is no ceiling:
+	// how many of a Role a Shift holds is that Shift's Shape, stated per Shift
+	// (issue #185).
 	Priority int
 	// Colour is a palette token. Empty means the default, so a caller with no
 	// picker still writes a Role that renders.
@@ -51,10 +50,6 @@ func (p RoleParams) validate() (db.Role, error) {
 		return db.Role{}, wrapf(ErrInvalidInput, "a role needs a name — it is what the volunteer roster spells in a cell")
 	}
 
-	if p.Max != nil && *p.Max < 1 {
-		return db.Role{}, wrapf(ErrInvalidInput, "a role's maximum must be at least 1, or left off for no limit")
-	}
-
 	colour := p.Colour
 	if colour == "" {
 		colour = model.DefaultRoleColour
@@ -63,7 +58,7 @@ func (p RoleParams) validate() (db.Role, error) {
 		return db.Role{}, wrapf(ErrInvalidInput, "%q is not one of the colours a role can be drawn in", p.Colour)
 	}
 
-	return db.Role{Name: name, Max: p.Max, Priority: p.Priority, Colour: colour}, nil
+	return db.Role{Name: name, Priority: p.Priority, Colour: colour}, nil
 }
 
 // CreateRole adds a Role and returns it as it now stands, id included — which
@@ -146,7 +141,6 @@ func toModelRole(row db.Role) *model.Role {
 	return &model.Role{
 		ID:       row.ID,
 		Name:     row.Name,
-		Max:      row.Max,
 		Priority: row.Priority,
 		Colour:   row.Colour,
 	}

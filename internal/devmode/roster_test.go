@@ -17,9 +17,8 @@ const repoCSV = "../../test_data/volunteers.csv"
 
 // twoRoles is the pair of Roles the sample roster names.
 func twoRoles() model.Roles {
-	max := 1
 	return model.NewRoles([]model.Role{
-		{Name: "Team lead", Max: &max, Priority: 1},
+		{Name: "Team lead", Priority: 1},
 		{Name: "Service volunteer", Priority: 2},
 	})
 }

@@ -1,0 +1,18 @@
+-- A Role loses its ceiling (issue #185).
+--
+-- `max` said how many of a Role a Shift might ever hold. Since #137 a Shift
+-- carries its own Shape, and since #138 an admin edits it per Shift, so the
+-- count a Shift asks for is stated in one place and this column only repeated
+-- it — as a second, unconditional limit the Shape could not exceed.
+--
+-- The column was doing a second job nobody asked it to: NULL marked the one
+-- Role a Shift's remaining places were spent on. That made "create exactly one
+-- Role with no ceiling" a requirement of the app that nothing ever told an
+-- admin, and breaking it surfaced as `expected exactly one uncapped role` from
+-- inside a solve, long after the Roles were saved. Nothing marks a Role now:
+-- every Role is one a Shape asks for by name and count.
+--
+-- Dropping it loses information — that a drop-in never wanted more than one
+-- Team lead — but that fact now lives on every Shift that says so, and the
+-- Shapes were written from these ceilings in the first place (019, 021).
+ALTER TABLE role DROP COLUMN max;

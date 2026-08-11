@@ -37,7 +37,6 @@ func RoleTable(ctx context.Context, store RoleStore) (model.Roles, error) {
 		roles = append(roles, model.Role{
 			ID:       row.ID,
 			Name:     row.Name,
-			Max:      row.Max,
 			Priority: row.Priority,
 			Colour:   row.Colour,
 		})

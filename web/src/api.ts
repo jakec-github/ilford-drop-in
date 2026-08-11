@@ -113,8 +113,8 @@ function toVolunteer(v: ApiVolunteer): Volunteer {
 function toAssignee(a: ApiAssignee): Assignee {
   return {
     name: a.name,
-    // An allocation predating the role column has none; it is one of the
-    // uncapped Role's, which is what the server backfills it to.
+    // An allocation predating the role column has none, and the server no
+    // longer backfills one; it reads as an ordinary Seat here.
     role: a.role ?? SERVICE_VOLUNTEER_ROLE,
     custom: !a.volunteerId,
     group: a.group || null,
@@ -169,7 +169,6 @@ export async function fetchRota(): Promise<RotaShift[]> {
 interface ApiRole {
   id: string;
   name: string;
-  max: number | null;
   priority: number;
   colour: string;
 }
@@ -189,7 +188,6 @@ function toConfiguredRole(role: ApiRole): ConfiguredRole {
   return {
     id: role.id,
     name: role.name,
-    max: role.max,
     priority: role.priority,
     colour: (ROLE_COLOURS as readonly string[]).includes(role.colour)
       ? (role.colour as RoleColour)
@@ -227,8 +225,7 @@ export async function createRole(role: RoleEdit): Promise<void> {
 }
 
 // updateRole rewrites one Role, addressed by the id it was created with. Every
-// editable field goes at once, so a null max says "no ceiling" rather than
-// "leave the ceiling alone".
+// editable field goes at once.
 //
 // There is no deleteRole, and there will not be one: a Role is permanent so
 // that nothing referencing it can dangle (ADR 0006).
@@ -828,13 +825,8 @@ interface ApiAvailabilityRound {
     id: string;
     date: string;
     closed: boolean;
-    needed: number;
-    pinned: number;
-    available: number;
-    delta: number;
     roles: {
       role: string;
-      capped: boolean;
       seats: number;
       pinned: number;
       needed: number;

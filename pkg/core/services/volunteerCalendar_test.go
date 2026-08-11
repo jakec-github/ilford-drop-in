@@ -103,7 +103,10 @@ func TestBuildVolunteerCalendar_ReadsTheShiftsOwnTimes(t *testing.T) {
 	assert.Contains(t, out, "DTSTAMP:20260112T180000Z")
 }
 
-func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
+// The event names the Role the volunteer is doing the shift in, whichever Role
+// that is. It used to name only a capped one, on the grounds that being on the
+// shift was the uncapped Role already; there is no uncapped Role now (#185).
+func TestBuildVolunteerCalendar_RoleSummary(t *testing.T) {
 	shift := calendarShift(t, "2026-01-12")
 	shift.Assignees = []ShiftAssignee{
 		{VolunteerID: "alice", Name: "Alice", Role: "Team lead"},
@@ -115,13 +118,12 @@ func TestBuildVolunteerCalendar_TeamLeadSummary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (Team lead)")
 
-	// The same shift from Bob's perspective is not a team-lead event
+	// The same shift from Bob's perspective names the job he is doing
 	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Roles: []string{"Service volunteer"}}
 	out, err = BuildVolunteerCalendar(shifts, bob, testRoles, calendarTestDefaults)
 	require.NoError(t, err)
 	assert.NotContains(t, out, "(Team lead)")
-	assert.NotContains(t, out, "(Service volunteer)",
-		"the uncapped Role is what being on the shift already means")
+	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (Service volunteer)")
 }
 
 func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {

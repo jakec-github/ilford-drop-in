@@ -5,7 +5,10 @@ see "Tracks, considered and dropped". Amended 2026-08-04: a Preallocation
 grants the Role it names for that one Shift (#109) — see "Eligibility is exact
 match on a held Role". Amended 2026-08-05: the roster holds Roles in one
 multi-select column, not one column per Role (#121) — see "The roster holds
-Roles in one `Roles` column".
+Roles in one `Roles` column". Amended 2026-08-11: a Role has no `max` — the
+Shape is the only ceiling, and nothing is refused after allocation (#185) — see
+"Counts are targets; ceilings are limits" and "Structure is enforced, standing
+is advisory".
 
 Two hardcoded roles (`RoleTeamLead`, `RoleVolunteer`) are being replaced by
 configured **Roles**. A Role is a job on a Shift; a volunteer **holds** the
@@ -69,9 +72,17 @@ ADR exists.
 - **Counts are targets; ceilings are limits.** A Shape's count is what the
   allocator fills up to in Role priority order, leaving Seats empty when people
   are scarce — a Shift with no available team lead must still allocate, as it
-  does today. A Role's `max` is a separate, role-level ceiling governing what an
-  admin may add afterwards. Role-level rather than per-Shape so that a per-date
-  Shape override cannot forget to cap team leads.
+  does today.
+
+  *Amended 2026-08-11 (#185): the Shape's count is also the ceiling, and a Role
+  carries none of its own.* `max` was role-level so that a per-date Shape
+  override could not forget to cap team leads; there are no Shape overrides —
+  each Shift owns its Shape and an admin edits it on the Shift (#137, #138) —
+  so the ceiling now lives where the count is stated. It also carried a second,
+  undeclared job: the Role with no `max` was the one a Shift's remaining places
+  were spent on, which made "create exactly one uncapped Role" a requirement the
+  app never told anybody, and enforced it from inside a solve. Nothing marks a
+  Role now.
 
 - **Role priority decides what goes empty.** Without it the solver is
   indifferent between filling a Team lead Seat and a Service volunteer Seat,
@@ -80,9 +91,18 @@ ADR exists.
   score. Admins order Roles; the objective weights behind that order are ours.
 
 - **Structure is enforced, standing is advisory.** A second team lead is
-  refused; an unlisted person placed in the lead Seat warns and proceeds.
-  Blocking the second does not stop it happening, it stops it being *recorded* —
-  the rota starts lying while the truth lives in a note.
+  refused where the structure can still be changed; an unlisted person placed
+  in the lead Seat warns and proceeds. Blocking does not stop a thing
+  happening, it stops it being *recorded* — the rota starts lying while the
+  truth lives in a note.
+
+  *Amended 2026-08-11 (#185): editing an allocated rota enforces nothing about
+  how many of a Role a Shift ends up with.* Pinning is still refused past a
+  Role's Seats, because a pin is an input to a solve that has not run. An
+  alteration is the opposite: it records what happened on the day, after the
+  Shape it would be checked against is frozen — so refusing would leave an
+  extra pair of hands unrecordable, which is the failure this decision exists
+  to avoid.
 
 - **The Shift owns its Shape from mint, frozen at allocation.** The same rule
   as manual preallocations (ADR 0003): freely editable while the Rotation is

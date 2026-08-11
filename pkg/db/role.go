@@ -46,9 +46,8 @@ func isDuplicateName(err error) bool {
 type Role struct {
 	ID   string // UUID
 	Name string
-	// Max is the ceiling — how many of this Role a Shift may ever hold. Nil
-	// means uncapped.
-	Max      *int
+	// Priority orders the filling of Seats, lowest first. A Role carries no
+	// ceiling: how many of it a Shift holds is that Shift's Shape.
 	Priority int
 	// Colour is a palette token, never a colour value.
 	Colour string
@@ -62,7 +61,7 @@ type Role struct {
 // database nobody has configured yet has none.
 func (d *DB) ListRoles(ctx context.Context) ([]Role, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, name, max, priority, colour
+		SELECT id, name, priority, colour
 		FROM role
 		ORDER BY priority, name
 	`)
@@ -74,7 +73,7 @@ func (d *DB) ListRoles(ctx context.Context) ([]Role, error) {
 	var roles []Role
 	for rows.Next() {
 		var role Role
-		if err := rows.Scan(&role.ID, &role.Name, &role.Max, &role.Priority, &role.Colour); err != nil {
+		if err := rows.Scan(&role.ID, &role.Name, &role.Priority, &role.Colour); err != nil {
 			return nil, fmt.Errorf("failed to scan role: %w", err)
 		}
 		roles = append(roles, role)
@@ -92,15 +91,15 @@ func (d *DB) ListRoles(ctx context.Context) ([]Role, error) {
 // There is no delete, and there never will be: Roles are permanent by design
 // (ADR 0006), so nothing that references one can dangle.
 //
-// The Roles are an allocator input — which jobs exist, in what order they are
-// filled and how many of each anyone may do — so writing one makes the rota in
-// flight's draft stale (issue #142).
+// The Roles are an allocator input — which jobs exist and in what order they
+// are filled — so writing one makes the rota in flight's draft stale
+// (issue #142).
 func (d *DB) InsertRole(ctx context.Context, role Role) error {
 	return d.inTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO role (id, name, max, priority, colour)
-			VALUES ($1, $2, $3, $4, $5)
-		`, role.ID, role.Name, role.Max, role.Priority, role.Colour)
+			INSERT INTO role (id, name, priority, colour)
+			VALUES ($1, $2, $3, $4)
+		`, role.ID, role.Name, role.Priority, role.Colour)
 		if err != nil {
 			if isDuplicateName(err) {
 				return fmt.Errorf("failed to insert role %q: %w", role.Name, ErrDuplicateRoleName)
@@ -117,9 +116,7 @@ func (d *DB) InsertRole(ctx context.Context, role Role) error {
 // reference.
 //
 // It takes the whole Role rather than the fields that changed because the
-// settings screen edits them together, and because a nil Max has to mean
-// "uncapped" rather than "leave the ceiling alone": taking a ceiling off is the
-// commonest edit after a rename, and a partial update could not express it.
+// settings screen edits them together.
 //
 // The bool reports whether a row matched. An unknown id is a miss rather than
 // an error: Roles are never deleted, so it means the caller named the wrong
@@ -129,9 +126,9 @@ func (d *DB) UpdateRole(ctx context.Context, role Role) (bool, error) {
 	err := d.inTx(ctx, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
 			UPDATE role
-			SET name = $2, max = $3, priority = $4, colour = $5
+			SET name = $2, priority = $3, colour = $4
 			WHERE id = $1
-		`, role.ID, role.Name, role.Max, role.Priority, role.Colour)
+		`, role.ID, role.Name, role.Priority, role.Colour)
 		if err != nil {
 			if isDuplicateName(err) {
 				return fmt.Errorf("failed to update role %q: %w", role.Name, ErrDuplicateRoleName)

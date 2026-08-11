@@ -25,7 +25,7 @@ func TestListRoles(t *testing.T) {
 		ID: uuid.New().String(), Name: "Service volunteer", Priority: 2, Colour: "teal",
 	}))
 	require.NoError(t, database.InsertRole(ctx, db.Role{
-		ID: uuid.New().String(), Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet",
+		ID: uuid.New().String(), Name: "Team lead", Priority: 1, Colour: "violet",
 	}))
 
 	roles, err := database.ListRoles(ctx)
@@ -33,12 +33,10 @@ func TestListRoles(t *testing.T) {
 	require.Len(t, roles, 2)
 
 	assert.Equal(t, "Team lead", roles[0].Name)
-	require.NotNil(t, roles[0].Max)
-	assert.Equal(t, 1, *roles[0].Max)
 	assert.Equal(t, "violet", roles[0].Colour)
 
 	assert.Equal(t, "Service volunteer", roles[1].Name)
-	assert.Nil(t, roles[1].Max)
+	assert.Equal(t, "teal", roles[1].Colour)
 }
 
 // A database nobody has put Roles in yet is an ordinary state, not an error:
@@ -82,11 +80,11 @@ func TestUpdateRole(t *testing.T) {
 
 	id := uuid.New().String()
 	require.NoError(t, database.InsertRole(ctx, db.Role{
-		ID: id, Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet",
+		ID: id, Name: "Team lead", Priority: 1, Colour: "violet",
 	}))
 
 	updated, err := database.UpdateRole(ctx, db.Role{
-		ID: id, Name: "Shift lead", Max: intPtr(2), Priority: 4, Colour: "amber",
+		ID: id, Name: "Shift lead", Priority: 4, Colour: "amber",
 	})
 	require.NoError(t, err)
 	assert.True(t, updated)
@@ -95,30 +93,8 @@ func TestUpdateRole(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, roles, 1, "an edit changes the Role rather than adding one")
 	assert.Equal(t, db.Role{
-		ID: id, Name: "Shift lead", Max: intPtr(2), Priority: 4, Colour: "amber",
+		ID: id, Name: "Shift lead", Priority: 4, Colour: "amber",
 	}, roles[0])
-}
-
-// Uncapping a Role has to be expressible: the ceiling is the field most likely
-// to be taken off, and a nil that quietly left the old ceiling in place would
-// cap a Role nobody meant to cap.
-func TestUpdateRoleClearsTheCeiling(t *testing.T) {
-	database, _ := dbtest.New(t)
-	ctx := context.Background()
-
-	id := uuid.New().String()
-	require.NoError(t, database.InsertRole(ctx, db.Role{
-		ID: id, Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet",
-	}))
-
-	_, err := database.UpdateRole(ctx, db.Role{
-		ID: id, Name: "Team lead", Priority: 1, Colour: "violet",
-	})
-	require.NoError(t, err)
-
-	roles, err := database.ListRoles(ctx)
-	require.NoError(t, err)
-	assert.Nil(t, roles[0].Max)
 }
 
 // An id nothing matches is reported as a miss rather than as an error, because

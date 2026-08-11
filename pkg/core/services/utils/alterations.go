@@ -11,14 +11,16 @@ import (
 // in set_time order. This function is pure (no DB calls) and used by both
 // changeRota (validation) and publishRota (output).
 //
-// defaultRole is the Role an "add" with no Role of its own lands in — the
-// uncapped one. Alterations only gained a role column in 004_alteration_role,
-// so historical rows have none and this is read-path back-compat, not a
-// default anything new is written with.
+// An "add" with no Role of its own stays without one. Alterations only gained
+// a role column in 004_alteration_role, so historical rows have none; there
+// used to be a default here — the uncapped Role — and with that gone (issue
+// #185) the honest answer is the one the row actually carries. Every reader
+// already handles an allocation whose Role it does not recognise: the
+// published sheet gives it a column of its own, and the rota page draws it
+// unlabelled.
 func ApplyAlterations(
 	allocationsByShiftID map[string][]db.Allocation,
 	alterations []db.Alteration,
-	defaultRole string,
 ) map[string][]db.Allocation {
 	// Sort alterations by set_time to ensure deterministic ordering
 	sorted := make([]db.Alteration, len(alterations))
@@ -46,13 +48,9 @@ func ApplyAlterations(
 			allocationsByShiftID[shiftID] = filtered
 
 		case "add":
-			role := alt.Role
-			if role == "" {
-				role = defaultRole
-			}
 			newAlloc := db.Allocation{
 				ShiftID: shiftID,
-				Role:    role,
+				Role:    alt.Role,
 			}
 			if alt.VolunteerID != "" {
 				newAlloc.VolunteerID = alt.VolunteerID

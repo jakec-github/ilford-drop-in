@@ -106,9 +106,15 @@ func (d *DB) withRotaLockTx(ctx context.Context, rotaIDs []string, fn func(tx pg
 // transaction, so the frozen-after-allocation guard and the duplicate-assignee
 // checks validate against a snapshot that cannot change before the write lands
 // (issue #39, mirroring the changeRota locking discipline).
+//
+// The Shift's Shape is read here for the same reason ShapeTxStore reads the
+// pins: the Seats a Role has on that Shift are what say whether there is one
+// left to promise (issue #185), and a Shape edit landing between the count and
+// the insert is exactly what the lock exists to rule out.
 type PreallocationTxStore interface {
 	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
 	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error)
+	GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]ShiftRequirement, error)
 	InsertPreallocation(ctx context.Context, mp Preallocation) error
 	DeletePreallocationByID(ctx context.Context, id string) (bool, error)
 }
@@ -211,6 +217,10 @@ func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool
 
 func (r *rotaTx) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
 	return setShiftTimes(ctx, r.tx, shiftID, startAt, endAt)
+}
+
+func (r *rotaTx) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]ShiftRequirement, error) {
+	return getShiftShapes(ctx, r.tx, shiftIDs)
 }
 
 func (r *rotaTx) SetShiftShape(ctx context.Context, shiftID string, seats []ShiftRequirement) (bool, error) {

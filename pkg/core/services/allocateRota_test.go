@@ -49,7 +49,6 @@ func solvedRota(placements map[string][]allocator.CpsatAssignment) allocator.Cps
 		output.Shifts = append(output.Shifts, allocator.CpsatOutputShift{
 			Index:       index,
 			Date:        date,
-			Size:        4,
 			Assignments: placements[date],
 		})
 		index++

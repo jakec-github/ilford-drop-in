@@ -13,10 +13,9 @@ type Role struct {
 	// database in scope, which cares only about the name.
 	ID   string
 	Name string
-	// Max is the ceiling — how many of this Role a Shift may ever hold, however
-	// its Shape is edited. Nil means uncapped.
-	Max *int
-	// Priority orders the filling of Seats when people are scarce, lowest first.
+	// Priority orders the filling of Seats when people are scarce, lowest
+	// first. A Role has no ceiling of its own: how many of it a Shift holds is
+	// that Shift's Shape, which an admin edits per Shift (issue #185).
 	Priority int
 	// Colour is the palette token this Role is drawn in — see RoleColours. May
 	// be empty on the way in; NewRoles fills it in, so every Role the lookup
@@ -78,9 +77,6 @@ func ValidRoleColour(colour string) bool {
 	return false
 }
 
-// Capped reports whether the Role has a ceiling.
-func (r Role) Capped() bool { return r.Max != nil }
-
 // Roles is the set of Roles the drop-in offers: ordered by priority, indexed by
 // name and by id. The zero value is an empty set, which answers every query
 // rather than panicking — callers with no Roles in scope hold one.
@@ -91,9 +87,9 @@ type Roles struct {
 }
 
 // NewRoles builds the lookup table from Roles in any order. It does not
-// validate them: the database holds the rules it can (a unique name, a positive
-// max), and a table built from a set that breaks the rest still answers rather
-// than failing a read path nobody could fix from.
+// validate them: the database holds the rules it can (a unique name), and a
+// table built from a set that breaks the rest still answers rather than
+// failing a read path nobody could fix from.
 //
 // It does fill in an unset colour, so every Role read back out of the table has
 // one. Defaulting here rather than at the read means a caller building the
@@ -145,29 +141,4 @@ func (r Roles) ByPriority() []Role {
 	ordered := make([]Role, len(r.ordered))
 	copy(ordered, r.ordered)
 	return ordered
-}
-
-// UncappedName is the name of the uncapped Role, or "" where none exists. It
-// is what anything unlabelled falls back to: an alteration
-// written before Roles were data, or a volunteer joining a shift in nobody's
-// place.
-func (r Roles) UncappedName() string {
-	role, ok := r.Uncapped()
-	if !ok {
-		return ""
-	}
-	return role.Name
-}
-
-// Uncapped returns the first Role with no ceiling — the one whose Seats a
-// Shift's size is spent on. Slice 4 replaces `defaultShiftSize` with a
-// per-Shift Shape naming its own counts, after which a second uncapped Role is
-// meaningful; until then the first is the answer.
-func (r Roles) Uncapped() (Role, bool) {
-	for _, role := range r.ordered {
-		if !role.Capped() {
-			return role, true
-		}
-	}
-	return Role{}, false
 }

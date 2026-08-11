@@ -41,9 +41,8 @@ type VolunteerGroup struct {
 type Role struct {
 	// Name is what the roster, the pins and the solver all match on.
 	Name string
-	// Max is the ceiling on this Role's Seats per Shift. Nil means uncapped.
-	Max *int
-	// Priority orders Seat filling, lowest first.
+	// Priority orders Seat filling, lowest first. A Role has no ceiling of its
+	// own: how many Seats it has on a Shift is that Shift's Shape (issue #185).
 	Priority int
 }
 
@@ -105,11 +104,6 @@ type Shift struct {
 	// is an input: InitShifts carries it through from the shift's own spec, and
 	// the solver contract sends it.
 	Shape []Seat
-
-	// Size is the ordinary-volunteer target the *solver* reports back — the
-	// Seats of the uncapped Role — set by CpsatOutputToShifts. It is not an
-	// input: what a shift asks for is Shape.
-	Size int
 
 	// AllocatedGroups tracks which volunteer groups have been assigned
 	AllocatedGroups []*VolunteerGroup
