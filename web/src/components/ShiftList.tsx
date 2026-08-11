@@ -3,7 +3,6 @@ import type { Assignee, PersonRef, Preallocation, RotaShift } from "../types";
 import { SERVICE_VOLUNTEER_ROLE } from "../types";
 import type { RoleColourOf } from "../hooks/useRoles";
 import Button from "../ui/Button";
-import { describeShape } from "./shape";
 import {
   formatShiftDate,
   formatShiftDateLong,
@@ -26,6 +25,32 @@ function isEditable(shift: RotaShift): boolean {
 // twice on a shift — two people from the same visiting group.
 function chipKey(shiftDate: string, assignee: Assignee, index: number): string {
   return `${shiftDate}/${assignee.volunteerId ?? assignee.name}/${index}`;
+}
+
+// Returns the draft deficit for each role in a shifts shape. Only roles with
+// a deficit are returned.
+function shiftDeficit(
+  shape: RotaShift["shape"],
+  assignees: Assignee[],
+): { role: string; deficit: number }[] {
+  const assigneeCountByRole = assignees.reduce(
+    (acc: Record<string, number>, { role }) => {
+      if (acc[role]) {
+        acc[role] += 1;
+      } else {
+        acc[role] = 1;
+      }
+      return acc;
+    },
+    {},
+  );
+
+  return shape
+    .map(({ role, count }) => ({
+      role,
+      deficit: count - assigneeCountByRole[role],
+    }))
+    .filter(({ deficit }) => deficit > 0);
 }
 
 // Group membership is shown by a corner dot; the colour just needs to be stable
@@ -413,17 +438,21 @@ function DraftList({
   );
 }
 
-// ShiftAsksFor says what an unallocated shift is waiting to be filled with.
-// Worth a line of its own on those rows because it is the one thing about them
-// an admin can still change and cannot see anywhere else — and because a shift
-// asking for nobody looks exactly like every other unallocated row until it
-// stops the rota being allocated, so it says so here instead.
-function ShiftAsksFor({ shape }: { shape: RotaShift["shape"] }) {
+// ShiftNeeds shows the deficit for each role in a shifts draft
+function ShiftNeeds({
+  unfilledRoles,
+}: {
+  unfilledRoles: { role: string; deficit: number }[];
+}) {
+  if (!unfilledRoles.length) {
+    return null;
+  }
   return (
     <span className="shift-shape">
-      {shape.length > 0
-        ? `Asks for ${describeShape(shape)}`
-        : "Asks for nobody — the rota cannot be allocated until it does"}
+      Unfilled roles -{" "}
+      {unfilledRoles
+        .map(({ deficit, role }) => `${role}: ${deficit}`)
+        .join(", ")}
     </span>
   );
 }
@@ -472,6 +501,8 @@ function ShiftRow({
   }
 
   const unallocated = isUnallocated(shift);
+  const unfilledRoles = shiftDeficit(shift.shape, drafted);
+
   const placement = edit?.placement ?? null;
   const editable = placement !== null && isEditable(shift);
   const pending = placement?.pending ?? null;
@@ -485,6 +516,7 @@ function ShiftRow({
     "shift-row",
     shift.closed ? "closed" : "",
     unallocated ? "unallocated" : "",
+    unfilledRoles.length ? "unfilled" : "",
     isDestination ? "drop-target" : "",
   ]
     .filter(Boolean)
@@ -528,8 +560,7 @@ function ShiftRow({
   } else if (unallocated) {
     body = (
       <div className="shift-unallocated">
-        <span className="shift-note">Not yet allocated</span>
-        <ShiftAsksFor shape={shift.shape} />
+        <ShiftNeeds unfilledRoles={unfilledRoles} />
         {pins.length > 0 && (
           <PreallocationList
             date={shift.date}

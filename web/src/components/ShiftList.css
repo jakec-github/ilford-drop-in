@@ -259,7 +259,7 @@
   line-height: 1.35;
   border: 1.5px solid var(--chip);
   color: var(--chip);
-  background: transparent;
+  background: var(--bg);
   cursor: pointer;
   /* The drag handle is the chip itself; without this a drag starts by
      selecting the name instead. */
