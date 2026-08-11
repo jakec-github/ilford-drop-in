@@ -170,6 +170,21 @@ export default function AvailabilityForm({ token }: { token: string }) {
           notices they are filling in a link forwarded to them. */}
       <h1>Availability for {form.volunteerName}</h1>
 
+      {/* Above everything, because it changes what the rest of the page means.
+          Only an explicit false: a server that says nothing leaves this off
+          rather than telling every volunteer they have stopped.
+
+          It warns rather than refusing. The likeliest cause is a roster nobody
+          has updated, and the answer is worth having the moment that is fixed —
+          so the form below stays exactly as it is. */}
+      {form.counts === false && (
+        <p className="availability-not-counted" role="status">
+          You are not currently down as volunteering, so you will not be put on
+          the rota. You can still answer below — ask an admin to put you back on
+          and your answer will count.
+        </p>
+      )}
+
       {form.groupMembers.length > 0 && (
         <p className="availability-group">
           This also covers {form.groupMembers.join(" and ")} — you are rostered

@@ -111,6 +111,14 @@ type AvailabilityForm struct {
 	SelectedShiftIDs []string
 	Submitted        bool
 	SubmittedAt      time.Time // zero until they submit
+	// Counts is false when nothing said here can reach a rota: the volunteer
+	// has stopped, or is off the roster altogether. Allocation only ever sees
+	// active volunteers, and a round leaves the rest out, so without this the
+	// form is a dead end that looks exactly like a working one.
+	//
+	// It does not gate the answer. The likeliest cause is a roster nobody has
+	// updated, and the answer is worth having the moment that is fixed.
+	Counts bool
 }
 
 // MintAvailabilityRound creates an availability request, with its own link, for
@@ -373,6 +381,7 @@ func buildForm(
 	if known {
 		form.VolunteerName = volunteerName(volunteer)
 		form.GroupMembers = partnerNames(groupPartners(volunteers, volunteer, utils.IsActive), volunteerName)
+		form.Counts = utils.IsActive(volunteer)
 	} else {
 		// A volunteer dropped from the sheet mid-round still holds a working
 		// link; degrade to the id rather than 404 a link that was legitimately

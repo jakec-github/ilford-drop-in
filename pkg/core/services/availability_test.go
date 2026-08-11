@@ -283,6 +283,75 @@ func TestAvailabilityFormLandsOptedIn(t *testing.T) {
 	assert.Equal(t, []string{"shift-1", "shift-2"}, form.SelectedShiftIDs)
 }
 
+// TestAvailabilityFormSaysWhenAnAnswerCannotCount: a volunteer who has stopped
+// keeps a working link, and answering through it is a dead end — the allocator
+// only ever sees active volunteers, and the round no longer shows their row to
+// an admin who might have noticed. The form is the one place left that can say
+// so, and it says so rather than refusing the answer: the likeliest cause is a
+// roster nobody has updated, and their answer is worth having the moment that
+// is fixed.
+func TestAvailabilityFormSaysWhenAnAnswerCannotCount(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	round := mintRound(t, store, volunteers, cfg)
+	token := tokenFor(t, round, "michael")
+
+	form, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	require.NoError(t, err)
+	assert.True(t, form.Counts, "an active volunteer is told nothing")
+
+	for i := range volunteers.volunteers {
+		if volunteers.volunteers[i].ID == "michael" {
+			volunteers.volunteers[i].Status = "Inactive"
+		}
+	}
+
+	stopped, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	require.NoError(t, err)
+	assert.False(t, stopped.Counts)
+	assert.Len(t, stopped.Shifts, 3, "the form still works — the warning is not a refusal")
+}
+
+// TestAvailabilityFormSaysSoForSomebodyOffTheRoster: dropped from the sheet
+// entirely, the effect on the volunteer is identical — nothing they say can
+// reach a rota — so they are told the same thing rather than left with a form
+// that shows their id where their name should be and no hint why.
+func TestAvailabilityFormSaysSoForSomebodyOffTheRoster(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	round := mintRound(t, store, volunteers, cfg)
+	token := tokenFor(t, round, "aaliyah")
+
+	volunteers.volunteers = volunteers.volunteers[:2]
+
+	form, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	require.NoError(t, err)
+	assert.False(t, form.Counts)
+}
+
+// TestSubmitStillAcceptsAnAnswerThatCannotCount: the warning is advice, not a
+// gate. Refusing the write would throw away an answer that becomes valid the
+// moment an admin fixes the roster, and would do it at the one moment the
+// volunteer is paying attention.
+func TestSubmitStillAcceptsAnAnswerThatCannotCount(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	round := mintRound(t, store, volunteers, cfg)
+	token := tokenFor(t, round, "michael")
+
+	for i := range volunteers.volunteers {
+		if volunteers.volunteers[i].ID == "michael" {
+			volunteers.volunteers[i].Status = "Inactive"
+		}
+	}
+
+	form, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(),
+		token, []string{"shift-1"})
+	require.NoError(t, err)
+	assert.True(t, form.Submitted)
+	assert.False(t, form.Counts, "and the confirmation still says it cannot count")
+}
+
 // TestAvailabilityFormShowsTheSubmittedState: re-opening the link is how a
 // volunteer changes their mind, so it must show what they said rather than
 // offering the opt-out default again — which would read as an invitation to

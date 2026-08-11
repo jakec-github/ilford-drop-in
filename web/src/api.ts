@@ -864,6 +864,9 @@ interface ApiAvailabilityForm {
   selectedShiftIds: string[] | null;
   submitted: boolean;
   submittedAt?: string;
+  // Optional so an absent field stays quiet rather than warning everyone — see
+  // AvailabilityFormState.counts.
+  counts?: boolean;
 }
 
 function toEntry(e: ApiAvailabilityEntry): AvailabilityEntry {
@@ -905,6 +908,7 @@ function toForm(data: ApiAvailabilityForm): AvailabilityFormState {
     selectedShiftIds: data.selectedShiftIds ?? [],
     submitted: data.submitted,
     submittedAt: data.submittedAt ?? null,
+    counts: data.counts,
   };
 }
 
