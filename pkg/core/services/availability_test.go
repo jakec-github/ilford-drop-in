@@ -403,3 +403,61 @@ func TestRoundReportsGroupCover(t *testing.T) {
 	assert.False(t, byVolunteer["aaliyah"].Replied)
 	assert.Empty(t, byVolunteer["aaliyah"].CoveredBy, "an ungrouped volunteer is nobody's partner")
 }
+
+// TestRoundDropsAVolunteerWhoHasStopped: minting skips whoever is already
+// inactive, but somebody can stop volunteering after their link went out. Their
+// request outlives them, and the grid was still drawing them a row — a row the
+// coverage numbers underneath already refused to count, because they cannot be
+// allocated. The read is the one place that can tell.
+func TestRoundDropsAVolunteerWhoHasStopped(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	round := mintRound(t, store, volunteers, cfg)
+	require.Len(t, roundEntries(round), 3)
+
+	// Aaliyah answers, and then stops volunteering.
+	_, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(),
+		tokenFor(t, round, "aaliyah"), []string{"shift-1"})
+	require.NoError(t, err)
+	for i := range volunteers.volunteers {
+		if volunteers.volunteers[i].ID == "aaliyah" {
+			volunteers.volunteers[i].Status = "Inactive"
+		}
+	}
+
+	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	require.NoError(t, err)
+
+	for _, e := range roundEntries(updated) {
+		assert.NotEqual(t, "aaliyah", e.VolunteerID,
+			"a volunteer who has stopped is not in the round any more")
+	}
+	assert.Len(t, roundEntries(updated), 2)
+}
+
+// TestRoundDropsAVolunteerOffTheRoster: the same rule reaches someone deleted
+// outright rather than marked inactive. buildCoverage has always treated the two
+// as one case — unknown or not active, they cannot be allocated — and the grid
+// now agrees with the numbers under it.
+func TestRoundDropsAVolunteerOffTheRoster(t *testing.T) {
+	store, cfg := availabilityFixture()
+	volunteers := availabilityVolunteers()
+	require.Len(t, roundEntries(mintRound(t, store, volunteers, cfg)), 3)
+
+	kept := make([]model.Volunteer, 0, len(volunteers.volunteers))
+	for _, v := range volunteers.volunteers {
+		if v.ID != "michael" {
+			kept = append(kept, v)
+		}
+	}
+	volunteers.volunteers = kept
+
+	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	require.NoError(t, err)
+
+	for _, e := range roundEntries(updated) {
+		assert.NotEqual(t, "michael", e.VolunteerID, "somebody off the roster has no row")
+	}
+	// Emma is left alone in the group she shared with Michael.
+	assert.Len(t, roundEntries(updated), 2)
+}
