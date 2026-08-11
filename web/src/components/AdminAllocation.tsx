@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { useDraftRotaAllocation } from "../hooks/useDraftRotaAllocation";
@@ -258,9 +258,7 @@ function InFlightRota({
           onAllocate={() =>
             allocate().then((outcome) => {
               if (!outcome?.allocated) return;
-              // The rota has gone out. Nothing on this screen is about it any
-              // more — there is no rota in flight, no draft and no round — so
-              // the tab re-reads and swaps itself for the define screen.
+              // The rota has gone out, and the rota page is what shows one.
               onAllocated();
             })
           }
@@ -293,8 +291,11 @@ function InFlightRota({
 // that defines the next.
 //
 // There is no third state. An allocated rota is the rota, and the rota page is
-// what shows one; all this has to say about it then is where to find it.
+// what shows one — so allocating leaves for it rather than describing it from
+// here. Landing on the finished rota is the confirmation the allocation worked,
+// and it is where every change from then on is made anyway.
 export default function AdminAllocation() {
+  const [, navigate] = useLocation();
   const { inFlight, loading, error, reload, discard } = useRotaInFlight();
   const {
     shifts,
@@ -304,11 +305,6 @@ export default function AdminAllocation() {
     setTimes,
     setShape,
   } = useRota();
-  // Set when an allocation this screen ran succeeded, and never cleared. What
-  // replaces this screen is the define form for the next rota, which says
-  // nothing about the one that just went out — so the sentence that does has to
-  // outlive the state change that prompted it.
-  const [allocated, setAllocated] = useState(false);
 
   // Both reads change together at every point this screen has an action for:
   // defining mints the shifts, discarding destroys them, allocating turns them
@@ -332,15 +328,6 @@ export default function AdminAllocation() {
         </p>
       )}
 
-      {allocated && (
-        <p className="allocation-allocated" role="status">
-          The rota is allocated. Volunteers can see it on the{" "}
-          <Link href="/">rota page</Link> and in the calendar feeds they
-          subscribe to. Changing it from here on is one alteration at a time, on
-          that page.
-        </p>
-      )}
-
       {loading && <p className="allocation-loading">Loading the rota…</p>}
 
       {!loading && inFlight !== null && (
@@ -352,10 +339,7 @@ export default function AdminAllocation() {
           setShape={setShape}
           discard={discard}
           onDiscarded={reloadBoth}
-          onAllocated={() => {
-            setAllocated(true);
-            reloadBoth();
-          }}
+          onAllocated={() => navigate("/")}
         />
       )}
 
