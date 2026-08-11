@@ -224,7 +224,6 @@ func buildHistoricalShifts(
 	allRotations []db.Rotation,
 	targetRota *db.Rotation,
 	volunteers []allocator.Volunteer,
-	uncappedRole string,
 	logger *zap.Logger,
 ) ([]*allocator.Shift, error) {
 	// Find the previous rota (the one before the target rota)
@@ -277,7 +276,7 @@ func buildHistoricalShifts(
 		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
 	logger.Debug("Applying alterations to historical shifts", zap.Int("count", len(previousRotaAlterations)))
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, previousRotaAlterations, uncappedRole)
+	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, previousRotaAlterations)
 
 	// Build a map of volunteers by ID for quick lookup
 	volunteersByID := make(map[string]allocator.Volunteer)
@@ -340,7 +339,6 @@ func convertRoles(roles model.Roles) []allocator.Role {
 	for _, role := range ordered {
 		converted = append(converted, allocator.Role{
 			Name:     role.Name,
-			Max:      role.Max,
 			Priority: role.Priority,
 		})
 	}

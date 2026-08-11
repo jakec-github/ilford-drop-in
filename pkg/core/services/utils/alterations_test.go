@@ -21,7 +21,7 @@ func TestApplyAlterations_RemoveVolunteer(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 2)
 	for _, a := range result["shift-1"] {
@@ -41,7 +41,7 @@ func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", CustomValue: "External John", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
@@ -55,15 +55,34 @@ func TestApplyAlterations_AddVolunteer(t *testing.T) {
 	}
 
 	alterations := []db.Alteration{
-		{ID: "alt1", ShiftID: "shift-1", Direction: "add", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
+		{ID: "alt1", ShiftID: "shift-1", Direction: "add", VolunteerID: "bob", Role: "Service volunteer", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 2)
 	assert.Equal(t, "bob", result["shift-1"][1].VolunteerID)
 	assert.Equal(t, "Service volunteer", result["shift-1"][1].Role)
 	assert.Equal(t, "shift-1", result["shift-1"][1].ShiftID)
+}
+
+// An alteration written before alterations had a Role column names none, and
+// stays that way: there used to be a default here, the uncapped Role, and with
+// that gone (issue #185) inventing one would be a guess. Every reader handles
+// it — the published sheet gives it a column of its own.
+func TestApplyAlterations_AddWithoutARoleKeepsNone(t *testing.T) {
+	allocationsByShiftID := map[string][]db.Allocation{
+		"shift-1": {},
+	}
+
+	alterations := []db.Alteration{
+		{ID: "alt1", ShiftID: "shift-1", Direction: "add", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
+	}
+
+	result := ApplyAlterations(allocationsByShiftID, alterations)
+
+	assert.Len(t, result["shift-1"], 1)
+	assert.Equal(t, "", result["shift-1"][0].Role)
 }
 
 func TestApplyAlterations_AddCustomEntry(t *testing.T) {
@@ -74,10 +93,10 @@ func TestApplyAlterations_AddCustomEntry(t *testing.T) {
 	}
 
 	alterations := []db.Alteration{
-		{ID: "alt1", ShiftID: "shift-1", Direction: "add", CustomValue: "External John", SetTime: "2025-01-01T00:00:00Z"},
+		{ID: "alt1", ShiftID: "shift-1", Direction: "add", CustomValue: "External John", Role: "Service volunteer", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 2)
 	assert.Equal(t, "External John", result["shift-1"][1].CustomEntry)
@@ -98,7 +117,7 @@ func TestApplyAlterations_AppliedInSetTimeOrder(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	// Alice should be removed, bob should be added
 	assert.Len(t, result["shift-1"], 1)
@@ -116,7 +135,7 @@ func TestApplyAlterations_RemoveNonExistentIsNoOp(t *testing.T) {
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "nonexistent", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	// Should be unchanged
 	assert.Len(t, result["shift-1"], 1)
@@ -139,7 +158,7 @@ func TestApplyAlterations_MultipleShifts(t *testing.T) {
 		{ID: "alt2", ShiftID: "shift-2", Direction: "add", VolunteerID: "dave", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, alterations, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "bob", result["shift-1"][0].VolunteerID)
@@ -156,7 +175,7 @@ func TestApplyAlterations_EmptyAlterations(t *testing.T) {
 		},
 	}
 
-	result := ApplyAlterations(allocationsByShiftID, nil, "Service volunteer")
+	result := ApplyAlterations(allocationsByShiftID, nil)
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)

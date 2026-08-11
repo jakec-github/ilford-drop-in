@@ -13,11 +13,11 @@ import (
 
 func intPtr(i int) *int { return &i }
 
-// twoRoles is the pair the app ships with: a capped Team lead ahead of an
-// uncapped Service volunteer.
+// twoRoles is the pair the app ships with: Team lead ahead of Service
+// volunteer.
 func twoRoles() model.Roles {
 	return model.NewRoles([]model.Role{
-		{Name: "Team lead", Max: intPtr(1), Priority: 1},
+		{Name: "Team lead", Priority: 1},
 		{Name: "Service volunteer", Priority: 2},
 	})
 }
@@ -97,8 +97,8 @@ func TestParseVolunteers_RolesCellShapes(t *testing.T) {
 func TestParseVolunteers_RolesCellQuoting(t *testing.T) {
 	// Two Roles whose names need the escaping, either side of one that does not.
 	roles := model.NewRoles([]model.Role{
-		{Name: `Kitchen, hot food`, Max: intPtr(1), Priority: 1},
-		{Name: `The "spare pair"`, Max: intPtr(1), Priority: 2},
+		{Name: `Kitchen, hot food`, Priority: 1},
+		{Name: `The "spare pair"`, Priority: 2},
 		{Name: "Service volunteer", Priority: 3},
 	})
 

@@ -18,8 +18,8 @@ function defaultRoleFor(volunteer: Volunteer | null | undefined): Role {
   return volunteer?.roles[0] ?? SERVICE_VOLUNTEER_ROLE;
 }
 
-// How a Role reads in a sentence about somebody's place on a shift. The uncapped
-// Role is what being on the shift already means, so naming it would be noise;
+// How a Role reads in a sentence about somebody's place on a shift. Being on
+// the shift already means an ordinary Seat, so naming that Role would be noise;
 // anything else is worth saying.
 function roleSuffix(role: Role): string {
   return role === SERVICE_VOLUNTEER_ROLE ? "" : `, as ${role.toLowerCase()}`;

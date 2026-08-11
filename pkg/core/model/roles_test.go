@@ -7,13 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ptr(i int) *int { return &i }
-
 func TestNewRoles_OrdersByPriority(t *testing.T) {
 	roles := NewRoles([]Role{
 		{Name: "Service volunteer", Priority: 4},
-		{Name: "Team lead", Max: ptr(1), Priority: 1},
-		{Name: "Food collector", Max: ptr(1), Priority: 3},
+		{Name: "Team lead", Priority: 1},
+		{Name: "Food collector", Priority: 3},
 	})
 
 	names := make([]string, 0, 3)
@@ -25,38 +23,23 @@ func TestNewRoles_OrdersByPriority(t *testing.T) {
 
 func TestRoles_ByName(t *testing.T) {
 	roles := NewRoles([]Role{
-		{Name: "Team lead", Max: ptr(1), Priority: 1},
+		{Name: "Team lead", Priority: 1},
 		{Name: "Service volunteer", Priority: 2},
 	})
 
 	lead, ok := roles.ByName("Team lead")
 	require.True(t, ok)
-	require.NotNil(t, lead.Max)
-	assert.Equal(t, 1, *lead.Max)
+	assert.Equal(t, 1, lead.Priority)
 
 	_, ok = roles.ByName("Hot food")
 	assert.False(t, ok, "a Role config does not name is not a Role")
-}
-
-func TestRoles_Uncapped(t *testing.T) {
-	roles := NewRoles([]Role{
-		{Name: "Team lead", Max: ptr(1), Priority: 1},
-		{Name: "Service volunteer", Priority: 2},
-	})
-
-	uncapped, ok := roles.Uncapped()
-	require.True(t, ok)
-	assert.Equal(t, "Service volunteer", uncapped.Name)
-
-	_, ok = NewRoles([]Role{{Name: "Team lead", Max: ptr(1), Priority: 1}}).Uncapped()
-	assert.False(t, ok)
 }
 
 // A Role's colour is what the frontend paints its chips with, so every Role the
 // table hands out has one — a config that names none still gets an answer.
 func TestNewRoles_DefaultsTheColour(t *testing.T) {
 	roles := NewRoles([]Role{
-		{Name: "Team lead", Max: ptr(1), Priority: 1, Colour: ColourViolet},
+		{Name: "Team lead", Priority: 1, Colour: ColourViolet},
 		{Name: "Service volunteer", Priority: 2},
 	})
 
@@ -90,7 +73,7 @@ func TestRoles_ZeroValue(t *testing.T) {
 
 	_, ok := roles.ByName("Team lead")
 	assert.False(t, ok)
-	_, ok = roles.Uncapped()
+	_, ok = roles.ByID("some-id")
 	assert.False(t, ok)
 	assert.Empty(t, roles.ByPriority())
 }
@@ -98,7 +81,7 @@ func TestRoles_ZeroValue(t *testing.T) {
 // ByPriority hands out the ordering, not the storage behind it.
 func TestRoles_ByPriorityDoesNotAliasStorage(t *testing.T) {
 	roles := NewRoles([]Role{
-		{Name: "Team lead", Max: ptr(1), Priority: 1},
+		{Name: "Team lead", Priority: 1},
 		{Name: "Service volunteer", Priority: 2},
 	})
 

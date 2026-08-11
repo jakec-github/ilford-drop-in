@@ -46,7 +46,7 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 
 	// Nobody has answered, so nothing is available for anything yet.
 	for _, s := range round.Shifts {
-		assert.Equal(t, 0, s.Available)
+		assert.Equal(t, 0, ordinaryCoverage(t, s).Available)
 		assert.Equal(t, 0, leadCoverage(t, s).Available)
 		assert.Equal(t, 1, leadCoverage(t, s).Needed, "every open shift still wants a lead")
 	}
@@ -104,9 +104,9 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	// date without cover.
 	for _, s := range current.Shifts {
 		if s.ID == narrowed[0] {
-			assert.Equal(t, 1, s.Available, "bob is available for this one")
+			assert.Equal(t, 1, ordinaryCoverage(t, s).Available, "bob is available for this one")
 		} else {
-			assert.Equal(t, 0, s.Available)
+			assert.Equal(t, 0, ordinaryCoverage(t, s).Available)
 		}
 		assert.Equal(t, 0, leadCoverage(t, s).Available)
 	}
@@ -124,17 +124,18 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	assert.False(t, entryFor(t, current, "charlie").Replied, "nobody submitted for charlie")
 
 	// Alice is the only team lead, so her answer is what decides whether a date
-	// has cover. She holds the uncapped Role too, so she is counted for both —
+	// has cover. She holds Service volunteer too, so she is counted for both —
 	// she could take either Seat, though only one of them.
 	formOverHTTP(t, handler, http.MethodPost, aliceToken, body(t, narrowed))
 	current = roundOverHTTP(t, handler)
 	for _, s := range current.Shifts {
 		if s.ID == narrowed[0] {
 			assert.Equal(t, 1, leadCoverage(t, s).Available)
-			assert.Equal(t, 2, s.Available, "alice and bob could both take an ordinary Seat")
+			assert.Equal(t, 2, ordinaryCoverage(t, s).Available,
+				"alice and bob could both take an ordinary Seat")
 		} else {
 			assert.Equal(t, 0, leadCoverage(t, s).Available)
-			assert.Equal(t, 0, s.Available)
+			assert.Equal(t, 0, ordinaryCoverage(t, s).Available)
 		}
 	}
 }
@@ -142,12 +143,25 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 // leadCoverage picks the Team lead Seat out of a shift's per-Role picture.
 func leadCoverage(t *testing.T, shift availabilityCoverageResponse) availabilityRoleCoverage {
 	t.Helper()
+	return roleCoverage(t, shift, "Team lead")
+}
+
+// ordinaryCoverage picks the Service volunteer Seat out. A shift has no total
+// of its own to read instead (issue #185): a Role at a time is the only
+// arithmetic that means anything.
+func ordinaryCoverage(t *testing.T, shift availabilityCoverageResponse) availabilityRoleCoverage {
+	t.Helper()
+	return roleCoverage(t, shift, "Service volunteer")
+}
+
+func roleCoverage(t *testing.T, shift availabilityCoverageResponse, role string) availabilityRoleCoverage {
+	t.Helper()
 	for _, r := range shift.Roles {
-		if r.Role == "Team lead" {
+		if r.Role == role {
 			return r
 		}
 	}
-	t.Fatalf("no Team lead coverage for shift %s", shift.ID)
+	t.Fatalf("no %s coverage for shift %s", role, shift.ID)
 	return availabilityRoleCoverage{}
 }
 

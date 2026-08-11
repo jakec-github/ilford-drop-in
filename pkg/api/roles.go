@@ -18,17 +18,13 @@ import (
 // needs it — the rota names Roles by string — but the settings screen edits a
 // Role by addressing it.
 //
-// Max and Priority are here for that screen rather than for the rota. They ride
-// on the public listing rather than a gated one of their own because they are
-// facts about how the drop-in is run, not about anybody in it: a ceiling and a
-// filling order say nothing a visitor could not count off the rota.
+// Priority is here for that screen rather than for the rota. It rides on the
+// public listing rather than a gated one of its own because it is a fact about
+// how the drop-in is run, not about anybody in it: a filling order says nothing
+// a visitor could not count off the rota.
 type roleResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	// Explicitly null when the Role is uncapped, never absent: the settings
-	// screen has a field for the ceiling, and a client should not have to read
-	// a missing key as "no limit".
-	Max      *int   `json:"max"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
 	Priority int    `json:"priority"`
 	Colour   string `json:"colour"`
 }
@@ -41,11 +37,10 @@ type listRolesResponse struct {
 // an edit says everything a creation says, because a Role must not be able to
 // reach through an edit a state it could not have been created in.
 //
-// Max is a pointer so that leaving it out, and sending null, both mean uncapped
-// — which is a Role's ordinary state, not a missing answer.
+// There is no ceiling to state. How many of a Role a Shift asks for is that
+// Shift's Shape, edited on the shift itself (issue #185).
 type roleRequest struct {
 	Name     string `json:"name"`
-	Max      *int   `json:"max"`
 	Priority int    `json:"priority"`
 	Colour   string `json:"colour"`
 }
@@ -127,7 +122,6 @@ func (h *Handler) decodeRoleRequest(w http.ResponseWriter, r *http.Request) (ser
 
 	return services.RoleParams{
 		Name:     req.Name,
-		Max:      req.Max,
 		Priority: req.Priority,
 		Colour:   req.Colour,
 	}, true
@@ -137,7 +131,6 @@ func toRoleResponse(role model.Role) roleResponse {
 	return roleResponse{
 		ID:       role.ID,
 		Name:     role.Name,
-		Max:      role.Max,
 		Priority: role.Priority,
 		Colour:   role.Colour,
 	}

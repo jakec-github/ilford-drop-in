@@ -58,10 +58,8 @@ export interface ConfiguredRole {
   // Role needs it; the settings screen edits a Role by addressing it.
   id: string;
   name: Role;
-  // The ceiling — how many of this Role a shift may ever hold. null is
-  // uncapped, which is the Role a shift's size is spent on.
-  max: number | null;
-  // Orders the filling of seats when people are scarce, lowest first.
+  // Orders the filling of seats when people are scarce, lowest first. A Role
+  // has no ceiling: how many of it a shift asks for is that shift's Shape.
   priority: number;
   colour: RoleColour;
 }
@@ -72,7 +70,6 @@ export interface ConfiguredRole {
 // a state it could not have been created in.
 export interface RoleEdit {
   name: Role;
-  max: number | null;
   priority: number;
   colour: RoleColour;
 }
@@ -419,30 +416,25 @@ export interface AvailabilityGroup {
 
 // ShiftCoverage is one shift's staffing picture before the rota is run: what it
 // still needs once already-pinned seats are taken out, and how many people are
-// available to fill them. delta is the number an admin is really after —
-// negative is short. These four speak for the uncapped Role, the one the shift's
-// size is spent on; roles carries the same arithmetic for every Role.
+// available to fill them, one entry per Role. There is no shift-level total —
+// someone holding two Roles could fill either and can only take one, so the
+// Roles do not sum to anything meaningful.
 //
-// A closed shift carries zeroes and no roles: the drop-in is not running that
-// day, so it is not a shift that is short of people.
+// A closed shift carries no roles: the drop-in is not running that day, so it
+// is not a shift that is short of people.
 export interface ShiftCoverage {
   id: string;
   date: string;
   closed: boolean;
-  needed: number;
-  pinned: number;
-  available: number;
-  delta: number;
   roles: RoleCoverage[];
 }
 
 // RoleCoverage is one Role's Seats on one shift. Someone holding two Roles is
 // counted under both — they could fill either, so these do not sum to the
-// shift's total. capped marks a Role with a ceiling, which is what makes an
-// empty one worth calling out on its own rather than folding into delta.
+// shift's total. delta is the number an admin is really after: negative is
+// short.
 export interface RoleCoverage {
   role: Role;
-  capped: boolean;
   seats: number;
   pinned: number;
   needed: number;

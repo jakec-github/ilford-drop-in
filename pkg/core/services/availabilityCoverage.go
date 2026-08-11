@@ -21,24 +21,25 @@ import (
 // and the pins are the ones InitShifts will see, resolved by the same helpers
 // allocation resolves them with.
 
-// ShiftCoverage is one shift's staffing picture before allocation runs.
+// ShiftCoverage is one shift's staffing picture before allocation runs: one
+// RoleCoverage per configured Role, in priority order.
 //
-// Needed is what is left for the allocator to fill: the shift's Seats with the
-// already-pinned ones taken out. Available is who could fill them, so Delta —
-// the difference — is the number the admin is really after. These four speak for
-// the uncapped Role, the one a shift's size is spent on and the one the page is
-// mostly asking about; Roles carries the same arithmetic for every configured
-// Role, capped ones included. A closed shift carries zeroes throughout: it is not
-// a shift that is short of people.
+// There is no headline pair of numbers for the shift as a whole. There used to
+// be — Needed, Pinned, Available and Delta, all of them the uncapped Role's,
+// because "short" had always meant short of the people a shift's size bought.
+// With no uncapped Role to speak for they had no basis, and summing every Role
+// does not give one either: someone holding two Roles is available for both and
+// can fill only one, so the totals would overcount by an unknown amount. The
+// per-Role numbers are the whole picture, and they are what the responses grid
+// draws (issue #185).
+//
+// A closed shift carries no Roles at all: it is not a shift that is short of
+// people.
 type ShiftCoverage struct {
-	ShiftID   string
-	Date      string // YYYY-MM-DD
-	Closed    bool
-	Needed    int
-	Pinned    int // uncapped Seats already held by a preallocation
-	Available int
-	Delta     int            // Available - Needed; negative is understaffed
-	Roles     []RoleCoverage // every configured Role, in priority order
+	ShiftID string
+	Date    string // YYYY-MM-DD
+	Closed  bool
+	Roles   []RoleCoverage // every configured Role, in priority order
 }
 
 // RoleCoverage is one Role's part of a shift's picture: the Seats the Shape
@@ -50,11 +51,7 @@ type ShiftCoverage struct {
 // Role be filled at all", which is the one an admin chasing a lead is asking,
 // and summing them is not meaningful.
 type RoleCoverage struct {
-	Role string
-	// Capped marks a Role with a ceiling. An empty capped Role is worth calling
-	// out on its own — a shift with nobody who can lead it is short in a way no
-	// number of ordinary volunteers fixes.
-	Capped    bool
+	Role      string
 	Seats     int // Seats of this Role on the shift
 	Pinned    int // of those, already held by a preallocation
 	Needed    int // Seats - Pinned, floored at zero
@@ -167,7 +164,6 @@ func buildCoverage(
 	volunteersByID map[string]model.Volunteer,
 ) []ShiftCoverage {
 	byPriority := roles.ByPriority()
-	uncapped := roles.UncappedName()
 
 	coverage := make([]ShiftCoverage, 0, len(shifts))
 	for _, shift := range shifts {
@@ -213,7 +209,6 @@ func buildCoverage(
 			}
 			roleCoverage = append(roleCoverage, RoleCoverage{
 				Role:      role.Name,
-				Capped:    role.Capped(),
 				Seats:     seat.seats[role.Name],
 				Pinned:    seat.pinned[role.Name],
 				Needed:    needed,
@@ -222,23 +217,11 @@ func buildCoverage(
 			})
 		}
 
-		shiftCoverage := ShiftCoverage{
+		coverage = append(coverage, ShiftCoverage{
 			ShiftID: shift.ID,
 			Date:    shift.Date,
 			Roles:   roleCoverage,
-		}
-		// The headline numbers are the uncapped Role's: a shift being "short"
-		// has always meant short of the people its size buys.
-		for _, rc := range roleCoverage {
-			if rc.Role == uncapped {
-				shiftCoverage.Needed = rc.Needed
-				shiftCoverage.Pinned = rc.Pinned
-				shiftCoverage.Available = rc.Available
-				shiftCoverage.Delta = rc.Delta
-				break
-			}
-		}
-		coverage = append(coverage, shiftCoverage)
+		})
 	}
 	return coverage
 }

@@ -21,14 +21,13 @@ type RoleSeedStore interface {
 // Roles the app does not know parses to volunteers holding nothing, and a
 // drop-in nobody holds a Role in allocates nobody.
 //
-// Names, ceilings and colours match the production config these Roles came out
-// of, so the dev stack looks like the real thing rather than like a fixture.
+// Names and colours match the production config these Roles came out of, so the
+// dev stack looks like the real thing rather than like a fixture. How many of
+// each a Shift asks for is the default Shape's business, not a Role's.
 var seedRoles = []model.Role{
-	{Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet},
+	{Name: "Team lead", Priority: 1, Colour: model.ColourViolet},
 	{Name: "Service volunteer", Priority: 2, Colour: model.ColourTeal},
 }
-
-func intPtr(n int) *int { return &n }
 
 // SeedRoles gives a dev database its Roles, once. No migration seeds Roles
 // (ADR 0006) — they are an admin's to choose, and the settings screen that lets
@@ -50,7 +49,6 @@ func SeedRoles(ctx context.Context, store RoleSeedStore) (int, error) {
 		if err := store.InsertRole(ctx, db.Role{
 			ID:       uuid.New().String(),
 			Name:     role.Name,
-			Max:      role.Max,
 			Priority: role.Priority,
 			Colour:   role.Colour,
 		}); err != nil {

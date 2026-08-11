@@ -11,8 +11,8 @@ import pytest
 from pyallocator.cli import main
 
 ROLES = [
-    {"name": "Team lead", "max": 1, "priority": 1},
-    {"name": "Service volunteer", "max": None, "priority": 2},
+    {"name": "Team lead", "priority": 1},
+    {"name": "Service volunteer", "priority": 2},
 ]
 
 

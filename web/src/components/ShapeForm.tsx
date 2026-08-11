@@ -85,16 +85,9 @@ export default function ShapeForm({
             <span className="shape-form-role" data-role-colour={role.colour}>
               {role.name}
             </span>
-            {/* A capped Role says its ceiling here rather than only refusing at
-                it: the box stops at that number, and a number box that will not
-                go higher is a puzzle without the reason beside it. */}
-            {role.max !== null && (
-              <span className="shape-form-max">at most {role.max}</span>
-            )}
             <input
               type="number"
               min={0}
-              max={role.max ?? undefined}
               value={counts[role.id] ?? "0"}
               onChange={(e) =>
                 setCounts({ ...counts, [role.id]: e.target.value })

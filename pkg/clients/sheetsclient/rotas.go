@@ -2,7 +2,6 @@ package sheetsclient
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"google.golang.org/api/sheets/v4"
@@ -16,26 +15,29 @@ const closedCell = "CLOSED"
 // PublishedRotaRow represents a single row in the published rota
 type PublishedRotaRow struct {
 	Date string // Format: "Mon Jan 02 2006"
-	// Closed is a shift that did not run. It is rendered in the first capped
-	// Role's column, which is where the sheet has always shown it.
+	// Closed is a shift that did not run. It is rendered in the row's first
+	// column after the date, which is where the sheet has always shown it.
 	Closed bool
-	// CappedRoles holds the names filling each capped Role, by Role name. Each
-	// gets its own columns, ahead of the uncapped Role's.
-	CappedRoles map[string][]string
-	Volunteers  []string // Full names of volunteers in the uncapped Role
-	HotFood     string   // Leave blank for now
-	Collection  string   // Leave blank for now
+	// Roles holds the names filling each Role, by Role name — one person per
+	// cell, each Role in columns of its own.
+	Roles map[string][]string
+	// UnknownRole holds names whose allocation named a Role the app does not
+	// know, or named none at all. They worked the shift, so they are published;
+	// the sheet says plainly that it cannot say what they did.
+	UnknownRole []string
+	HotFood     string // Leave blank for now
+	Collection  string // Leave blank for now
 }
 
 // PublishedRota represents the complete published rota data
 type PublishedRota struct {
 	StartDate  string // Format: "2006-01-02"
 	ShiftCount int
-	// CappedRoleNames are the capped Roles in priority order, one group of
+	// RoleNames are the configured Roles in priority order, one group of
 	// columns each. The sheet's shape follows the configured Roles rather than
 	// a hardcoded "Team lead" column.
-	CappedRoleNames []string
-	Rows            []PublishedRotaRow
+	RoleNames []string
+	Rows      []PublishedRotaRow
 }
 
 // PublishRota publishes a rota to the "Latest" tab in Google Sheets.
@@ -123,85 +125,15 @@ func resolveUniqueTitle(spreadsheet *sheets.Spreadsheet, title string) string {
 	}
 }
 
-// writeRotaData writes rota rows to an existing tab, then clears any stale rows below.
-// Layout: rows 1-2 empty, row 3 header, row 4+ data.
-//
-// Columns are Date, then each capped Role in priority order, then the uncapped
-// Role's, then the two hand-typed trailing ones. A capped Role always gets at
-// least one column even when nothing fills it, so a rota of nothing but closed
-// shifts still has somewhere to say so.
+// unknownRoleHeading names the columns for people the app cannot say the Role
+// of. They are published — they worked the shift — and the heading says why
+// there is nothing more to say about them.
+const unknownRoleHeading = "Unknown role"
+
+// writeRotaData writes rota rows to an existing tab, then clears any stale rows
+// below. Layout: rows 1-2 empty, row 3 header, row 4+ data.
 func (c *Client) writeRotaData(spreadsheetID, tabTitle string, publishedRota *PublishedRota) error {
-	maxVolunteers := 0
-	for _, row := range publishedRota.Rows {
-		if len(row.Volunteers) > maxVolunteers {
-			maxVolunteers = len(row.Volunteers)
-		}
-	}
-
-	cappedWidths := make(map[string]int, len(publishedRota.CappedRoleNames))
-	for _, name := range publishedRota.CappedRoleNames {
-		cappedWidths[name] = 1
-		for _, row := range publishedRota.Rows {
-			if len(row.CappedRoles[name]) > cappedWidths[name] {
-				cappedWidths[name] = len(row.CappedRoles[name])
-			}
-		}
-	}
-
-	header := []interface{}{"Date"}
-	for _, name := range publishedRota.CappedRoleNames {
-		if cappedWidths[name] == 1 {
-			header = append(header, name)
-			continue
-		}
-		for i := 0; i < cappedWidths[name]; i++ {
-			header = append(header, fmt.Sprintf("%s %d", name, i+1))
-		}
-	}
-	// The uncapped Role's columns keep the heading the sheet has always used
-	// rather than taking the Role's configured name, which readers of the
-	// published rota have no reason to learn. S3 revisits the sheet's shape.
-	for i := 0; i < maxVolunteers; i++ {
-		header = append(header, fmt.Sprintf("Volunteer %d", i+1))
-	}
-	header = append(header, "Hot food", "Collection")
-
-	dataRows := make([][]interface{}, 0, len(publishedRota.Rows))
-	for _, row := range publishedRota.Rows {
-		sheetRow := []interface{}{row.Date}
-		closedCellWritten := false
-		for _, name := range publishedRota.CappedRoleNames {
-			for i := 0; i < cappedWidths[name]; i++ {
-				switch {
-				case row.Closed && !closedCellWritten:
-					sheetRow = append(sheetRow, closedCell)
-					closedCellWritten = true
-				case i < len(row.CappedRoles[name]):
-					sheetRow = append(sheetRow, row.CappedRoles[name][i])
-				default:
-					sheetRow = append(sheetRow, "")
-				}
-			}
-		}
-		for i := 0; i < maxVolunteers; i++ {
-			switch {
-			case row.Closed && !closedCellWritten:
-				// No capped Role is configured, so the closure is announced in
-				// the first column there is.
-				sheetRow = append(sheetRow, closedCell)
-				closedCellWritten = true
-			case i < len(row.Volunteers):
-				sheetRow = append(sheetRow, row.Volunteers[i])
-			default:
-				sheetRow = append(sheetRow, "")
-			}
-		}
-		sheetRow = append(sheetRow, row.HotFood, row.Collection)
-		dataRows = append(dataRows, sheetRow)
-	}
-
-	allRows := [][]interface{}{{}, {}, header}
-	allRows = append(allRows, dataRows...)
+	allRows := rotaValues(publishedRota)
 
 	valueRange := &sheets.ValueRange{Values: allRows}
 	_, err := c.service.Spreadsheets.Values.Update(
@@ -223,23 +155,80 @@ func (c *Client) writeRotaData(spreadsheetID, tabTitle string, publishedRota *Pu
 	return nil
 }
 
-// findColumnIndex finds the index of a column by its header name
-func findColumnIndex(header []interface{}, columnName string) int {
-	for i, cell := range header {
-		if str, ok := cell.(string); ok && str == columnName {
-			return i
+// rotaValues lays the rota out as the cells that go on the tab: rows 1-2 empty,
+// row 3 the header, row 4+ one row per shift.
+//
+// Columns are Date, then each configured Role in priority order, then any
+// unknown-Role columns, then the two hand-typed trailing ones. One person per
+// cell throughout: a Role takes as many columns as the rota's fullest shift
+// needs of it, and always at least one even when nothing fills it, so a rota of
+// nothing but closed shifts still has somewhere to say so. Unknown-Role columns
+// exist only when somebody is in one.
+func rotaValues(publishedRota *PublishedRota) [][]interface{} {
+	roleWidths := make(map[string]int, len(publishedRota.RoleNames))
+	for _, name := range publishedRota.RoleNames {
+		roleWidths[name] = 1
+		for _, row := range publishedRota.Rows {
+			if len(row.Roles[name]) > roleWidths[name] {
+				roleWidths[name] = len(row.Roles[name])
+			}
 		}
 	}
-	return -1
+	unknownWidth := 0
+	for _, row := range publishedRota.Rows {
+		if len(row.UnknownRole) > unknownWidth {
+			unknownWidth = len(row.UnknownRole)
+		}
+	}
+
+	header := []interface{}{"Date"}
+	for _, name := range publishedRota.RoleNames {
+		header = append(header, headings(name, roleWidths[name])...)
+	}
+	header = append(header, headings(unknownRoleHeading, unknownWidth)...)
+	header = append(header, "Hot food", "Collection")
+
+	dataRows := make([][]interface{}, 0, len(publishedRota.Rows))
+	for _, row := range publishedRota.Rows {
+		sheetRow := []interface{}{row.Date}
+		closedCellWritten := false
+		fill := func(names []string, width int) {
+			for i := 0; i < width; i++ {
+				switch {
+				case row.Closed && !closedCellWritten:
+					// The closure is announced in the row's first cell, whatever
+					// column that turns out to be.
+					sheetRow = append(sheetRow, closedCell)
+					closedCellWritten = true
+				case i < len(names):
+					sheetRow = append(sheetRow, names[i])
+				default:
+					sheetRow = append(sheetRow, "")
+				}
+			}
+		}
+		for _, name := range publishedRota.RoleNames {
+			fill(row.Roles[name], roleWidths[name])
+		}
+		fill(row.UnknownRole, unknownWidth)
+		sheetRow = append(sheetRow, row.HotFood, row.Collection)
+		dataRows = append(dataRows, sheetRow)
+	}
+
+	allRows := [][]interface{}{{}, {}, header}
+	return append(allRows, dataRows...)
 }
 
-// findVolunteerColumns finds all volunteer column indices in order
-func findVolunteerColumns(header []interface{}) []int {
-	var cols []int
-	for i, cell := range header {
-		if str, ok := cell.(string); ok && strings.HasPrefix(str, "Volunteer ") {
-			cols = append(cols, i)
-		}
+// headings names one group of columns: the group's own name when it is a
+// single column, numbered when there are several. Returns nothing for a group
+// of no columns, which is how an unused Unknown role group disappears.
+func headings(name string, width int) []interface{} {
+	if width == 1 {
+		return []interface{}{name}
 	}
-	return cols
+	out := make([]interface{}, 0, width)
+	for i := 0; i < width; i++ {
+		out = append(out, fmt.Sprintf("%s %d", name, i+1))
+	}
+	return out
 }

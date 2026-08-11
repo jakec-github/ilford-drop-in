@@ -229,6 +229,18 @@ func seatsHoldThePins(stated []storedSeat, pins []db.Preallocation, roles model.
 	return nil
 }
 
+// seatsForRole is how many Seats a stored Shape gives one Role. A Shape that
+// does not name the Role gives it none, which is what a Shift asking for
+// nobody in that job means — and is why pinning to it is refused (issue #185).
+func seatsForRole(shape []db.ShiftRequirement, role model.Role) int {
+	for _, seat := range shape {
+		if seat.RoleID == role.ID {
+			return seat.Seats
+		}
+	}
+	return 0
+}
+
 func pinsForRole(pins []db.Preallocation, role string) int {
 	count := 0
 	for _, pin := range pins {

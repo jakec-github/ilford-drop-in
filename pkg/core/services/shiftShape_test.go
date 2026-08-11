@@ -150,18 +150,17 @@ func TestSaveShiftShapeOrdersByPriority(t *testing.T) {
 	assert.Equal(t, "Service volunteer", shape[1].Role.Name)
 }
 
-// A Role's ceiling is what a Shift may ever hold, however the Shape is edited —
-// so a second Team lead is not addable here any more than it is in the
-// settings.
-func TestSaveShiftShapeRespectsTheRoleCeiling(t *testing.T) {
+// One Shift's Shape is the only thing that says how many of a Role it asks for,
+// so an evening that wants two Team leads says so (issue #185).
+func TestSaveShiftShapeAllowsAnyCountOfAnyRole(t *testing.T) {
 	store := shapeEditStore()
 
-	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
+	shape, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
 		{RoleID: leadRoleID, Count: 2},
 	}, zap.NewNop())
-	require.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "Team lead")
-	assert.Empty(t, store.saved)
+	require.NoError(t, err)
+	require.Len(t, shape, 1)
+	assert.Equal(t, 2, shape[0].Count)
 }
 
 func TestSaveShiftShapeRefusesBadInput(t *testing.T) {

@@ -16,7 +16,6 @@ import (
 type roleBody struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Max      *int   `json:"max"`
 	Priority int    `json:"priority"`
 	Colour   string `json:"colour"`
 }
@@ -43,8 +42,8 @@ func decodeRole(t *testing.T, body []byte) roleBody {
 func TestListRolesEndpoint(t *testing.T) {
 	store := &mockStore{roles: []db.Role{
 		{ID: "r-service", Name: "Service volunteer", Priority: 3, Colour: model.ColourTeal},
-		{ID: "r-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet},
-		{ID: "r-food", Name: "Food collector", Max: intPtr(2), Priority: 2},
+		{ID: "r-lead", Name: "Team lead", Priority: 1, Colour: model.ColourViolet},
+		{ID: "r-food", Name: "Food collector", Priority: 2},
 	}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/roles", "")
@@ -52,8 +51,8 @@ func TestListRolesEndpoint(t *testing.T) {
 	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 
 	assert.Equal(t, []roleBody{
-		{ID: "r-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet},
-		{ID: "r-food", Name: "Food collector", Max: intPtr(2), Priority: 2, Colour: model.DefaultRoleColour},
+		{ID: "r-lead", Name: "Team lead", Priority: 1, Colour: model.ColourViolet},
+		{ID: "r-food", Name: "Food collector", Priority: 2, Colour: model.DefaultRoleColour},
 		{ID: "r-service", Name: "Service volunteer", Priority: 3, Colour: model.ColourTeal},
 	}, decodeRoles(t, rec.Body.Bytes()),
 		"in priority order, and a Role stored without a colour still has one")
@@ -71,7 +70,7 @@ func TestListRolesEndpointStatesAnAbsentCeiling(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.JSONEq(t,
-		`{"roles":[{"id":"r-service","name":"Service volunteer","max":null,"priority":1,"colour":"teal"}]}`,
+		`{"roles":[{"id":"r-service","name":"Service volunteer","priority":1,"colour":"teal"}]}`,
 		rec.Body.String())
 }
 
@@ -111,7 +110,7 @@ func TestCreateRoleEndpoint(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles",
-		`{"name":"Food collector","max":2,"priority":3,"colour":"amber"}`, adminCookie())
+		`{"name":"Food collector","priority":3,"colour":"amber"}`, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedRoles, 1)
@@ -121,23 +120,21 @@ func TestCreateRoleEndpoint(t *testing.T) {
 	assert.Equal(t, store.insertedRoles[0].ID, created.ID)
 	assert.NotEmpty(t, created.ID)
 	assert.Equal(t, "Food collector", created.Name)
-	require.NotNil(t, created.Max)
-	assert.Equal(t, 2, *created.Max)
 	assert.Equal(t, 3, created.Priority)
 	assert.Equal(t, model.ColourAmber, created.Colour)
 }
 
-// A Role with no ceiling is the ordinary case, and is said by leaving the
-// ceiling out rather than by a sentinel number.
-func TestCreateRoleEndpointWithoutACeiling(t *testing.T) {
+// A Role has no ceiling to state, so a body naming one is a body naming a field
+// nothing reads — refused, rather than quietly ignored, so an old client is
+// told rather than silently having half its request honoured (issue #185).
+func TestCreateRoleEndpointRefusesACeiling(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles",
-		`{"name":"Service volunteer","priority":2,"colour":"teal"}`, adminCookie())
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		`{"name":"Service volunteer","max":4,"priority":2,"colour":"teal"}`, adminCookie())
 
-	assert.Nil(t, store.insertedRoles[0].Max)
-	assert.Nil(t, decodeRole(t, rec.Body.Bytes()).Max)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Empty(t, store.insertedRoles)
 }
 
 // Which Roles exist is a decision about how the drop-in runs, so only an admin
@@ -164,7 +161,6 @@ func TestCreateRoleEndpointReportsRefusals(t *testing.T) {
 		status    int
 	}{
 		{"a blank name", `{"name":" ","priority":1,"colour":"teal"}`, nil, http.StatusBadRequest},
-		{"a ceiling below one", `{"name":"Team lead","max":0,"priority":1,"colour":"teal"}`, nil, http.StatusBadRequest},
 		{"a colour outside the palette", `{"name":"Team lead","priority":1,"colour":"puce"}`, nil, http.StatusBadRequest},
 		{"a field nothing reads", `{"name":"Team lead","retired":true}`, nil, http.StatusBadRequest},
 		{"malformed JSON", `{`, nil, http.StatusBadRequest},
@@ -186,34 +182,19 @@ func TestCreateRoleEndpointReportsRefusals(t *testing.T) {
 func TestUpdateRoleEndpoint(t *testing.T) {
 	id := "4c1e2f8a-0b3d-4a5e-8c9f-1a2b3c4d5e6f"
 	store := &mockStore{roles: []db.Role{
-		{ID: id, Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet},
+		{ID: id, Name: "Team lead", Priority: 1, Colour: model.ColourViolet},
 	}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/roles/"+id,
-		`{"name":"Shift lead","max":2,"priority":4,"colour":"rose"}`, adminCookie())
+		`{"name":"Shift lead","priority":4,"colour":"rose"}`, adminCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	require.Len(t, store.updatedRoles, 1)
 	assert.Equal(t, db.Role{
-		ID: id, Name: "Shift lead", Max: intPtr(2), Priority: 4, Colour: model.ColourRose,
+		ID: id, Name: "Shift lead", Priority: 4, Colour: model.ColourRose,
 	}, store.updatedRoles[0], "the id is what a rename must not move")
 
 	assert.Equal(t, id, decodeRole(t, rec.Body.Bytes()).ID)
-}
-
-// Taking a ceiling off has to be expressible, and is said the same way as never
-// having had one.
-func TestUpdateRoleEndpointClearsTheCeiling(t *testing.T) {
-	id := "4c1e2f8a-0b3d-4a5e-8c9f-1a2b3c4d5e6f"
-	store := &mockStore{roles: []db.Role{
-		{ID: id, Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: model.ColourViolet},
-	}}
-
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/roles/"+id,
-		`{"name":"Team lead","max":null,"priority":1,"colour":"violet"}`, adminCookie())
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-
-	assert.Nil(t, store.updatedRoles[0].Max)
 }
 
 func TestUpdateRoleEndpointRequiresAdmin(t *testing.T) {

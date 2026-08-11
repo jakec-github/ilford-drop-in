@@ -109,10 +109,9 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
 
     allocated: dict[str, list[int]] = {key: [] for key in groups}
     for spec, shift in zip(inp.shifts, out.shifts):
-        if (spec.index, spec.date, spec_size(spec), spec.closed) != (
+        if (spec.index, spec.date, spec.closed) != (
             shift.index,
             shift.date,
-            shift.size,
             shift.closed,
         ):
             problems.append(f"shift {spec.index}: spec fields not echoed faithfully")

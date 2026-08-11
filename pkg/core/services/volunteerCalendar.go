@@ -36,15 +36,17 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 	cal.SetXPublishedTTL(calendarRefreshInterval)
 
 	for _, shift := range shifts {
-		// The Role is worth naming in the summary only when it says something
-		// the event does not already: being on the shift *is* the uncapped
-		// Role, so "(Service volunteer)" on every entry would be noise.
+		// The summary names the Role the volunteer is doing the shift in.
+		// It used to name only a capped one, on the grounds that being on the
+		// shift *was* the uncapped Role and saying so would be noise; with no
+		// uncapped Role to be (issue #185) every job is worth naming, and an
+		// allocation whose Role the app does not recognise still says nothing.
 		summary := "Ilford Drop-In shift"
 		for _, a := range shift.Assignees {
 			if a.VolunteerID != volunteer.ID {
 				continue
 			}
-			if role, ok := roles.ByName(a.Role); ok && role.Capped() {
+			if role, ok := roles.ByName(a.Role); ok {
 				summary += " (" + role.Name + ")"
 			}
 			break

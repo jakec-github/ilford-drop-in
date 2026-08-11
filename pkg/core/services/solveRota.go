@@ -188,7 +188,6 @@ func solveRotaInFlight(
 		rotations,
 		targetRota,
 		convertToAllocatorVolunteers(allVolunteers),
-		roles.UncappedName(),
 		logger,
 	)
 	if err != nil {

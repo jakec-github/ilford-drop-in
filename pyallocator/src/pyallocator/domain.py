@@ -18,18 +18,13 @@ GENDER_MALE = "Male"
 class Role:
     """A job on a Shift. Volunteers hold Roles; Seats ask for them.
 
-    max is the ceiling on this Role's Seats per Shift — None means uncapped,
-    and there is exactly one uncapped Role. priority orders Seat filling,
-    lowest first.
+    A Role carries no ceiling of its own: a Shift's Shape is the only thing
+    that says how many of a Role it asks for (#185). priority orders Seat
+    filling, lowest first, and bands the weight each Seat is worth.
     """
 
     name: str
-    max: int | None
     priority: int
-
-    @property
-    def capped(self) -> bool:
-        return self.max is not None
 
 
 @dataclass(frozen=True)
@@ -82,7 +77,7 @@ class Group:
 class ShiftSpec:
     """One shift in the rota being allocated.
 
-    shape is the Shift's Seats, override-resolved in Go. It replaces a bare
+    shape is the Shift's Seats, override-resolved in Go. It replaced a bare
     size, which could only describe a rota with one Role.
     """
 
@@ -145,11 +140,14 @@ class OutputShift:
     canonical volunteer order, then the custom preallocations echoed back
     in input order. A Seat nobody filled is simply absent — which is how
     "this shift has no team lead" is said, and it is common.
+
+    There is no size: what a Shift asked for is its Shape, which Go sent and
+    still holds, and a single number could only ever restate one Role of it
+    (#185).
     """
 
     index: int
     date: str
-    size: int
     closed: bool
     assignments: tuple[Assignment, ...]
     allocated_group_keys: tuple[str, ...]

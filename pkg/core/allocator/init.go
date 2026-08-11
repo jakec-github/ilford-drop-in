@@ -264,9 +264,10 @@ type InitShiftsInput struct {
 // Every override applying to a date contributes its pins. Pins used to be three
 // separate fields with three merge rules — the single team lead was
 // last-one-wins where the two lists appended. They are one list now, so
-// appending is the only rule, and two overrides pinning the same capped Role
-// for one date are both kept rather than one silently disappearing. The Role's
-// ceiling is what catches that, in the solver.
+// appending is the only rule, and two overrides pinning the same Role for one
+// date are both kept rather than one silently disappearing. The Shift's Shape
+// is what catches that: pinning past a Role's Seats is refused when the pin is
+// made, and the solver refuses an input that gets past it anyway.
 //
 // A closed shift keeps neither pins nor available groups: nobody works a day
 // the drop-in is shut, whichever of the two sources promised them. Stripping

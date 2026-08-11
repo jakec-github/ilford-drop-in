@@ -15,11 +15,15 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// leadOf is who the row puts in the Team lead column — the shape the sheet had
-// before Roles were data, asserted here through the capped-Role map that
-// replaced it.
+// leadOf is who the row puts in the Team lead columns, and ordinaryNames who it
+// puts in the Service volunteer ones. Every Role has columns of its own now
+// (issue #185), so these two just name the Roles these tests are about.
 func leadOf(row sheetsclient.PublishedRotaRow) string {
-	return strings.Join(row.CappedRoles["Team lead"], ", ")
+	return strings.Join(row.Roles["Team lead"], ", ")
+}
+
+func ordinaryNames(row sheetsclient.PublishedRotaRow) []string {
+	return row.Roles["Service volunteer"]
 }
 
 func TestPublishRota_Success(t *testing.T) {
@@ -74,9 +78,9 @@ func TestPublishRota_Success(t *testing.T) {
 	shift1 := result.Rows[0]
 	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
 	assert.Equal(t, "Alice", leadOf(shift1))
-	assert.Len(t, shift1.Volunteers, 2)
-	assert.Contains(t, shift1.Volunteers, "Bob")
-	assert.Contains(t, shift1.Volunteers, "Charlie")
+	assert.Len(t, ordinaryNames(shift1), 2)
+	assert.Contains(t, ordinaryNames(shift1), "Bob")
+	assert.Contains(t, ordinaryNames(shift1), "Charlie")
 	assert.Equal(t, "", shift1.HotFood)
 	assert.Equal(t, "", shift1.Collection)
 
@@ -84,8 +88,8 @@ func TestPublishRota_Success(t *testing.T) {
 	shift2 := result.Rows[1]
 	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
 	assert.Equal(t, "Dave", leadOf(shift2))
-	assert.Len(t, shift2.Volunteers, 1)
-	assert.Contains(t, shift2.Volunteers, "Eve")
+	assert.Len(t, ordinaryNames(shift2), 1)
+	assert.Contains(t, ordinaryNames(shift2), "Eve")
 }
 
 func TestPublishRota_WithCustomEntries(t *testing.T) {
@@ -122,9 +126,10 @@ func TestPublishRota_WithCustomEntries(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
 	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Len(t, shift.Volunteers, 2)
-	assert.Contains(t, shift.Volunteers, "Bob")
-	assert.Contains(t, shift.Volunteers, "[External John]")
+	assert.Len(t, ordinaryNames(shift), 2)
+	assert.Contains(t, ordinaryNames(shift), "Bob")
+	assert.Contains(t, ordinaryNames(shift), "[External John]",
+		"a custom entry fills a Seat in the Role it was pinned to")
 }
 
 func TestPublishRota_VolunteersSorted(t *testing.T) {
@@ -162,7 +167,7 @@ func TestPublishRota_VolunteersSorted(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 
 	// Volunteers should be sorted alphabetically (first names are unique, so DisplayName = FirstName)
-	volunteers := result.Rows[0].Volunteers
+	volunteers := ordinaryNames(result.Rows[0])
 	require.Len(t, volunteers, 3)
 	assert.Equal(t, "Bob", volunteers[0])
 	assert.Equal(t, "Mike", volunteers[1])
@@ -214,9 +219,9 @@ func TestPublishRota_NoAllocations(t *testing.T) {
 	// Should have rows but with empty data
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, "", leadOf(result.Rows[0]))
-	assert.Empty(t, result.Rows[0].Volunteers)
+	assert.Empty(t, ordinaryNames(result.Rows[0]))
 	assert.Equal(t, "", leadOf(result.Rows[1]))
-	assert.Empty(t, result.Rows[1].Volunteers)
+	assert.Empty(t, ordinaryNames(result.Rows[1]))
 }
 
 func TestPublishRota_MissingVolunteer(t *testing.T) {
@@ -292,7 +297,7 @@ func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "Sun Jan 19 2025", result.Rows[0].Date)
 	assert.Equal(t, "Alice", leadOf(result.Rows[0]))
-	assert.Contains(t, result.Rows[0].Volunteers, "Bob")
+	assert.Contains(t, ordinaryNames(result.Rows[0]), "Bob")
 }
 
 func TestPublishRota_NoRotations(t *testing.T) {
@@ -425,15 +430,15 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 	shift1 := result.Rows[0]
 	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
 	assert.Equal(t, "Alice", leadOf(shift1))
-	assert.Len(t, shift1.Volunteers, 1)
-	assert.Contains(t, shift1.Volunteers, "Bob")
+	assert.Len(t, ordinaryNames(shift1), 1)
+	assert.Contains(t, ordinaryNames(shift1), "Bob")
 
 	// Check second shift (closed)
 	shift2 := result.Rows[1]
 	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
 	assert.True(t, shift2.Closed, "a closed shift is flagged, not spelled into a name column")
 	assert.Empty(t, leadOf(shift2), "a closed shift fills no Seats")
-	assert.Empty(t, shift2.Volunteers, "Closed shift should have no volunteers")
+	assert.Empty(t, ordinaryNames(shift2), "Closed shift should have no volunteers")
 	assert.Equal(t, "", shift2.HotFood)
 	assert.Equal(t, "", shift2.Collection)
 
@@ -441,8 +446,8 @@ func TestPublishRota_ClosedShifts(t *testing.T) {
 	shift3 := result.Rows[2]
 	assert.Equal(t, "Sun Jan 19 2025", shift3.Date)
 	assert.Equal(t, "Charlie", leadOf(shift3))
-	assert.Len(t, shift3.Volunteers, 1)
-	assert.Contains(t, shift3.Volunteers, "Dave")
+	assert.Len(t, ordinaryNames(shift3), 1)
+	assert.Contains(t, ordinaryNames(shift3), "Dave")
 }
 
 func TestPublishRota_WithAlterations(t *testing.T) {
@@ -462,7 +467,7 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 		alterations: []db.Alteration{
 			// Remove bob and add dave
 			{ID: "alt-1", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
-			{ID: "alt-2", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", SetTime: "2025-01-01T01:00:00Z"},
+			{ID: "alt-2", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", Role: "Service volunteer", SetTime: "2025-01-01T01:00:00Z"},
 		},
 	}
 
@@ -485,10 +490,67 @@ func TestPublishRota_WithAlterations(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
 	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Len(t, shift.Volunteers, 2)
-	assert.Contains(t, shift.Volunteers, "Charlie")
-	assert.Contains(t, shift.Volunteers, "Dave")
-	assert.NotContains(t, shift.Volunteers, "Bob")
+	assert.Len(t, ordinaryNames(shift), 2)
+	assert.Contains(t, ordinaryNames(shift), "Charlie")
+	assert.Contains(t, ordinaryNames(shift), "Dave")
+	assert.NotContains(t, ordinaryNames(shift), "Bob")
+}
+
+// An alteration written before alterations had a Role column names none, and
+// there is nothing left to guess one with (issue #185). Whoever it added still
+// worked the shift, so they are published — under Unknown role, which says
+// exactly what the app knows.
+func TestPublishRota_AlterationWithoutARoleIsPublishedAsUnknown(t *testing.T) {
+	store := &mockPublishRotaStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}},
+		shifts:    sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+		},
+		alterations: []db.Alteration{
+			{ID: "alt-1", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", SetTime: "2025-01-01T01:00:00Z"},
+		},
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{
+			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
+			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
+		},
+	}
+
+	result, err := PublishRota(context.Background(), store, &mockSheetsClient{}, volunteerClient,
+		&config.Config{}, zap.NewNop(), "rota-1")
+	require.NoError(t, err)
+
+	require.Len(t, result.Rows, 1)
+	shift := result.Rows[0]
+	assert.Equal(t, "Alice", leadOf(shift))
+	assert.Empty(t, ordinaryNames(shift))
+	assert.Equal(t, []string{"Dave"}, shift.UnknownRole)
+}
+
+// Every configured Role gets columns, in the order Seats are filled, whether or
+// not anybody is in them — the sheet's shape follows the Roles rather than the
+// rota that happened.
+func TestPublishRota_NamesEveryConfiguredRole(t *testing.T) {
+	store := &mockPublishRotaStore{
+		rotations: []db.Rotation{{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}},
+		shifts:    sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	volunteerClient := &mockVolClient{
+		volunteers: []model.Volunteer{{ID: "bob", FirstName: "Bob", LastName: "Jones"}},
+	}
+
+	result, err := PublishRota(context.Background(), store, &mockSheetsClient{}, volunteerClient,
+		&config.Config{}, zap.NewNop(), "rota-1")
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"Team lead", "Service volunteer"}, result.RoleNames)
 }
 
 func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
@@ -524,6 +586,6 @@ func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	shift := result.Rows[0]
 	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Len(t, shift.Volunteers, 1)
-	assert.Contains(t, shift.Volunteers, "Bob")
+	assert.Len(t, ordinaryNames(shift), 1)
+	assert.Contains(t, ordinaryNames(shift), "Bob")
 }

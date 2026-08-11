@@ -55,33 +55,30 @@ type availabilityGroupResponse struct {
 }
 
 // availabilityCoverageResponse is one shift's staffing picture: what it still
-// needs and who is available for it. The top-level numbers are the uncapped
-// Role's; roles carries the same arithmetic per configured Role, in priority
+// needs and who is available for it, one entry per configured Role in priority
 // order, which is what tells an admin the lead Seat is still empty. A closed
-// shift carries zeroes and no roles — it is not a shift that is short of people.
+// shift carries no roles — it is not a shift that is short of people.
+//
+// There is no shift-level total. It used to carry the uncapped Role's four
+// numbers as the shift's own, and with no uncapped Role there is nothing
+// honest to put there: someone holding two Roles is available for both and can
+// fill only one, so summing the Roles would overcount (issue #185).
 type availabilityCoverageResponse struct {
-	ID        string                     `json:"id"`
-	Date      string                     `json:"date"`
-	Closed    bool                       `json:"closed"`
-	Needed    int                        `json:"needed"`
-	Pinned    int                        `json:"pinned"`
-	Available int                        `json:"available"`
-	Delta     int                        `json:"delta"`
-	Roles     []availabilityRoleCoverage `json:"roles"`
+	ID     string                     `json:"id"`
+	Date   string                     `json:"date"`
+	Closed bool                       `json:"closed"`
+	Roles  []availabilityRoleCoverage `json:"roles"`
 }
 
 // availabilityRoleCoverage is one Role's Seats on one shift. Holders of two
 // Roles are counted under both, so these do not sum to the shift's total.
 type availabilityRoleCoverage struct {
-	Role string `json:"role"`
-	// Capped tells a client which Roles are worth flagging as empty on their
-	// own account, without it having to know which Roles the server configures.
-	Capped    bool `json:"capped"`
-	Seats     int  `json:"seats"`
-	Pinned    int  `json:"pinned"`
-	Needed    int  `json:"needed"`
-	Available int  `json:"available"`
-	Delta     int  `json:"delta"`
+	Role      string `json:"role"`
+	Seats     int    `json:"seats"`
+	Pinned    int    `json:"pinned"`
+	Needed    int    `json:"needed"`
+	Available int    `json:"available"`
+	Delta     int    `json:"delta"`
 }
 
 type availabilityRoundResponse struct {
@@ -222,13 +219,9 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 	}
 	for _, s := range round.Shifts {
 		shift := availabilityCoverageResponse{
-			ID:        s.ShiftID,
-			Date:      s.Date,
-			Closed:    s.Closed,
-			Needed:    s.Needed,
-			Pinned:    s.Pinned,
-			Available: s.Available,
-			Delta:     s.Delta,
+			ID:     s.ShiftID,
+			Date:   s.Date,
+			Closed: s.Closed,
 			// Never nil: a shift with no Roles left to fill and a closed one
 			// both have to serialise as a list rather than a null.
 			Roles: make([]availabilityRoleCoverage, 0, len(s.Roles)),
@@ -236,7 +229,6 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 		for _, r := range s.Roles {
 			shift.Roles = append(shift.Roles, availabilityRoleCoverage{
 				Role:      r.Role,
-				Capped:    r.Capped,
 				Seats:     r.Seats,
 				Pinned:    r.Pinned,
 				Needed:    r.Needed,

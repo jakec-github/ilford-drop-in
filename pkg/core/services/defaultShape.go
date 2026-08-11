@@ -16,7 +16,8 @@ import (
 // Seats of each (issue #129, ADR 0006). It is part of the Rota Defaults, and it
 // is the successor to `defaultShiftSize` — one number that could only describe a
 // rota with one Role, every other Role's count being its ceiling by
-// construction.
+// construction. Since #185 it is the only thing that says how many of a Role a
+// Shift asks for: a Role has no ceiling of its own to be checked against.
 //
 // It is read at one moment only: defining a rota, which copies it onto every
 // Shift it mints as Seats of that Shift's own (issue #137). Nothing that asks
@@ -114,12 +115,6 @@ func statedSeats(seats []SeatParams, roles model.Roles) ([]storedSeat, error) {
 				"a shape asks for at least one seat of a role it names; leave %s out instead of asking for %d",
 				role.Name, seat.Count)
 		}
-		if role.Capped() && seat.Count > *role.Max {
-			return nil, wrapf(ErrInvalidInput,
-				"a shift may hold at most %d %s, so the shape cannot ask for %d",
-				*role.Max, role.Name, seat.Count)
-		}
-
 		rows = append(rows, storedSeat{RoleID: role.ID, Seats: seat.Count})
 	}
 	return rows, nil

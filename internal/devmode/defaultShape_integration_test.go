@@ -79,7 +79,7 @@ func TestSeedDefaultShapeSkipsRolesItDoesNotKnow(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, database.InsertRole(ctx, db.Role{
-		ID: uuid.New().String(), Name: "Food collector", Max: intPtr(2), Priority: 1, Colour: "amber",
+		ID: uuid.New().String(), Name: "Food collector", Priority: 1, Colour: "amber",
 	}))
 
 	seeded, err := devmode.SeedDefaultShape(ctx, database)

@@ -50,40 +50,40 @@ func PublishRotaCmd(app *AppContext) *cobra.Command {
 			// Display summary table
 			fmt.Printf("📅 Published Shifts:\n\n")
 
-			// Print header — a column per capped Role, as the sheet has
+			// Print header — a column per Role, as the sheet has
 			fmt.Printf("%-15s", "Date")
-			for _, name := range publishedRota.CappedRoleNames {
+			for _, name := range publishedRota.RoleNames {
 				fmt.Printf("  %-20s", name)
 			}
-			fmt.Printf("  %-40s\n", "Volunteers")
+			fmt.Printf("  %-20s\n", "Unknown role")
 
 			fmt.Print("---------------")
-			for range publishedRota.CappedRoleNames {
+			for range publishedRota.RoleNames {
 				fmt.Print("  --------------------")
 			}
-			fmt.Println("  ----------------------------------------")
+			fmt.Println("  --------------------")
 
 			// Print each shift
 			for _, row := range publishedRota.Rows {
 				fmt.Printf("%-15s", row.Date)
-				for i, name := range publishedRota.CappedRoleNames {
+				for i, name := range publishedRota.RoleNames {
 					cell := "—"
 					switch {
 					case row.Closed && i == 0:
 						// Announced once, in the first column, as in the sheet
 						cell = "CLOSED"
 					case row.Closed:
-					case len(row.CappedRoles[name]) > 0:
-						cell = strings.Join(row.CappedRoles[name], ", ")
+					case len(row.Roles[name]) > 0:
+						cell = strings.Join(row.Roles[name], ", ")
 					}
 					fmt.Printf("  %-20s", cell)
 				}
 
-				volunteers := "—"
-				if len(row.Volunteers) > 0 {
-					volunteers = fmt.Sprintf("%d volunteers", len(row.Volunteers))
+				unknown := "—"
+				if len(row.UnknownRole) > 0 {
+					unknown = strings.Join(row.UnknownRole, ", ")
 				}
-				fmt.Printf("  %-40s\n", volunteers)
+				fmt.Printf("  %-20s\n", unknown)
 			}
 
 			fmt.Println()

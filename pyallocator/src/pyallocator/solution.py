@@ -69,7 +69,6 @@ def _extract_shift(
     return OutputShift(
         index=spec.index,
         date=spec.date,
-        size=problem.shift_size(spec),
         closed=spec.closed,
         assignments=tuple(assignments),
         allocated_group_keys=tuple(group_keys),

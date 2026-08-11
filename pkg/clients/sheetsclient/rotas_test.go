@@ -65,76 +65,112 @@ func TestGenerateTabTitle(t *testing.T) {
 	}
 }
 
-func TestFindColumnIndex(t *testing.T) {
-	header := []interface{}{"Date", "Team lead", "Volunteer 1", "Volunteer 2", "Hot food", "Collection"}
-
-	tests := []struct {
-		name       string
-		columnName string
-		want       int
-	}{
-		{
-			name:       "find date column",
-			columnName: "Date",
-			want:       0,
-		},
-		{
-			name:       "find team lead column",
-			columnName: "Team lead",
-			want:       1,
-		},
-		{
-			name:       "find hot food column",
-			columnName: "Hot food",
-			want:       4,
-		},
-		{
-			name:       "column not found",
-			columnName: "Missing",
-			want:       -1,
+// The published sheet's layout rule, stated once here (issue #185): a column
+// group per configured Role in priority order, each as wide as the fullest
+// shift needs and never narrower than one, then unknown-Role columns only if
+// somebody is in one, then the two hand-typed columns.
+func TestRotaValuesGivesEveryRoleItsOwnColumns(t *testing.T) {
+	rota := &PublishedRota{
+		RoleNames: []string{"Team lead", "Service volunteer", "Food collector"},
+		Rows: []PublishedRotaRow{
+			{
+				Date:  "Mon Jul 13 2026",
+				Roles: map[string][]string{"Team lead": {"Alice"}, "Service volunteer": {"Bob", "Carla"}},
+			},
+			{
+				Date:  "Mon Jul 20 2026",
+				Roles: map[string][]string{"Service volunteer": {"Dev"}},
+			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := findColumnIndex(header, tt.columnName)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	values := rotaValues(rota)
+
+	require.Len(t, values, 5, "two blank rows, a header, and one row per shift")
+	assert.Equal(t, []interface{}{}, values[0])
+	assert.Equal(t, []interface{}{}, values[1])
+	assert.Equal(t, []interface{}{
+		"Date",
+		"Team lead",
+		"Service volunteer 1", "Service volunteer 2",
+		"Food collector",
+		"Hot food", "Collection",
+	}, values[2], "a Role filled twice takes two numbered columns; one nobody filled still takes one")
+	assert.Equal(t, []interface{}{
+		"Mon Jul 13 2026", "Alice", "Bob", "Carla", "", "", "",
+	}, values[3])
+	assert.Equal(t, []interface{}{
+		"Mon Jul 20 2026", "", "Dev", "", "", "", "",
+	}, values[4], "one person per cell, so an unfilled Seat is an empty cell rather than a shuffle")
 }
 
-func TestFindVolunteerColumns(t *testing.T) {
-	tests := []struct {
-		name   string
-		header []interface{}
-		want   []int
-	}{
-		{
-			name:   "multiple volunteer columns",
-			header: []interface{}{"Date", "Team lead", "Volunteer 1", "Volunteer 2", "Volunteer 3", "Hot food"},
-			want:   []int{2, 3, 4},
-		},
-		{
-			name:   "single volunteer column",
-			header: []interface{}{"Date", "Team lead", "Volunteer 1", "Hot food"},
-			want:   []int{2},
-		},
-		{
-			name:   "no volunteer columns",
-			header: []interface{}{"Date", "Team lead", "Hot food"},
-			want:   nil,
-		},
-		{
-			name:   "volunteer columns with gaps",
-			header: []interface{}{"Date", "Volunteer 1", "Team lead", "Volunteer 2"},
-			want:   []int{1, 3},
+// Somebody whose Role the app cannot name still worked the shift, so they are
+// published — under a heading that says exactly that, and only when there is
+// somebody to put there.
+func TestRotaValuesPublishesUnknownRolesInColumnsOfTheirOwn(t *testing.T) {
+	rota := &PublishedRota{
+		RoleNames: []string{"Service volunteer"},
+		Rows: []PublishedRotaRow{
+			{
+				Date:        "Mon Jul 13 2026",
+				Roles:       map[string][]string{"Service volunteer": {"Bob"}},
+				UnknownRole: []string{"Erin", "[St John's team]"},
+			},
+			{Date: "Mon Jul 20 2026", Roles: map[string][]string{"Service volunteer": {"Dev"}}},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := findVolunteerColumns(tt.header)
-			assert.Equal(t, tt.want, got)
-		})
+	values := rotaValues(rota)
+
+	assert.Equal(t, []interface{}{
+		"Date", "Service volunteer",
+		"Unknown role 1", "Unknown role 2",
+		"Hot food", "Collection",
+	}, values[2])
+	assert.Equal(t, []interface{}{
+		"Mon Jul 13 2026", "Bob", "Erin", "[St John's team]", "", "",
+	}, values[3])
+
+	nobodyUnknown := &PublishedRota{
+		RoleNames: []string{"Service volunteer"},
+		Rows: []PublishedRotaRow{
+			{Date: "Mon Jul 13 2026", Roles: map[string][]string{"Service volunteer": {"Bob"}}},
+		},
 	}
+	assert.Equal(t,
+		[]interface{}{"Date", "Service volunteer", "Hot food", "Collection"},
+		rotaValues(nobodyUnknown)[2],
+		"a rota where every Role is known has no unknown-role columns at all")
+}
+
+// A closed shift says so in the first cell after the date, whatever column that
+// turns out to be, and says it once.
+func TestRotaValuesAnnouncesAClosedShiftOnce(t *testing.T) {
+	rota := &PublishedRota{
+		RoleNames: []string{"Team lead", "Service volunteer"},
+		Rows: []PublishedRotaRow{
+			{Date: "Mon Jul 13 2026", Closed: true},
+			{Date: "Mon Jul 20 2026", Roles: map[string][]string{"Service volunteer": {"Bob", "Carla"}}},
+		},
+	}
+
+	values := rotaValues(rota)
+
+	assert.Equal(t, []interface{}{
+		"Mon Jul 13 2026", "CLOSED", "", "", "", "",
+	}, values[3])
+}
+
+// A rota of nothing but closed shifts still has a column to say so in, which is
+// why a Role nobody filled keeps one.
+func TestRotaValuesLeavesAColumnForAnEntirelyClosedRota(t *testing.T) {
+	rota := &PublishedRota{
+		RoleNames: []string{"Service volunteer"},
+		Rows:      []PublishedRotaRow{{Date: "Mon Jul 13 2026", Closed: true}},
+	}
+
+	values := rotaValues(rota)
+
+	assert.Equal(t, []interface{}{"Date", "Service volunteer", "Hot food", "Collection"}, values[2])
+	assert.Equal(t, []interface{}{"Mon Jul 13 2026", "CLOSED", "", ""}, values[3])
 }

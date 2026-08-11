@@ -323,7 +323,6 @@ func TestConvertToDBAllocations(t *testing.T) {
 		{
 			Date:  "2025-01-05",
 			Index: 0,
-			Size:  2,
 			AllocatedGroups: []*allocator.VolunteerGroup{
 				{
 					GroupKey: "group_a",
@@ -440,7 +439,7 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
 
 	// Call buildHistoricalShifts
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, logger)
 	require.NoError(t, err)
 
 	// Assertions
@@ -504,7 +503,7 @@ func TestBuildHistoricalShifts_KeepsShiftsWithNoKnownVolunteers(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 3)
 
@@ -552,7 +551,7 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 2)
 
@@ -599,7 +598,7 @@ func TestBuildHistoricalShifts_UngroupedVolunteersAreSeparateGroups(t *testing.T
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, volunteers, logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 1)
 
@@ -632,7 +631,7 @@ func TestBuildHistoricalShifts_NoPreviousRota(t *testing.T) {
 		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
 	}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
 	require.NoError(t, err)
 	assert.Empty(t, historicalShifts, "Should have no historical shifts when there's no previous rota")
 }
@@ -655,7 +654,7 @@ func TestBuildHistoricalShifts_NoPreviousAllocations(t *testing.T) {
 		{ID: "alice", FirstName: "Alice", LastName: "A", Gender: "Female"},
 	}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
 	require.NoError(t, err)
 	assert.Empty(t, historicalShifts, "Should have no historical shifts when previous rota has no allocations")
 }
@@ -685,7 +684,7 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 
 	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}
 
-	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, "Service volunteer", logger)
+	historicalShifts, err := buildHistoricalShifts(ctx, store, store.rotations, targetRota, activeVolunteers, logger)
 	require.NoError(t, err)
 	require.Len(t, historicalShifts, 1)
 

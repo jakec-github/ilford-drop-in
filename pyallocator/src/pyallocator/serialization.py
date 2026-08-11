@@ -100,12 +100,8 @@ def _parse_group(d: dict[str, Any], where: str) -> Group:
 def _parse_role(d: dict[str, Any], where: str) -> Role:
     if not isinstance(d, dict):
         raise InputError(f"{where}: expected object, got {type(d).__name__}")
-    max_ = _optional(d, "max", int, None, where)
-    if max_ is not None and max_ < 1:
-        raise InputError(f"{where}.max: expected at least 1, got {max_}")
     return Role(
         name=_require(d, "name", str, where),
-        max=max_,
         priority=_optional(d, "priority", int, 0, where),
     )
 
@@ -177,11 +173,6 @@ def parse_input(data: Any) -> AllocationInput:
     role_names = {r.name for r in roles}
     if len(role_names) != len(roles):
         raise InputError("input.roles: role names must be unique")
-    uncapped = [r for r in roles if not r.capped]
-    if len(uncapped) != 1:
-        raise InputError(
-            f"input.roles: expected exactly one uncapped role, got {len(uncapped)}"
-        )
 
     shifts = tuple(
         _parse_shift(s, f"input.shifts[{i}]") for i, s in enumerate(shifts_raw)
@@ -245,7 +236,6 @@ def output_to_dict(output: AllocationOutput) -> dict[str, Any]:
             {
                 "index": s.index,
                 "date": s.date,
-                "size": s.size,
                 "closed": s.closed,
                 "assignments": [
                     {

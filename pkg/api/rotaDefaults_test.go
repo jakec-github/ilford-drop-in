@@ -313,11 +313,9 @@ func TestSaveDefaultShapeLeavesTheShiftTimesAlone(t *testing.T) {
 	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
 }
 
-// An admin's mistake is a 400 carrying the service's message, chief among them
-// a Shape asking for more of a Role than a Shift may ever hold.
+// An admin's mistake is a 400 carrying the service's message.
 func TestSaveDefaultShapeEndpointRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
-		"over the ceiling":    `{"seats":[{"roleId":"role-team-lead","count":2}]}`,
 		"no seats":            `{"seats":[{"roleId":"role-team-lead","count":0}]}`,
 		"unknown role":        `{"seats":[{"roleId":"role-nobody","count":1}]}`,
 		"the same role twice": `{"seats":[{"roleId":"role-team-lead","count":1},{"roleId":"role-team-lead","count":1}]}`,

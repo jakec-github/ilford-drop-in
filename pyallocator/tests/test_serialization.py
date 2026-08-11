@@ -15,8 +15,8 @@ from pyallocator.serialization import InputError, output_to_dict, parse_input
 VALID_INPUT = {
     "max_allocation_count": 4,
     "roles": [
-        {"name": "Team lead", "max": 1, "priority": 1},
-        {"name": "Service volunteer", "max": None, "priority": 2},
+        {"name": "Team lead", "priority": 1},
+        {"name": "Service volunteer", "priority": 2},
     ],
     "enabled_constraints": ["male_required"],
     "shifts": [
@@ -78,8 +78,6 @@ def test_parse_valid_input():
     assert parsed.max_allocation_count == 4
     assert parsed.enabled_constraints == ("male_required",)
     assert [r.name for r in parsed.roles] == ["Team lead", "Service volunteer"]
-    assert parsed.roles[0].max == 1
-    assert parsed.roles[1].max is None
     assert len(parsed.shifts) == 2
     shift0 = parsed.shifts[0]
     assert [(s.role, s.count) for s in shift0.shape] == [
@@ -125,11 +123,7 @@ def test_parse_valid_input():
         (lambda d: d.update(max_allocation_count="4"), "expected int"),
         (lambda d: d.pop("roles"), "roles"),
         (
-            lambda d: d["roles"].append({"name": "Hot food", "priority": 3}),
-            "exactly one uncapped role",
-        ),
-        (
-            lambda d: d["roles"].append({"name": "Team lead", "max": 2, "priority": 3}),
+            lambda d: d["roles"].append({"name": "Team lead", "priority": 3}),
             "must be unique",
         ),
         (
@@ -174,7 +168,6 @@ def test_output_to_dict_shape():
             OutputShift(
                 index=0,
                 date="2026-07-13",
-                size=4,
                 closed=False,
                 assignments=(
                     Assignment("vol-9", "", "Team lead"),
@@ -202,7 +195,6 @@ def test_output_to_dict_shape():
             {
                 "index": 0,
                 "date": "2026-07-13",
-                "size": 4,
                 "closed": False,
                 "assignments": [
                     {"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},

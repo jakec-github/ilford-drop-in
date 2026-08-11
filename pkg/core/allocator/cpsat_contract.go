@@ -34,10 +34,11 @@ type CpsatGroup struct {
 	HistoricalAllocationCount int           `json:"historical_allocation_count"`
 }
 
-// CpsatRole is one configured Role. Max is omitted for an uncapped Role.
+// CpsatRole is one configured Role. It carries no ceiling: a Shift's Shape
+// states how many Seats each Role has, and that is the only ceiling there is
+// (issue #185).
 type CpsatRole struct {
 	Name     string `json:"name"`
-	Max      *int   `json:"max"`
 	Priority int    `json:"priority"`
 }
 
@@ -101,7 +102,6 @@ type CpsatAssignment struct {
 type CpsatOutputShift struct {
 	Index              int               `json:"index"`
 	Date               string            `json:"date"`
-	Size               int               `json:"size"`
 	Closed             bool              `json:"closed"`
 	Assignments        []CpsatAssignment `json:"assignments"`
 	AllocatedGroupKeys []string          `json:"allocated_group_keys"`
@@ -139,10 +139,6 @@ func BuildCpsatInput(
 	allocationSettings model.AllocationSettings,
 	roles []Role,
 ) (*CpsatInput, error) {
-	if _, ok := uncappedRole(roles); !ok {
-		return nil, fmt.Errorf("no uncapped role configured: the solver reports a shift's size as its uncapped Role's Seats, and there is no such Role")
-	}
-
 	// InitShifts resolves each shift's preallocations from the overrides,
 	// carrying its own Shape and Closed through. AvailableGroups isn't part of
 	// the contract (Python derives availability from groups), so an empty state
@@ -280,7 +276,6 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 		shifts[i] = &Shift{
 			Date:            outShift.Date,
 			Index:           outShift.Index,
-			Size:            outShift.Size,
 			Closed:          outShift.Closed,
 			AllocatedGroups: allocatedGroups,
 			Assignments:     assignments,
@@ -299,18 +294,6 @@ func emptyIfNil(values []string) []string {
 	return values
 }
 
-// uncappedRole finds the first Role with no ceiling. The Shape no longer spends
-// a size on it, but the solver still reports a shift's size as its Seats, so a
-// Role set that is capped throughout has no answer to give.
-func uncappedRole(roles []Role) (Role, bool) {
-	for _, role := range roles {
-		if role.Max == nil {
-			return role, true
-		}
-	}
-	return Role{}, false
-}
-
 // contractShape renders a Shift's Seats onto the wire, keeping [] rather than
 // null: a shift asking for nobody is a well-formed shift, and the Python side
 // reads an absent shape as one.
@@ -326,7 +309,7 @@ func contractShape(seats []Seat) []CpsatSeat {
 func contractRoles(roles []Role) []CpsatRole {
 	out := make([]CpsatRole, 0, len(roles))
 	for _, role := range sortedByPriority(roles) {
-		out = append(out, CpsatRole{Name: role.Name, Max: role.Max, Priority: role.Priority})
+		out = append(out, CpsatRole{Name: role.Name, Priority: role.Priority})
 	}
 	return out
 }

@@ -181,9 +181,16 @@ func AddPreallocation(
 				filled++
 			}
 		}
-		// A capped Role has only so many Seats, and pinning past them would
-		// hand the solver a shift it cannot fill legally.
-		if role.Capped() && filled >= *role.Max {
+		// A Role has only the Seats this Shift's Shape gives it, and pinning
+		// past them would hand the solver a shift it cannot fill legally. It
+		// used to be the Role's own ceiling that said so; the Shape is what
+		// says it now, which is the same rule a Shape edit is held to from the
+		// other side (seatsHoldThePins, issue #185).
+		shapes, err := tx.GetShiftShapes(ctx, []string{shift.ID})
+		if err != nil {
+			return err
+		}
+		if filled >= seatsForRole(shapes[shift.ID], role) {
 			return wrapf(ErrConflict, "every %s seat for %s is already pinned", params.Role, params.Date)
 		}
 

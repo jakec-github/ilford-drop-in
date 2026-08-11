@@ -27,8 +27,8 @@ func (s stubRoleStore) ListRoles(context.Context) ([]db.Role, error) {
 func TestRoleTable(t *testing.T) {
 	store := stubRoleStore{roles: []db.Role{
 		{ID: "r-service", Name: "Service volunteer", Priority: 2, Colour: "teal"},
-		{ID: "r-lead", Name: "Team lead", Max: intPtr(1), Priority: 1, Colour: "violet"},
-		{ID: "r-food", Name: "Food collector", Max: intPtr(2), Priority: 3},
+		{ID: "r-lead", Name: "Team lead", Priority: 1, Colour: "violet"},
+		{ID: "r-food", Name: "Food collector", Priority: 3},
 	}}
 
 	roles, err := RoleTable(context.Background(), store)
@@ -37,12 +37,7 @@ func TestRoleTable(t *testing.T) {
 	lead, ok := roles.ByName("Team lead")
 	require.True(t, ok)
 	assert.Equal(t, "r-lead", lead.ID, "the id is what a rename cannot break")
-	require.NotNil(t, lead.Max)
-	assert.Equal(t, 1, *lead.Max)
-
-	uncapped, ok := roles.Uncapped()
-	require.True(t, ok)
-	assert.Equal(t, "Service volunteer", uncapped.Name)
+	assert.Equal(t, 1, lead.Priority)
 
 	assert.Equal(t, []string{"Team lead", "Service volunteer", "Food collector"},
 		roleNames(roles.ByPriority()), "in the order their Seats are filled")
