@@ -52,14 +52,6 @@
   display: flex;
 }
 
-/* Where the hours and the shape come from, which is the thing an admin is most
-   likely to go looking for on this form: the card underneath, and nowhere
-   else. */
-.define-rota-note {
-  margin: 1rem 0 0;
-  font-size: 0.8125rem;
-}
-
 .define-rota-error {
   margin: 1.25rem 0 0;
   padding: 0.75rem 1rem;

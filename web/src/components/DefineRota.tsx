@@ -51,12 +51,6 @@ function DefineRotaForm({
 
   return (
     <>
-      <p className="define-rota-intro">
-        One shift a week from the date below, each running the hours the Rota
-        Defaults state. Once the rota is defined it is the rota in flight, and
-        this screen becomes the place it is prepared, asked about and allocated.
-      </p>
-
       {/* noValidate deliberately: min below floors the spinner, but native
           validation would answer a bad count with a transient browser bubble in
           some cases and the server's message in others. Submitting regardless
@@ -99,13 +93,6 @@ function DefineRotaForm({
           </Button>
         </div>
       </form>
-
-      <p className="define-rota-note">
-        Every shift is minted with the times and the shape below, as they stand
-        when the rota is defined. Changing them afterwards changes what the next
-        rota is made from; this one keeps what it was made with, and each of its
-        shifts can be changed on its own.
-      </p>
     </>
   );
 }
