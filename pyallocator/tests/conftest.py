@@ -38,9 +38,14 @@ from pyallocator.preferences import maximize_allocations
 TEAM_LEAD = "Team lead"
 SERVICE_VOLUNTEER = "Service volunteer"
 DEFAULT_ROLES = (
-    Role(name=TEAM_LEAD, max=1, priority=1),
-    Role(name=SERVICE_VOLUNTEER, max=None, priority=2),
+    Role(name=TEAM_LEAD, priority=1),
+    Role(name=SERVICE_VOLUNTEER, priority=2),
 )
+
+# How many Seats each Role gets in a built Shape. A Role not named here is
+# asked for `size` of, which is what the pre-Roles contract's single size
+# bought; Team lead asks for one, as every Shape the app writes does.
+DEFAULT_SEATS = {TEAM_LEAD: 1}
 
 
 def make_member(
@@ -93,10 +98,9 @@ def make_shift(
     preallocated_team_lead_id: str = "",
     roles: Sequence[Role] = DEFAULT_ROLES,
 ) -> ShiftSpec:
-    # size buys Seats in the uncapped Role; each capped Role asks for its
-    # ceiling. This is what Go computes from a shift's size.
+    # size buys Seats in every Role DEFAULT_SEATS does not fix a count for.
     shape = tuple(
-        Seat(role=r.name, count=r.max if r.capped else size) for r in roles
+        Seat(role=r.name, count=DEFAULT_SEATS.get(r.name, size)) for r in roles
     )
     pins = [
         Preallocation(volunteer_id="", custom=c, role=SERVICE_VOLUNTEER)

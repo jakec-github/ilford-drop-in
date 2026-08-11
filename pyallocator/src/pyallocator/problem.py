@@ -58,10 +58,6 @@ class Problem:
         shifts: the input shift specs, index order.
         roles: the configured Roles, priority order.
         role_by_name: {name: Role}.
-        uncapped_role: the single Role with no ceiling.
-        lead_role: the highest-priority capped Role, or None. Temporary —
-            it is what the pre-Roles "team lead" meant, and the output
-            contract still names a single team lead per shift.
         max_allocation_count: Go-computed cap on allocations per volunteer.
         preallocated_pairs: {(group_key, shift_index)} that MUST be
             allocated — from both volunteer and team-lead preallocations.
@@ -88,14 +84,12 @@ class Problem:
             sorted(input_.roles, key=lambda r: r.priority)
         )
         self.role_by_name: dict[str, Role] = {r.name: r for r in self.roles}
-        uncapped = [r for r in self.roles if not r.capped]
-        if len(uncapped) != 1:
-            raise ProblemError(
-                f"expected exactly one uncapped role, got {len(uncapped)}"
-            )
-        self.uncapped_role: Role = uncapped[0]
-        capped = [r for r in self.roles if r.capped]
-        self.lead_role: Role | None = capped[0] if capped else None
+
+        # No Role is singled out. There used to be a check here that exactly
+        # one Role was uncapped, because the contract carried a single size
+        # that only such a Role could account for; a Shape states every Role's
+        # count, so any set of Roles is now a set the solver can work with
+        # (#185).
 
         volunteers: list[VolunteerView] = []
         # volunteer id -> owning group key
@@ -160,15 +154,6 @@ class Problem:
         """How many Seats this shift's Shape asks for in the named Role."""
         return sum(seat.count for seat in shift.shape if seat.role == role)
 
-    def shift_size(self, shift: ShiftSpec) -> int:
-        """The shift's ordinary-volunteer target: its uncapped Role's Seats.
-
-        Temporary. It reproduces the single `size` the contract used to carry,
-        so the constraints that still think in sizes keep working while the
-        Shape is being wired through.
-        """
-        return self.seats_for(shift, self.uncapped_role.name)
-
     def customs_for(self, shift: ShiftSpec, role: str) -> tuple[str, ...]:
         """The shift's custom (non-volunteer) pins on the named Role.
 
@@ -178,14 +163,6 @@ class Problem:
         return tuple(
             p.custom for p in shift.preallocations if p.custom and p.role == role
         )
-
-    def shift_customs(self, shift: ShiftSpec) -> tuple[str, ...]:
-        """Every custom pin on the shift, in input order, Role discarded.
-
-        Temporary, for the same reason as shift_size: the output contract
-        still carries one flat list of custom entries per shift.
-        """
-        return tuple(p.custom for p in shift.preallocations if p.custom)
 
     def _resolve_preallocations(self) -> None:
         for shift in self.shifts:

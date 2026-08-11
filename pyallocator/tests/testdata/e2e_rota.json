@@ -3,7 +3,7 @@
     "ortools": "9.15.6755",
     "platform": "darwin-x86_64"
   },
-  "objective_value": 1363,
+  "objective_value": 1723,
   "shifts": {
     "0": {
       "customs": [],

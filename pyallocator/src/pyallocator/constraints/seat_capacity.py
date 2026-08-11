@@ -5,15 +5,14 @@ how many volunteers the solver may place in each. Custom (free-text)
 preallocations name a Role too and are not solver decisions, so they take
 their Role's Seats before the solver sees them.
 
-A second, unconditional ceiling holds every capped Role to its own max
-whatever the Shape asks for. The two agree today — Go computes each capped
-Role's Seat count from that same max — so the ceiling is belt and braces
-now and the thing that keeps a Role's limit true once Shapes become
-editable per shift (#89 S2).
+The Shape is the only ceiling. A Role used to carry a max of its own and
+this applied that as a second, unconditional one; since a Shift's Shape
+states every Role's count and an admin edits it per Shift (#137/#138), that
+ceiling had nothing left to say and went with the field (#185).
 
 This replaces the pre-Roles pair shift_capacity + at_most_one_team_lead: a
-team lead is now a capped Role with one Seat, so "at most one team lead"
-is just this rule. That carries one deliberate divergence. The old rule
+team lead is now a Role a Shape asks for one Seat of, so "at most one team
+lead" is just this rule. That carries one deliberate divergence. The old rule
 counted per *group*, which meant a second team-lead holder could not work
 a shift at all; per-Role Seats let them work it in an ordinary Seat, which
 is what the roster migration (every team lead also holds Service
@@ -51,9 +50,6 @@ class SeatCapacityConstraint:
                 seats = problem.seats_for(shift, role.name)
                 customs = len(problem.customs_for(shift, role.name))
                 model.Add(sum(occupants) <= max(0, seats - customs))
-
-                if role.max is not None:
-                    model.Add(sum(occupants) <= role.max)
 
 
 CONSTRAINT = SeatCapacityConstraint()

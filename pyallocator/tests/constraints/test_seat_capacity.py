@@ -109,13 +109,12 @@ def test_two_volunteers_pinned_to_one_team_lead_seat_is_infeasible():
     assert out.solver_status == "INFEASIBLE"
 
 
-def test_role_max_caps_a_shape_that_asks_for_more():
-    # The Shape is Go-computed from the Role's max today, so the two agree;
-    # the unconditional ceiling is what keeps the Role's own limit true
-    # once Shapes become editable per shift (S2). Here the Shape offers
-    # three Team lead Seats and the Role's max of 1 still wins, so pinning
-    # two people to it cannot be satisfied.
-    overfull = dataclasses.replace(
+def test_a_shape_asking_for_more_of_a_role_gets_more():
+    # The Shape is the only ceiling (#185). A Role used to carry a max that
+    # held it whatever the Shape asked for, so a shift offering three Team
+    # lead Seats could still seat only one; asking for three now means three,
+    # and the two pins that are infeasible against one Seat are satisfied.
+    roomy = dataclasses.replace(
         make_shift(0),
         shape=(Seat(role=TEAM_LEAD, count=3), Seat(role=SERVICE_VOLUNTEER, count=4)),
     )
@@ -124,11 +123,11 @@ def test_role_max_caps_a_shape_that_asks_for_more():
             make_group("tl_a", available=[0], team_lead=True),
             make_group("tl_b", available=[0], team_lead=True),
         ],
-        shifts=[pin_team_lead(overfull, "tl_a", "tl_b")],
+        shifts=[pin_team_lead(roomy, "tl_a", "tl_b")],
     )
     out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
-    assert not out.success
-    assert out.solver_status == "INFEASIBLE"
+    assert out.success
+    assert sorted(allocations_by_shift(out)[0]) == ["tl_a", "tl_b"]
 
 
 def test_custom_preallocations_consume_seats():
