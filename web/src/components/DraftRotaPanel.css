@@ -1,14 +1,7 @@
-/* The draft's own summary, above the rota it is drawn onto. Bordered rather
-   than tinted: the accent-tinted strips on this page (the upcoming strip, the
-   carrying banner) are things the reader just did, and this is a standing
-   report on the rota. */
-.draft-panel {
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
+/* One panel: the draft's report, and under it the shifts it is a report on.
+   It takes the admin area's own panel chrome (.admin-panel) rather than a box
+   of its own — there is nothing special about this section's edges, only about
+   what is inside them. */
 .draft-panel-head {
   display: flex;
   flex-wrap: wrap;
@@ -47,13 +40,6 @@
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--accent);
-}
-
-@media (min-width: 700px) {
-  .draft-panel {
-    padding: 14px 18px;
-    margin-bottom: 24px;
-  }
 }
 
 /* The two things that can be done to a draft, side by side: solve it again, or
@@ -147,4 +133,65 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--text);
+}
+
+/* The head's report and the shifts it describes are one panel but two things to
+   read, so the rota gets air above it rather than running straight on from the
+   sentence about it. */
+.draft-panel .shift-list {
+  margin-top: 1.25rem;
+}
+
+.draft-panel-loading {
+  margin: 1.25rem 0 0;
+  font-size: 0.875rem;
+}
+
+/* Beside the controls it disables: a solve is owed to something the admin has
+   just changed, and the two buttons next to this are the ones that answer for
+   it. Covers the debounce as well as the request — from the reader's side they
+   are one wait, and splitting them would flick the spinner on twice. */
+.draft-panel-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.draft-panel-spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: draft-panel-spin 0.7s linear infinite;
+}
+
+@keyframes draft-panel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A spinner that never stops is a distraction rather than a signal for a reader
+   who has asked for less movement; the wait is still said in words beside it. */
+@media (prefers-reduced-motion: reduce) {
+  .draft-panel-spinner {
+    animation: none;
+  }
+}
+
+/* The panel is as wide as the tab's shell, which is wide for the responses
+   grid further down; its contents are not. Everything here reads down one
+   column the width of the shifts under it (.shift-list's own max-width), so the
+   controls sit above the rota they act on rather than out at an edge nothing
+   else reaches, and the prose keeps a measure somebody can read. */
+.draft-panel-head,
+.draft-panel-state,
+.draft-panel-note,
+.draft-panel-error,
+.draft-panel-moved,
+.draft-panel-loading {
+  max-width: 40rem;
 }

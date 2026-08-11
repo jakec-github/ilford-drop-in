@@ -8,8 +8,7 @@ import { useRotaInFlight } from "../hooks/useRotaInFlight";
 import AvailabilityPanel from "./AvailabilityPanel";
 import DefineRota from "./DefineRota";
 import DraftRotaPanel from "./DraftRotaPanel";
-import PrepShifts from "./PrepShifts";
-import type { Assignee, RotaInFlight, RotaShift } from "../types";
+import type { RotaInFlight, RotaShift } from "../types";
 import "./AdminAllocation.css";
 
 // "2 Aug – 6 Sep 2026", for naming a rota in a sentence.
@@ -21,16 +20,6 @@ function formatSpan(rota: RotaInFlight): string {
     });
   const year = new Date(rota.end).getFullYear();
   return `${short(rota.start)} – ${short(rota.end)} ${year}`;
-}
-
-// "Sun 2 Aug" — how a shift is named in a sentence, which on this screen is the
-// change report under a refused allocation.
-function formatShiftDateLong(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
 }
 
 // How far the round has got, in a sentence an admin can act on. Kept apart from
@@ -163,14 +152,6 @@ function InFlightHead({
         </Button>
       </div>
 
-      <p className="in-flight-note">
-        Everything below is about this rota, and none of it is a step to be
-        finished before the next: the shifts keep being edited while the answers
-        come in, and the draft is re-solved around whatever has moved. One rota
-        is in flight at a time, so the next cannot be defined until this one is
-        allocated — or discarded, which deletes it and everything on it.
-      </p>
-
       {confirming && (
         <DiscardDialog
           rota={rota}
@@ -232,6 +213,8 @@ function InFlightRota({
   const {
     state: draftState,
     error: draftError,
+    stale,
+    inputsMoved,
     solving,
     solveError,
     solve,
@@ -245,33 +228,17 @@ function InFlightRota({
   // rota is unallocated at a time, and a shift's flag is its rota's. Closed ones
   // are among them — a shut date is still this rota's to reopen.
   const inFlightShifts = useMemo(
-    () => (shifts ?? []).filter((s) => !s.allocated),
+    () => (shifts === null ? null : shifts.filter((s) => !s.allocated)),
     [shifts],
   );
-
-  const dateByShiftID = useMemo(() => {
-    const byID = new Map<string, string>();
-    for (const shift of inFlightShifts) {
-      byID.set(shift.id, formatShiftDateLong(shift.date));
-    }
-    return byID;
-  }, [inFlightShifts]);
-
-  const draftByShiftID = useMemo(() => {
-    const byShift = new Map<string, Assignee[]>();
-    for (const shift of draftState?.shifts ?? []) {
-      byShift.set(shift.shiftId, shift.assignees);
-    }
-    return byShift;
-  }, [draftState]);
 
   return (
     <>
       <InFlightHead rota={rota} discard={discard} onDiscarded={onDiscarded} />
 
-      {/* Above the shifts it is drawn onto, as on the rota page: what a refused
-          allocation reports is the difference between the rota that was
-          confirmed and the one in the table below. */}
+      {/* Outside the panel it is about, because there is no panel to put it in:
+          a draft that could not be read is the whole of what that section would
+          have had to say. */}
       {draftError && (
         <p className="allocation-error" role="alert">
           Could not load the draft rota: {draftError}
@@ -281,6 +248,7 @@ function InFlightRota({
       {draftState && (
         <DraftRotaPanel
           state={draftState}
+          stale={stale}
           solving={solving}
           solveError={solveError}
           onSolve={() => void solve()}
@@ -296,21 +264,13 @@ function InFlightRota({
               onAllocated();
             })
           }
-          dateOf={(shiftId) => dateByShiftID.get(shiftId) ?? "That shift"}
-        />
-      )}
-
-      {shifts === null ? (
-        <section className="admin-panel">
-          <h2>Shifts</h2>
-          <p className="allocation-loading">Loading the shifts…</p>
-        </section>
-      ) : (
-        <PrepShifts
           shifts={inFlightShifts}
-          draftByShiftID={draftByShiftID}
-          // Each of these re-reads the rota on its way through, so the table
-          // redraws from what the server now says rather than from what was
+          // The one signal that says an allocator input has moved, whichever of
+          // them it was: the pins are the panel's own, and these three are the
+          // rota's, so they meet here.
+          onInputMoved={inputsMoved}
+          // Each of these re-reads the rota on its way through, so the rows
+          // redraw from what the server now says rather than from what was
           // asked for.
           onSetClosed={setClosed}
           onSetTimes={setTimes}

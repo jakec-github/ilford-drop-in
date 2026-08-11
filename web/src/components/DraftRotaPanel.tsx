@@ -1,9 +1,30 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { AllocationAttempt } from "../hooks/useDraftRotaAllocation";
-import type { DraftRotaState } from "../types";
+import { usePreallocations } from "../hooks/usePreallocations";
+import { useRoles } from "../hooks/useRoles";
+import { useVolunteers } from "../hooks/useVolunteers";
+import type {
+  Assignee,
+  DraftRotaState,
+  PersonRef,
+  Preallocation,
+  Role,
+  RotaShift,
+} from "../types";
+import { TEAM_LEAD_ROLE } from "../types";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { compareDrafts } from "./draftChanges";
+import {
+  ClosureDialog,
+  PinDialog,
+  ShiftTimesDialog,
+  UnpinDialog,
+} from "./RotaEditDialogs";
+import ShapeForm from "./ShapeForm";
+import type { RowEdit } from "./ShiftList";
+import ShiftList from "./ShiftList";
+import { formatShiftDateLong } from "./shifts";
 import "./DraftRotaPanel.css";
 
 // How long ago the solve ran, which is the only thing anybody asks of a draft's
@@ -179,16 +200,31 @@ function ChangeReport({
   );
 }
 
-// DraftRotaPanel is what the draft has to say for itself, above the rota it is
-// drawn onto: when it was last solved, how much of the rota it staffed, whether
-// a rota was possible at all, and the two controls that act on it — solve it
-// again, or allocate it.
+// What this panel can open. Every one of them acts on a single shift, which is
+// why they are one union rather than a flag each: only one is ever up.
+type PrepDialog =
+  | { kind: "pin"; shift: RotaShift }
+  | { kind: "unpin"; pin: Preallocation }
+  | { kind: "closure"; shift: RotaShift }
+  | { kind: "times"; shift: RotaShift }
+  | { kind: "shape"; shift: RotaShift };
+
+// DraftRotaPanel is the rota in flight: what the solver has made of it so far,
+// heading the shifts it made it from.
 //
-// Allocating lives here, in the panel, because this is where the rota being
-// allocated is on screen: the Allocation tab draws the draft into the shift
-// table directly below (issue #145). The whole design rests on allocating the
-// rota you were shown (ADR 0008), and a button somewhere else would be a button
-// to allocate a rota you were not looking at.
+// One panel rather than two (issue #180). The draft's report and the shifts it
+// describes were a panel each, and reading one meant looking away from the
+// other — while everything the head says is arithmetic over the rows below it,
+// and every control on those rows changes what the head says. The head is what
+// the draft staffed, when it solved, and the two things that can be done to
+// it; the body is the rota, drawn by the same component the rota page draws it
+// with.
+//
+// Nothing here is gated on anything else (issue #145): the Shape, the pins and
+// the hours all move while the answers are coming in, and the draft re-solves
+// around them. Nor is anything gated on an editing toggle, as the rota page
+// gates its own: preparing the rota in flight is the only thing this tab is
+// for.
 //
 // Admin-only, like everything else about a draft, and mounted on the Allocation
 // tab alone. The public rota page shows the drafted names as dashed chips but
@@ -196,6 +232,7 @@ function ChangeReport({
 // reading the rota has any use for.
 export default function DraftRotaPanel({
   state,
+  stale,
   solving,
   solveError,
   onSolve,
@@ -203,9 +240,18 @@ export default function DraftRotaPanel({
   allocateError,
   attempt,
   onAllocate,
-  dateOf,
+  shifts,
+  onInputMoved,
+  onSetClosed,
+  onSetTimes,
+  onSetShape,
 }: {
   state: DraftRotaState;
+  // True while a fresh solve is owed to an edit made here. The drafted names
+  // fade and Allocate goes away: what is on screen is a rota that predates
+  // something the admin has just changed, and committing it is exactly what
+  // ADR 0008 exists to stop.
+  stale: boolean;
   solving: boolean;
   solveError: string | null;
   onSolve: () => void;
@@ -216,29 +262,170 @@ export default function DraftRotaPanel({
   // what closes the dialog: the outcome is reported in the panel, beside the
   // rota it happened to, and never rejects.
   onAllocate: () => Promise<void>;
-  // A shift's date, for naming one in a sentence. The panel is given this
-  // rather than shift dates of its own: the page it sits on already holds the
-  // rota, and a draft is keyed by shift id precisely so the two cannot drift
-  // apart (ADR 0001).
-  dateOf: (shiftId: string) => string;
+  // The rota in flight's shifts in date order, or null while they are loading.
+  shifts: RotaShift[] | null;
+  // Says that something the solver reads has moved. The pins are this panel's
+  // own, and the Shapes, hours and closures belong to the caller's rota, so a
+  // single signal upward is what lets one draft state answer for all four.
+  onInputMoved: () => void;
+  onSetClosed: (shiftId: string, closed: boolean) => Promise<void>;
+  onSetTimes: (shiftId: string, start: string, end: string) => Promise<void>;
+  onSetShape: (
+    shiftId: string,
+    seats: { roleId: string; count: number }[],
+  ) => Promise<void>;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [dialog, setDialog] = useState<PrepDialog | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [changeError, setChangeError] = useState<{
+    shiftId: string;
+    message: string;
+  } | null>(null);
+
+  const { roles, colourOf } = useRoles();
+  const { volunteers, error: volunteersError } = useVolunteers();
+  const {
+    preallocations,
+    error: preallocationsError,
+    addPin,
+    removePin,
+  } = usePreallocations();
+
+  const pinsByDate = useMemo(() => {
+    const byDate = new Map<string, Preallocation[]>();
+    for (const pin of preallocations ?? []) {
+      const forDate = byDate.get(pin.date);
+      if (forDate) forDate.push(pin);
+      else byDate.set(pin.date, [pin]);
+    }
+    return byDate;
+  }, [preallocations]);
+
+  const draftByShiftID = useMemo(() => {
+    const byShift = new Map<string, Assignee[]>();
+    for (const shift of state.shifts) {
+      byShift.set(shift.shiftId, shift.assignees);
+    }
+    return byShift;
+  }, [state]);
+
+  // A draft names shifts by id and nothing else (ADR 0001), so naming one in a
+  // sentence — which is what a refused allocation's change report does — means
+  // looking it up in the rota beside it.
+  const dateByShiftID = useMemo(() => {
+    const byID = new Map<string, string>();
+    for (const shift of shifts ?? []) {
+      byID.set(shift.id, formatShiftDateLong(shift.date));
+    }
+    return byID;
+  }, [shifts]);
 
   // Nothing to allocate until there is a rota to allocate. An unsolved draft
   // has none, and an infeasible one is the solver saying there is none to be
-  // had. Nothing here has to ask whether the draft is current: what was read is
-  // what the inputs say, and if it has moved since, allocating refuses and
-  // reports the difference (ADR 0008).
-  const allocatable = state.solved && state.success;
+  // had. A stale one has a rota, but not the one the inputs now imply — and
+  // allocating it would be refused by the server anyway, on the hash it was
+  // shown (ADR 0008), so it is taken off the screen rather than left to fail.
+  const allocatable = state.solved && state.success && !stale;
   const busy = solving || allocating;
 
+  // Who can still be pinned to a shift: the active roster, less anyone already
+  // pinned there. Both halves matter — the server refuses a pin for an inactive
+  // volunteer, and a repeat of one that already exists.
+  function pinnableTo(date: string) {
+    if (volunteers === null) return null;
+    const pinned = new Set(
+      (pinsByDate.get(date) ?? []).map((p) => p.volunteerId).filter(Boolean),
+    );
+    return volunteers.filter((v) => v.active && !pinned.has(v.id));
+  }
+
+  // Fires one change against one shift and leaves the screen showing whatever
+  // the server now says. A refusal is not a failure of the app: the message
+  // explains what the change contradicts, so it is shown against the row it was
+  // refused for and nothing is rolled back — nothing was applied.
+  //
+  // Every change routed through here is an allocator input, so the draft above
+  // is reported stale on the way out. Reported once the change has landed
+  // rather than when it was fired: a re-read that overtook its own write would
+  // come back solved against the inputs as they were.
+  async function run(
+    shiftId: string,
+    apply: () => Promise<void>,
+    fallback: string,
+  ) {
+    setSaving(true);
+    try {
+      await apply();
+      setChangeError(null);
+    } catch (err) {
+      setChangeError({
+        shiftId,
+        message: err instanceof Error ? err.message : fallback,
+      });
+    } finally {
+      setSaving(false);
+      setDialog(null);
+      onInputMoved();
+    }
+  }
+
+  function submitPin(shift: RotaShift, person: PersonRef, role: Role) {
+    return run(
+      shift.id,
+      () => addPin({ date: shift.date, person, role }),
+      "The pin was not saved",
+    );
+  }
+
+  function submitUnpin(pin: Preallocation) {
+    // Only ever called for a pin the listing gave an id, which is all of them.
+    if (pin.id === null) return;
+    const id = pin.id;
+    const shift = (shifts ?? []).find((s) => s.date === pin.date);
+    return run(shift?.id ?? "", () => removePin(id), "The pin was not removed");
+  }
+
+  function open(next: PrepDialog) {
+    setChangeError(null);
+    setDialog(next);
+  }
+
+  function rowEdit(shift: RotaShift): RowEdit {
+    return {
+      error: changeError?.shiftId === shift.id ? changeError.message : null,
+      onPin: () => open({ kind: "pin", shift }),
+      onUnpin: (pin) => open({ kind: "unpin", pin }),
+      canSetClosed: !shift.allocated,
+      onSetClosed: () => open({ kind: "closure", shift }),
+      onEditTimes: () => open({ kind: "times", shift }),
+      canEditShape: roles !== null,
+      onEditShape: () => open({ kind: "shape", shift }),
+      // Nothing on this tab has been allocated, so there is nobody on a shift
+      // to move to another one. Moving people about is the rota page's job,
+      // after allocation, one alteration at a time.
+      placement: null,
+    };
+  }
+
   return (
-    <section className="draft-panel">
+    <section className="admin-panel draft-panel">
       <div className="draft-panel-head">
         <h2 className="draft-panel-title">Draft rota</h2>
         <div className="draft-panel-controls">
+          {stale && (
+            <span className="draft-panel-updating" role="status">
+              <span className="draft-panel-spinner" aria-hidden="true" />
+              Updating…
+            </span>
+          )}
+          {/* "Regenerate" rather than "Refresh": reading this tab already
+              brings the draft up to date, so the only reason to press this is
+              the change no stamp can see — a volunteer added to the roster
+              Sheet, or a Role given to one — and the button has to say "do it
+              anyway" rather than "catch up". */}
           <Button size="small" onClick={onSolve} disabled={busy}>
-            {solving ? "Solving…" : state.solved ? "Solve again" : "Solve now"}
+            {solving ? "Solving…" : "Regenerate draft"}
           </Button>
           <Button
             size="small"
@@ -267,7 +454,11 @@ export default function DraftRotaPanel({
       )}
 
       {attempt?.outcome === "moved" && (
-        <ChangeReport attempt={attempt} state={state} dateOf={dateOf} />
+        <ChangeReport
+          attempt={attempt}
+          state={state}
+          dateOf={(shiftId) => dateByShiftID.get(shiftId) ?? "That shift"}
+        />
       )}
 
       {/* Said on every state, because it is true on every state and it is the
@@ -275,10 +466,10 @@ export default function DraftRotaPanel({
           about inputs that keep moving. */}
       <p className="draft-panel-note">
         A draft is what the solver makes of the availability, pins and shapes as
-        they stood when it ran &mdash; not the rota, until it is allocated. It
-        is solved again whenever one of those moves, so opening this page is
-        usually enough to bring it up to date. To hold somebody to a shift, pin
-        them.
+        they stood when it ran &mdash; not the rota, until it is allocated.
+        Opening this tab solves it again if anything has moved, and so does
+        every change below; Regenerate is for what this app cannot see moving,
+        which is the roster sheet. To hold somebody to a shift, pin them.
       </p>
 
       {/* A refused solve names the step that has not been taken — an
@@ -298,6 +489,29 @@ export default function DraftRotaPanel({
         </p>
       )}
 
+      {/* A failed pin load leaves the rows looking empty when they may not be,
+          so it is said out loud rather than swallowed. The rest still reads. */}
+      {preallocationsError && (
+        <p className="draft-panel-error" role="alert">
+          Could not load who is pinned: {preallocationsError}
+        </p>
+      )}
+
+      {shifts === null ? (
+        <p className="draft-panel-loading">Loading the shifts…</p>
+      ) : shifts.length === 0 ? (
+        <p className="draft-panel-loading">This rota has no shifts.</p>
+      ) : (
+        <ShiftList
+          shifts={shifts}
+          pinsByDate={pinsByDate}
+          draftByShiftID={draftByShiftID}
+          draftStale={stale}
+          colourOf={colourOf}
+          rowEdit={rowEdit}
+        />
+      )}
+
       {confirming && (
         <AllocateDialog
           state={state}
@@ -310,6 +524,92 @@ export default function DraftRotaPanel({
           onAllocate={() => {
             void onAllocate().finally(() => setConfirming(false));
           }}
+        />
+      )}
+
+      {dialog?.kind === "pin" && (
+        <PinDialog
+          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          volunteers={pinnableTo(dialog.shift.date)}
+          volunteersError={volunteersError}
+          // A shift has one team-lead Seat, so a lead already pinned there
+          // rules out a second — and it can be given up from here, whichever
+          // way it came to be made.
+          leadPinned={(pinsByDate.get(dialog.shift.date) ?? []).some(
+            (p) => p.role === TEAM_LEAD_ROLE,
+          )}
+          pinnedNames={(pinsByDate.get(dialog.shift.date) ?? []).map(
+            (p) => p.name,
+          )}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={(person, role) =>
+            void submitPin(dialog.shift, person, role)
+          }
+        />
+      )}
+
+      {dialog?.kind === "unpin" && (
+        <UnpinDialog
+          name={dialog.pin.name}
+          dateLabel={formatShiftDateLong(dialog.pin.date)}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => void submitUnpin(dialog.pin)}
+        />
+      )}
+
+      {dialog?.kind === "closure" && (
+        <ClosureDialog
+          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          closing={!dialog.shift.closed}
+          pinnedCount={(pinsByDate.get(dialog.shift.date) ?? []).length}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={() =>
+            void run(
+              dialog.shift.id,
+              () => onSetClosed(dialog.shift.id, !dialog.shift.closed),
+              dialog.shift.closed
+                ? "The shift was not reopened"
+                : "The shift was not closed",
+            )
+          }
+        />
+      )}
+
+      {dialog?.kind === "times" && (
+        <ShiftTimesDialog
+          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          start={dialog.shift.start}
+          end={dialog.shift.end}
+          busy={saving}
+          onCancel={() => setDialog(null)}
+          onConfirm={(start, end) =>
+            void run(
+              dialog.shift.id,
+              () => onSetTimes(dialog.shift.id, start, end),
+              "The shift times were not saved",
+            )
+          }
+        />
+      )}
+
+      {/* Its own errors rather than the row's: a refusal here names the Role
+          whose ceiling was hit or the person pinned to a Seat that would go, and
+          the form stays open on what was typed so the number can be corrected
+          rather than retyped. */}
+      {dialog?.kind === "shape" && roles && (
+        <ShapeForm
+          title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
+          intro="How many places of each Role this shift has. It starts from the default shape and can differ from every other shift; leave a Role at 0 if this one does not need it."
+          saveLabel="Save shape"
+          roles={roles}
+          shape={dialog.shift.shape}
+          onSave={(seats) =>
+            onSetShape(dialog.shift.id, seats).finally(onInputMoved)
+          }
+          onClose={() => setDialog(null)}
         />
       )}
     </section>
