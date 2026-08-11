@@ -225,9 +225,11 @@ function RolesSettings() {
             ))}
           </ul>
           {/* How many of each Role a shift asks for is the Shape's business,
-              not a Role's, and the Shape is stated right below this list. */}
+              not a Role's — said here because the list otherwise looks like it
+              is missing the number. */}
           <p className="settings-caption">
-            How many of each Role a shift needs is set by its shape, below.
+            How many of each Role a shift needs is set by its shape, in Rota
+            Defaults.
           </p>
         </>
       )}
