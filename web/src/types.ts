@@ -474,6 +474,10 @@ export interface AvailabilityFormState {
   selectedShiftIds: string[];
   submitted: boolean;
   submittedAt: string | null;
+  // False when nothing said here can reach a rota: the volunteer has stopped,
+  // or is off the roster. Optional, and only an explicit false warns — a server
+  // that does not send it must not tell every volunteer they have stopped.
+  counts?: boolean;
 }
 
 // Why a link stopped working, kept apart because they mean different things to

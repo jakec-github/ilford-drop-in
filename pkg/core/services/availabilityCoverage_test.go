@@ -362,8 +362,8 @@ func TestRoundGroupsTheRoster(t *testing.T) {
 // on the entry is what keeps the server the authority on who holds what — the
 // alternative is every client fetching the roster and joining it back.
 //
-// A volunteer no longer on the roster holds no Roles here, which is the same
-// answer allocation gives: there is nobody to ask.
+// Every entry in a round belongs to somebody on the active roster, so every
+// entry can be asked what Roles they hold — see allocatableRequests.
 func TestRoundEntriesCarryTheRolesTheyHold(t *testing.T) {
 	store, cfg := availabilityFixture()
 	volunteers := availabilityVolunteers()
@@ -378,11 +378,13 @@ func TestRoundEntriesCarryTheRolesTheyHold(t *testing.T) {
 		assert.Equal(t, []string{"Service volunteer"}, member.Roles)
 	}
 
-	// Dropping someone from the roster mid-round leaves their link working and
-	// their row in place, so the round must still build — with no Roles on it.
+	// Dropping someone from the roster mid-round takes their row with it: the
+	// round must still build, one group lighter.
 	volunteers.volunteers = volunteers.volunteers[:2]
 	updated := readRound(t, store, volunteers, cfg)
-	assert.Empty(t, groupOf(t, updated, "individual:aaliyah").Members[0].Roles)
+	for _, group := range updated.Groups {
+		assert.NotEqual(t, "individual:aaliyah", group.Key)
+	}
 }
 
 // TestRoundNamesPeopleAsTheRotaDoes: the round is an admin screen, and every

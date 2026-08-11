@@ -102,6 +102,11 @@ type availabilityFormResponse struct {
 	SelectedShiftIDs []string                    `json:"selectedShiftIds"`
 	Submitted        bool                        `json:"submitted"`
 	SubmittedAt      string                      `json:"submittedAt,omitempty"`
+	// False when nothing said here can reach a rota — see AvailabilityForm.
+	// Always written, never omitempty: the client treats only an explicit false
+	// as the warning case, so a missing field stays quiet rather than telling
+	// every volunteer they have stopped.
+	Counts bool `json:"counts"`
 }
 
 type mintRoundRequest struct {
@@ -277,6 +282,7 @@ func toFormResponse(form *services.AvailabilityForm) availabilityFormResponse {
 		Shifts:           toShiftResponses(form.Shifts),
 		SelectedShiftIDs: form.SelectedShiftIDs,
 		Submitted:        form.Submitted,
+		Counts:           form.Counts,
 	}
 	if !form.SubmittedAt.IsZero() {
 		resp.SubmittedAt = form.SubmittedAt.UTC().Format(time.RFC3339)

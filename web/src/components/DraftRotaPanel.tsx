@@ -72,15 +72,15 @@ function describeOutcome(state: DraftRotaState): string {
 
 // The confirmation allocating is behind.
 //
-// It leads with what allocating does to everybody else, because that is what
-// makes it hard to undo: the rota reaches the page volunteers read and the
-// calendars they have subscribed to, and taking somebody off it afterwards is
-// an alteration with a reason attached, not a re-solve.
+// One paragraph: the seat count, and what allocating does to everybody else —
+// the rota reaches the page volunteers read and the calendars they have
+// subscribed to, which is what makes it hard to undo.
 //
-// It says out loud that the rota may not be this one. Allocating re-solves and
-// commits only what it can still reproduce, so an admin who has had this page
-// open for an hour is as likely to be shown a changed rota as an allocated one,
-// and being told that after the fact would read as a fault.
+// What it no longer says in advance is that the rota may not be this one.
+// Allocating re-solves and commits only what it can still reproduce, but that
+// is a branch the admin is shown when it happens (see ChangeReport), and
+// explaining it up front cost two paragraphs on the screen every allocation
+// passes through to warn about the case most of them never hit.
 function AllocateDialog({
   state,
   allocating,
@@ -101,19 +101,6 @@ function AllocateDialog({
         {state.seatsAsked} seats filled
         {unfilled > 0 ? `, ${unfilled} left empty` : ""}. Volunteers will see it
         on the rota page and in the calendar feeds they subscribe to.
-      </p>
-
-      <p className="allocate-note">
-        Changing it afterwards is an alteration — one person at a time, with a
-        reason — rather than another solve. No more rotas can be defined until
-        this one is allocated, and after that this one cannot be discarded.
-      </p>
-
-      <p className="allocate-note">
-        Allocating solves the rota once more and commits it only if it comes out
-        the same. If anything has moved since this page was loaded you will be
-        shown what changed instead, and nothing will be allocated. That takes as
-        long as a solve, so this may sit for half a minute.
       </p>
 
       <div className="allocate-actions">
@@ -460,17 +447,6 @@ export default function DraftRotaPanel({
           dateOf={(shiftId) => dateByShiftID.get(shiftId) ?? "That shift"}
         />
       )}
-
-      {/* Said on every state, because it is true on every state and it is the
-          thing most easily forgotten: a draft is a guess, and it is a guess
-          about inputs that keep moving. */}
-      <p className="draft-panel-note">
-        A draft is what the solver makes of the availability, pins and shapes as
-        they stood when it ran &mdash; not the rota, until it is allocated.
-        Opening this tab solves it again if anything has moved, and so does
-        every change below; Regenerate is for what this app cannot see moving,
-        which is the roster sheet. To hold somebody to a shift, pin them.
-      </p>
 
       {/* A refused solve names the step that has not been taken — an
           availability round nobody has minted, settings nobody has filled in —

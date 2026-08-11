@@ -41,19 +41,6 @@
   background: rgba(185, 28, 28, 0.1);
 }
 
-/* The rota has just gone out. Drawn in the accent rather than the warning
-   colour: this is the screen's happy ending, and the only reason it is a
-   standing message at all is that everything which could have announced it has
-   been replaced by the define form underneath. */
-.allocation-allocated {
-  margin: 1.5rem 0 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  color: var(--text-h);
-  font-size: 0.875rem;
-}
-
 /* Discard is the one destructive action in the admin area, so it is the one
    button drawn in the warning colour. Specificity beats .button rather than
    relying on which stylesheet the bundler happens to emit last. */

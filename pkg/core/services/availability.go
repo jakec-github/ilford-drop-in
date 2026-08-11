@@ -111,6 +111,14 @@ type AvailabilityForm struct {
 	SelectedShiftIDs []string
 	Submitted        bool
 	SubmittedAt      time.Time // zero until they submit
+	// Counts is false when nothing said here can reach a rota: the volunteer
+	// has stopped, or is off the roster altogether. Allocation only ever sees
+	// active volunteers, and a round leaves the rest out, so without this the
+	// form is a dead end that looks exactly like a working one.
+	//
+	// It does not gate the answer. The likeliest cause is a roster nobody has
+	// updated, and the answer is worth having the moment that is fixed.
+	Counts bool
 }
 
 // MintAvailabilityRound creates an availability request, with its own link, for
@@ -373,6 +381,7 @@ func buildForm(
 	if known {
 		form.VolunteerName = volunteerName(volunteer)
 		form.GroupMembers = partnerNames(groupPartners(volunteers, volunteer, utils.IsActive), volunteerName)
+		form.Counts = utils.IsActive(volunteer)
 	} else {
 		// A volunteer dropped from the sheet mid-round still holds a working
 		// link; degrade to the id rather than 404 a link that was legitimately
@@ -412,6 +421,43 @@ func buildForm(
 	return form
 }
 
+// allocatableRequests drops the requests belonging to somebody who cannot be
+// allocated: off the roster, or no longer volunteering.
+//
+// Minting asks only the active roster, so this is about the gap between then
+// and now — a volunteer who stops after their link goes out keeps a request
+// nobody can act on. `buildCoverage` has always ignored them when counting who
+// is available, which left the grid drawing a row the numbers beneath it
+// refused to count. Filtering the requests rather than the rows keeps the two
+// halves of the round telling one story: their answer stops settling their
+// group's, and their name stops appearing as somebody else's cover.
+//
+// The link itself is untouched. It stays live until the rota is allocated, so
+// somebody wrongly marked inactive can be put back on the roster and their
+// answer is still there.
+func allocatableRequests(
+	requests []db.AvailabilityRequest,
+	volunteers []model.Volunteer,
+	logger *zap.Logger,
+) []db.AvailabilityRequest {
+	out := make([]db.AvailabilityRequest, 0, len(requests))
+	for _, r := range requests {
+		volunteer, known := findVolunteer(volunteers, r.VolunteerID)
+		if !known {
+			logger.Warn("Availability request for a volunteer no longer on the roster",
+				zap.String("volunteer_id", r.VolunteerID))
+			continue
+		}
+		if !utils.IsActive(volunteer) {
+			logger.Debug("Availability request for a volunteer who has stopped",
+				zap.String("volunteer_id", r.VolunteerID))
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // buildRound assembles the admin's view of a round from its requests and the
 // latest generation behind each.
 func buildRound(
@@ -432,6 +478,7 @@ func buildRound(
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
 	}
+	requests = allocatableRequests(requests, volunteers, logger)
 
 	requestIDs := make([]string, 0, len(requests))
 	for _, r := range requests {
@@ -469,18 +516,16 @@ func buildRound(
 			entry.SubmittedAt = generation.SubmittedAt
 		}
 
-		if volunteer, known := findVolunteer(volunteers, r.VolunteerID); known {
-			// The admin's own screen, so the short name — see displayName.
-			entry.VolunteerName = displayName(volunteer)
-			entry.Roles = volunteer.Roles
-			if !hasReplied {
-				entry.CoveredBy = partnerNames(groupPartners(volunteers, volunteer, func(other model.Volunteer) bool {
-					return replied[other.ID]
-				}), displayName)
-			}
-		} else {
-			logger.Warn("Availability request for a volunteer no longer on the roster",
-				zap.String("volunteer_id", r.VolunteerID))
+		// Known, and still volunteering: allocatableRequests dropped everyone
+		// else before the loop was reached.
+		volunteer, _ := findVolunteer(volunteers, r.VolunteerID)
+		// The admin's own screen, so the short name — see displayName.
+		entry.VolunteerName = displayName(volunteer)
+		entry.Roles = volunteer.Roles
+		if !hasReplied {
+			entry.CoveredBy = partnerNames(groupPartners(volunteers, volunteer, func(other model.Volunteer) bool {
+				return replied[other.ID]
+			}), displayName)
 		}
 
 		entries = append(entries, entry)

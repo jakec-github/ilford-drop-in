@@ -29,13 +29,6 @@
   color: var(--text);
 }
 
-.draft-panel-note {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text);
-}
-
 .draft-panel-error {
   margin: 8px 0 0;
   font-size: 13px;
@@ -99,11 +92,6 @@
 
 .allocate-lead {
   margin: 0 0 0.75rem;
-}
-
-.allocate-note {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
 }
 
 .allocate-actions {
@@ -189,7 +177,6 @@
    else reaches, and the prose keeps a measure somebody can read. */
 .draft-panel-head,
 .draft-panel-state,
-.draft-panel-note,
 .draft-panel-error,
 .draft-panel-moved,
 .draft-panel-loading {
