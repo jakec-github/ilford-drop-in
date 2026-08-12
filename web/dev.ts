@@ -30,9 +30,21 @@ const webPort = process.env.WEB_PORT ?? "5173";
 // '<'" when it tries to parse it as JSON.
 const apiPrefixes = ["/api", "/auth", "/calendars", "/health"];
 
+// How long a proxied request may take before this server gives up on it.
+//
+// Bun.serve defaults to ten seconds, which is shorter than the app it fronts is
+// allowed to take: a solve gets sixty (solveCeiling, pkg/api/draftRotaAllocation.go)
+// and a draft read queueing behind a running solve can take longer still. Left
+// at the default, every draft read slower than ten seconds reached the browser
+// as "Failed to fetch" — the dev server closing the connection, not the app
+// failing (issue #197). 255 is Bun's maximum, and comfortably past the ceiling
+// the server holds itself to. Raise solveCeiling and this stops covering it.
+const idleTimeout = 255;
+
 const server = Bun.serve({
   port: webPort,
   hostname: "0.0.0.0",
+  idleTimeout,
   async fetch(req) {
     const url = new URL(req.url);
     const pathname = url.pathname;
@@ -42,11 +54,19 @@ const server = Bun.serve({
     ) {
       // redirect: "manual" so the 302 from /auth/login to Google reaches the
       // browser instead of being followed server-side here.
+      //
+      // signal ties this request to the browser's. Without it the proxy holds a
+      // connection of its own that outlives the one it is answering, and the Go
+      // server — whose client is this proxy, not the browser — never sees the
+      // caller leave: r.Context() stays live, the solve runs to completion and
+      // stores its draft for a request nobody is waiting on, holding the solve
+      // slot the next reader queues behind (issue #197).
       return fetch(`http://localhost:${apiPort}${pathname}${url.search}`, {
         method: req.method,
         headers: req.headers,
         body: req.body,
         redirect: "manual",
+        signal: req.signal,
       });
     }
 
