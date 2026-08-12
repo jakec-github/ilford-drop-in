@@ -155,7 +155,7 @@
    nothing. */
 .shift-row.unfilled,
 .shift-row.filled {
-  border-left: 3px solid var(--edge);
+  border-left: 5px solid var(--edge);
   /* The border is drawn inside the row's own padding, so the text does not step
      sideways relative to the rows above and below it. */
   padding-left: 11px;
