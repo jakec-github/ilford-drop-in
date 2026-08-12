@@ -118,11 +118,11 @@
   min-width: 0;
 }
 
-/* Preallocations (admin-only, unallocated shifts) ---------------------------
+/* An unallocated shift (admin-only) ----------------------------------------
 
-   Who allocation is already committed to placing here. They sit under the "not
-   yet allocated" note rather than beside it: the note is the state of the
-   shift, the pins are a qualification of it. */
+   What the draft could not fill, then who is expected here, then what can be
+   changed about it — down the row rather than across it, because the first is a
+   sentence about the other two. */
 .shift-unallocated {
   display: flex;
   flex-direction: column;
@@ -154,21 +154,9 @@
   padding-left: 11px;
 }
 
-.prealloc {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-}
-
-.prealloc-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text);
-}
-
-.prealloc-list {
+/* Who is expected on a shift the rota has not been run for: the pins and the
+   draft, one row of chips. */
+.planned-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -177,53 +165,15 @@
   list-style: none;
 }
 
-/* Shaped like a chip so a pinned name reads as the same kind of thing as an
-   allocated one. Solid, unlike the drafted names below it: a pin is a decision
-   somebody made and it holds until they unmake it, where a draft Seat is a
-   guess the next solve may take back. The border is what tells the two apart,
-   which matters most where they sit one above the other on the same row.
-
-   The chip itself is never interactive — a pin cannot be dragged, searched for
-   or opened. In editing mode it grows a remove button inside it; that button is
-   the interactive part, not the chip. */
-.prealloc-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-  border: 1.5px solid var(--chip);
-  color: var(--chip);
-}
-
-/* The Role's colour comes from the server as a palette token, which index.css
-   turns into --role-colour. The fallback is what a chip wears when no token
-   reached it: the roles are still loading, or the rota names a Role the config
-   no longer does. */
-.prealloc-chip {
-  --chip: var(--role-colour, var(--role-slate));
-}
-
-/* Matching .chip: volunteers are rounded pills, custom entries squared tags. */
-.prealloc-chip.volunteer {
-  border-radius: 12px;
-}
-
-.prealloc-chip.custom {
-  border-radius: 3px;
-  font-style: italic;
-}
-
 /* Sits inside the pin it removes, so it needs no label of its own on screen.
    Padded out to a touch target the chip's own text size would not give it —
-   this is the primary way a pin comes off, and the rota page is mobile first. */
-.prealloc-unpin {
+   this is the primary way a pin comes off, and the rota page is mobile first.
+   The negative margin keeps it from making the chip taller than its
+   neighbours. */
+.chip-unpin {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
   width: 20px;
   height: 20px;
   margin: -4px -5px -4px 0;
@@ -236,8 +186,8 @@
   opacity: 0.7;
 }
 
-.prealloc-unpin:hover,
-.prealloc-unpin:focus-visible {
+.chip-unpin:hover,
+.chip-unpin:focus-visible {
   opacity: 1;
   background: color-mix(in srgb, var(--chip) 18%, transparent);
 }
@@ -304,6 +254,29 @@
 .chip.selected {
   background: var(--chip);
   color: #fff;
+}
+
+/* A pinned name (admin-only, unallocated shifts). A .chip like every other name
+   on the rota, which is what keeps it the same size as the drafted names beside
+   it — it used to be a shape of its own, a size smaller, and read as a lesser
+   kind of thing once the two shared a line. Solid, where a drafted name is
+   dashed: a pin is a decision somebody made and it holds until they unmake it.
+
+   Never interactive itself — a pin cannot be dragged, searched for or opened.
+   In editing mode it grows a remove button inside it; that button is the
+   interactive part, not the chip. So, like a drafted name below, it gives back
+   what .chip offers a button. These rules sit after .chip:hover deliberately:
+   they carry the same specificity, so order is what decides them. */
+.chip.pinned {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+  user-select: auto;
+}
+
+.chip.pinned:hover {
+  background: var(--bg);
 }
 
 /* A drafted name (admin-only, unallocated shifts): the same chip as an

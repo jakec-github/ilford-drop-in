@@ -408,64 +408,62 @@ function PlannedList({
   onUnpin?: (pin: Preallocation) => void;
 }) {
   return (
-    <div className="prealloc">
-      {/* Named for what it holds. Everything on it is drafted once a solve has
-          run, pins included; before that there is nothing but the pins. */}
-      <span className="prealloc-label" id={`planned-${date}`}>
-        {planned.some((p) => p.kind === "draft") ? "Draft:" : "Pinned:"}
-      </span>
-      <ul className="prealloc-list" aria-labelledby={`planned-${date}`}>
-        {planned.map((entry, i) =>
-          entry.kind === "pin" ? (
-            <li
-              key={entry.pin.id}
-              className={`prealloc-chip ${entry.pin.custom ? "custom" : "volunteer"}`}
-              data-role-colour={colourOf(entry.pin.role) ?? undefined}
-              title={pinTitle(entry.pin)}
-            >
-              {entry.pin.name}
-              {onUnpin && (
-                <button
-                  type="button"
-                  className="prealloc-unpin"
-                  // The date is in the label because the button is a bare
-                  // cross: read out of the row's context, "Remove" alone does
-                  // not say which pin, and the rows all look alike.
-                  aria-label={`Remove ${entry.pin.name}'s pin on ${formatShiftDateLong(date)}`}
-                  onClick={() => onUnpin(entry.pin)}
+    // No heading on the row. "Draft" was the only thing it ever said and it is
+    // the only thing an unallocated shift's names can be, so it was a word
+    // spent saying where the reader already is. The list keeps a name for
+    // anybody who cannot see where they are.
+    <ul
+      className="planned-list"
+      aria-label={`Expected on ${formatShiftDateLong(date)}`}
+    >
+      {planned.map((entry, i) =>
+        entry.kind === "pin" ? (
+          <li
+            key={entry.pin.id}
+            className={`chip pinned ${entry.pin.custom ? "custom" : "volunteer"}`}
+            data-role-colour={colourOf(entry.pin.role) ?? undefined}
+            title={pinTitle(entry.pin)}
+          >
+            {entry.pin.name}
+            {onUnpin && (
+              <button
+                type="button"
+                className="chip-unpin"
+                // The date is in the label because the button is a bare cross:
+                // read out of the row's context, "Remove" alone does not say
+                // which pin, and the rows all look alike.
+                aria-label={`Remove ${entry.pin.name}'s pin on ${formatShiftDateLong(date)}`}
+                onClick={() => onUnpin(entry.pin)}
+              >
+                <svg
+                  viewBox="0 0 10 10"
+                  width="9"
+                  height="9"
+                  aria-hidden="true"
                 >
-                  <svg
-                    viewBox="0 0 10 10"
-                    width="9"
-                    height="9"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M1 1l8 8M9 1L1 9"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              )}
-            </li>
-          ) : (
-            <li
-              key={chipKey(date, entry.assignee, i)}
-              className={`chip draft ${entry.assignee.custom ? "custom" : "volunteer"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
-              data-role-colour={colourOf(entry.assignee.role) ?? undefined}
-              title={draftTitle(entry.assignee)}
-            >
-              {entry.assignee.name}
-              {entry.assignee.group && (
-                <GroupDot group={entry.assignee.group} />
-              )}
-            </li>
-          ),
-        )}
-      </ul>
-    </div>
+                  <path
+                    d="M1 1l8 8M9 1L1 9"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
+          </li>
+        ) : (
+          <li
+            key={chipKey(date, entry.assignee, i)}
+            className={`chip draft ${entry.assignee.custom ? "custom" : "volunteer"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
+            data-role-colour={colourOf(entry.assignee.role) ?? undefined}
+            title={draftTitle(entry.assignee)}
+          >
+            {entry.assignee.name}
+            {entry.assignee.group && <GroupDot group={entry.assignee.group} />}
+          </li>
+        ),
+      )}
+    </ul>
   );
 }
 
