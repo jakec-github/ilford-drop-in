@@ -36,7 +36,7 @@ func preallocationTestStore() *mockStore {
 
 func TestCreatePreallocationEndpoint(t *testing.T) {
 	store := preallocationTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`
+	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -44,12 +44,16 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 	var resp struct {
 		ID          string `json:"id"`
 		Date        string `json:"date"`
+		RoleID      string `json:"roleId"`
 		Role        string `json:"role"`
 		VolunteerID string `json:"volunteerId"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.NotEmpty(t, resp.ID)
 	assert.Equal(t, "2026-01-11", resp.Date)
+	// Both, as a standing pin answers: the id is what the row references, the
+	// name is what an admin recognises.
+	assert.Equal(t, "role-service-volunteer", resp.RoleID)
 	assert.Equal(t, "Service volunteer", resp.Role)
 	assert.Equal(t, "bob", resp.VolunteerID)
 
@@ -61,19 +65,19 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 
 func TestCreatePreallocationEndpoint_TeamLead(t *testing.T) {
 	store := preallocationTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"alice","role":"Team lead"}`
+	body := `{"date":"2026-01-11","volunteerId":"alice","roleId":"role-team-lead"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	require.Len(t, store.insertedPreallocations, 1)
-	assert.Equal(t, "Team lead", store.insertedPreallocations[0].Role)
+	assert.Equal(t, "role-team-lead", store.insertedPreallocations[0].RoleID)
 }
 
 func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 	seeded := func() *mockStore {
 		s := preallocationTestStore()
 		s.manualPreallocations = []db.Preallocation{
-			{ID: "existing", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "existing", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		}
 		return s
 	}
@@ -98,19 +102,19 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name:       "neither volunteer nor custom",
-			body:       `{"date":"2026-01-11","role":"Service volunteer"}`,
+			body:       `{"date":"2026-01-11","roleId":"role-service-volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "both volunteer and custom",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper","role":"Service volunteer"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper","roleId":"role-service-volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "a role the volunteer does not hold",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Team lead"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-team-lead"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
@@ -121,32 +125,40 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "a role config does not name",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Food collector"}`,
+			name:       "a role id nothing answers to",
+			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-food-collector"}`,
+			store:      preallocationTestStore(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			// The wire named a Role by name until #195. A body still doing so
+			// is refused rather than quietly pinning nobody to nothing.
+			name:       "a role named the old way",
+			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","volunteerId":"nobody","role":"Service volunteer"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"nobody","roleId":"role-service-volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "unknown date",
-			body:       `{"date":"2026-02-01","volunteerId":"bob","role":"Service volunteer"}`,
+			body:       `{"date":"2026-02-01","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "duplicate assignee",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
+			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store:      seeded(),
 			wantStatus: http.StatusConflict,
 		},
 		{
 			name: "already allocated",
-			body: `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
+			body: `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store: func() *mockStore {
 				s := preallocationTestStore()
 				s.allocatedRotas = map[string]bool{"rota-1": true}
@@ -156,7 +168,7 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name: "store insert failure",
-			body: `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
+			body: `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store: func() *mockStore {
 				s := preallocationTestStore()
 				s.insertErr = errors.New("disk full")
@@ -177,7 +189,7 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 func TestDeletePreallocationEndpoint(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
+		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", adminCookie())
@@ -193,7 +205,7 @@ func TestDeletePreallocationEndpoint_NotFound(t *testing.T) {
 func TestDeletePreallocationEndpoint_FrozenRota(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
+		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	store.allocatedRotas = map[string]bool{"rota-1": true}
 
@@ -205,8 +217,8 @@ func TestDeletePreallocationEndpoint_FrozenRota(t *testing.T) {
 func TestListPreallocationsEndpoint(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "s1", Role: "Team lead", VolunteerID: "alice"},
-		{ID: "pin-2", ShiftID: "s2", Role: "Service volunteer", CustomValue: "External Helper"},
+		{ID: "pin-1", ShiftID: "s1", RoleID: "role-team-lead", VolunteerID: "alice"},
+		{ID: "pin-2", ShiftID: "s2", RoleID: "role-service-volunteer", CustomValue: "External Helper"},
 	}
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations", "", adminCookie())
@@ -250,8 +262,8 @@ func decodePreallocations(t *testing.T, body []byte) struct {
 func TestListPreallocationsEndpoint_DateFilter(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
-		{ID: "pin-2", ShiftID: "s2", Role: "Service volunteer", VolunteerID: "charlie"},
+		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+		{ID: "pin-2", ShiftID: "s2", RoleID: "role-service-volunteer", VolunteerID: "charlie"},
 	}
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations?from=2026-01-12", "", adminCookie())
@@ -276,7 +288,7 @@ func TestPreallocationsMethodNotAllowed(t *testing.T) {
 func TestPreallocationsRequireAdmin(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
+		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	handler := newTestHandler(store, activeVolunteers())
 

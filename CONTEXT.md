@@ -124,8 +124,11 @@ they will fill and forcing the allocator to place them (their group included).
 It records a decision already taken, so it settles both questions the allocator
 would otherwise ask of the roster: the pinned person is available for that
 Shift whatever they answered, and holds the Role it names for that Shift alone.
-Every Preallocation is the same kind of thing however it came to exist, and an
-Admin may remove any of them.
+It references the Role rather than naming it, so renaming one leaves every
+promise made in it intact. Every Preallocation is the same kind of thing however
+it came to exist, and an Admin may remove any of them. A Volunteer is pinned to
+a Shift at most once; a custom entry may be pinned to one more than once, since
+it is usually an organisation and an organisation may send several people.
 _Avoid_: pin (except as the informal verb, "pin to a Shift")
 
 **Standing Preallocation**:

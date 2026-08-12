@@ -323,8 +323,9 @@ export function PinDialog({
   // lead is a 409, and the way out is to remove the pin that holds it — which
   // an admin can do for any of them (issue #131).
   leadPinned: boolean;
-  // Everyone already pinned here, by the name shown. A custom entry has no id —
-  // its text is its identity — so repeating one is a pin that would be refused.
+  // Everyone already pinned here, by the name shown. Repeating a name is
+  // allowed for a custom entry (issue #195) — an organisation sending two
+  // people is two pins reading alike — so this is only ever a note.
   pinnedNames: string[];
   busy: boolean;
   onCancel: () => void;
@@ -336,9 +337,9 @@ export function PinDialog({
 
   const isCustom = choice === CUSTOM_CHOICE;
   const trimmedName = customName.trim();
-  const duplicateName = isCustom && pinnedNames.includes(trimmedName);
+  const repeatedName = isCustom && pinnedNames.includes(trimmedName);
   const person: PersonRef | null = isCustom
-    ? trimmedName && !duplicateName
+    ? trimmedName
       ? { custom: trimmedName }
       : null
     : choice
@@ -415,12 +416,13 @@ export function PinDialog({
           </label>
         )}
 
-        {/* Said before the pin is attempted rather than after: a repeat is
-            refused by the server, and there is no reason to make an admin find
-            that out by pressing the button. */}
-        {duplicateName && (
+        {/* A note, not a refusal: pinning a name twice is how an admin says an
+            organisation is sending two people (issue #195). Worth saying,
+            because the other reason to be typing it is a slip. */}
+        {repeatedName && (
           <p className="rota-edit-note">
-            {trimmedName} is already pinned to {dateLabel}.
+            {trimmedName} is already pinned to {dateLabel}. Pinning the name
+            again promises a second person from them.
           </p>
         )}
 

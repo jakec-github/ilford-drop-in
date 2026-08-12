@@ -24,6 +24,9 @@ type mockPreallocationStore struct {
 	allocated   map[string]bool // rota id → allocated
 	preallocs   []db.Preallocation
 	shiftRanges []db.ShiftInRange
+	// roles replaces the default pair, for a test about the Roles moving under
+	// pins that were made before they did.
+	roles []db.Role
 	// shapes is what each shift asks for, by shift id. It is the ceiling a pin
 	// is checked against (issue #185), so a test about anything else takes the
 	// roomy default from oneShiftStore.
@@ -32,6 +35,13 @@ type mockPreallocationStore struct {
 	lockedRotaIDs [][]string
 	inserted      []db.Preallocation
 	deletedIDs    []string
+}
+
+func (m *mockPreallocationStore) ListRoles(ctx context.Context) ([]db.Role, error) {
+	if m.roles != nil {
+		return m.roles, nil
+	}
+	return m.testRoleStore.ListRoles(ctx)
 }
 
 func (m *mockPreallocationStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {
@@ -155,14 +165,14 @@ func oneShiftStore() *mockPreallocationStore {
 func TestAddPreallocation_VolunteerHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, view)
 
 	require.Len(t, store.inserted, 1)
 	got := store.inserted[0]
 	assert.Equal(t, "shift-1", got.ShiftID)
-	assert.Equal(t, "Service volunteer", got.Role)
+	assert.Equal(t, "role-service-volunteer", got.RoleID)
 	assert.Equal(t, "bob", got.VolunteerID)
 	assert.Empty(t, got.CustomValue)
 	assert.Equal(t, "2026-08-02", view.Date)
@@ -172,20 +182,20 @@ func TestAddPreallocation_VolunteerHappyPath(t *testing.T) {
 func TestAddPreallocation_TeamLeadHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", Role: "Team lead"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
-	assert.Equal(t, "Team lead", store.inserted[0].Role)
+	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
 	assert.Equal(t, "alice", view.VolunteerID)
 }
 
 func TestAddPreallocation_CustomHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
-	assert.Equal(t, "Service volunteer", store.inserted[0].Role)
+	assert.Equal(t, "role-service-volunteer", store.inserted[0].RoleID)
 	assert.Equal(t, "External Org", store.inserted[0].CustomValue)
 	assert.Empty(t, store.inserted[0].VolunteerID)
 }
@@ -193,7 +203,7 @@ func TestAddPreallocation_CustomHappyPath(t *testing.T) {
 func TestAddPreallocation_RejectsBothVolunteerAndCustom(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Custom: "X", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Custom: "X", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Empty(t, store.inserted)
 }
@@ -201,7 +211,7 @@ func TestAddPreallocation_RejectsBothVolunteerAndCustom(t *testing.T) {
 func TestAddPreallocation_RejectsNeitherVolunteerNorCustom(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
@@ -216,7 +226,7 @@ func TestAddPreallocation_RejectsMissingRole(t *testing.T) {
 func TestAddPreallocation_RejectsUnknownRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Food collector"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-food-collector"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "not a known role")
 	assert.Empty(t, store.inserted)
@@ -227,23 +237,23 @@ func TestAddPreallocation_RejectsUnknownRole(t *testing.T) {
 func TestAddPreallocation_CustomInACappedRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Custom: "Visiting lead", Role: "Team lead"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", Custom: "Visiting lead", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
-	assert.Equal(t, "Team lead", store.inserted[0].Role)
+	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
 }
 
 func TestAddPreallocation_UnknownVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "nobody", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "nobody", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestAddPreallocation_InactiveVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "carol", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "carol", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "not active")
 }
@@ -251,7 +261,7 @@ func TestAddPreallocation_InactiveVolunteer(t *testing.T) {
 func TestAddPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Team lead"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-team-lead"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "does not hold the role")
 }
@@ -259,7 +269,7 @@ func TestAddPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
 func TestAddPreallocation_UnknownDate(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-09-09", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-09-09", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrNotFound)
 	assert.Contains(t, err.Error(), "not in any rota")
 }
@@ -270,7 +280,7 @@ func TestAddPreallocation_ClosedShift(t *testing.T) {
 	store := oneShiftStore()
 	store.shifts[0].Closed = true
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "closed")
 	assert.Empty(t, store.inserted)
@@ -279,22 +289,45 @@ func TestAddPreallocation_ClosedShift(t *testing.T) {
 func TestAddPreallocation_DuplicateVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "already pinned")
 }
 
-func TestAddPreallocation_DuplicateCustom(t *testing.T) {
+// An organisation sending two people is the ordinary case, and both of them are
+// "St John's team" (issue #195). The second pin is a second promise, not a
+// repeat of the first, and it takes a Seat of its own.
+func TestAddPreallocation_TheSameCustomEntryTwice(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "External Org"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "External Org", store.inserted[0].CustomValue)
+	assert.NotEqual(t, "p1", store.inserted[0].ID, "the second pin is a row of its own")
+}
+
+// The Seats are what bound a repeated custom entry: four of them fit a Shape
+// asking for four, and the fifth is refused as any fifth pin would be.
+func TestAddPreallocation_TheSameCustomEntryPastItsSeats(t *testing.T) {
+	store := oneShiftStore()
+	store.preallocs = []db.Preallocation{
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
+		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
+		{ID: "p3", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
+		{ID: "p4", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
+	}
+	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
+		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "every Service volunteer seat")
+	assert.Empty(t, store.inserted)
 }
 
 // A Role has only the Seats the shift's Shape gives it, and pinning past them
@@ -303,10 +336,10 @@ func TestAddPreallocation_DuplicateCustom(t *testing.T) {
 func TestAddPreallocation_RoleSeatsAlreadyFull(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", Role: "Team lead"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", RoleID: "role-team-lead"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "every Team lead seat for 2026-08-02 is already pinned")
 }
@@ -315,11 +348,11 @@ func TestAddPreallocation_RoleSeatsAlreadyFull(t *testing.T) {
 func TestAddPreallocation_RoleWithSeatsLeftTakesAnother(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "alice"},
-		{ID: "p2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "Scouts"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "alice"},
+		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "Scouts"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 }
@@ -332,10 +365,10 @@ func TestAddPreallocation_FollowsTheShiftsOwnShape(t *testing.T) {
 		{ShiftID: "shift-1", RoleID: "role-team-lead", Seats: 2},
 	}
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", Role: "Team lead"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 }
@@ -348,7 +381,7 @@ func TestAddPreallocation_RefusesARoleTheShapeDoesNotAskFor(t *testing.T) {
 		{ShiftID: "shift-1", RoleID: "role-service-volunteer", Seats: 4},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", Role: "Team lead"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Empty(t, store.inserted)
 }
@@ -357,7 +390,7 @@ func TestAddPreallocation_AlreadyAllocated(t *testing.T) {
 	store := oneShiftStore()
 	store.allocated["rota-1"] = true
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", Role: "Service volunteer"}, zap.NewNop())
+		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "already allocated")
 	assert.Empty(t, store.inserted)
@@ -366,7 +399,7 @@ func TestAddPreallocation_AlreadyAllocated(t *testing.T) {
 func TestDeletePreallocation_HappyPath(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	err := DeletePreallocation(context.Background(), store, "p1", zap.NewNop())
 	require.NoError(t, err)
@@ -385,7 +418,7 @@ func TestDeletePreallocation_AlreadyAllocated(t *testing.T) {
 	store := oneShiftStore()
 	store.allocated["rota-1"] = true
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	err := DeletePreallocation(context.Background(), store, "p1", zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
@@ -399,8 +432,8 @@ func TestListPreallocations(t *testing.T) {
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
 		},
 		preallocs: []db.Preallocation{
-			{ID: "p1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "p2", ShiftID: "shift-2", Role: "Service volunteer", CustomValue: "External"},
+			{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
+			{ID: "p2", ShiftID: "shift-2", RoleID: "role-service-volunteer", CustomValue: "External"},
 		},
 	}
 	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), testCfg, ListPreallocationsParams{}, zap.NewNop())
@@ -417,6 +450,31 @@ func TestListPreallocations(t *testing.T) {
 	assert.Equal(t, "2026-08-09", byID["p2"].Date)
 	assert.Equal(t, "External", byID["p2"].Custom)
 	assert.Equal(t, "External", byID["p2"].Name, "a custom pin is its own name")
+	assert.Equal(t, "role-team-lead", byID["p1"].RoleID)
+	assert.Equal(t, "Team lead", byID["p1"].Role)
+}
+
+// A pin references its Role, so renaming the Role renames what the pin reads as
+// (issue #195). Nothing about the row moves: it is the same promise, and the
+// listing says it in today's words.
+func TestListPreallocations_ReadsARenamedRoleUnderItsNewName(t *testing.T) {
+	store := &mockPreallocationStore{
+		roles: []db.Role{
+			{ID: "role-team-lead", Name: "Shift lead", Priority: 1, Colour: "violet"},
+			{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+		},
+		shiftRanges: []db.ShiftInRange{
+			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
+		},
+		preallocs: []db.Preallocation{
+			{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
+		},
+	}
+	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), testCfg, ListPreallocationsParams{}, zap.NewNop())
+	require.NoError(t, err)
+	require.Len(t, views, 1)
+	assert.Equal(t, "role-team-lead", views[0].RoleID, "the reference is untouched")
+	assert.Equal(t, "Shift lead", views[0].Role)
 }
 
 func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
@@ -426,8 +484,8 @@ func TestListPreallocations_BoundsFilterShifts(t *testing.T) {
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
 		},
 		preallocs: []db.Preallocation{
-			{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "alice"},
-			{ID: "p2", ShiftID: "shift-2", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "alice"},
+			{ID: "p2", ShiftID: "shift-2", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 	views, err := ListPreallocations(context.Background(), store, preallocVolunteers(), testCfg,
@@ -461,7 +519,7 @@ func TestListPreallocations_SkipsClosedShifts(t *testing.T) {
 	store := twoSundayStore()
 	store.shiftRanges[0].Closed = true
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "dan"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "dan"},
 	}
 
 	assert.Empty(t, listPreallocs(t, store))
@@ -474,7 +532,7 @@ func TestListPreallocations_SkipsClosedShifts(t *testing.T) {
 func TestListPreallocations_UnknownVolunteerShowsID(t *testing.T) {
 	store := twoSundayStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "ghost"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "ghost"},
 	}
 
 	views := listPreallocs(t, store)
@@ -488,10 +546,10 @@ func TestListPreallocations_UnknownVolunteerShowsID(t *testing.T) {
 func TestListPreallocations_OrderedByDateThenRole(t *testing.T) {
 	store := twoSundayStore()
 	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-2", Role: "Service volunteer", VolunteerID: "bob"},
-		{ID: "p2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "Aardvark Group"},
-		{ID: "p3", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "dan"},
-		{ID: "p4", ShiftID: "shift-2", Role: "Team lead", VolunteerID: "alice"},
+		{ID: "p1", ShiftID: "shift-2", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "Aardvark Group"},
+		{ID: "p3", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "dan"},
+		{ID: "p4", ShiftID: "shift-2", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}
 
 	views := listPreallocs(t, store)
