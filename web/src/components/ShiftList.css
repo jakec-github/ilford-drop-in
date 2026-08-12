@@ -1,12 +1,21 @@
 /* Shift list: one flush, connected list at every width. Rows touch and share
    hairline dividers; only the outer container is rounded.
 
-   Its own column width, rather than whatever the page around it is. The rota
-   page is already this narrow; the Allocation tab is a wide shell holding a
-   grid as wide as the rota is long, and a list of shifts stretched to match
-   would read worse for it. */
+   Its own column width, rather than whatever the page around it is: the rota
+   page is already this narrow, and the Allocation tab is a wide shell holding a
+   grid as wide as the rota is long, which a list of shifts stretched to match
+   would read worse for.
+
+   Wide enough for its rows, though, rather than a fixed measure they wrap
+   inside (issue #193). A shift asking for eight people has eight chips, and
+   folding them into a tall stack while there is empty page beside them makes a
+   full shift look like a problem. So the list takes the width its widest row
+   wants, floored at the 40rem column and capped by the shell around it — on the
+   rota page, which is narrower than the floor, that is no change at all. */
 .shift-list {
-  max-width: 40rem;
+  width: fit-content;
+  min-width: min(100%, 40rem);
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
@@ -122,11 +131,27 @@
   min-width: 0;
 }
 
-/* What the shift is waiting to be filled with. Quieter than the note above it:
-   the state of the shift is the headline, and this is a detail of it. */
-.shift-shape {
+/* Which of the shift's Seats the draft could not fill. The one thing on an
+   unallocated row that is not going to resolve itself, so it is the loudest
+   thing on it rather than a detail underneath the names. */
+.shift-unfilled {
   font-size: 13px;
-  color: var(--text);
+  font-weight: 600;
+  color: var(--warning);
+}
+
+/* And the row carries it too, so a rota's gaps can be found by running an eye
+   down the left edge rather than reading every line. A left border rather than
+   a fill: the unallocated rows already wear a hatch, and a second background on
+   top of it would leave the two states arguing about the same pixels.
+
+   The border is the second signal, never the only one — the line above says in
+   words which Roles are short, and says it in the same colour. */
+.shift-row.unfilled {
+  border-left: 3px solid var(--warning);
+  /* The border is drawn inside the row's own padding, so the text does not step
+     sideways relative to the rows above and below it. */
+  padding-left: 11px;
 }
 
 .prealloc {
@@ -134,16 +159,6 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 8px;
-}
-
-/* A draft the inputs have moved under: what the solver last said, still the
-   best guess on screen, waiting on the solve that answers for the edit. Faded
-   rather than blanked — an admin adding five pins would otherwise watch the
-   rota disappear five times. The transition is on the way in only, so the fresh
-   draft arrives at full strength rather than fading up into place. */
-.prealloc-stale {
-  opacity: 0.4;
-  transition: opacity 0.15s;
 }
 
 .prealloc-label {
@@ -311,6 +326,21 @@
   background: transparent;
 }
 
+/* A draft the inputs have moved under: what the solver last said, still the
+   best guess on screen, waiting on the solve that answers for the edit. Faded
+   rather than blanked — an admin adding five pins would otherwise watch the
+   rota disappear five times. The transition is on the way in only, so the fresh
+   draft arrives at full strength rather than fading up into place.
+
+   On the drafted chips rather than the row that holds them, now that the pins
+   share it: a pin is a decision, and it is as true after the edit as it was
+   before. Fading it — and the button that takes it off — would say the opposite
+   of what just happened. */
+.chip.draft.draft-stale {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
 /* A shift that the person being carried can be dropped on. An outline rather
    than a border so nothing reflows mid-drag. */
 .shift-row.drop-target {
@@ -400,6 +430,11 @@
 @media (min-width: 700px) {
   .shift-row {
     padding: 14px 18px;
+  }
+
+  /* Still inside the row's padding, which is roomier here. */
+  .shift-row.unfilled {
+    padding-left: 15px;
   }
 
   .shift-when {

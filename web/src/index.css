@@ -30,6 +30,12 @@
      name: a Role recoloured must not repaint every success message. */
   --positive: #0a8168;
 
+  /* Amber for "this needs somebody's attention" — a shift the draft could not
+     fill. Its own name for the same reason --positive has one, and deliberately
+     not a red: an unfilled shift is work still to do, not something that went
+     wrong. Verified at 4.5:1 against --bg in both themes. */
+  --warning: #a04b00;
+
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
 
   font: 16px/1.5 var(--sans);
@@ -62,6 +68,7 @@
     --role-slate: #b6bec9;
 
     --positive: #2dd4a7;
+    --warning: #f0b445;
   }
 }
 
