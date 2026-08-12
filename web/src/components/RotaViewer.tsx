@@ -215,7 +215,7 @@ export default function RotaViewer({
   // which is a rota that reads fine, so it is not reported here.
   // The Roles themselves, not only their colours: editing a Shape asks how many
   // of each Role a shift wants, so it needs the list and each Role's ceiling.
-  const { roles, colourOf } = useRoles();
+  const { roles, colourOf, idOf } = useRoles();
 
   // The roster is only needed to add someone, and it is admin-only, so it is
   // not fetched until an admin turns editing on.
@@ -427,9 +427,16 @@ export default function RotaViewer({
   // changes what allocation will do rather than what a published rota says, so
   // it is its own request and its own reload.
   function submitPin(date: string, person: PersonRef, role: Role) {
+    // The picker names a Role the way the roster spells it; a pin references
+    // one by id. A name nothing answers to is a pin that cannot be made, and
+    // saying so beats sending a reference the server would refuse.
+    const roleId = idOf(role);
     return run(
       date,
-      () => addPin({ date, person, role }),
+      () =>
+        roleId === null
+          ? Promise.reject(new Error(`There is no role called ${role}`))
+          : addPin({ date, person, roleId }),
       "The pin was not saved",
     );
   }

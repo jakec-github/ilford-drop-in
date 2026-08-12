@@ -116,7 +116,7 @@ func TestDiscardRota(t *testing.T) {
 	// rather than emptying the tables.
 	keeper := &db.Rotation{ID: uuid.New().String()}
 	keeperShift := dbtest.Shift(keeper.ID, "2026-07-05")
-	keeperPin := db.Preallocation{ID: uuid.New().String(), ShiftID: keeperShift.ID, Role: roles[0].Name, VolunteerID: "alice"}
+	keeperPin := db.Preallocation{ID: uuid.New().String(), ShiftID: keeperShift.ID, RoleID: roles[0].ID, VolunteerID: "alice"}
 	keeperSeats := []db.ShiftRequirement{{ShiftID: keeperShift.ID, RoleID: roles[0].ID, Seats: 2}}
 	require.NoError(t, database.InsertDefinedRota(ctx, keeper, []db.Shift{keeperShift}, []db.Preallocation{keeperPin}, keeperSeats))
 	keeperRequests := []db.AvailabilityRequest{{ID: uuid.New().String(), RotaID: keeper.ID, VolunteerID: "alice", Token: "keeper-token"}}
@@ -131,8 +131,8 @@ func TestDiscardRota(t *testing.T) {
 		dbtest.Shift(doomed.ID, "2026-08-09"),
 	}
 	doomedPins := []db.Preallocation{
-		{ID: uuid.New().String(), ShiftID: doomedShifts[0].ID, Role: roles[0].Name, VolunteerID: "bob"},
-		{ID: uuid.New().String(), ShiftID: doomedShifts[1].ID, Role: roles[0].Name, CustomValue: "St John's team"},
+		{ID: uuid.New().String(), ShiftID: doomedShifts[0].ID, RoleID: roles[0].ID, VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: doomedShifts[1].ID, RoleID: roles[0].ID, CustomValue: "St John's team"},
 	}
 	var doomedSeats []db.ShiftRequirement
 	for _, s := range doomedShifts {

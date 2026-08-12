@@ -101,7 +101,7 @@ func TestSaveShiftShapeTakesAnyCountOfAnyRole(t *testing.T) {
 func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
 	store := shiftEditTestStore()
 	store.manualPreallocations = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "s1", Role: "Team lead", VolunteerID: "vol-alice"},
+		{ID: "pin-1", ShiftID: "s1", RoleID: "role-team-lead", VolunteerID: "vol-alice"},
 	}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,

@@ -232,7 +232,7 @@ func TestSaveShiftShapeRefusedOnAnAllocatedRota(t *testing.T) {
 func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
 	store := shapeEditStore()
 	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
 	}
 
 	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
@@ -249,8 +249,8 @@ func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
 func TestSaveShiftShapeRefusedWhenSeatsFallBelowThePins(t *testing.T) {
 	store := shapeEditStore()
 	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-1"},
-		{ID: "pin-2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "Redbridge youth group"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: ordinaryRole, VolunteerID: "vol-1"},
+		{ID: "pin-2", ShiftID: "shift-1", RoleID: ordinaryRole, CustomValue: "Redbridge youth group"},
 	}
 
 	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
@@ -265,7 +265,7 @@ func TestSaveShiftShapeRefusedWhenSeatsFallBelowThePins(t *testing.T) {
 func TestSaveShiftShapeAllowsSeatsForEveryPin(t *testing.T) {
 	store := shapeEditStore()
 	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-1"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: ordinaryRole, VolunteerID: "vol-1"},
 	}
 
 	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
@@ -282,7 +282,7 @@ func TestSaveShiftShapeIgnoresThePinsOfAClosedShift(t *testing.T) {
 	store := shapeEditStore()
 	store.shift.Closed = true
 	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
 	}
 
 	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
@@ -292,20 +292,24 @@ func TestSaveShiftShapeIgnoresThePinsOfAClosedShift(t *testing.T) {
 	require.Len(t, store.saved, 1)
 }
 
-// A pin naming a Role nobody offers any more still has to be honoured: it is
-// the pin that will fail the solve, and quietly letting its Seat go would hide
-// the one thing that explains why.
-func TestSaveShiftShapeRefusesOverAPinNamingARetiredRole(t *testing.T) {
+// A pin holds its Seat under a rename, because both sides name the Role by id
+// (issue #195). The Role reads differently and the promise is the same one.
+func TestSaveShiftShapeHoldsAPinThroughARename(t *testing.T) {
 	store := shapeEditStore()
+	store.roles = []db.Role{
+		{ID: leadRoleID, Name: "Shift lead", Priority: 1, Colour: "violet"},
+		{ID: ordinaryRole, Name: "Service volunteer", Priority: 2, Colour: "teal"},
+	}
 	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Kitchen", VolunteerID: "vol-1"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
 	}
 
 	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
 		{RoleID: ordinaryRole, Count: 4},
 	}, zap.NewNop())
 	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "Kitchen")
+	assert.Contains(t, err.Error(), "Shift lead", "the refusal names the Role as it reads today")
+	assert.Empty(t, store.saved)
 }
 
 // Losing the race with something that removed the Shift under the lock reads as

@@ -250,8 +250,8 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 
 	// A custom entry and Michael are both pinned to the first date.
 	store.pins = []db.Preallocation{
-		{ID: "pin-0", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "St John's team"},
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "michael"},
+		{ID: "pin-0", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "michael"},
 	}
 
 	answer(t, store, volunteers, cfg, round, "michael", "shift-1", "shift-2")
@@ -282,7 +282,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	mintRound(t, store, volunteers, cfg)
 
 	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "aaliyah"},
+		{ID: "pin-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "aaliyah"},
 	}
 
 	round := readRound(t, store, volunteers, cfg)

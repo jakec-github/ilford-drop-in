@@ -316,6 +316,7 @@ export async function saveAllocationSettings(
 interface ApiPreallocation {
   id: string;
   date: string;
+  roleId: string;
   role: string;
   volunteerId?: string;
   custom?: string;
@@ -330,6 +331,7 @@ function toPreallocation(p: ApiPreallocation): Preallocation {
   return {
     id: p.id,
     date: p.date,
+    roleId: p.roleId,
     role: p.role,
     name: p.name,
     custom: !p.volunteerId,
@@ -362,11 +364,11 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
 export async function createPreallocation(
   pin: NewPreallocation,
 ): Promise<void> {
-  // Every pin names the role it fills — a pin is a promise about a job, and
-  // the API refuses one the pinned volunteer does not hold.
+  // Every pin names the Role it fills, by id — a pin is a promise about a job,
+  // and the API refuses one the pinned volunteer does not hold.
   const body: Record<string, string> = {
     date: pin.date,
-    role: pin.role,
+    roleId: pin.roleId,
   };
   if ("volunteerId" in pin.person) {
     body.volunteerId = pin.person.volunteerId;

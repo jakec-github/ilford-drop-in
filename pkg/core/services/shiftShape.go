@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"go.uber.org/zap"
 
@@ -182,48 +181,30 @@ func SaveShiftShape(
 // seatsHoldThePins refuses a Shape offering a Role fewer Seats than the people
 // already promised it, saying how many are promised.
 //
-// Pins carry a Role by name, because a pin records what somebody was asked to
-// do (issue #109); the stated Seats carry a Role by id, because a live question
-// has to survive a rename. They meet through the Roles table — and a pin naming
-// a Role that no longer exists is counted under its own name rather than
-// dropped, since that pin is exactly the one the solve will fail on and letting
-// its Seat go would hide the reason.
+// Both sides name a Role by id — the stated Seats because a live question has
+// to survive a rename, the pins because a promise does too (issue #195) — so
+// they meet on the id and the Roles table is only consulted to word the
+// message.
 func seatsHoldThePins(stated []storedSeat, pins []db.Preallocation, roles model.Roles, date string) error {
 	seatsByRole := make(map[string]int, len(stated))
 	for _, seat := range stated {
-		role, ok := roles.ByID(seat.RoleID)
-		if !ok {
-			// statedSeats resolved every one of these already.
-			continue
-		}
-		seatsByRole[role.Name] = seat.Seats
+		seatsByRole[seat.RoleID] = seat.Seats
 	}
 
 	pinnedByRole := make(map[string]int)
 	for _, pin := range pins {
-		pinnedByRole[pin.Role]++
+		pinnedByRole[pin.RoleID]++
 	}
 
 	// In the order the Seats are filled, so a Shift short of two Roles names the
-	// more senior first and the message does not shuffle between reads. A Role
-	// nobody offers any more has no place in that order and is answered for
-	// after it, sorted so the message is the same every time.
-	named := make([]string, 0, len(pinnedByRole))
+	// more senior first and the message does not shuffle between reads.
 	for _, role := range roles.ByPriority() {
-		if _, pinned := pinnedByRole[role.Name]; pinned {
-			named = append(named, role.Name)
-			delete(pinnedByRole, role.Name)
+		pinned, ok := pinnedByRole[role.ID]
+		if !ok {
+			continue
 		}
-	}
-	retired := make([]string, 0, len(pinnedByRole))
-	for role := range pinnedByRole {
-		retired = append(retired, role)
-	}
-	sort.Strings(retired)
-
-	for _, role := range append(named, retired...) {
-		if pinned := pinsForRole(pins, role); pinned > seatsByRole[role] {
-			return pinsWithoutSeats(role, pinned, seatsByRole[role], date)
+		if pinned > seatsByRole[role.ID] {
+			return pinsWithoutSeats(role.Name, pinned, seatsByRole[role.ID], date)
 		}
 	}
 	return nil
@@ -239,16 +220,6 @@ func seatsForRole(shape []db.ShiftRequirement, role model.Role) int {
 		}
 	}
 	return 0
-}
-
-func pinsForRole(pins []db.Preallocation, role string) int {
-	count := 0
-	for _, pin := range pins {
-		if pin.Role == role {
-			count++
-		}
-	}
-	return count
 }
 
 // pinsWithoutSeats says which promises the new Shape would break, and what to

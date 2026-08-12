@@ -150,7 +150,13 @@ type DraftAllocation struct {
 // a shift before allocation runs. Like Allocation it is keyed solely by ShiftID;
 // rota and date live on the referenced shift (ADR 0001). It mirrors the
 // allocation row shape — a volunteer pin sets VolunteerID, a custom entry sets
-// CustomValue, and Role names the Seat it fills.
+// CustomValue, and RoleID names the Seat it fills.
+//
+// RoleID rather than a Role name, unlike Allocation and Alteration beside it
+// (issue #195). Those two record what happened and keep the name they happened
+// under; a pin is a promise about what the solver must still do, so it is a
+// live question like a Shift's Shape and has to survive a rename the way one
+// does.
 //
 // There is one kind of these however it came to exist (issue #131): a row an
 // admin added by hand and a row a Standing Preallocation seeded at definition
@@ -158,7 +164,7 @@ type DraftAllocation struct {
 type Preallocation struct {
 	ID          string // UUID
 	ShiftID     string // UUID
-	Role        string
+	RoleID      string // UUID, references role(id)
 	VolunteerID string // nullable
 	CustomValue string // nullable
 }
@@ -170,7 +176,7 @@ type Preallocation struct {
 //
 // RoleID rather than a Role name: these outlive any number of rotas and a Role
 // may be renamed at any time, so the id is the only reference that survives it.
-// The Preallocations it seeds record the name, as every per-rota row does.
+// The Preallocations it seeds hold the id too, for the same reason (issue #195).
 type StandingPreallocation struct {
 	ID          string // UUID
 	RRule       string

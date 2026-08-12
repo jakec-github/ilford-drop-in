@@ -302,7 +302,7 @@ func seedPreallocations(
 			byShift[shift.ID] = append(byShift[shift.ID], db.Preallocation{
 				ID:          uuid.New().String(),
 				ShiftID:     shift.ID,
-				Role:        role.Name,
+				RoleID:      role.ID,
 				VolunteerID: s.VolunteerID,
 				CustomValue: s.CustomValue,
 			})

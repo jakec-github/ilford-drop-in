@@ -35,7 +35,7 @@ func TestSeedPreallocations_MatchingShiftsOnly(t *testing.T) {
 	require.Len(t, seeded, 1, "the rule matches only the first Sunday")
 	assert.Equal(t, "shift-1", seeded[0].ShiftID)
 	assert.Equal(t, "St John's team", seeded[0].CustomValue)
-	assert.Equal(t, "Service volunteer", seeded[0].Role, "the Role is recorded by the name it had at definition")
+	assert.Equal(t, "role-service-volunteer", seeded[0].RoleID, "the seeded pin references the Role the promise named")
 	assert.NotEmpty(t, seeded[0].ID, "a seeded Preallocation is an ordinary row with its own identity")
 }
 
@@ -54,7 +54,7 @@ func TestSeedPreallocations_EveryMatchingShift(t *testing.T) {
 	for i, p := range seeded {
 		assert.Equal(t, seedShifts[i].ID, p.ShiftID)
 		assert.Equal(t, "vol-1", p.VolunteerID)
-		assert.Equal(t, "Team lead", p.Role)
+		assert.Equal(t, "role-team-lead", p.RoleID)
 	}
 }
 
@@ -75,8 +75,8 @@ func TestSeedPreallocations_CollapsesOverlappingRules(t *testing.T) {
 	for _, p := range seeded {
 		byShift[p.ShiftID] = p
 	}
-	assert.Equal(t, "Team lead", byShift["shift-1"].Role, "the higher-priority Role wins where both apply")
-	assert.Equal(t, "Service volunteer", byShift["shift-2"].Role)
+	assert.Equal(t, "role-team-lead", byShift["shift-1"].RoleID, "the higher-priority Role wins where both apply")
+	assert.Equal(t, "role-service-volunteer", byShift["shift-2"].RoleID)
 }
 
 // A rule nobody can parse would silently drop a promise an admin has made, so

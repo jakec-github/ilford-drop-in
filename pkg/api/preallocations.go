@@ -7,23 +7,28 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
-// createPreallocationRequest names the Seat a pin fills by its Role name — the
-// same string the listing returns, so the wire reads the same in both
-// directions.
+// createPreallocationRequest names the Seat a pin fills by its Role id, as the
+// standing-preallocation request does. A pin outlives any number of renames, so
+// the id is the only reference to a Role that survives one (issue #195).
 type createPreallocationRequest struct {
 	Date        string `json:"date"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
-	Role        string `json:"role"`
+	RoleID      string `json:"roleId"`
 }
 
-// preallocationResponse is one pin. There is one kind of them (issue #131) —
-// a pin an admin made by hand and a pin a Standing Preallocation seeded at
-// definition are the same row — so it says nothing about where it came from and
-// every one of them carries an id a DELETE can be addressed at.
+// preallocationResponse is one pin. Role comes back twice for the reason a
+// standing one does: roleId is what the row references, role is what an admin
+// recognises.
+//
+// There is one kind of them (issue #131) — a pin an admin made by hand and a
+// pin a Standing Preallocation seeded at definition are the same row — so it
+// says nothing about where it came from and every one of them carries an id a
+// DELETE can be addressed at.
 type preallocationResponse struct {
 	ID          string `json:"id"`
 	Date        string `json:"date"`
+	RoleID      string `json:"roleId"`
 	Role        string `json:"role"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
@@ -49,7 +54,7 @@ func (h *Handler) handleCreatePreallocation(w http.ResponseWriter, r *http.Reque
 		Date:        req.Date,
 		VolunteerID: req.VolunteerID,
 		Custom:      req.Custom,
-		Role:        req.Role,
+		RoleID:      req.RoleID,
 	}, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
@@ -94,6 +99,7 @@ func toPreallocationResponse(v services.PreallocationView) preallocationResponse
 	return preallocationResponse{
 		ID:          v.ID,
 		Date:        v.Date,
+		RoleID:      v.RoleID,
 		Role:        v.Role,
 		VolunteerID: v.VolunteerID,
 		Custom:      v.Custom,

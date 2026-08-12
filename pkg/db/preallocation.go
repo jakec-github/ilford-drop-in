@@ -23,7 +23,7 @@ func getPreallocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []stri
 		return nil, nil
 	}
 	rows, err := q.Query(ctx, `
-		SELECT id, shift_id, role, volunteer_id, custom_value
+		SELECT id, shift_id, role_id, volunteer_id, custom_value
 		FROM preallocation
 		WHERE shift_id = ANY($1)
 	`, shiftIDs)
@@ -40,7 +40,7 @@ func scanPreallocations(rows pgx.Rows) ([]Preallocation, error) {
 	for rows.Next() {
 		var mp Preallocation
 		var volunteerID, customValue *string
-		if err := rows.Scan(&mp.ID, &mp.ShiftID, &mp.Role, &volunteerID, &customValue); err != nil {
+		if err := rows.Scan(&mp.ID, &mp.ShiftID, &mp.RoleID, &volunteerID, &customValue); err != nil {
 			return nil, fmt.Errorf("failed to scan preallocation: %w", err)
 		}
 		if volunteerID != nil {
@@ -69,12 +69,12 @@ func (d *DB) GetPreallocationByID(ctx context.Context, id string) (*Preallocatio
 	var volunteerID, customValue *string
 	var date time.Time
 	err := d.pool.QueryRow(ctx, `
-		SELECT mp.id, mp.shift_id, mp.role, mp.volunteer_id, mp.custom_value,
+		SELECT mp.id, mp.shift_id, mp.role_id, mp.volunteer_id, mp.custom_value,
 		       `+shiftDateExpr+`, s.rota_id
 		FROM preallocation mp
 		JOIN shift s ON s.id = mp.shift_id
 		WHERE mp.id = $1
-	`, id).Scan(&mp.ID, &mp.ShiftID, &mp.Role, &volunteerID, &customValue, &date, &s.RotaID)
+	`, id).Scan(&mp.ID, &mp.ShiftID, &mp.RoleID, &volunteerID, &customValue, &date, &s.RotaID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, nil
 	}
@@ -104,9 +104,9 @@ func insertPreallocation(ctx context.Context, q querier, mp Preallocation) error
 		customValue = &mp.CustomValue
 	}
 	_, err := q.Exec(ctx, `
-		INSERT INTO preallocation (id, shift_id, role, volunteer_id, custom_value)
+		INSERT INTO preallocation (id, shift_id, role_id, volunteer_id, custom_value)
 		VALUES ($1, $2, $3, $4, $5)
-	`, mp.ID, mp.ShiftID, mp.Role, volunteerID, customValue)
+	`, mp.ID, mp.ShiftID, mp.RoleID, volunteerID, customValue)
 	if err != nil {
 		return fmt.Errorf("failed to insert preallocation: %w", err)
 	}

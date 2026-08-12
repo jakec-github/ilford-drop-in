@@ -551,7 +551,7 @@ func buildRound(
 	if err != nil {
 		return nil, err
 	}
-	seats, err := buildShiftSeats(shapes, shifts, pins)
+	seats, err := buildShiftSeats(shapes, shifts, pins, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve shift seats: %w", err)
 	}

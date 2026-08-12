@@ -38,9 +38,11 @@ part of the system most expected to change.
   still offered?" question at any of the dozen places a Role is read, and no
   reference that can dangle. The cost is a picker that accumulates Roles the
   drop-in has stopped using, which is a cosmetic problem and a cheap one to
-  solve later if it ever bites. `allocation.role`, `alteration.role` and
-  `preallocation.role` still keep the name as `TEXT`, so a past rota reads as it
-  was made even after a rename.
+  solve later if it ever bites. `allocation.role` and `alteration.role` still
+  keep the name as `TEXT`, so a past rota reads as it was made even after a
+  rename. `preallocation` does not: it was amended to `role_id` in issue #195,
+  because a pin is a promise the solver has still to keep rather than a record
+  of what happened, and a rename left it naming a Seat no Shape had.
 
 - **Renaming a Role is allowed but flagged.** The roster is a Google Sheet and
   a volunteer's held Roles are names in a cell, so the app owns only half of

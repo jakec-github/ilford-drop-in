@@ -377,9 +377,16 @@ func exactDateMatcher(date string) func(string) bool {
 // in issue #131, so the `preallocation` table is the whole set of pins a rota
 // has and the rules that kept the two sources apart went with the second source.
 // A pin on a closed Shift is left alone here and stripped by InitShifts.
+//
+// This is where a pin's Role id becomes the name the solver speaks in (issue
+// #195). The pyallocator contract names Roles, a pin references one, and every
+// solve resolves the reference here — so a Role renamed after a pin was made
+// reaches the solver under the name its Shape uses, which is what makes the pin
+// keepable at all.
 func buildPreallocationOverrides(
 	pins []db.Preallocation,
 	dateByShiftID map[string]string,
+	roles model.Roles,
 ) ([]allocator.ShiftOverride, error) {
 	overrides := make([]allocator.ShiftOverride, 0, len(pins))
 
@@ -391,13 +398,20 @@ func buildPreallocationOverrides(
 		if pin.VolunteerID == "" && pin.CustomValue == "" {
 			return nil, fmt.Errorf("preallocation %s has neither a volunteer nor a custom value", pin.ID)
 		}
+		// The foreign key makes this unreachable short of the Roles moving
+		// mid-solve; a pin whose Role could not be named would reach the solver
+		// as a Seat no Shape has, so it stops here instead.
+		role, ok := roles.ByID(pin.RoleID)
+		if !ok {
+			return nil, fmt.Errorf("preallocation %s names role %s, which does not exist", pin.ID, pin.RoleID)
+		}
 
 		overrides = append(overrides, allocator.ShiftOverride{
 			AppliesTo: exactDateMatcher(date),
 			Preallocations: []allocator.Preallocation{{
 				VolunteerID: pin.VolunteerID,
 				Custom:      pin.CustomValue,
-				Role:        pin.Role,
+				Role:        role.Name,
 			}},
 		})
 	}

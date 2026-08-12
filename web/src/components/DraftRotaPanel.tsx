@@ -279,7 +279,7 @@ export default function DraftRotaPanel({
     message: string;
   } | null>(null);
 
-  const { roles, colourOf } = useRoles();
+  const { roles, colourOf, idOf } = useRoles();
   const { volunteers, error: volunteersError } = useVolunteers();
   const {
     preallocations,
@@ -368,9 +368,16 @@ export default function DraftRotaPanel({
   }
 
   function submitPin(shift: RotaShift, person: PersonRef, role: Role) {
+    // The picker names a Role the way the roster spells it; a pin references
+    // one by id. A name nothing answers to is a pin that cannot be made, and
+    // saying so beats sending a reference the server would refuse.
+    const roleId = idOf(role);
     return run(
       shift.id,
-      () => addPin({ date: shift.date, person, role }),
+      () =>
+        roleId === null
+          ? Promise.reject(new Error(`There is no role called ${role}`))
+          : addPin({ date: shift.date, person, roleId }),
       "The pin was not saved",
     );
   }

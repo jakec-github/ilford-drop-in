@@ -16,10 +16,10 @@ import (
 func TestBuildPreallocationOverrides_VolunteerUnion(t *testing.T) {
 	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
 	pins := []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-1"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
 	}
 
-	overrides, err := buildPreallocationOverrides(pins, dateByShiftID)
+	overrides, err := buildPreallocationOverrides(pins, dateByShiftID, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 1)
 
@@ -35,11 +35,11 @@ func TestBuildPreallocationOverrides_VolunteerUnion(t *testing.T) {
 func TestBuildPreallocationOverrides_TeamLeadAndCustom(t *testing.T) {
 	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
 	pins := []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "tl-1"},
-		{ID: "p2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "External Helper"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "tl-1"},
+		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Helper"},
 	}
 
-	overrides, err := buildPreallocationOverrides(pins, dateByShiftID)
+	overrides, err := buildPreallocationOverrides(pins, dateByShiftID, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 2)
 	assert.Equal(t, []allocator.Preallocation{
@@ -50,11 +50,44 @@ func TestBuildPreallocationOverrides_TeamLeadAndCustom(t *testing.T) {
 	}, overrides[1].Preallocations)
 }
 
+// The pyallocator contract names Roles and a pin references one, so the name
+// the solver is given is resolved at solve time. A Role renamed after the pin
+// was made reaches it under the name the Shape uses — which is the whole reason
+// a pin holds a Role id (issue #195).
+func TestBuildPreallocationOverrides_NamesARenamedRoleAsItReadsNow(t *testing.T) {
+	renamed := model.NewRoles([]model.Role{
+		{ID: "role-team-lead", Name: "Shift lead", Priority: 1, Colour: "violet"},
+		{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+	})
+	pins := []db.Preallocation{
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "tl-1"},
+	}
+
+	overrides, err := buildPreallocationOverrides(pins, map[string]string{"shift-1": "2026-08-02"}, renamed)
+	require.NoError(t, err)
+	require.Len(t, overrides, 1)
+	assert.Equal(t, []allocator.Preallocation{
+		{VolunteerID: "tl-1", Role: "Shift lead"},
+	}, overrides[0].Preallocations)
+}
+
+// A pin whose Role cannot be named would reach the solver as a Seat no Shape
+// has. The foreign key makes it unreachable; it fails loudly rather than
+// silently if it ever happens.
+func TestBuildPreallocationOverrides_UnknownRoleFails(t *testing.T) {
+	pins := []db.Preallocation{
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-ghost", VolunteerID: "vol-1"},
+	}
+	_, err := buildPreallocationOverrides(pins, map[string]string{"shift-1": "2026-08-02"}, testRoles)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "role-ghost")
+}
+
 func TestBuildPreallocationOverrides_UnknownShiftFails(t *testing.T) {
 	pins := []db.Preallocation{
-		{ID: "p1", ShiftID: "ghost", Role: "Service volunteer", VolunteerID: "vol-1"},
+		{ID: "p1", ShiftID: "ghost", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
 	}
-	_, err := buildPreallocationOverrides(pins, map[string]string{})
+	_, err := buildPreallocationOverrides(pins, map[string]string{}, testRoles)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ghost")
 }
@@ -62,8 +95,8 @@ func TestBuildPreallocationOverrides_UnknownShiftFails(t *testing.T) {
 func TestCheckPreallocationsResolve_AllActive(t *testing.T) {
 	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
 	pins := []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-1"},
-		{ID: "p2", ShiftID: "shift-1", Role: "Service volunteer", CustomValue: "External"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
+		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External"},
 	}
 	activeIDs := map[string]bool{"vol-1": true}
 
@@ -74,7 +107,7 @@ func TestCheckPreallocationsResolve_AllActive(t *testing.T) {
 func TestCheckPreallocationsResolve_InactivePin(t *testing.T) {
 	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
 	pins := []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "gone"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "gone"},
 	}
 	activeIDs := map[string]bool{"vol-1": true}
 
@@ -91,7 +124,7 @@ func TestCheckPreallocationsResolve_InactivePin(t *testing.T) {
 func TestCheckPreallocationsResolve_SkipsClosedShifts(t *testing.T) {
 	shifts := []db.Shift{{ID: "shift-1", Date: "2026-08-02", Closed: true}}
 	pins := []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "gone"},
+		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "gone"},
 	}
 
 	err := checkPreallocationsResolve(pins, shifts, map[string]bool{"vol-1": true})
@@ -129,7 +162,7 @@ func TestAllocateRotaFailsOnStalePin(t *testing.T) {
 			}},
 		},
 		manualPreallocations: []db.Preallocation{
-			{ID: "pin-1", ShiftID: "2026-08-02", Role: "Service volunteer", VolunteerID: "gone"},
+			{ID: "pin-1", ShiftID: "2026-08-02", RoleID: "role-service-volunteer", VolunteerID: "gone"},
 		},
 	}
 
