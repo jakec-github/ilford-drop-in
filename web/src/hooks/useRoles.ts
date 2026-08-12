@@ -8,10 +8,19 @@ import type { ConfiguredRole, Role, RoleColour, RoleEdit } from "../types";
 // the two the same way, by falling back to their neutral colour.
 export type RoleColourOf = (role: Role) => RoleColour | null;
 
+// RoleIdOf answers which Role a name refers to. null while the roles are still
+// loading, or for a name no configured Role goes by — a caller that has to
+// reference a Role says so rather than sending a reference it made up.
+export type RoleIdOf = (role: Role) => string | null;
+
 interface UseRoles {
   // null while the first load is still in flight.
   roles: ConfiguredRole[] | null;
   colourOf: RoleColourOf;
+  // The roster spells a Role out in a cell and every picker here follows it, so
+  // a screen holds a name where the API wants the id a pin references
+  // (issue #195). This is the one place that maps between them.
+  idOf: RoleIdOf;
   error: string | null;
   // Adds a Role, then reloads. Rejects with the server's own message when the
   // write is refused — `a role called "Team lead" already exists` is the whole
@@ -83,5 +92,10 @@ export function useRoles(): UseRoles {
     return (role) => byName.get(role) ?? null;
   }, [roles]);
 
-  return { roles, colourOf, error, addRole, saveRole };
+  const idOf = useMemo<RoleIdOf>(() => {
+    const byName = new Map((roles ?? []).map((r) => [r.name, r.id]));
+    return (role) => byName.get(role) ?? null;
+  }, [roles]);
+
+  return { roles, colourOf, idOf, error, addRole, saveRole };
 }

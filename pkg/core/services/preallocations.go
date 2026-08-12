@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
@@ -32,17 +31,21 @@ type PreallocationStore interface {
 }
 
 // AddPreallocationParams holds the input for pinning one assignee to a shift.
-// Exactly one of VolunteerID or Custom is set. Role names the Seat the pin
+// Exactly one of VolunteerID or Custom is set. RoleID names the Seat the pin
 // fills and is required — a pin is a promise about a job.
 type AddPreallocationParams struct {
 	Date        string // Target shift date (YYYY-MM-DD)
 	VolunteerID string // Volunteer to pin
 	Custom      string // Custom (non-volunteer) entry to pin
-	Role        string // Name of the Role the pin fills
+	RoleID      string // Id of the Role the pin fills
 }
 
 // PreallocationView is the read model for one preallocation: who is pinned, to
 // which date, in which role.
+//
+// Role carries both the id and the name, as StandingPreallocationView does and
+// for the same reason: the id is what the row references and what an edit would
+// name, the name is what an admin recognises (issue #195).
 //
 // There is one kind of these (issue #131). A pin an admin added by hand and a
 // pin a Standing Preallocation seeded when the rota was defined are the same
@@ -51,7 +54,8 @@ type AddPreallocationParams struct {
 type PreallocationView struct {
 	ID          string
 	Date        string
-	Role        string
+	RoleID      string
+	Role        string // the Role's name today
 	VolunteerID string
 	Custom      string
 	Name        string // volunteer display name, or the custom entry verbatim
@@ -79,7 +83,7 @@ func AddPreallocation(
 		zap.String("date", params.Date),
 		zap.String("volunteer_id", params.VolunteerID),
 		zap.String("custom", params.Custom),
-		zap.String("role", params.Role))
+		zap.String("role_id", params.RoleID))
 
 	// Step 1: input shape — exactly one of volunteer / custom, filling a Role
 	// that exists. An unknown Role would reach the solver as a Seat no Shape
@@ -87,16 +91,16 @@ func AddPreallocation(
 	if (params.VolunteerID == "") == (params.Custom == "") {
 		return nil, wrapf(ErrInvalidInput, "exactly one of volunteerId or custom must be provided")
 	}
-	if params.Role == "" {
+	if params.RoleID == "" {
 		return nil, wrapf(ErrInvalidInput, "role is required")
 	}
 	roles, err := RoleTable(ctx, store)
 	if err != nil {
 		return nil, err
 	}
-	role, ok := roles.ByName(params.Role)
+	role, ok := roles.ByID(params.RoleID)
 	if !ok {
-		return nil, wrapf(ErrInvalidInput, "role %q is not a known role", params.Role)
+		return nil, wrapf(ErrInvalidInput, "role %q is not a known role", params.RoleID)
 	}
 
 	// Step 2: volunteer validation (network fetch, OUTSIDE the lock). The
@@ -121,8 +125,11 @@ func AddPreallocation(
 		if len(utils.FilterActiveVolunteers([]model.Volunteer{*vol})) == 0 {
 			return nil, wrapf(ErrInvalidInput, "volunteer %s is not active", params.VolunteerID)
 		}
-		if !vol.Holds(params.Role) {
-			return nil, wrapf(ErrInvalidInput, "volunteer %s does not hold the role %q", params.VolunteerID, params.Role)
+		// By name, because the roster is a Google Sheet that spells a Role out
+		// in a cell. The id is what the pin is stored under; the name is how
+		// the sheet says who holds it.
+		if !vol.Holds(role.Name) {
+			return nil, wrapf(ErrInvalidInput, "volunteer %s does not hold the role %q", params.VolunteerID, role.Name)
 		}
 		name = vol.DisplayName
 	}
@@ -151,7 +158,7 @@ func AddPreallocation(
 	created := db.Preallocation{
 		ID:          uuid.New().String(),
 		ShiftID:     shift.ID,
-		Role:        params.Role,
+		RoleID:      role.ID,
 		VolunteerID: params.VolunteerID,
 		CustomValue: params.Custom,
 	}
@@ -169,15 +176,17 @@ func AddPreallocation(
 		if err != nil {
 			return err
 		}
+		// A volunteer may be promised a Shift once: a person fills at most one
+		// Seat on it, so a second pin is a slip. A custom entry may be promised
+		// it twice, because it is usually an organisation and an organisation
+		// routinely sends two people (issue #195) — the Seats below are what
+		// bounds how many.
 		filled := 0
 		for _, p := range existing {
 			if params.VolunteerID != "" && p.VolunteerID == params.VolunteerID {
 				return wrapf(ErrConflict, "volunteer %s is already pinned to %s", params.VolunteerID, params.Date)
 			}
-			if params.Custom != "" && p.CustomValue == params.Custom {
-				return wrapf(ErrConflict, "custom entry %q is already pinned to %s", params.Custom, params.Date)
-			}
-			if p.Role == params.Role {
+			if p.RoleID == role.ID {
 				filled++
 			}
 		}
@@ -191,7 +200,7 @@ func AddPreallocation(
 			return err
 		}
 		if filled >= seatsForRole(shapes[shift.ID], role) {
-			return wrapf(ErrConflict, "every %s seat for %s is already pinned", params.Role, params.Date)
+			return wrapf(ErrConflict, "every %s seat for %s is already pinned", role.Name, params.Date)
 		}
 
 		return tx.InsertPreallocation(ctx, created)
@@ -203,12 +212,13 @@ func AddPreallocation(
 	logger.Info("Preallocation recorded",
 		zap.String("id", created.ID),
 		zap.String("shift_id", created.ShiftID),
-		zap.String("role", created.Role))
+		zap.String("role", role.Name))
 
 	return &PreallocationView{
 		ID:          created.ID,
 		Date:        shift.Date,
-		Role:        created.Role,
+		RoleID:      created.RoleID,
+		Role:        role.Name,
 		VolunteerID: created.VolunteerID,
 		Custom:      created.CustomValue,
 		Name:        name,
@@ -322,7 +332,8 @@ func ListPreallocations(
 		views = append(views, PreallocationView{
 			ID:          p.ID,
 			Date:        dateByShiftID[p.ShiftID],
-			Role:        p.Role,
+			RoleID:      p.RoleID,
+			Role:        roleName(roles, p.RoleID),
 			VolunteerID: p.VolunteerID,
 			Custom:      p.CustomValue,
 			Name:        preallocationName(p.VolunteerID, p.CustomValue, volunteersByID, logger),
@@ -355,20 +366,12 @@ func preallocationName(volunteerID, custom string, volunteersByID map[string]mod
 // back in. Role priority is the order Seats are filled in, which is the order a
 // shift reads in everywhere else.
 func sortPreallocationViews(views []PreallocationView, roles model.Roles) {
-	// A Role nobody offers any more sorts last rather than first: it is a stale
-	// pin, and a listing should not open with one.
-	priority := func(name string) int {
-		if role, ok := roles.ByName(name); ok {
-			return role.Priority
-		}
-		return math.MaxInt
-	}
 	sort.Slice(views, func(i, j int) bool {
 		a, b := views[i], views[j]
 		if a.Date != b.Date {
 			return a.Date < b.Date
 		}
-		if pa, pb := priority(a.Role), priority(b.Role); pa != pb {
+		if pa, pb := rolePriority(roles, a.RoleID), rolePriority(roles, b.RoleID); pa != pb {
 			return pa < pb
 		}
 		if a.Role != b.Role {

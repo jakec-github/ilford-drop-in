@@ -21,13 +21,17 @@ func TestPreallocationInsertReadDelete(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
+	dbtest.SeedRoles(t, database)
+	roles, err := database.ListRoles(ctx)
+	require.NoError(t, err)
+
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shiftA := dbtest.Shift(rota.ID, "2026-08-02")
 	shiftB := dbtest.Shift(rota.ID, "2026-08-09")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil, nil))
 
-	volPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "Team lead", VolunteerID: "alice"}
-	customPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "Service volunteer", CustomValue: "External Org"}
+	volPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roles[0].ID, VolunteerID: "alice"}
+	customPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roles[1].ID, CustomValue: "External Org"}
 
 	// Insert both pins under the lock.
 	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
@@ -137,14 +141,18 @@ func TestPreallocationUnknownShiftIDFails(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
+	dbtest.SeedRoles(t, database)
+	roles, err := database.ListRoles(ctx)
+	require.NoError(t, err)
+
 	rota := &db.Rotation{ID: uuid.New().String()}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{
 		dbtest.Shift(rota.ID, "2026-08-02"),
 	}, nil, nil))
 
-	err := database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
+	err = database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
 		return store.InsertPreallocation(ctx, db.Preallocation{
-			ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "Service volunteer", VolunteerID: "alice",
+			ID: uuid.New().String(), ShiftID: uuid.New().String(), RoleID: roles[0].ID, VolunteerID: "alice",
 		})
 	})
 	require.Error(t, err, "an unknown ShiftID must be rejected by the FK")

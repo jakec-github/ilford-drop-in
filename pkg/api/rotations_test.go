@@ -399,7 +399,7 @@ func TestDiscardRotaEndpoint(t *testing.T) {
 			{ID: "shift-1", RotaID: "live", Date: "2026-08-02"},
 		},
 		manualPreallocations: []db.Preallocation{
-			{ID: "pin-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "pin-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 		availabilityRequests: []db.AvailabilityRequest{
 			{ID: "req-1", RotaID: "live", VolunteerID: "alice", SentAt: "2026-07-20T09:00:00Z"},

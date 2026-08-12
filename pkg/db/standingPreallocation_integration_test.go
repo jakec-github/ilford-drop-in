@@ -63,8 +63,9 @@ func TestStandingPreallocationInsertReadDelete(t *testing.T) {
 	assert.False(t, deleted, "a second delete reports that nothing matched")
 }
 
-// The same subject on the same recurrence is one promise, whatever Role either
-// naming of it gives them: a person fills at most one Seat on a Shift.
+// The same volunteer on the same recurrence is one promise, whatever Role
+// either naming of it gives them: a person fills at most one Seat on a Shift.
+// A custom entry is not held to that rule (issue #195).
 func TestStandingPreallocationRefusesARepeat(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
@@ -86,6 +87,13 @@ func TestStandingPreallocationRefusesARepeat(t *testing.T) {
 	})
 	require.NoError(t, err, "a different subject on the same rule is a different promise")
 
+	// A custom entry is usually an organisation, and an organisation routinely
+	// sends two people (issue #195). Naming it twice is two promises.
+	err = database.InsertStandingPreallocation(ctx, db.StandingPreallocation{
+		ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: volunteerRole, CustomValue: "Scouts",
+	})
+	require.NoError(t, err, "the same custom entry on the same rule is a second promise")
+
 	err = database.InsertStandingPreallocation(ctx, db.StandingPreallocation{
 		ID: uuid.New().String(), RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: volunteerRole, VolunteerID: "alice",
 	})
@@ -99,10 +107,12 @@ func TestInsertDefinedRotaWritesSeededPreallocations(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
+	roleID := seedRole(t, database, "Service volunteer")
+
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	pin := db.Preallocation{
-		ID: uuid.New().String(), ShiftID: shift.ID, Role: "Service volunteer", CustomValue: "St John's team",
+		ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleID, CustomValue: "St John's team",
 	}
 
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}, nil))
@@ -119,10 +129,12 @@ func TestInsertDefinedRotaRollsBackOnABadPin(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
+	roleID := seedRole(t, database, "Service volunteer")
+
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	pin := db.Preallocation{
-		ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "Service volunteer", VolunteerID: "alice",
+		ID: uuid.New().String(), ShiftID: uuid.New().String(), RoleID: roleID, VolunteerID: "alice",
 	}
 
 	require.Error(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}, nil))

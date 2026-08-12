@@ -213,7 +213,7 @@ func solveRotaInFlight(
 	if err := checkPreallocationsResolve(pins, shifts, activeIDs); err != nil {
 		return nil, err
 	}
-	allocatorOverrides, err := buildPreallocationOverrides(pins, dateByShiftID)
+	allocatorOverrides, err := buildPreallocationOverrides(pins, dateByShiftID, roles)
 	if err != nil {
 		return nil, err
 	}

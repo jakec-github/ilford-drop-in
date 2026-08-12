@@ -103,12 +103,13 @@ func buildShiftSeats(
 	shapes map[string]model.Shape,
 	shifts []AvailabilityShift,
 	pins []db.Preallocation,
+	roles model.Roles,
 ) (map[string]shiftSeats, error) {
 	dateByShiftID := make(map[string]string, len(shifts))
 	for _, s := range shifts {
 		dateByShiftID[s.ID] = s.Date
 	}
-	overrides, err := buildPreallocationOverrides(pins, dateByShiftID)
+	overrides, err := buildPreallocationOverrides(pins, dateByShiftID, roles)
 	if err != nil {
 		return nil, err
 	}

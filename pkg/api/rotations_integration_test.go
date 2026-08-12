@@ -148,7 +148,10 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 
 	// Pin someone, and put a round out with one answer in it, so the discard has
 	// something of every kind to take with it.
-	pin := `{"date":"` + defined.Shifts[0].Date + `","volunteerId":"alice","role":"Team lead"}`
+	roles, err := database.ListRoles(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, roles)
+	pin := `{"date":"` + defined.Shifts[0].Date + `","volunteerId":"alice","roleId":"` + roles[0].ID + `"}`
 	rec = doRequest(t, handler, http.MethodPost, "/api/preallocations", pin, adminCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 

@@ -115,7 +115,7 @@ func TestEveryAllocatorInputStampsTheRota(t *testing.T) {
 					return tx.InsertPreallocation(ctx, db.Preallocation{
 						ID:          pinID,
 						ShiftID:     first.ID,
-						Role:        "Team lead",
+						RoleID:      roles[0].ID,
 						VolunteerID: "alice",
 					})
 				}))

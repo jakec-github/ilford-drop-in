@@ -519,6 +519,9 @@ export interface RotaShift {
 export interface Preallocation {
   id: string;
   date: string;
+  // The Role by id and by name, as a standing pin carries it: the id is what
+  // the pin references and survives a rename, the name is what to show.
+  roleId: string;
   role: Role;
   name: string;
   custom: boolean;
@@ -528,12 +531,14 @@ export interface Preallocation {
 // NewPreallocation is one person to pin to a shift the rota has not been run
 // for.
 //
-// role is the Seat they are pinned into. Every pin names one, and the API
-// accepts it only for a volunteer the roster records as holding that role.
+// roleId is the Seat they are pinned into, by id — a pin outlives any number of
+// renames, so the id is the only reference to a Role that survives one. Every
+// pin names one, and the API accepts it only for a volunteer the roster records
+// as holding that Role.
 export interface NewPreallocation {
   date: string;
   person: PersonRef;
-  role: Role;
+  roleId: string;
 }
 
 // StandingPreallocation is a Preallocation an admin expects to make every rota —

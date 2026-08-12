@@ -217,7 +217,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	require.Len(t, result.Preallocations, 1)
 	assert.Equal(t, result.Shifts[0].ID, result.Preallocations[0].ShiftID)
 	assert.Equal(t, "St John's team", result.Preallocations[0].CustomValue)
-	assert.Equal(t, "Service volunteer", result.Preallocations[0].Role)
+	assert.Equal(t, "role-service-volunteer", result.Preallocations[0].RoleID)
 
 	// One store call, so a rota can never exist with only some of the pins an
 	// admin was promised.
