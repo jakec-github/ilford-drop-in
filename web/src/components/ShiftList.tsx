@@ -48,7 +48,11 @@ function shiftDeficit(
   return shape
     .map(({ role, count }) => ({
       role,
-      deficit: count - assigneeCountByRole[role],
+      // A Role nobody was drafted into is short its whole count, not absent
+      // from the answer: without the fallback the subtraction is NaN, NaN > 0
+      // is false, and a shift the solver could find no team lead for was the
+      // one shift that said nothing about it.
+      deficit: count - (assigneeCountByRole[role] ?? 0),
     }))
     .filter(({ deficit }) => deficit > 0);
 }
@@ -317,46 +321,119 @@ function pinTitle(pin: Preallocation): string {
   return `${pin.name} is pinned${role} to this shift, and will be placed here when the rota is allocated.`;
 }
 
-// PreallocationList shows who allocation is already committed to placing on a
-// shift it has not run for yet. Not chips: nothing here can be dragged or
-// searched for — these people are not on the rota, they are promised to it. The
-// one thing that can be done to a pin is taking it off, and every pin can be
-// taken off.
-function PreallocationList({
+// What a drafted name means. Deliberately the same sentence shape as pinTitle,
+// because these are the two things on an unallocated row that are not on the
+// rota — and the difference between them is the whole point: a pin is a promise
+// an admin made, a draft Seat is a guess the solver made and will make again.
+function draftTitle(assignee: Assignee): string {
+  const role =
+    assignee.role === SERVICE_VOLUNTEER_ROLE
+      ? ""
+      : ` as ${assignee.role.toLowerCase()}`;
+  return `The last solve put ${assignee.name} here${role}. It is a draft, not a placement, and the next solve may put somebody else here.`;
+}
+
+// One name expected on a shift the rota has not been run for, and on what
+// footing: an admin's pin, or a Seat the last solve filled.
+type Planned =
+  { kind: "pin"; pin: Preallocation } | { kind: "draft"; assignee: Assignee };
+
+// How the alterations API would name the person a pin is for. The same shape
+// personRef gives an assignee, so the two can be compared.
+function pinRef(pin: Preallocation): PersonRef {
+  return pin.volunteerId
+    ? { volunteerId: pin.volunteerId }
+    : { custom: pin.name };
+}
+
+// Everybody expected on an unallocated shift, in one list: the pins first, then
+// whoever else the last solve put there.
+//
+// A pin is honoured by every solve, so each one is usually drafted too — and
+// showing both would name the same person twice. The pin is the one kept: it is
+// the stronger statement, and it is the one that can be taken off.
+//
+// Matched by person and consumed as it goes, so two customs of the same name —
+// two people from one visiting group — line up one pin each rather than both
+// folding into the first.
+function plannedFor(pins: Preallocation[], drafted: Assignee[]): Planned[] {
+  const unmatched = [...drafted];
+
+  const planned: Planned[] = pins.map((pin) => {
+    const i = unmatched.findIndex((a) => samePerson(personRef(a), pinRef(pin)));
+    if (i !== -1) unmatched.splice(i, 1);
+    return { kind: "pin", pin };
+  });
+
+  for (const assignee of unmatched) {
+    planned.push({ kind: "draft", assignee });
+  }
+  return planned;
+}
+
+// PlannedList shows who is expected on a shift the rota has not been run for:
+// the people an admin has pinned to it, and whoever the last solve put in the
+// Seats around them.
+//
+// One row rather than the two it used to be (issue #193). Pins and draft were a
+// labelled line each, which named every pinned person twice and left the
+// difference between them — the whole point — resting on a label read once at
+// the start. It rests on the chips now: a pin is solid and carries the button
+// that takes it off, a drafted name is dashed because the next solve may not
+// say it again.
+//
+// Nothing drafted here is interactive, and that is the design rather than an
+// omission (ADR 0008): a hand placement made here would be destroyed by the
+// next solve, so the durable way to say "put her there" is the pin beside it.
+// List items rather than buttons, so nothing offers a keyboard user an action
+// that does not exist.
+function PlannedList({
   date,
-  pins,
+  planned,
   colourOf,
+  stale,
   onUnpin,
 }: {
   date: string;
-  pins: Preallocation[];
+  planned: Planned[];
   colourOf: RoleColourOf;
+  // True when an allocator input has moved under the drafted names and the
+  // solve that answers for it has not come back yet. They are faded rather than
+  // removed: what the solver last said is still the best guess on screen, and
+  // blanking the rota for every pin would make editing feel like it broke
+  // something. The pins do not fade with them — a pin is a decision, and it is
+  // as true after the edit as it was before.
+  stale: boolean;
   // Absent unless editing is on.
   onUnpin?: (pin: Preallocation) => void;
 }) {
   return (
-    <div className="prealloc">
-      <span className="prealloc-label" id={`pinned-${date}`}>
-        Pinned:
-      </span>
-      <ul className="prealloc-list" aria-labelledby={`pinned-${date}`}>
-        {pins.map((pin) => (
+    // No heading on the row. "Draft" was the only thing it ever said and it is
+    // the only thing an unallocated shift's names can be, so it was a word
+    // spent saying where the reader already is. The list keeps a name for
+    // anybody who cannot see where they are.
+    <ul
+      className="planned-list"
+      aria-label={`Expected on ${formatShiftDateLong(date)}`}
+    >
+      {planned.map((entry, i) =>
+        entry.kind === "pin" ? (
           <li
-            key={pin.id}
-            className={`prealloc-chip ${pin.custom ? "custom" : "volunteer"}`}
-            data-role-colour={colourOf(pin.role) ?? undefined}
-            title={pinTitle(pin)}
+            key={entry.pin.id}
+            className={`chip pinned ${entry.pin.custom ? "custom" : "volunteer"}`}
+            data-role-colour={colourOf(entry.pin.role) ?? undefined}
+            title={pinTitle(entry.pin)}
           >
-            {pin.name}
+            {entry.pin.name}
             {onUnpin && (
               <button
                 type="button"
-                className="prealloc-unpin"
+                className="chip-unpin"
                 // The date is in the label because the button is a bare cross:
                 // read out of the row's context, "Remove" alone does not say
                 // which pin, and the rows all look alike.
-                aria-label={`Remove ${pin.name}'s pin on ${formatShiftDateLong(date)}`}
-                onClick={() => onUnpin(pin)}
+                aria-label={`Remove ${entry.pin.name}'s pin on ${formatShiftDateLong(date)}`}
+                onClick={() => onUnpin(entry.pin)}
               >
                 <svg
                   viewBox="0 0 10 10"
@@ -374,71 +451,29 @@ function PreallocationList({
               </button>
             )}
           </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// What a drafted name means. Deliberately the same sentence shape as pinTitle,
-// because these are the two things on an unallocated row that are not on the
-// rota — and the difference between them is the whole point: a pin is a promise
-// an admin made, a draft Seat is a guess the solver made and will make again.
-function draftTitle(assignee: Assignee): string {
-  const role =
-    assignee.role === SERVICE_VOLUNTEER_ROLE
-      ? ""
-      : ` as ${assignee.role.toLowerCase()}`;
-  return `The last solve put ${assignee.name} here${role}. It is a draft, not a placement, and the next solve may put somebody else here.`;
-}
-
-// DraftList shows who the last solve put on a shift it has not been allocated
-// for. Chips, because a drafted name is the same kind of thing as an allocated
-// one — dashed, because it is pencilled in.
-//
-// Nothing here is interactive, and that is the design rather than an omission
-// (ADR 0008): a hand placement made here would be destroyed by the next solve,
-// so the durable way to say "put her there" is the pin affordance on the same
-// row. List items rather than buttons, so nothing offers a keyboard user an
-// action that does not exist.
-function DraftList({
-  date,
-  assignees,
-  colourOf,
-  stale,
-}: {
-  date: string;
-  assignees: Assignee[];
-  colourOf: RoleColourOf;
-  // True when an allocator input has moved under these names and the solve that
-  // answers for it has not come back yet. They are faded rather than removed:
-  // what the solver last said is still the best guess on screen, and blanking
-  // the rota for every pin would make editing feel like it broke something.
-  stale: boolean;
-}) {
-  return (
-    <div className={stale ? "prealloc prealloc-stale" : "prealloc"}>
-      <span className="prealloc-label" id={`draft-${date}`}>
-        Draft:
-      </span>
-      <ul className="prealloc-list" aria-labelledby={`draft-${date}`}>
-        {assignees.map((a, i) => (
+        ) : (
           <li
-            key={chipKey(date, a, i)}
-            className={`chip draft ${a.custom ? "custom" : "volunteer"}${a.group ? " has-group" : ""}`}
-            data-role-colour={colourOf(a.role) ?? undefined}
-            title={draftTitle(a)}
+            key={chipKey(date, entry.assignee, i)}
+            className={`chip draft ${entry.assignee.custom ? "custom" : "volunteer"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
+            data-role-colour={colourOf(entry.assignee.role) ?? undefined}
+            title={draftTitle(entry.assignee)}
           >
-            {a.name}
-            {a.group && <GroupDot group={a.group} />}
+            {entry.assignee.name}
+            {entry.assignee.group && <GroupDot group={entry.assignee.group} />}
           </li>
-        ))}
-      </ul>
-    </div>
+        ),
+      )}
+    </ul>
   );
 }
 
-// ShiftNeeds shows the deficit for each role in a shifts draft
+// ShiftNeeds shows the deficit for each role in a shifts draft.
+//
+// It is the row's warning as well as its arithmetic: a shift the solver could
+// not fill is somebody to chase, and it looks like every other unallocated row
+// until this line says otherwise. So it is worded and coloured as a warning,
+// and the row it sits on is marked to match — the colour is the second signal,
+// never the only one.
 function ShiftNeeds({
   unfilledRoles,
 }: {
@@ -448,7 +483,7 @@ function ShiftNeeds({
     return null;
   }
   return (
-    <span className="shift-shape">
+    <span className="shift-unfilled">
       Unfilled roles -{" "}
       {unfilledRoles
         .map(({ deficit, role }) => `${role}: ${deficit}`)
@@ -476,6 +511,7 @@ function ShiftRow({
   shift,
   pins,
   drafted,
+  draftSolved,
   draftStale,
   colourOf,
   selectedName,
@@ -490,6 +526,7 @@ function ShiftRow({
   // as pins, and for the same reason: a draft only exists for a rota that has
   // not been allocated, and only an admin is shown one.
   drafted: Assignee[];
+  draftSolved: boolean;
   draftStale: boolean;
   colourOf: RoleColourOf;
   selectedName: string;
@@ -501,7 +538,19 @@ function ShiftRow({
   }
 
   const unallocated = isUnallocated(shift);
-  const unfilledRoles = shiftDeficit(shift.shape, drafted);
+  // Whether the draft has anything to say about this row at all. Only an
+  // unallocated shift has a draft — an allocated one is the rota, and a closed
+  // one is asking nobody for anything — and only a solve that has been read
+  // makes an empty draft mean "the solver could not fill this" rather than
+  // "nobody has asked it yet". A Shape of nobody is left out too: a shift
+  // asking for no one is not a full shift, it is one still to be stated.
+  const judged = unallocated && draftSolved && shift.shape.length > 0;
+  const unfilledRoles = judged ? shiftDeficit(shift.shape, drafted) : [];
+  // Every Seat spoken for. Worth marking as much as the gaps are: what an admin
+  // is doing on this screen is finding the rows that still need them, and a
+  // green edge is what lets the eye skip one.
+  const filled = judged && unfilledRoles.length === 0;
+  const planned = plannedFor(pins, drafted);
 
   const placement = edit?.placement ?? null;
   const editable = placement !== null && isEditable(shift);
@@ -517,6 +566,7 @@ function ShiftRow({
     shift.closed ? "closed" : "",
     unallocated ? "unallocated" : "",
     unfilledRoles.length ? "unfilled" : "",
+    filled ? "filled" : "",
     isDestination ? "drop-target" : "",
   ]
     .filter(Boolean)
@@ -561,26 +611,16 @@ function ShiftRow({
     body = (
       <div className="shift-unallocated">
         <ShiftNeeds unfilledRoles={unfilledRoles} />
-        {pins.length > 0 && (
-          <PreallocationList
+        {planned.length > 0 && (
+          <PlannedList
             date={shift.date}
-            pins={pins}
+            planned={planned}
             colourOf={colourOf}
+            stale={draftStale}
             // While someone is being carried the page narrows to placing them,
             // the same way the Add buttons go away: an unallocated shift is not
             // a destination, so its pins are only there to be read.
             onUnpin={edit && !pending ? edit.onUnpin : undefined}
-          />
-        )}
-        {/* Under the pins, because it contains them: a pin is honoured by every
-            solve, so whoever is pinned above is drafted here too. The order
-            reads as the promise first and the guess built on it second. */}
-        {drafted.length > 0 && (
-          <DraftList
-            date={shift.date}
-            assignees={drafted}
-            colourOf={colourOf}
-            stale={draftStale}
           />
         )}
         {/* Editing an unallocated shift means changing who is promised it —
@@ -776,6 +816,7 @@ export default function ShiftList({
   shifts,
   pinsByDate,
   draftByShiftID,
+  draftSolved = false,
   draftStale = false,
   colourOf,
   selectedName = "",
@@ -791,6 +832,12 @@ export default function ShiftList({
   // Who the last solve put on each shift, keyed by shift id (ADR 0001). Empty
   // where there is no draft, which is every rota a non-admin is looking at.
   draftByShiftID: Map<string, Assignee[]>;
+  // True when the draft above was read from a solve that succeeded, which is
+  // what makes a shift with nothing drafted on it *unfilled* rather than merely
+  // unasked. It cannot be read off the map: a shift the solver put nobody on is
+  // left out of the draft entirely, so it looks from here exactly like a rota
+  // nobody has solved.
+  draftSolved?: boolean;
   // True while a fresh solve is owed to an edit that has already landed. Fades
   // the drafted names; nothing else about the rows changes.
   draftStale?: boolean;
@@ -813,6 +860,7 @@ export default function ShiftList({
           shift={shift}
           pins={pinsByDate.get(shift.date) ?? []}
           drafted={draftByShiftID.get(shift.id) ?? []}
+          draftSolved={draftSolved}
           draftStale={draftStale}
           colourOf={colourOf}
           selectedName={selectedName}

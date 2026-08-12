@@ -1,12 +1,21 @@
 /* Shift list: one flush, connected list at every width. Rows touch and share
    hairline dividers; only the outer container is rounded.
 
-   Its own column width, rather than whatever the page around it is. The rota
-   page is already this narrow; the Allocation tab is a wide shell holding a
-   grid as wide as the rota is long, and a list of shifts stretched to match
-   would read worse for it. */
+   Its own column width, rather than whatever the page around it is: the rota
+   page is already this narrow, and the Allocation tab is a wide shell holding a
+   grid as wide as the rota is long, which a list of shifts stretched to match
+   would read worse for.
+
+   Wide enough for its rows, though, rather than a fixed measure they wrap
+   inside (issue #193). A shift asking for eight people has eight chips, and
+   folding them into a tall stack while there is empty page beside them makes a
+   full shift look like a problem. So the list takes the width its widest row
+   wants, floored at the 40rem column and capped by the shell around it — on the
+   rota page, which is narrower than the floor, that is no change at all. */
 .shift-list {
-  max-width: 40rem;
+  width: fit-content;
+  min-width: min(100%, 40rem);
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
@@ -109,11 +118,11 @@
   min-width: 0;
 }
 
-/* Preallocations (admin-only, unallocated shifts) ---------------------------
+/* An unallocated shift (admin-only) ----------------------------------------
 
-   Who allocation is already committed to placing here. They sit under the "not
-   yet allocated" note rather than beside it: the note is the state of the
-   shift, the pins are a qualification of it. */
+   What the draft could not fill, then who is expected here, then what can be
+   changed about it — down the row rather than across it, because the first is a
+   sentence about the other two. */
 .shift-unallocated {
   display: flex;
   flex-direction: column;
@@ -122,38 +131,47 @@
   min-width: 0;
 }
 
-/* What the shift is waiting to be filled with. Quieter than the note above it:
-   the state of the shift is the headline, and this is a detail of it. */
-.shift-shape {
+/* Which of the shift's Seats the draft could not fill. The one thing on an
+   unallocated row that is not going to resolve itself, so it is the loudest
+   thing on it rather than a detail underneath the names. */
+.shift-unfilled {
   font-size: 13px;
-  color: var(--text);
+  font-weight: 600;
+  color: var(--warning);
 }
 
-.prealloc {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
+/* And the row's left edge says where it stands, so a rota can be read down the
+   margin rather than line by line: amber where the draft is short, green where
+   every Seat is spoken for. A border rather than a fill — the unallocated rows
+   already wear a hatch, and a second background on top of it would leave the
+   two states arguing about the same pixels.
+
+   Only the rows the draft has an opinion about get one. An allocated shift, a
+   closed one, and a rota nobody has solved wear no edge at all, which is what
+   keeps the two colours meaning something.
+
+   The colour is the second signal, never the only one: the amber rows say in
+   words which Roles are short, and the green ones are the rows that say
+   nothing. */
+.shift-row.unfilled,
+.shift-row.filled {
+  border-left: 3px solid var(--edge);
+  /* The border is drawn inside the row's own padding, so the text does not step
+     sideways relative to the rows above and below it. */
+  padding-left: 11px;
 }
 
-/* A draft the inputs have moved under: what the solver last said, still the
-   best guess on screen, waiting on the solve that answers for the edit. Faded
-   rather than blanked — an admin adding five pins would otherwise watch the
-   rota disappear five times. The transition is on the way in only, so the fresh
-   draft arrives at full strength rather than fading up into place. */
-.prealloc-stale {
-  opacity: 0.4;
-  transition: opacity 0.15s;
+.shift-row.unfilled {
+  --edge: var(--warning);
 }
 
-.prealloc-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text);
+.shift-row.filled {
+  --edge: var(--positive);
 }
 
-.prealloc-list {
+/* Who is expected on a shift the rota has not been run for: the pins and the
+   draft, one row of chips. */
+.planned-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -162,53 +180,15 @@
   list-style: none;
 }
 
-/* Shaped like a chip so a pinned name reads as the same kind of thing as an
-   allocated one. Solid, unlike the drafted names below it: a pin is a decision
-   somebody made and it holds until they unmake it, where a draft Seat is a
-   guess the next solve may take back. The border is what tells the two apart,
-   which matters most where they sit one above the other on the same row.
-
-   The chip itself is never interactive — a pin cannot be dragged, searched for
-   or opened. In editing mode it grows a remove button inside it; that button is
-   the interactive part, not the chip. */
-.prealloc-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-  border: 1.5px solid var(--chip);
-  color: var(--chip);
-}
-
-/* The Role's colour comes from the server as a palette token, which index.css
-   turns into --role-colour. The fallback is what a chip wears when no token
-   reached it: the roles are still loading, or the rota names a Role the config
-   no longer does. */
-.prealloc-chip {
-  --chip: var(--role-colour, var(--role-slate));
-}
-
-/* Matching .chip: volunteers are rounded pills, custom entries squared tags. */
-.prealloc-chip.volunteer {
-  border-radius: 12px;
-}
-
-.prealloc-chip.custom {
-  border-radius: 3px;
-  font-style: italic;
-}
-
 /* Sits inside the pin it removes, so it needs no label of its own on screen.
    Padded out to a touch target the chip's own text size would not give it —
-   this is the primary way a pin comes off, and the rota page is mobile first. */
-.prealloc-unpin {
+   this is the primary way a pin comes off, and the rota page is mobile first.
+   The negative margin keeps it from making the chip taller than its
+   neighbours. */
+.chip-unpin {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
   width: 20px;
   height: 20px;
   margin: -4px -5px -4px 0;
@@ -221,8 +201,8 @@
   opacity: 0.7;
 }
 
-.prealloc-unpin:hover,
-.prealloc-unpin:focus-visible {
+.chip-unpin:hover,
+.chip-unpin:focus-visible {
   opacity: 1;
   background: color-mix(in srgb, var(--chip) 18%, transparent);
 }
@@ -291,6 +271,29 @@
   color: #fff;
 }
 
+/* A pinned name (admin-only, unallocated shifts). A .chip like every other name
+   on the rota, which is what keeps it the same size as the drafted names beside
+   it — it used to be a shape of its own, a size smaller, and read as a lesser
+   kind of thing once the two shared a line. Solid, where a drafted name is
+   dashed: a pin is a decision somebody made and it holds until they unmake it.
+
+   Never interactive itself — a pin cannot be dragged, searched for or opened.
+   In editing mode it grows a remove button inside it; that button is the
+   interactive part, not the chip. So, like a drafted name below, it gives back
+   what .chip offers a button. These rules sit after .chip:hover deliberately:
+   they carry the same specificity, so order is what decides them. */
+.chip.pinned {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+  user-select: auto;
+}
+
+.chip.pinned:hover {
+  background: var(--bg);
+}
+
 /* A drafted name (admin-only, unallocated shifts): the same chip as an
    allocated one, dashed. The dashes are what say "the solver put this here and
    the next solve may not": a pin above it on the same row is solid because a
@@ -309,6 +312,21 @@
 
 .chip.draft:hover {
   background: transparent;
+}
+
+/* A draft the inputs have moved under: what the solver last said, still the
+   best guess on screen, waiting on the solve that answers for the edit. Faded
+   rather than blanked — an admin adding five pins would otherwise watch the
+   rota disappear five times. The transition is on the way in only, so the fresh
+   draft arrives at full strength rather than fading up into place.
+
+   On the drafted chips rather than the row that holds them, now that the pins
+   share it: a pin is a decision, and it is as true after the edit as it was
+   before. Fading it — and the button that takes it off — would say the opposite
+   of what just happened. */
+.chip.draft.draft-stale {
+  opacity: 0.4;
+  transition: opacity 0.15s;
 }
 
 /* A shift that the person being carried can be dropped on. An outline rather
@@ -400,6 +418,12 @@
 @media (min-width: 700px) {
   .shift-row {
     padding: 14px 18px;
+  }
+
+  /* Still inside the row's padding, which is roomier here. */
+  .shift-row.unfilled,
+  .shift-row.filled {
+    padding-left: 15px;
   }
 
   .shift-when {

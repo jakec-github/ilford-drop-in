@@ -236,45 +236,41 @@ function InFlightRota({
     <>
       <InFlightHead rota={rota} discard={discard} onDiscarded={onDiscarded} />
 
-      {/* Outside the panel it is about, because there is no panel to put it in:
-          a draft that could not be read is the whole of what that section would
-          have had to say. */}
-      {draftError && (
-        <p className="allocation-error" role="alert">
-          Could not load the draft rota: {draftError}
-        </p>
-      )}
-
-      {draftState && (
-        <DraftRotaPanel
-          state={draftState}
-          stale={stale}
-          solving={solving}
-          solveError={solveError}
-          onSolve={() => void solve()}
-          allocating={allocating}
-          allocateError={allocateError}
-          attempt={attempt}
-          onAllocate={() =>
-            allocate().then((outcome) => {
-              if (!outcome?.allocated) return;
-              // The rota has gone out, and the rota page is what shows one.
-              onAllocated();
-            })
-          }
-          shifts={inFlightShifts}
-          // The one signal that says an allocator input has moved, whichever of
-          // them it was: the pins are the panel's own, and these three are the
-          // rota's, so they meet here.
-          onInputMoved={inputsMoved}
-          // Each of these re-reads the rota on its way through, so the rows
-          // redraw from what the server now says rather than from what was
-          // asked for.
-          onSetClosed={setClosed}
-          onSetTimes={setTimes}
-          onSetShape={setShape}
-        />
-      )}
+      {/* Always, whether or not there is a draft to put in it (issue #193). The
+          panel used to appear only once a draft had been read, so the wait for
+          one — which includes a solve, and can run to half a minute — showed as
+          the section not being there, and a read that failed took the button
+          that would retry it off the screen. What state the draft is in is the
+          panel's to say, not a reason to leave it out. */}
+      <DraftRotaPanel
+        state={draftState}
+        loadError={draftError}
+        stale={stale}
+        solving={solving}
+        solveError={solveError}
+        onSolve={() => void solve()}
+        allocating={allocating}
+        allocateError={allocateError}
+        attempt={attempt}
+        onAllocate={() =>
+          allocate().then((outcome) => {
+            if (!outcome?.allocated) return;
+            // The rota has gone out, and the rota page is what shows one.
+            onAllocated();
+          })
+        }
+        shifts={inFlightShifts}
+        // The one signal that says an allocator input has moved, whichever of
+        // them it was: the pins are the panel's own, and these three are the
+        // rota's, so they meet here.
+        onInputMoved={inputsMoved}
+        // Each of these re-reads the rota on its way through, so the rows
+        // redraw from what the server now says rather than from what was
+        // asked for.
+        onSetClosed={setClosed}
+        onSetTimes={setTimes}
+        onSetShape={setShape}
+      />
 
       {/* Minting a round and sending the links is the same rota's business as
           everything above, which is why it is a section here rather than a tab

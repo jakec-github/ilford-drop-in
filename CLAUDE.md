@@ -36,7 +36,9 @@ does not apply to you.
   than a table of its own. Sharing one component is what stops the two screens
   showing the same shift differently, and that is worth more than a layout
   tuned per screen — so do not "fix" the admin side back into a table. It keeps
-  its own column width inside the wider shell rather than stretching to it.
+  its own column width inside the wider shell rather than stretching to it —
+  wide enough for its rows, so a shift asking for eight people takes the room it
+  needs, and no wider.
 
 # Maintainer & agent operations
 
