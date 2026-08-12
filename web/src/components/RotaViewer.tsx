@@ -816,6 +816,7 @@ export default function RotaViewer({
         shifts={visibleShifts}
         pinsByDate={pinsByDate}
         draftByShiftID={draftByShiftID}
+        draftSolved={draftState?.solved === true && draftState.success}
         colourOf={colourOf}
         selectedName={selectedName}
         onSelectName={setSelectedName}

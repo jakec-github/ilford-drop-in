@@ -219,6 +219,7 @@ type PrepDialog =
 // reading the rota has any use for.
 export default function DraftRotaPanel({
   state,
+  loadError,
   stale,
   solving,
   solveError,
@@ -233,7 +234,15 @@ export default function DraftRotaPanel({
   onSetTimes,
   onSetShape,
 }: {
-  state: DraftRotaState;
+  // The draft as it was last read, or null while that read is in flight or has
+  // failed. The panel stays on the page either way (issue #193): a draft read
+  // can take as long as a solve, and taking the panel away while it runs takes
+  // "Regenerate draft" — the one control that recovers a read that failed —
+  // away with it.
+  state: DraftRotaState | null;
+  // Why there is no draft to show, where that is the reason. Reported inside
+  // the panel rather than in place of it, for the same reason.
+  loadError: string | null;
   // True while a fresh solve is owed to an edit made here. The drafted names
   // fade and Allocate goes away: what is on screen is a rota that predates
   // something the admin has just changed, and committing it is exactly what
@@ -291,7 +300,7 @@ export default function DraftRotaPanel({
 
   const draftByShiftID = useMemo(() => {
     const byShift = new Map<string, Assignee[]>();
-    for (const shift of state.shifts) {
+    for (const shift of state?.shifts ?? []) {
       byShift.set(shift.shiftId, shift.assignees);
     }
     return byShift;
@@ -308,12 +317,13 @@ export default function DraftRotaPanel({
     return byID;
   }, [shifts]);
 
-  // Nothing to allocate until there is a rota to allocate. An unsolved draft
-  // has none, and an infeasible one is the solver saying there is none to be
-  // had. A stale one has a rota, but not the one the inputs now imply — and
-  // allocating it would be refused by the server anyway, on the hash it was
-  // shown (ADR 0008), so it is taken off the screen rather than left to fail.
-  const allocatable = state.solved && state.success && !stale;
+  // Nothing to allocate until there is a rota to allocate. A draft that has not
+  // been read has none, an unsolved one has none, and an infeasible one is the
+  // solver saying there is none to be had. A stale one has a rota, but not the
+  // one the inputs now imply — and allocating it would be refused by the server
+  // anyway, on the hash it was shown (ADR 0008), so the button is unavailable
+  // rather than left to fail.
+  const allocatable = state !== null && state.solved && state.success && !stale;
   const busy = solving || allocating;
 
   // Who can still be pinned to a shift: the active roster, less anyone already
@@ -425,7 +435,17 @@ export default function DraftRotaPanel({
         </div>
       </div>
 
-      {state.solved && state.solvedAt !== null ? (
+      {/* One sentence, whatever state the draft is in — including "we do not
+          know yet". A read of a draft whose inputs have moved solves before it
+          answers (ADR 0008), so this is a wait that can run to half a minute,
+          and it says so rather than leaving the panel looking empty. */}
+      {state === null ? (
+        <p className="draft-panel-state">
+          {loadError
+            ? "The draft could not be read."
+            : "Reading the draft rota…"}
+        </p>
+      ) : state.solved && state.solvedAt !== null ? (
         <p className="draft-panel-state">
           {describeOutcome(state)}{" "}
           {/* The instant in the title, so the exact time is a hover away
@@ -440,7 +460,15 @@ export default function DraftRotaPanel({
         </p>
       )}
 
-      {attempt?.outcome === "moved" && (
+      {/* Verbatim, under the sentence that says there is no draft: it is the
+          answer to why, and it names the thing to fix. */}
+      {loadError && (
+        <p className="draft-panel-error" role="alert">
+          Could not load the draft rota: {loadError}
+        </p>
+      )}
+
+      {state !== null && attempt?.outcome === "moved" && (
         <ChangeReport
           attempt={attempt}
           state={state}
@@ -482,13 +510,18 @@ export default function DraftRotaPanel({
           shifts={shifts}
           pinsByDate={pinsByDate}
           draftByShiftID={draftByShiftID}
+          // An infeasible solve is not an answer about any one shift — it is
+          // the solver saying there is no rota to be had — and the sentence
+          // above says so. Marking all six rows unfilled underneath it would be
+          // the same news, six times, in a place it cannot be acted on.
+          draftSolved={state !== null && state.solved && state.success}
           draftStale={stale}
           colourOf={colourOf}
           rowEdit={rowEdit}
         />
       )}
 
-      {confirming && (
+      {confirming && state !== null && (
         <AllocateDialog
           state={state}
           allocating={allocating}
