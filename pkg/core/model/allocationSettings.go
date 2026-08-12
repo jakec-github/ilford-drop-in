@@ -40,8 +40,12 @@ var SwitchableConstraints = []SwitchableConstraint{
 	},
 	{
 		Name:        "male_required",
-		Label:       "Keep a seat for male cover",
-		Description: "A shift with no male volunteer keeps a seat open, so one can be added by hand afterwards.",
+		Label:       "Always include a male on a shift",
+		// Worded as what the rule asks for and what it costs when the roster
+		// cannot give it. The mechanism — a Seat held open for somebody to be
+		// added into by hand — is how "left unfilled" happens rather than a
+		// second thing the rule does, so it is said once, in those terms.
+		Description: "Every shift has a male volunteer on it. Where that is not possible the shift is left unfilled, with a seat kept open for one to be added by hand.",
 	},
 	{
 		Name:        "no_back_to_back",
