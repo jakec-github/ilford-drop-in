@@ -538,11 +538,18 @@ function ShiftRow({
   }
 
   const unallocated = isUnallocated(shift);
-  // Only once a solve has been read: an empty draft means "the solver could not
-  // fill this" only if the solver has had a go. Before that it means nobody has
-  // asked it yet, and marking every row of a fresh rota as unfilled would make
-  // the one signal worth having say nothing.
-  const unfilledRoles = draftSolved ? shiftDeficit(shift.shape, drafted) : [];
+  // Whether the draft has anything to say about this row at all. Only an
+  // unallocated shift has a draft — an allocated one is the rota, and a closed
+  // one is asking nobody for anything — and only a solve that has been read
+  // makes an empty draft mean "the solver could not fill this" rather than
+  // "nobody has asked it yet". A Shape of nobody is left out too: a shift
+  // asking for no one is not a full shift, it is one still to be stated.
+  const judged = unallocated && draftSolved && shift.shape.length > 0;
+  const unfilledRoles = judged ? shiftDeficit(shift.shape, drafted) : [];
+  // Every Seat spoken for. Worth marking as much as the gaps are: what an admin
+  // is doing on this screen is finding the rows that still need them, and a
+  // green edge is what lets the eye skip one.
+  const filled = judged && unfilledRoles.length === 0;
   const planned = plannedFor(pins, drafted);
 
   const placement = edit?.placement ?? null;
@@ -559,6 +566,7 @@ function ShiftRow({
     shift.closed ? "closed" : "",
     unallocated ? "unallocated" : "",
     unfilledRoles.length ? "unfilled" : "",
+    filled ? "filled" : "",
     isDestination ? "drop-target" : "",
   ]
     .filter(Boolean)

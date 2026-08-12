@@ -140,18 +140,33 @@
   color: var(--warning);
 }
 
-/* And the row carries it too, so a rota's gaps can be found by running an eye
-   down the left edge rather than reading every line. A left border rather than
-   a fill: the unallocated rows already wear a hatch, and a second background on
-   top of it would leave the two states arguing about the same pixels.
+/* And the row's left edge says where it stands, so a rota can be read down the
+   margin rather than line by line: amber where the draft is short, green where
+   every Seat is spoken for. A border rather than a fill — the unallocated rows
+   already wear a hatch, and a second background on top of it would leave the
+   two states arguing about the same pixels.
 
-   The border is the second signal, never the only one — the line above says in
-   words which Roles are short, and says it in the same colour. */
-.shift-row.unfilled {
-  border-left: 3px solid var(--warning);
+   Only the rows the draft has an opinion about get one. An allocated shift, a
+   closed one, and a rota nobody has solved wear no edge at all, which is what
+   keeps the two colours meaning something.
+
+   The colour is the second signal, never the only one: the amber rows say in
+   words which Roles are short, and the green ones are the rows that say
+   nothing. */
+.shift-row.unfilled,
+.shift-row.filled {
+  border-left: 3px solid var(--edge);
   /* The border is drawn inside the row's own padding, so the text does not step
      sideways relative to the rows above and below it. */
   padding-left: 11px;
+}
+
+.shift-row.unfilled {
+  --edge: var(--warning);
+}
+
+.shift-row.filled {
+  --edge: var(--positive);
 }
 
 /* Who is expected on a shift the rota has not been run for: the pins and the
@@ -406,7 +421,8 @@
   }
 
   /* Still inside the row's padding, which is roomier here. */
-  .shift-row.unfilled {
+  .shift-row.unfilled,
+  .shift-row.filled {
     padding-left: 15px;
   }
 
