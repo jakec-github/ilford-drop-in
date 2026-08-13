@@ -82,7 +82,10 @@ does not apply to you.
   pyallocator suite, frontend typecheck and lint, in one exit code. Then push the branch and open a PR with
   `gh pr create` — titled after the ticket, with `Closes #<n>` in the body.
 - PRs that include visual changes to the front end should have screenshots
-  in the PR comments.
+  in the PR comments. They are committed to the `pr-screenshots` orphan branch
+  and linked by raw URL — never to `main`, never to the feature branch, and
+  never left untracked in the checkout. Mechanism in
+  `docs/agents/pr-screenshots.md`.
 - Request review from `jakec-github`. Never merge a PR; merging is the
   reviewer's decision.
 - The agent token cannot request reviewers via `gh pr edit --add-reviewer`

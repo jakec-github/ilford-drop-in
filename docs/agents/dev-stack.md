@@ -237,6 +237,11 @@ they are stable, and they say what a thing *is* rather than what it looks like.
 A screenshot is evidence to hand a human reviewer — never the basis for your own
 verdict that something works.
 
+When you do take one, the `--output-dir` above is where it belongs: pass a bare
+filename so it lands in `logs/playwright/`, which is gitignored, rather than a
+path that puts an image somewhere git can see. Getting one in front of a
+reviewer is [pr-screenshots.md](pr-screenshots.md).
+
 ## What you can actually see
 
 The database starts **empty** but for its Roles. Roles are rows rather than
