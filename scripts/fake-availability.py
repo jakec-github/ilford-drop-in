@@ -20,6 +20,10 @@ The rate is drawn per answerer rather than fixed, so the round has volunteers
 who are nearly always free and volunteers who are nearly never free instead of
 everyone hovering at the mean. --mean is the average share of open shifts said
 yes to; --sd is how far individuals spread around it.
+
+A tenth are left unanswered by default, because a real round always has some
+who never reply and the screens that chase them need something to chase. Pass
+--reply-rate 1 for a round everyone answered.
 """
 
 import argparse
@@ -186,13 +190,13 @@ def main() -> int:
     parser.add_argument(
         "--sd",
         type=float,
-        default=0.16,
+        default=0.26,
         help="how far individual rates spread around the mean",
     )
     parser.add_argument(
         "--reply-rate",
         type=float,
-        default=1.0,
+        default=0.9,
         help="share who answer at all; the rest are left unanswered for chasing",
     )
     parser.add_argument(
