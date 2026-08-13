@@ -82,7 +82,7 @@ func fetchGroupAvailability(
 		// it is defined until its round is minted, so the message is read on the
 		// Allocation tab as a matter of course rather than in a log — and there
 		// is only one rota it could be about (issue #145).
-		return nil, wrapf(ErrInvalidInput, "nobody has been asked about this rota yet - start the availability round below, and the draft will solve once answers come in")
+		return nil, wrapf(ErrInvalidInput, "nobody has been asked about this rota yet - start the availability round below, and the draft will solve from the answers as they come in")
 	}
 
 	requestIDs := make([]string, 0, len(requests))

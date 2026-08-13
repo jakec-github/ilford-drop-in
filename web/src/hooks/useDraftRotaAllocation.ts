@@ -79,24 +79,21 @@ interface UseDraftRotaAllocation {
 // was stuck.
 const RE_READ_DEBOUNCE_MS = 2000;
 
-interface UseDraftRotaAllocationOptions {
-  // A draft is admin-only, so a view that shows it conditionally must be able
-  // to say "not yet": fetching it for a logged-out visitor would be a
-  // guaranteed 401 rendered as a load failure. Defaults to true.
-  enabled?: boolean;
-}
-
 // useDraftRotaAllocation owns the rota in flight's Draft Rota Allocation: the
-// read behind the dashed chips on the rota page, and the re-solve that replaces
-// it.
+// read behind the dashed chips on the Allocation tab, and the re-solve that
+// replaces it.
 //
 // They belong together because a solve's only observable result is the next
 // read: the endpoint that solves reports what it concluded, but the rota it
 // drafted is stored, and stored is where the page takes it from. One shape for
 // "what the draft says", whether it arrived from a page load or a re-solve.
-export function useDraftRotaAllocation({
-  enabled = true,
-}: UseDraftRotaAllocationOptions = {}): UseDraftRotaAllocation {
+//
+// It is mounted on the Allocation tab and nowhere else, which is why nothing
+// here is conditional on being an admin: a draft is admin-only, and the one
+// screen that reads one is behind the admin area. The rota page used to read it
+// too, and needed an `enabled` flag so that a logged-out visitor did not fetch
+// a guaranteed 401 — it shows no draft at all now.
+export function useDraftRotaAllocation(): UseDraftRotaAllocation {
   const [loaded, setLoaded] = useState<DraftRotaState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [solving, setSolving] = useState(false);
@@ -131,7 +128,6 @@ export function useDraftRotaAllocation({
   // Written with .then rather than await so no setState is reached
   // synchronously from the effect.
   useEffect(() => {
-    if (!enabled) return;
     let cancelled = false;
     inFlight.current = true;
     void fetchDraftRotaAllocation()
@@ -163,7 +159,7 @@ export function useDraftRotaAllocation({
     return () => {
       cancelled = true;
     };
-  }, [enabled, reloads]);
+  }, [reloads]);
 
   // Unmounting mid-debounce would otherwise re-read a draft nobody is looking
   // at, and set state on a component that has gone.
@@ -261,27 +257,20 @@ export function useDraftRotaAllocation({
     }
   }, [loaded]);
 
-  // Everything read out of here is gated on `enabled` rather than merely
-  // stopping being refreshed by it, so disabling takes the draft away in the
-  // same render. A session can end while the page is open — a logout in this
-  // tab or another — and the draft is the one thing on this page a non-admin
-  // must never see (ADR 0008). Returning what was last loaded until some later
-  // reload cleared it would leave a logged-out reader looking at the rota the
-  // solver drafted.
   return {
-    state: enabled ? loaded : null,
-    error: enabled ? loadError : null,
-    solving: enabled && solving,
+    state: loaded,
+    error: loadError,
+    solving,
     // The read's own refusal is the fallback rather than the override: a solve
     // this admin asked for is the more recent of the two, and it is the one
     // they are waiting on an answer to.
-    solveError: enabled ? (solveFailure ?? loaded?.solveError ?? null) : null,
+    solveError: solveFailure ?? loaded?.solveError ?? null,
     solve,
-    allocating: enabled && allocating,
-    allocateError: enabled ? allocateFailure : null,
-    attempt: enabled ? attempt : null,
+    allocating,
+    allocateError: allocateFailure,
+    attempt,
     allocate,
-    stale: enabled && stale,
+    stale,
     inputsMoved,
   };
 }

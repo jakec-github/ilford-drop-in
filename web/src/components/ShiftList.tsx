@@ -94,6 +94,10 @@ function GroupDot({ group }: { group: string }) {
   );
 }
 
+// The draft of a caller that shows none. A shared empty map rather than one per
+// render, so a row's props are the same object between renders.
+const NO_DRAFT: Map<string, Assignee[]> = new Map();
+
 // Pending is the person the admin has picked up, on their way to another shift.
 // The same state backs both routes to a move or a swap, so the drop handlers do
 // not care which was used.
@@ -815,7 +819,7 @@ function ShiftRow({
 export default function ShiftList({
   shifts,
   pinsByDate,
-  draftByShiftID,
+  draftByShiftID = NO_DRAFT,
   draftSolved = false,
   draftStale = false,
   colourOf,
@@ -829,9 +833,10 @@ export default function ShiftList({
   shifts: RotaShift[];
   // Who is pinned to each shift, keyed by date as the pins themselves are.
   pinsByDate: Map<string, Preallocation[]>;
-  // Who the last solve put on each shift, keyed by shift id (ADR 0001). Empty
-  // where there is no draft, which is every rota a non-admin is looking at.
-  draftByShiftID: Map<string, Assignee[]>;
+  // Who the last solve put on each shift, keyed by shift id (ADR 0001). Absent
+  // where the caller shows no draft at all — the rota page, which shows what has
+  // been decided and leaves the solver's guess to the Allocation tab.
+  draftByShiftID?: Map<string, Assignee[]>;
   // True when the draft above was read from a solve that succeeded, which is
   // what makes a shift with nothing drafted on it *unfilled* rather than merely
   // unasked. It cannot be read off the map: a shift the solver put nobody on is

@@ -76,6 +76,17 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 		assert.Equal(t, resp.Shifts[i].Date, s.Date)
 	}
 
+	// And so is the round: defining asks everybody, so the links exist before
+	// any button is pressed and the draft has a round to solve against
+	// (issue #188). Nothing has been sent — that is its own action.
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, resp.Rotation.ID)
+	require.NoError(t, err)
+	require.Len(t, requests, 3, "one per active volunteer on the test roster")
+	for _, request := range requests {
+		assert.NotEmpty(t, request.Token)
+		assert.Empty(t, request.SentAt, "minting writes the links, sending them is separate")
+	}
+
 	// A second call is refused while the first rota is in flight (issue #139).
 	rec = defineFromProposal(t, handler, 1)
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())

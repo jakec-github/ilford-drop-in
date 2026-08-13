@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -24,6 +25,10 @@ type RotaResult struct {
 	// written: nothing marks them as having been seeded, and an admin may
 	// remove any of them (issue #131).
 	Preallocations []db.Preallocation
+	// Asked is how many volunteers were given a link by the round this
+	// definition opened. Zero where the roster could not be read — the rota is
+	// defined either way, and the Allocation tab offers to start the round.
+	Asked int
 }
 
 // DefineRotaParams is the rota an admin has decided to make: how many shifts,
@@ -54,9 +59,12 @@ type DefineRotaParams struct {
 // (issue #137). The Roles come with the Shape, because a Seat names a Role by
 // id while the pins seeded beside it record its name; the rotations, because
 // one rota is in flight at a time and this is where that is enforced.
+// The links the round is opened with are the last thing written, which is why
+// MintRequestsStore is in here too.
 type DefineRotaStore interface {
 	RotaDefaultsStore
 	DefaultShapeStore
+	MintRequestsStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
 	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error
@@ -90,8 +98,26 @@ func (p DefineRotaParams) validate() (definition, error) {
 
 // DefineRota creates the rota an admin has stated and mints its weekly shifts,
 // each carrying the default hours and a copy of the default Shape, with the
-// Standing Preallocations seeded onto the Shifts their rules land on.
-func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logger, params DefineRotaParams) (*RotaResult, error) {
+// Standing Preallocations seeded onto the Shifts their rules land on. It then
+// opens the rota's availability round, giving every active volunteer their link.
+//
+// The round is opened here rather than being an admin's next click because
+// there is no rota a round is not wanted for: asking is how a rota is staffed,
+// and a defined rota with nobody asked is a rota nothing can happen to. It also
+// means every rota has a round from the moment it exists, which is what lets
+// the draft solve from the first read rather than refusing until somebody has
+// pressed a button (issue #188).
+//
+// Minting stays separate from *sending*: the links are written, and not one
+// email goes out until an admin sends the round with a deadline in it.
+func DefineRota(
+	ctx context.Context,
+	database DefineRotaStore,
+	volunteerClient VolunteerClient,
+	cfg *config.Config,
+	logger *zap.Logger,
+	params DefineRotaParams,
+) (*RotaResult, error) {
 	stated, err := params.validate()
 	if err != nil {
 		return nil, err
@@ -250,7 +276,49 @@ func DefineRota(ctx context.Context, database DefineRotaStore, logger *zap.Logge
 		Rotation:       rotation,
 		Shifts:         shifts,
 		Preallocations: preallocations,
+		Asked:          openRound(ctx, database, volunteerClient, cfg, logger, rotation.ID),
 	}, nil
+}
+
+// openRound gives every active volunteer their link for the rota just defined,
+// and reports how many were asked.
+//
+// It cannot fail the definition, which is why it returns no error. The rota is
+// committed by the time it runs, and the one thing likely to go wrong here is
+// the roster read — a Google Sheets hiccup, or a deployment with no credentials
+// — which is a reason to be short a round, never a reason to lose a rota that
+// is already on the database. Minting is idempotent and the Allocation tab
+// offers it as "Start round" whenever a rota has none, so the recovery is a
+// click and the screen already shows that it is needed.
+func openRound(
+	ctx context.Context,
+	database DefineRotaStore,
+	volunteerClient VolunteerClient,
+	cfg *config.Config,
+	logger *zap.Logger,
+	rotaID string,
+) int {
+	roles, err := RoleTable(ctx, database)
+	if err != nil {
+		logger.Warn("Defined the rota but could not read the Roles to open its round",
+			zap.String("rotation_id", rotaID), zap.Error(err))
+		return 0
+	}
+
+	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	if err != nil {
+		logger.Warn("Defined the rota but could not read the roster to open its round",
+			zap.String("rotation_id", rotaID), zap.Error(err))
+		return 0
+	}
+
+	asked, err := mintRequestsFor(ctx, database, logger, rotaID, volunteers)
+	if err != nil {
+		logger.Warn("Defined the rota but could not open its round",
+			zap.String("rotation_id", rotaID), zap.Error(err))
+		return 0
+	}
+	return asked
 }
 
 // datesAlreadyTaken says that this rota would have run on a day the drop-in

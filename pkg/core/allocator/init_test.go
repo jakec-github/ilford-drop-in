@@ -21,9 +21,7 @@ func TestInitVolunteerGroups_BasicGrouping(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 2) // group_a and group_b
 
 	// Find groups
@@ -65,9 +63,7 @@ func TestInitVolunteerGroups_IndividualVolunteers(t *testing.T) {
 		HistoricalShifts: []*Shift{},
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 2) // Two individual groups
 
 	for _, g := range volunteerState.VolunteerGroups {
@@ -89,9 +85,7 @@ func TestInitVolunteerGroups_GroupWithTwoTeamLeadsIsAllowed(t *testing.T) {
 		HistoricalShifts:  []*Shift{},
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 1)
 	assert.Len(t, volunteerState.VolunteerGroups[0].Members, 2)
 }
@@ -108,9 +102,7 @@ func TestInitVolunteerGroups_DiscardGroupWithNoResponses(t *testing.T) {
 		HistoricalShifts:  []*Shift{},
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 1) // Only has_response_group should remain
 
 	assert.Equal(t, "has_response_group", volunteerState.VolunteerGroups[0].GroupKey)
@@ -126,10 +118,25 @@ func TestInitVolunteerGroups_DiscardGroupWithNoAvailability(t *testing.T) {
 		HistoricalShifts:  []*Shift{},
 	}
 
-	_, err := InitVolunteerGroups(input)
+	volunteerState := InitVolunteerGroups(input)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no valid volunteer groups")
+	assert.Empty(t, volunteerState.VolunteerGroups)
+}
+
+// Nobody has answered yet, which is every rota's state until the first reply
+// comes in. It is not a failure and it does not stop a draft being solved: the
+// solver is handed no groups and answers with a rota nobody is on.
+func TestInitVolunteerGroups_NobodyAnswered(t *testing.T) {
+	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
+		Volunteers: []Volunteer{
+			{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female"},
+			{ID: "v2", FirstName: "Bob", LastName: "Jones", Gender: "Male"},
+		},
+		GroupAvailability: map[string][]int{},
+		HistoricalShifts:  []*Shift{},
+	})
+
+	assert.Empty(t, volunteerState.VolunteerGroups)
 }
 
 // A volunteer with no group is their own group of one — the key every caller
@@ -174,9 +181,7 @@ func TestInitVolunteerGroups_HistoricalFrequencyCalculation(t *testing.T) {
 		HistoricalShifts: historicalShifts,
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 2)
 
 	// Find groups
@@ -207,9 +212,7 @@ func TestInitVolunteerGroups_MaleCountAccuracy(t *testing.T) {
 		HistoricalShifts:  []*Shift{},
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 1)
 
 	assert.Equal(t, 2, volunteerState.VolunteerGroups[0].MaleCount, "Should count 2 males in group")
@@ -227,9 +230,7 @@ func TestInitVolunteerGroups_AppliesGroupAvailabilityVerbatim(t *testing.T) {
 		HistoricalShifts:  []*Shift{},
 	}
 
-	volunteerState, err := InitVolunteerGroups(input)
-
-	require.NoError(t, err)
+	volunteerState := InitVolunteerGroups(input)
 	require.Len(t, volunteerState.VolunteerGroups, 1)
 	assert.Equal(t, []int{1, 2}, volunteerState.VolunteerGroups[0].AvailableShiftIndices)
 }
@@ -248,11 +249,10 @@ func testShape() []Seat {
 // things and the solver is told so (issue #137). Before this, every Shift of a
 // rota was handed one Shape and there was no way to say otherwise.
 func TestInitShifts_EachShiftKeepsItsOwnShape(t *testing.T) {
-	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        []Volunteer{{ID: "v1", FirstName: "Alice", LastName: "Smith"}},
 		GroupAvailability: map[string][]int{"Alice Smith": {0, 1}},
 	})
-	require.NoError(t, err)
 
 	quiet := []Seat{{Role: "Service volunteer", Count: 2}}
 	busy := []Seat{{Role: "Team lead", Count: 1}, {Role: "Service volunteer", Count: 6}}
@@ -275,12 +275,11 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
 	}
-	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,
 		GroupAvailability: map[string][]int{"group_a": {0, 1, 2}},
 		HistoricalShifts:  []*Shift{},
 	})
-	require.NoError(t, err)
 
 	// Shift 1 is closed — a field on the Shift, not something an override says.
 	input := InitShiftsInput{
@@ -315,12 +314,11 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
 	}
-	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,
 		GroupAvailability: map[string][]int{"group_a": {0, 1}},
 		HistoricalShifts:  []*Shift{},
 	})
-	require.NoError(t, err)
 
 	// Pins landing on a shift that is closed: the pins come from an override,
 	// the closure from the shift, and the shift wins.

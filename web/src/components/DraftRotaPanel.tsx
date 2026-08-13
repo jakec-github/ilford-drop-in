@@ -214,9 +214,10 @@ type PrepDialog =
 // for.
 //
 // Admin-only, like everything else about a draft, and mounted on the Allocation
-// tab alone. The public rota page shows the drafted names as dashed chips but
-// never this: a panel about solving and committing is not something a volunteer
-// reading the rota has any use for.
+// tab alone — which is also the only screen a draft appears on at all. The rota
+// page draws the same rows for the shifts of the rota in flight, and an admin
+// can pin, close and shape them there, but it shows no drafted names: the rota
+// is what has been decided, and a draft is a guess the next solve may replace.
 export default function DraftRotaPanel({
   state,
   loadError,

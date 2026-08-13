@@ -87,6 +87,16 @@ function DefineRotaForm({
           </label>
         </div>
 
+        {/* Says the part of defining that is not on the form. Every active
+            volunteer gets their link the moment the rota exists, which is a
+            thing to know before pressing the button — and the sentence's other
+            half is the reassurance that goes with it: nothing is emailed until
+            you send the round, with a deadline in it. */}
+        <p className="define-rota-note">
+          Defining also gives every active volunteer their availability link. No
+          email goes out until you send the round.
+        </p>
+
         <div className="define-rota-actions">
           <Button type="submit" disabled={defining}>
             {defining ? "Defining…" : "Define rota"}

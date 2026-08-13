@@ -10,7 +10,6 @@ import type {
   Volunteer,
 } from "../types";
 import { TEAM_LEAD_ROLE } from "../types";
-import { useDraftRotaAllocation } from "../hooks/useDraftRotaAllocation";
 import { usePreallocations } from "../hooks/usePreallocations";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
@@ -234,27 +233,17 @@ export default function RotaViewer({
     removePin,
   } = usePreallocations({ enabled: isAdmin });
 
-  // The draft, on the same terms as the pins and for the same reasons: it only
-  // says anything about shifts the rota has not been run for, only admins see
-  // those, and reading it is not editing. It is what turns "not yet allocated"
-  // from a state into a picture of the rota taking shape (ADR 0008).
+  // No draft is read here, deliberately. The drafted names used to be drawn on
+  // the unallocated rows of this page, which made the rota two things at once:
+  // what has been decided, and what the solver currently guesses. A draft is
+  // neither published nor stable — the next solve may say something else — so it
+  // belongs where it is worked on, on Admin → Allocation, and the notice below
+  // sends an admin there. What stays here is what an admin can decide about a
+  // shift the rota has not been run for: the pins, the closures and the Shape.
   //
-  // Read and nothing more, and read once — this is the page's only draft
-  // request, which is why the shift rows are handed the drafted names rather
-  // than fetching their own (issue #180). Solving it and allocating it live on
-  // Admin → Allocation, where the rota in flight is the whole screen: this page
-  // is where the draft is seen, not where it is acted on.
-  const { state: draftState, error: draftError } = useDraftRotaAllocation({
-    enabled: isAdmin,
-  });
-
-  const draftByShiftID = useMemo(() => {
-    const byShift = new Map<string, Assignee[]>();
-    for (const shift of draftState?.shifts ?? []) {
-      byShift.set(shift.shiftId, shift.assignees);
-    }
-    return byShift;
-  }, [draftState]);
+  // Not reading it also takes the read's solve off this page: a draft read can
+  // run a thirty-second CP-SAT solve (ADR 0008), which is a strange thing for
+  // opening the rota to trigger.
 
   const pinsByDate = useMemo(() => {
     const byDate = new Map<string, Preallocation[]>();
@@ -799,31 +788,23 @@ export default function RotaViewer({
         </p>
       )}
 
-      {/* Same treatment, same reason: an unallocated row with no draft on it
-          looks exactly like one whose draft failed to load. */}
-      {draftError && (
-        <p className="rota-notice" role="alert">
-          Could not load the draft rota: {draftError}
-        </p>
-      )}
-
       {/* Where the dashed rows are coming from and what is done about them.
           isAdmin as well as there being any, for the reason `editing` above is
           derived rather than trusted: losing the session takes the sentence
           away in the same render. */}
       {isAdmin && hasUnallocated && (
         <p className="rota-notice">
-          The dashed shifts are the rota in flight — a draft, not placements.
-          Preparing it, asking volunteers about it and allocating it all happen
-          on <Link href="/admin/allocation">Admin &rarr; Allocation</Link>.
+          The dashed shifts are the rota in flight — nobody has been placed on
+          them yet. Pins, closures and what a shift asks for can be set here;
+          the draft the solver makes of them, asking volunteers about it and
+          allocating it all happen on{" "}
+          <Link href="/admin/allocation">Admin &rarr; Allocation</Link>.
         </p>
       )}
 
       <ShiftList
         shifts={visibleShifts}
         pinsByDate={pinsByDate}
-        draftByShiftID={draftByShiftID}
-        draftSolved={draftState?.solved === true && draftState.success}
         colourOf={colourOf}
         selectedName={selectedName}
         onSelectName={setSelectedName}

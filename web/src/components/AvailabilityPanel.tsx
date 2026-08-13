@@ -271,9 +271,13 @@ export default function AvailabilityPanel() {
             )}
 
             {total === 0 ? (
+              // Rare now: a rota opens its round as it is defined. What is left
+              // here is the rota whose roster read failed at that moment, so the
+              // message says how to finish the job rather than describing a step.
               <p className="round-message">
-                Nobody has been asked yet. Starting a round gives every active
-                volunteer their own link.
+                Nobody has been asked yet — a rota is usually given its links as
+                it is defined, so the roster could not be read then. Starting a
+                round gives every active volunteer their own link.
               </p>
             ) : (
               <>

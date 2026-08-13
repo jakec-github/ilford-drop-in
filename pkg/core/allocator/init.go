@@ -1,7 +1,6 @@
 package allocator
 
 import (
-	"fmt"
 	"slices"
 	"sort"
 )
@@ -16,7 +15,7 @@ func GroupKeyFor(volunteer Volunteer) string {
 	return volunteer.GroupKey
 }
 
-// InitVolunteerGroupsInput contains the raw data needed to initialize volunteer groups
+// InitVolunteerGroupsInput contains the raw data needed to initialise volunteer groups
 type InitVolunteerGroupsInput struct {
 	// Volunteers is the list of all volunteers
 	Volunteers []Volunteer
@@ -36,21 +35,24 @@ type InitVolunteerGroupsInput struct {
 	HistoricalShifts []*Shift
 }
 
-// InitVolunteerGroups creates and initializes volunteer groups from raw volunteer data
-// Groups volunteers by GroupKey, calculates metadata, and filters out invalid groups.
+// InitVolunteerGroups creates and initialises volunteer groups from raw
+// volunteer data. Groups volunteers by GroupKey, calculates metadata, and
+// discards the groups the solver has no use for.
 //
-// Returns:
-//   - A VolunteerState with initialized groups and empty exhaustion map
-//   - Error if initialization fails
+// Discarded:
+//   - Groups nobody answered for
+//   - Groups with no availability
 //
 // A group used to be rejected for holding two team leads, because the solver
 // then capped leads per group rather than per Seat. Seats do that capping now,
 // and a second lead is free to take an ordinary Seat, so the rule is gone (#89).
 //
-// Invalid groups (discarded):
-//   - Groups nobody answered for
-//   - Groups with no availability
-func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error) {
+// Nobody left is a state, not a failure. Every rota is in it from the moment it
+// is defined until the first answer arrives, and the solver has an answer for
+// it: a rota with every Seat unfilled, which is precisely what an admin
+// watching a draft take shape should see at that point. Refusing here instead
+// meant the draft could not be produced at all before the answers came in.
+func InitVolunteerGroups(input InitVolunteerGroupsInput) *VolunteerState {
 	// Step 1: Group volunteers by GroupKey
 	groupMap := make(map[string][]Volunteer)
 
@@ -82,21 +84,13 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) (*VolunteerState, error
 		groups = append(groups, group)
 	}
 
-	if len(groups) == 0 {
-		return nil, fmt.Errorf("no valid volunteer groups after initialization")
-	}
-
 	// Sort groups deterministically by GroupKey to ensure consistent ordering
 	// This prevents flaky tests due to Go's randomized map iteration order
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].GroupKey < groups[j].GroupKey
 	})
 
-	volunteerState := &VolunteerState{
-		VolunteerGroups: groups,
-	}
-
-	return volunteerState, nil
+	return &VolunteerState{VolunteerGroups: groups}
 }
 
 // withPreallocatedAvailability returns groupAvailability with every pinned
@@ -240,7 +234,7 @@ type ShiftSpec struct {
 	Closed bool
 }
 
-// InitShiftsInput contains the data needed to initialize shifts
+// InitShiftsInput contains the data needed to initialise shifts
 type InitShiftsInput struct {
 	// Shifts is the current rota's minted shifts, in date order
 	Shifts []ShiftSpec
@@ -248,14 +242,14 @@ type InitShiftsInput struct {
 	// Overrides allow customizing specific shifts
 	Overrides []ShiftOverride
 
-	// VolunteerState contains the initialized volunteer groups
+	// VolunteerState contains the initialised volunteer groups
 	// Used to populate each shift's AvailableGroups
 	VolunteerState *VolunteerState
 }
 
-// InitShifts creates and initializes shifts for the rota
+// InitShifts creates and initialises shifts for the rota
 //
-// Returns a slice of initialized Shift objects with:
+// Returns a slice of initialised Shift objects with:
 //   - Sequential indices
 //   - The Shape each shift arrived asking for (issue #137)
 //   - Preallocations unioned from every override applying to the date

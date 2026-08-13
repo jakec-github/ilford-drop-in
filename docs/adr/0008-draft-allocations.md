@@ -3,7 +3,8 @@
 Status: accepted. Amended 2026-08-07: drafts re-solve when they are read, not on
 a timer (#142) — see "Re-solves happen when a draft is read". Amended 2026-08-09:
 reading a draft waits for a solve already running rather than reporting one
-(#179) — same section.
+(#179) — same section. Amended 2026-08-13: a draft is shown on the Allocation
+tab only, not in the rota view — see the last consequence.
 
 An unallocated Rotation continuously carries a **Draft Rota Allocation**: a
 speculative rota the solver produces from whatever availability, Shapes and
@@ -120,6 +121,14 @@ only if the fresh result hashes identically to the draft the admin was shown.
 - A draft lost to a restart costs a re-solve, not correctness, which is why the
   job is in-process like `sendjobs` rather than a queue.
 
-- Drafts render in the existing rota view as dashed-border chips, on Shifts it
-  already shows to admins and already annotates with "will be placed here when
-  the rota is allocated".
+- Drafts render as dashed-border chips on the Shift rows of the rota in flight,
+  beside the pins those rows already carry.
+
+  *Amended 2026-08-13. The superseded design* drew them in the rota view as
+  well, on the unallocated Shifts an admin already sees there. That made one
+  screen say two kinds of thing at once — what has been decided, and what the
+  solver currently guesses — and it put a read that can trigger a thirty-second
+  solve behind opening the rota. The draft is drawn on the Allocation tab alone
+  now. The rota view keeps the unallocated Shifts and everything an admin
+  decides about them — pins, closures, Shape and hours — and carries a line
+  pointing at the tab where the draft is.

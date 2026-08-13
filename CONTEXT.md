@@ -97,9 +97,11 @@ volunteer's identity — they never log in — and stops working once the Rotati
 is allocated.
 
 **Availability Round**:
-The set of Availability Requests for one Rotation. Minting a round and notifying
-the volunteers in it are separate acts: a minted request exists, with its link,
-before anyone has been told about it.
+The set of Availability Requests for one Rotation. A Rotation is given its round
+as it is defined, so every rota has one from the moment it exists; minting again
+tops it up for volunteers who have joined the roster since. Minting a round and
+notifying the volunteers in it are separate acts: a minted request exists, with
+its link, before anyone has been told about it.
 
 **Availability Response**:
 One volunteer's submission answering their Availability Request. Responses are

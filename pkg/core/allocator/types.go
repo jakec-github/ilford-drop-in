@@ -118,7 +118,7 @@ type Shift struct {
 	MaleCount int
 
 	// AvailableGroups contains volunteer groups that expressed availability for this shift
-	// (populated during initialization)
+	// (populated during initialisation)
 	AvailableGroups []*VolunteerGroup
 
 	// Closed indicates this shift is closed (no allocations should be made)

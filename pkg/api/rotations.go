@@ -38,8 +38,13 @@ type defineRotaResponseBody struct {
 	Shifts   []mintedShiftResponse `json:"shifts"`
 }
 
-// handleDefineRota defines the rota the request states and mints its weekly
-// shifts.
+// handleDefineRota defines the rota the request states, mints its weekly
+// shifts, and opens its availability round.
+//
+// The round is not in the response: what it did is read back by GET
+// /availability-rounds, which the screen an admin lands on after defining is
+// showing anyway. Nothing is emailed — minting writes the links, sending them
+// is its own action with its own deadline.
 //
 // Deliberately not idempotent: a second call defines a second rota. Nothing
 // about the request identifies which rota it is asking for, and there is no
@@ -56,7 +61,7 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := services.DefineRota(r.Context(), h.store, h.logger, services.DefineRotaParams{
+	result, err := services.DefineRota(r.Context(), h.store, h.volunteers, h.cfg, h.logger, services.DefineRotaParams{
 		ShiftCount: req.ShiftCount,
 		StartDate:  req.StartDate,
 	})

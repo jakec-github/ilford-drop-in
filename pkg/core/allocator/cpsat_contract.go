@@ -152,17 +152,14 @@ func BuildCpsatInput(
 		VolunteerState: &VolunteerState{VolunteerGroups: []*VolunteerGroup{}},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize shifts: %w", err)
+		return nil, fmt.Errorf("failed to initialise shifts: %w", err)
 	}
 
-	volunteerState, err := InitVolunteerGroups(InitVolunteerGroupsInput{
+	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,
 		GroupAvailability: withPreallocatedAvailability(groupAvailability, initialised, volunteers),
 		HistoricalShifts:  historicalShifts,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize volunteer groups: %w", err)
-	}
 
 	input := &CpsatInput{
 		MaxAllocationCount: allocationSettings.MaxAllocationCount(len(shiftSpecs)),

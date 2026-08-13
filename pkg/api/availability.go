@@ -198,6 +198,15 @@ func (h *Handler) handleSubmitAvailability(w http.ResponseWriter, r *http.Reques
 // so a round minted through a dev stack on localhost yields links that work
 // there.
 func availabilityLink(r *http.Request, token string) string {
+	return siteURL(r) + "/availability/" + token
+}
+
+// siteURL is where this server is being read from, as an absolute origin with
+// no trailing slash. Taken from the request rather than from configuration
+// because it is only ever wanted to hand back a link to whoever is asking, and
+// the host they asked on is the host that works for them — behind the proxy the
+// forwarded scheme is what says https.
+func siteURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil {
 		scheme = "http"
@@ -205,7 +214,7 @@ func availabilityLink(r *http.Request, token string) string {
 	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
 		scheme = forwarded
 	}
-	return scheme + "://" + r.Host + "/availability/" + token
+	return scheme + "://" + r.Host
 }
 
 func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availabilityRoundResponse {

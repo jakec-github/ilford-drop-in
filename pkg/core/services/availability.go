@@ -158,6 +158,35 @@ func MintAvailabilityRound(
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
 
+	if _, err := mintRequestsFor(ctx, database, logger, rota.ID, volunteers); err != nil {
+		return nil, err
+	}
+
+	return buildRound(ctx, database, rota, volunteers, roles, cfg, logger)
+}
+
+// MintRequestsStore is the sliver of the store minting the links needs, as
+// opposed to reading a round back. Defining a rota mints a round as its last
+// act (issue #188), and that path has no use for the rest of AvailabilityStore.
+type MintRequestsStore interface {
+	MintAvailabilityRequests(ctx context.Context, requests []db.AvailabilityRequest) (int, error)
+}
+
+// mintRequestsFor writes an availability request, with its own link, for every
+// active volunteer on the roster who does not already hold one for this rota.
+// It returns how many were created.
+//
+// This is the whole of minting: the roster read is the caller's, because the
+// two callers come by it differently — a round read has the volunteers in hand
+// for the round it is about to build, and defining a rota does not want them
+// at all beyond this.
+func mintRequestsFor(
+	ctx context.Context,
+	database MintRequestsStore,
+	logger *zap.Logger,
+	rotaID string,
+	volunteers []model.Volunteer,
+) (int, error) {
 	// Only active volunteers are asked. Someone who has stopped volunteering is
 	// kept on the roster but is not part of a round.
 	active := utils.FilterActiveVolunteers(volunteers)
@@ -165,11 +194,11 @@ func MintAvailabilityRound(
 	for _, v := range active {
 		token, err := pkgutils.RandomToken()
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate availability token: %w", err)
+			return 0, fmt.Errorf("failed to generate availability token: %w", err)
 		}
 		requests = append(requests, db.AvailabilityRequest{
 			ID:          uuid.New().String(),
-			RotaID:      rota.ID,
+			RotaID:      rotaID,
 			VolunteerID: v.ID,
 			Token:       token,
 		})
@@ -177,15 +206,15 @@ func MintAvailabilityRound(
 
 	minted, err := database.MintAvailabilityRequests(ctx, requests)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mint availability requests: %w", err)
+		return 0, fmt.Errorf("failed to mint availability requests: %w", err)
 	}
 
 	logger.Info("Minted availability round",
-		zap.String("rota_id", rota.ID),
+		zap.String("rota_id", rotaID),
 		zap.Int("active_volunteers", len(active)),
 		zap.Int("requests_created", minted))
 
-	return buildRound(ctx, database, rota, volunteers, roles, cfg, logger)
+	return minted, nil
 }
 
 // GetAvailabilityRound reads a rota's round back: who was asked, their link, and
