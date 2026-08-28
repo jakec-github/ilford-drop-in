@@ -318,9 +318,11 @@ export const CUSTOM_CHOICE = "custom";
 // makes move and swap a single atomic request rather than two.
 //
 // role sets the role the incoming volunteer takes; omitted, the server infers
-// it. It cannot be combined with swapDate, where each date has its own incoming
-// person, and team lead is refused where the shift already has one. reason is
-// mandatory — the change is recorded against it.
+// it. On a swap it is refused — out is also set there, so each date has its
+// own incoming person and there is no unambiguous one to apply it to — but a
+// move accepts it, since only one person is arriving. Team lead is refused
+// where the shift already has one either way. reason is mandatory — the
+// change is recorded against it.
 export interface RotaChange {
   date: string;
   in?: PersonRef;

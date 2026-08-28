@@ -158,8 +158,14 @@ type EditDialog =
       title: string;
       summary: string;
       confirmLabel: string;
-      // Fully specified bar the reason, which the dialog collects.
-      change: Omit<RotaChange, "reason">;
+      // Fully specified bar the reason and, when role is set, the role —
+      // both of which the dialog collects.
+      change: Omit<RotaChange, "reason" | "role">;
+      // Offered only for a move: the Role the moved person takes on the
+      // shift they land on. A swap keeps whoever it moves in the role they
+      // already held, and a remove has nobody coming in, so neither needs
+      // this — see askSwap and askRemove.
+      role?: { initial: Role; leadTaken: boolean };
     }
   // Someone being pinned to, or unpinned from, a shift the rota has not been
   // run for. Not alterations: nothing is on the rota yet to alter.
@@ -484,12 +490,20 @@ export default function RotaViewer({
   // showing them twice.
   function askMove(to: string) {
     if (!pending) return;
+    // A shift has one team-lead Seat, so the choice is only real where the
+    // destination has none — same rule onAdd applies below, and the same
+    // reason: which one shift's single lead is has been settled by someone
+    // already there.
+    const leadTaken = rotaShifts
+      .find((s) => s.date === to)
+      ?.assignees.some((a) => a.role === TEAM_LEAD_ROLE) ?? false;
     setDialog({
       kind: "confirm",
       title: `Move ${pending.name}?`,
       summary: `${pending.name} moves from ${formatShiftDateLong(pending.date)} to ${formatShiftDateLong(to)}.`,
       confirmLabel: "Move",
       change: { date: to, in: pending.person, swapDate: pending.date },
+      role: { initial: pending.role, leadTaken },
     });
   }
 
@@ -518,6 +532,7 @@ export default function RotaViewer({
       date,
       person: personRef(assignee),
       name: assignee.name,
+      role: assignee.role,
       dragging,
     });
   }
@@ -750,8 +765,9 @@ export default function RotaViewer({
 
       {editing && !pending && (
         <p className="rota-edit-hint">
-          Drag a name onto another shift to move them, or onto another name to
-          swap. On a touchscreen, tap a name instead.
+          Drag a name to another shift to move them, or onto another name to
+          swap. On a touchscreen, tap a name to choose an action: move or
+          swap, replace, or remove.
           {/* Only where there is a shift it applies to. On a rota that has all
               been allocated there is nothing to pin to, and the sentence would
               send an admin looking for a button that is not on any row. */}
@@ -773,8 +789,7 @@ export default function RotaViewer({
           {/* Unconditional, unlike the two above: the times only describe the
               shift, so every row takes the edit whether or not it has been
               allocated. */}
-          Select a row&rsquo;s date to change when that shift runs — the one
-          edit that stays open once the rota is allocated.
+          Select a row&rsquo;s date to change when the shift takes place.
         </p>
       )}
 
@@ -816,12 +831,15 @@ export default function RotaViewer({
           title={dialog.title}
           summary={dialog.summary}
           confirmLabel={dialog.confirmLabel}
+          role={dialog.role}
           busy={saving}
           onCancel={() => {
             setDialog(null);
             setPending(null);
           }}
-          onConfirm={(reason) => void submit({ ...dialog.change, reason })}
+          onConfirm={(reason, role) =>
+            void submit({ ...dialog.change, role, reason })
+          }
         />
       )}
 
