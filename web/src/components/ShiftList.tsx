@@ -231,7 +231,13 @@ function Chip({
         // dragover handlers need to know it before any drop happens.
         e.dataTransfer.setData("text/plain", assignee.name);
         e.dataTransfer.effectAllowed = "move";
-        onDragStart?.();
+        // Deferred: calling this synchronously re-renders the dragged chip
+        // itself (its class/aria-disabled change once `pending` is set)
+        // before the browser has finished committing to the drag session it
+        // just started, which is enough on its own to make Chromium silently
+        // abort it. Pushing the state update to a macrotask lets the browser
+        // finish that first.
+        setTimeout(() => onDragStart?.(), 0);
       }}
       onDragEnd={onDragEnd}
       onDragOver={onDrop && ((e) => e.preventDefault())}
