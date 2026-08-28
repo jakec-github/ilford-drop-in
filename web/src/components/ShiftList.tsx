@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
-import type { Assignee, PersonRef, Preallocation, RotaShift } from "../types";
+import type {
+  Assignee,
+  PersonRef,
+  Preallocation,
+  Role,
+  RotaShift,
+} from "../types";
 import { SERVICE_VOLUNTEER_ROLE } from "../types";
 import type { RoleColourOf } from "../hooks/useRoles";
 import Button from "../ui/Button";
@@ -105,6 +111,10 @@ export interface Pending {
   date: string;
   person: PersonRef;
   name: string;
+  // The Role they hold on the shift they were picked up from — the move
+  // confirmation defaults to this rather than guessing from the roster, since
+  // it is what they were actually doing a moment ago.
+  role: Role;
   // True while an HTML5 drag is in flight. The tap route sets it false and the
   // row then grows an explicit "Move here" button; doing that mid-drag would
   // shift every row under the pointer just as it is aiming at one.
@@ -231,7 +241,13 @@ function Chip({
         // dragover handlers need to know it before any drop happens.
         e.dataTransfer.setData("text/plain", assignee.name);
         e.dataTransfer.effectAllowed = "move";
-        onDragStart?.();
+        // Deferred: calling this synchronously re-renders the dragged chip
+        // itself (its class/aria-disabled change once `pending` is set)
+        // before the browser has finished committing to the drag session it
+        // just started, which is enough on its own to make Chromium silently
+        // abort it. Pushing the state update to a macrotask lets the browser
+        // finish that first.
+        setTimeout(() => onDragStart?.(), 0);
       }}
       onDragEnd={onDragEnd}
       onDragOver={onDrop && ((e) => e.preventDefault())}

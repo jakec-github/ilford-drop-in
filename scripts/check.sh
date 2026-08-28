@@ -2,7 +2,7 @@
 #
 # Everything a change has to pass, in one command with one exit code: Go build,
 # vet and tests, the pyallocator suite, then the frontend typecheck (tsc, via
-# the build) and lint.
+# the build), its own test suite (bun:test) and lint.
 #
 # Usage: scripts/check.sh
 #
@@ -83,6 +83,7 @@ run env PYTHONPATH="$REPO_ROOT/pyallocator/src" \
 
 # bun run build runs tsc -b first (web/build.ts), so this is the typecheck.
 (cd "$REPO_ROOT/web" && run bun run build)
+(cd "$REPO_ROOT/web" && run bun run test)
 (cd "$REPO_ROOT/web" && run bun run lint)
 
 echo ""

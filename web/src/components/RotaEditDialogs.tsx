@@ -76,10 +76,17 @@ function DialogActions({
 // described by picking chips — a remove, a move or a swap. The summary spells
 // out what is about to happen, because a drag that landed one row off is
 // otherwise indistinguishable from the one that was meant.
+//
+// role is offered only for a move: the person being carried is already known,
+// so unlike AssigneeDialog there is nobody to pick — only, where the
+// destination's single lead Seat is still free, which Role they take there.
+// A remove has nobody coming in and a swap keeps whoever it moves in the role
+// they already held, so both pass no role and the field does not appear.
 export function ConfirmChangeDialog({
   title,
   summary,
   confirmLabel,
+  role,
   busy,
   onCancel,
   onConfirm,
@@ -87,21 +94,60 @@ export function ConfirmChangeDialog({
   title: string;
   summary: string;
   confirmLabel: string;
+  role?: {
+    // The Role to offer before the admin says otherwise — what the moved
+    // person was already doing on the shift they are leaving.
+    initial: Role;
+    // The destination's single team-lead Seat is already spoken for, so the
+    // choice is not really theirs to make: they join as a service volunteer,
+    // same as AssigneeDialog's add case, and the field is not shown.
+    leadTaken: boolean;
+  };
   busy: boolean;
   onCancel: () => void;
-  onConfirm: (reason: string) => void;
+  onConfirm: (reason: string, role?: Role) => void;
 }) {
   const [reason, setReason] = useState("");
+  const [chosenRole, setChosenRole] = useState<Role>(
+    role?.initial ?? SERVICE_VOLUNTEER_ROLE,
+  );
 
   return (
     <Dialog title={title} onClose={onCancel}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onConfirm(reason.trim());
+          onConfirm(
+            reason.trim(),
+            role
+              ? role.leadTaken
+                ? SERVICE_VOLUNTEER_ROLE
+                : chosenRole
+              : undefined,
+          );
         }}
       >
         <p className="rota-edit-summary">{summary}</p>
+
+        {role &&
+          (role.leadTaken ? (
+            <p className="rota-edit-note">
+              The shift they are moving to already has a team lead, so they
+              join as a service volunteer.
+            </p>
+          ) : (
+            <label className="rota-edit-field">
+              Role
+              <select
+                value={chosenRole}
+                onChange={(e) => setChosenRole(e.target.value as Role)}
+              >
+                <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
+                <option value={TEAM_LEAD_ROLE}>Team lead</option>
+              </select>
+            </label>
+          ))}
+
         <ReasonField value={reason} onChange={setReason} />
         <DialogActions
           confirmLabel={confirmLabel}

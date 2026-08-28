@@ -34,12 +34,15 @@ type ChangeRotaParams struct {
 	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
 	Reason    string // Required reason for the change
 	UserEmail string // Email of the user making the change
-	// Role the incoming volunteer takes. Required alongside In, and refused
-	// alongside SwapDate, where each leg inherits the Role of the person it
-	// replaces — see validateRole. How many of a Role a shift ends up with is
-	// not checked: a change records what happened on the day, and the Shape it
-	// would be checked against is frozen the moment the rota is allocated, so
-	// refusing would leave an extra pair of hands unrecordable (issue #185).
+	// Role the incoming volunteer takes. Required alongside In, and — on a
+	// swap, where Out is also set — refused, since each leg then has its own
+	// incoming person and there is no unambiguous one to apply it to. A move
+	// (SwapDate set, Out empty) has exactly one incoming person, so it is
+	// offered there same as any other arrival — see validateRole. How many of
+	// a Role a shift ends up with is not checked: a change records what
+	// happened on the day, and the Shape it would be checked against is
+	// frozen the moment the rota is allocated, so refusing would leave an
+	// extra pair of hands unrecordable (issue #185).
 	Role string
 }
 
@@ -410,7 +413,7 @@ func validateRole(params ChangeRotaParams, roles model.Roles) error {
 		if params.In == "" {
 			return wrapf(ErrInvalidInput, "a role can only be set for a volunteer coming in")
 		}
-		if params.SwapDate != "" {
+		if params.SwapDate != "" && params.Out != "" {
 			return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming volunteer")
 		}
 		return nil
