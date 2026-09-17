@@ -9,7 +9,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// The round answers "who has replied". This answers the question an admin asks
+// The round answers "who has replied". This answers the question an Organiser asks
 // next: can the rota actually be staffed with what has come in? It is the
 // analysis the CLI's viewResponses did, moved onto the availability tab and
 // re-expressed against shift ids — the date-string matching it did throughout
@@ -48,7 +48,7 @@ type ShiftCoverage struct {
 //
 // Someone holding two Roles is counted available for both. They can only fill
 // one Seat, so the tallies overlap — the question each answers is "could this
-// Role be filled at all", which is the one an admin chasing a lead is asking,
+// Role be filled at all", which is the one an Organiser chasing a lead is asking,
 // and summing them is not meaningful.
 type RoleCoverage struct {
 	Role      string

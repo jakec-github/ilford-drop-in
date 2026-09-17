@@ -228,7 +228,7 @@ func TestMintAvailabilityRoundAsksEveryActiveVolunteer(t *testing.T) {
 	}
 	sort.Strings(names)
 	assert.Equal(t, []string{"Aaliyah", "Emma", "Michael"}, names,
-		"the round is an admin screen, so it names people the way the rota does")
+		"the round is an Organiser screen, so it names people the way the rota does")
 }
 
 // TestMintAvailabilityRoundTwiceIsANoOp proves minting is repeatable: the second
@@ -286,7 +286,7 @@ func TestAvailabilityFormLandsOptedIn(t *testing.T) {
 // TestAvailabilityFormSaysWhenAnAnswerCannotCount: a volunteer who has stopped
 // keeps a working link, and answering through it is a dead end — the allocator
 // only ever sees active volunteers, and the round no longer shows their row to
-// an admin who might have noticed. The form is the one place left that can say
+// an Organiser who might have noticed. The form is the one place left that can say
 // so, and it says so rather than refusing the answer: the likeliest cause is a
 // roster nobody has updated, and their answer is worth having the moment that
 // is fixed.
@@ -331,7 +331,7 @@ func TestAvailabilityFormSaysSoForSomebodyOffTheRoster(t *testing.T) {
 
 // TestSubmitStillAcceptsAnAnswerThatCannotCount: the warning is advice, not a
 // gate. Refusing the write would throw away an answer that becomes valid the
-// moment an admin fixes the roster, and would do it at the one moment the
+// moment an Organiser fixes the roster, and would do it at the one moment the
 // volunteer is paying attention.
 func TestSubmitStillAcceptsAnAnswerThatCannotCount(t *testing.T) {
 	store, cfg := availabilityFixture()
@@ -445,7 +445,7 @@ func TestAvailabilityUnknownTokenIsNotFound(t *testing.T) {
 
 // TestRoundReportsGroupCover: a group answers as a unit, so a volunteer whose
 // partner has already replied is covered, not missing. Without this the roster
-// would send an admin chasing an answer it already has.
+// would send an Organiser chasing an answer it already has.
 func TestRoundReportsGroupCover(t *testing.T) {
 	store, cfg := availabilityFixture()
 	volunteers := availabilityVolunteers()

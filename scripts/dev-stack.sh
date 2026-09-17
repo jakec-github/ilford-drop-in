@@ -183,7 +183,8 @@ wait_for_ready() {
             echo "Stack ready (pid ${pid})"
             echo "  app:    http://localhost:${PORT}/"
             echo "  health: http://localhost:${PORT}/health"
-            echo "  login:  http://localhost:${PORT}/auth/login  (mints an admin session, no Google)"
+            echo "  login:  http://localhost:${PORT}/auth/login  (mints an Organiser session, no Google)"
+            echo "          http://localhost:${PORT}/auth/login?level=rotaEditor  (a Rota Editor's)"
             echo "  logs:   $0 logs"
             return
         fi

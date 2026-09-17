@@ -357,7 +357,7 @@ func TestAddPreallocation_RoleWithSeatsLeftTakesAnother(t *testing.T) {
 	require.Len(t, store.inserted, 1)
 }
 
-// A Shape the shift's own admin widened seats more of a Role, and the pins
+// A Shape the shift's own Organiser widened seats more of a Role, and the pins
 // follow it: the Shape is the ceiling, so raising it raises what may be pinned.
 func TestAddPreallocation_FollowsTheShiftsOwnShape(t *testing.T) {
 	store := oneShiftStore()

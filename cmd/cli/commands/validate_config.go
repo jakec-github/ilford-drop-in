@@ -68,7 +68,7 @@ devMode block is only permitted under "dev".`,
 			fmt.Fprintf(out, "  server:     %s\n", describeServer(cfg))
 			if cfg.DevMode != nil {
 				fmt.Fprintf(out, "  devMode:    ON — roster from %s, login as %s\n",
-					cfg.DevMode.VolunteersCSV, cfg.DevMode.AdminEmail)
+					cfg.DevMode.VolunteersCSV, cfg.DevMode.OrganiserEmail)
 			}
 			// Ignored keys do not stop the server starting, so this line is the only
 			// place an operator finds out that a section of their file configures
@@ -88,7 +88,9 @@ func describeServer(cfg *config.Config) string {
 	if cfg.Server == nil {
 		return "not configured — the CLI runs, the web server does not"
 	}
-	return fmt.Sprintf("port %d, %s", cfg.Server.Port, plural(len(cfg.Server.AdminEmails), "admin email"))
+	return fmt.Sprintf("port %d, %s, %s", cfg.Server.Port,
+		plural(len(cfg.Server.OrganiserEmails), "organiser"),
+		plural(len(cfg.Server.RotaEditorEmails), "rota editor"))
 }
 
 func plural(n int, noun string) string {

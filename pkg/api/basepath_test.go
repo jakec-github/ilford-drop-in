@@ -56,7 +56,7 @@ func TestBasePathMovesWhatLeavesTheApp(t *testing.T) {
 
 			for path, want := range map[string]int{
 				base + "/":                     http.StatusOK,
-				base + "/admin/allocation":     http.StatusOK,
+				base + "/organiser/allocation":     http.StatusOK,
 				base + "/availability/a-token": http.StatusOK,
 				base + "/calendars/alice.ics":  http.StatusOK,
 				base + "/chunk-abc.js":         http.StatusOK,
@@ -67,7 +67,7 @@ func TestBasePathMovesWhatLeavesTheApp(t *testing.T) {
 
 			// And none of them answers at the root any more.
 			for _, path := range []string{
-				"/admin/allocation", "/availability/a-token", "/calendars/alice.ics", "/chunk-abc.js",
+				"/organiser/allocation", "/availability/a-token", "/calendars/alice.ics", "/chunk-abc.js",
 			} {
 				rec := doRequest(t, handler, http.MethodGet, path, "")
 				assert.Equal(t, http.StatusNotFound, rec.Code, path)
@@ -144,13 +144,13 @@ func TestIndexCarriesTheBasePathInItsBaseTag(t *testing.T) {
 	store := basePathStore()
 
 	handler := newBasePathHandler(store)
-	rec := doRequest(t, handler, http.MethodGet, testBasePath+"/admin/allocation", "")
+	rec := doRequest(t, handler, http.MethodGet, testBasePath+"/organiser/allocation", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `<base href="`+testBasePath+`/" />`)
 
 	// With no base path the tag is already right, and index.html is served
 	// byte for byte as it was built.
-	rec = doRequest(t, newFullStackHandler(store), http.MethodGet, "/admin/allocation", "")
+	rec = doRequest(t, newFullStackHandler(store), http.MethodGet, "/organiser/allocation", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `<base href="/" />`)
 }
@@ -200,7 +200,7 @@ func TestLoginCookiesStayAtTheRoot(t *testing.T) {
 	a.basePath = testBasePath
 
 	rec := httptest.NewRecorder()
-	a.setSessionCookie(rec, testAdminEmail)
+	a.setSessionCookie(rec, testOrganiserEmail)
 	assert.Equal(t, "/", cookieNamed(t, rec, sessionCookieName).Path)
 
 	rec = httptest.NewRecorder()

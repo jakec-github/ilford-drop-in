@@ -786,7 +786,7 @@ func TestChangeRota_MoveWithNothingToInheritTakesNoRole(t *testing.T) {
 }
 
 // An explicit Role on a move overrides what it would otherwise inherit from
-// the shift the volunteer is leaving — the admin dragging them onto an open
+// the shift the volunteer is leaving — the Organiser dragging them onto an open
 // area chooses the Role there rather than carrying the old one across
 // unasked.
 func TestChangeRota_MoveWithExplicitRoleOverridesInheritance(t *testing.T) {
@@ -815,7 +815,7 @@ func TestChangeRota_MoveWithExplicitRoleOverridesInheritance(t *testing.T) {
 // same as an add would (TestChangeRota_ExplicitRoleIsNotCountedAgainstTheShift):
 // nothing here counts how many of a Role a shift ends up with regardless of
 // how the incoming volunteer arrived (issue #185). The frontend's own
-// leadTaken check (RotaEditDialogs.tsx) still steers an admin away from this
+// leadTaken check (RotaEditDialogs.tsx) still steers an Organiser away from this
 // as the default UI choice, but the server has no ceiling to enforce behind
 // it.
 func TestChangeRota_MoveWithRoleNotCountedAgainstTheShift(t *testing.T) {
@@ -854,7 +854,7 @@ func addedAlteration(t *testing.T, store *mockChangeRotaStore) db.Alteration {
 }
 
 // A change records what happened on the day, so nothing here counts how many of
-// a Role the shift ends up with: a second team lead turned up, and an admin
+// a Role the shift ends up with: a second team lead turned up, and an Organiser
 // saying so is not a mistake to refuse (issue #185). It used to be refused
 // against the Role's ceiling — and the Shape it would be checked against
 // instead is frozen the moment the rota is allocated, which would leave an

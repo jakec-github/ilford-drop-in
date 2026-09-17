@@ -10,7 +10,7 @@ import type { AllocateOutcome, DraftRotaState, DraftShift } from "../types";
 // screen can say something about it once the request is over.
 //
 // The refused case carries the rota that was shown, not the one that came
-// back — that one is now in `state`, on screen. What an admin needs is the
+// back — that one is now in `state`, on screen. What an Organiser needs is the
 // difference between the two, and this is the half of it the page would
 // otherwise have overwritten.
 export type AllocationAttempt =
@@ -25,7 +25,7 @@ interface UseDraftRotaAllocation {
   state: DraftRotaState | null;
   error: string | null;
   // True while a solve is running. It is a CP-SAT subprocess capped at thirty
-  // seconds, so this is a spinner the admin waits out rather than a flicker.
+  // seconds, so this is a spinner the Organiser waits out rather than a flicker.
   solving: boolean;
   // The message from a solve that was refused, kept apart from `error` above:
   // that one means the draft could not be read, this one means the rota cannot
@@ -74,7 +74,7 @@ interface UseDraftRotaAllocation {
 }
 
 // How long after the last edit lands before the draft is re-read. Long enough
-// that pinning three people in a row is one solve, short enough that an admin
+// that pinning three people in a row is one solve, short enough that an Organiser
 // who made one change is not left watching a spinner they could have believed
 // was stuck.
 const RE_READ_DEBOUNCE_MS = 2000;
@@ -89,8 +89,8 @@ const RE_READ_DEBOUNCE_MS = 2000;
 // "what the draft says", whether it arrived from a page load or a re-solve.
 //
 // It is mounted on the Allocation tab and nowhere else, which is why nothing
-// here is conditional on being an admin: a draft is admin-only, and the one
-// screen that reads one is behind the admin area. The rota page used to read it
+// here is conditional on being an Organiser: a draft is organiser-only, and the one
+// screen that reads one is behind the Organiser area. The rota page used to read it
 // too, and needed an `enabled` flag so that a logged-out visitor did not fetch
 // a guaranteed 401 — it shows no draft at all now.
 export function useDraftRotaAllocation(): UseDraftRotaAllocation {
@@ -111,7 +111,7 @@ export function useDraftRotaAllocation(): UseDraftRotaAllocation {
   const inFlight = useRef(false);
   // An edit that landed while a request was running. Remembered rather than
   // fired: an abort would kill the solve the running read is waiting on, and an
-  // admin editing steadily would abort every read they started and never see a
+  // Organiser editing steadily would abort every read they started and never see a
   // draft at all. At most one — what is wanted afterwards is a read of the
   // inputs as they finally stand, however many times they moved.
   const readAgain = useRef(false);
@@ -262,7 +262,7 @@ export function useDraftRotaAllocation(): UseDraftRotaAllocation {
     error: loadError,
     solving,
     // The read's own refusal is the fallback rather than the override: a solve
-    // this admin asked for is the more recent of the two, and it is the one
+    // this Organiser asked for is the more recent of the two, and it is the one
     // they are waiting on an answer to.
     solveError: solveFailure ?? loaded?.solveError ?? null,
     solve,

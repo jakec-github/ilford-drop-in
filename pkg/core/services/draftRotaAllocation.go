@@ -33,12 +33,12 @@ type DraftRotaAllocationStore interface {
 // found a rota, how much of one it managed to staff, whether it still speaks for
 // the inputs as they now stand, and the rota it drafted.
 //
-// SeatsFilled against SeatsAsked is the number an admin acts on during the
+// SeatsFilled against SeatsAsked is the number an Organiser acts on during the
 // availability window. "Four Seats unfilled" is a nudge to chase somebody;
 // INFEASIBLE is a conflict to go and resolve. Neither is legible from the draft
 // rows, which is why the outcome is stored beside them.
 //
-// One type for both a fresh solve and a stored draft, because an admin asking
+// One type for both a fresh solve and a stored draft, because an Organiser asking
 // "where is the rota up to" is asking one question, and two shapes for it would
 // be two things for a screen to reconcile. Both fill Shifts, so holding one of
 // these never means "the rota it drafted has not been loaded yet" — an empty
@@ -64,7 +64,7 @@ type DraftRotaAllocationStatus struct {
 	// reaches the wire, because a client is never handed a draft that is stale
 	// (issue #179).
 	Dirty bool
-	// Hash fingerprints the rota below: it is what an admin allocating says
+	// Hash fingerprints the rota below: it is what an Organiser allocating says
 	// back, and what allocating re-solves and compares against before it
 	// commits anything (ADR 0008). Empty for a rota nobody has drafted, which
 	// has no rota to fingerprint and nothing to confirm.
@@ -130,7 +130,7 @@ func draftShifts(
 // of ADR 0008. Nothing here reaches the `allocation` table, the calendar feed or
 // the public shift listing, and no reader of those has anything new to remember.
 //
-// An infeasible solve is stored like any other. It is the outcome an admin most
+// An infeasible solve is stored like any other. It is the outcome an Organiser most
 // needs to see early, while there is still availability window left to fix the
 // input in, and a draft with no Seats and no explanation would look exactly like
 // a rota nobody had solved yet.
@@ -166,7 +166,7 @@ func SolveDraftRotaAllocation(
 //
 // Both things that solve the rota in flight end up here. Drafting always does,
 // which is the whole of ADR 0008; allocating does when it refuses to commit,
-// because a solve that says the rota has moved is exactly the answer the admin
+// because a solve that says the rota has moved is exactly the answer the Organiser
 // should be looking at next. The one path means a draft is written the same way
 // whichever act produced it.
 //
@@ -217,7 +217,7 @@ func storeSolveAsDraft(
 // draft in.
 //
 // One shape whether the solve was stored as a draft or committed as the rota:
-// an admin watching the rota take shape and an admin who has just allocated are
+// an Organiser watching the rota take shape and an Organiser who has just allocated are
 // looking at the same thing, and it was a draft until the moment it was
 // committed.
 func (s *rotaSolve) status(solvedAt time.Time, allocations []db.Allocation, logger *zap.Logger) *DraftRotaAllocationStatus {
@@ -281,7 +281,7 @@ func (s *rotaSolve) draft(solvedAt time.Time, diagnostics []byte) db.DraftRotaAl
 // rota as it stands. It costs no roster fetch either: there are no Seats to name,
 // and the Sheet would be read to name nobody.
 //
-// Every caller of this must be admin-gated. A draft names people against Shifts
+// Every caller of this must be Organiser-gated. A draft names people against Shifts
 // on a rota nobody has decided yet and is replaced wholesale every time an input
 // moves; publishing one would tell a volunteer they are working a shift they may
 // well not be. That is the whole reason drafts live in tables of their own

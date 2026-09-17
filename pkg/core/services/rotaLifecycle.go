@@ -33,7 +33,7 @@ func RotaInFlight(ctx context.Context, database RotaLifecycleStore) (*db.RotaInF
 //
 // It is the release valve the one-rota-in-flight rule requires. Allocation is
 // otherwise the only thing that ends a rota's life, so without this one mistyped
-// shift count wedges the system — and the case an admin is most likely to hit is
+// shift count wedges the system — and the case an Organiser is most likely to hit is
 // realising the rota is wrong *because* a volunteer replied to say so, which is
 // why answers already given are destroyed rather than protected.
 //

@@ -26,7 +26,7 @@ func TestSaveShiftShape(t *testing.T) {
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
 		`{"seats":[{"roleId":"role-service-volunteer","count":6},{"roleId":"role-team-lead","count":1}]}`,
-		adminCookie())
+		organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	assert.Equal(t, []seatResponse{
@@ -44,7 +44,7 @@ func TestSaveShiftShapeIsVisibleInTheListing(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, doRequest(t, handler, http.MethodPut,
 		"/api/shifts/s1/shape",
-		`{"seats":[{"roleId":"role-service-volunteer","count":2}]}`, adminCookie()).Code)
+		`{"seats":[{"roleId":"role-service-volunteer","count":2}]}`, organiserCookie()).Code)
 
 	rec := doRequest(t, handler, http.MethodGet, "/api/shifts", "")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -66,7 +66,7 @@ func TestSaveShiftShapeAcceptsNothing(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
-		"/api/shifts/s1/shape", `{"seats":[]}`, adminCookie())
+		"/api/shifts/s1/shape", `{"seats":[]}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Empty(t, decodeShiftShape(t, rec.Body.Bytes()).Shape)
 }
@@ -80,7 +80,7 @@ func TestSaveShiftShapeRefusedOnAnAllocatedRota(t *testing.T) {
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
-		`{"seats":[{"roleId":"role-service-volunteer","count":2}]}`, adminCookie())
+		`{"seats":[{"roleId":"role-service-volunteer","count":2}]}`, organiserCookie())
 	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 }
 
@@ -91,7 +91,7 @@ func TestSaveShiftShapeTakesAnyCountOfAnyRole(t *testing.T) {
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
-		`{"seats":[{"roleId":"role-team-lead","count":2}]}`, adminCookie())
+		`{"seats":[{"roleId":"role-team-lead","count":2}]}`, organiserCookie())
 	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
 
@@ -106,7 +106,7 @@ func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
-		`{"seats":[{"roleId":"role-service-volunteer","count":4}]}`, adminCookie())
+		`{"seats":[{"roleId":"role-service-volunteer","count":4}]}`, organiserCookie())
 	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "Team lead")
 }
@@ -114,19 +114,19 @@ func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
 func TestSaveShiftShapeUnknownShift(t *testing.T) {
 	rec := doRequest(t, newTestHandler(shiftEditTestStore(), testVolunteers()), http.MethodPut,
 		"/api/shifts/ghost/shape",
-		`{"seats":[{"roleId":"role-service-volunteer","count":2}]}`, adminCookie())
+		`{"seats":[{"roleId":"role-service-volunteer","count":2}]}`, organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
 func TestSaveShiftShapeRejectsUnknownFields(t *testing.T) {
 	rec := doRequest(t, newTestHandler(shiftEditTestStore(), testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
-		`{"seats":[{"roleId":"role-team-lead","count":1}],"date":"2026-12-20"}`, adminCookie())
+		`{"seats":[{"roleId":"role-team-lead","count":1}],"date":"2026-12-20"}`, organiserCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
-// Anyone may read what a shift asks for; only an admin may change it.
-func TestSaveShiftShapeRequiresAdmin(t *testing.T) {
+// Anyone may read what a shift asks for; only an Organiser may change it.
+func TestSaveShiftShapeRequiresAnOrganiser(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,

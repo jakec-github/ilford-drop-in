@@ -64,7 +64,7 @@ the only ceiling on how many of a Role a Shift may hold.
 _Avoid_: shift size, template, structure
 
 **Rota Defaults**:
-The settings an Admin keeps for the drop-in as a whole — the Roles that exist,
+The settings an Organiser keeps for the drop-in as a whole — the Roles that exist,
 the default Shape, the default shift times, the Standing Preallocations and the
 Allocation Settings. They seed each new Rotation and its Shifts at definition;
 nothing copies them back afterwards, so editing them changes what the next rota
@@ -128,34 +128,46 @@ would otherwise ask of the roster: the pinned person is available for that
 Shift whatever they answered, and holds the Role it names for that Shift alone.
 It references the Role rather than naming it, so renaming one leaves every
 promise made in it intact. Every Preallocation is the same kind of thing however
-it came to exist, and an Admin may remove any of them. A Volunteer is pinned to
+it came to exist, and an Organiser or a Rota Editor may remove any of them. A Volunteer is pinned to
 a Shift at most once; a custom entry may be pinned to one more than once, since
 it is usually an organisation and an organisation may send several people.
 _Avoid_: pin (except as the informal verb, "pin to a Shift")
 
 **Standing Preallocation**:
-A Preallocation an Admin expects to make every rota, kept in Rota Defaults and
+A Preallocation an Organiser expects to make every rota, kept in Rota Defaults and
 used to seed real ones when a Rotation is defined. It is a convenience at
 definition, not a standing fact: once seeded, the Preallocations it made are
 ordinary and outlive any later change to it.
 
-**Admin**:
-A trusted person authorised to manage the rota and volunteer data, identified
-by the email of their Google account against an explicit allowlist. Being an
-Admin is a live fact about the allowlist, not a property of a credential. All
-other visitors are anonymous; there are no other authenticated roles.
-_Avoid_: user, staff
+**Organiser**:
+A trusted person authorised to make every edit the app offers — the Rota
+Defaults, defining and discarding a Rotation, its Availability Round, the Draft
+Rota Allocation and allocating it, and everything a Rota Editor can do.
+Identified by the email of their Google account against an explicit allowlist.
+Being an Organiser is a live fact about the allowlist, not a property of a
+credential. Someone on both allowlists is an Organiser.
+_Avoid_: admin (reserved for a possible future level), user, staff
+
+**Rota Editor**:
+A trusted person authorised to change who works a Shift and nothing else:
+Alterations and Cover on an allocated Rotation, and Preallocations on the Rota
+in Flight. What a Shift is — when it runs, whether it is Closed, its Shape — is
+an Organiser's, because those are allocator inputs rather than who is on the
+rota; so is every Organiser screen, the Draft Rota Allocation included.
+Identified and re-checked like an Organiser, against an allowlist of its own.
+All other visitors are anonymous; there are no other authenticated levels.
+_Avoid_: admin, editor (alone), user, staff
 
 **Draft Rota Allocation**:
 A speculative allocation of a whole unallocated Rotation, replaced entire each
-time it is solved and shown only to Admins. Named for the rota because that is
+time it is solved and shown only to Organisers. Named for the rota because that is
 its scope: it is made of draft Allocations, but it is never partial, and no
 single one of them means anything on its own. It is **dirty** when an allocator
 input has moved under the Rotation since it was solved — an availability
 response, a Shape, a Shift opened, closed or moved to another day, a
 Preallocation, a Role, the Allocation Settings — and reading a dirty draft
 solves it again, waiting for any solve already running first, so what a reader
-is handed is never stale. It becomes the rota only when an Admin allocates,
+is handed is never stale. It becomes the rota only when an Organiser allocates,
 which re-solves and commits only if the result still matches what they were
 shown.
 _Avoid_: draft allocation (that is one of its seats), speculative allocation,

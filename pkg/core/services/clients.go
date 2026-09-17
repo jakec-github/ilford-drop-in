@@ -22,7 +22,7 @@ type VolunteerClient interface {
 }
 
 // GmailClient sends one email. The server builds one per send from the token an
-// admin has just granted, so the interface is deliberately smaller than a mail
+// Organiser has just granted, so the interface is deliberately smaller than a mail
 // client: nothing here outlives the request that made it.
 type GmailClient interface {
 	SendEmail(to, subject, body string) error

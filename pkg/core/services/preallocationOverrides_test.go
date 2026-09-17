@@ -120,7 +120,7 @@ func TestCheckPreallocationsResolve_InactivePin(t *testing.T) {
 
 // A stale pin on a closed shift is not reported: InitShifts strips it, so it
 // reaches nothing, and failing the whole rota over a pin with no effect would
-// leave an admin with nothing to fix but a shut date.
+// leave an Organiser with nothing to fix but a shut date.
 func TestCheckPreallocationsResolve_SkipsClosedShifts(t *testing.T) {
 	shifts := []db.Shift{{ID: "shift-1", Date: "2026-08-02", Closed: true}}
 	pins := []db.Preallocation{

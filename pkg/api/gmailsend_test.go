@@ -61,7 +61,7 @@ func sendTestStore() *mockStore {
 func newSendTestHandler(store *mockStore, mailer services.GmailClient) http.Handler {
 	auth := newTestAuthenticator()
 	// Dev mode: /auth/gmail goes straight to the send rather than to Google.
-	auth.stubEmail = testAdminEmail
+	auth.stubEmail = testOrganiserEmail
 
 	volunteers := testVolunteers()
 	for i := range volunteers.volunteers {
@@ -75,7 +75,7 @@ func newSendTestHandler(store *mockStore, mailer services.GmailClient) http.Hand
 // startSendRequest returns the job id a started send redirected to.
 func startSendRequest(t *testing.T, handler http.Handler, query string) string {
 	t.Helper()
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code, rec.Body.String())
 
 	location, err := url.Parse(rec.Header().Get("Location"))
@@ -87,13 +87,13 @@ func startSendRequest(t *testing.T, handler http.Handler, query string) string {
 	return jobID
 }
 
-// awaitSend polls the send endpoint the way the admin page does, and returns the
+// awaitSend polls the send endpoint the way the Organiser page does, and returns the
 // finished job.
 func awaitSend(t *testing.T, handler http.Handler, jobID string) sendResponse {
 	t.Helper()
 	var resp sendResponse
 	require.Eventually(t, func() bool {
-		rec := doRequest(t, handler, http.MethodGet, "/api/availability-sends/"+jobID, "", adminCookie())
+		rec := doRequest(t, handler, http.MethodGet, "/api/availability-sends/"+jobID, "", organiserCookie())
 		if rec.Code != http.StatusOK {
 			return false
 		}
@@ -103,9 +103,9 @@ func awaitSend(t *testing.T, handler http.Handler, jobID string) sendResponse {
 	return resp
 }
 
-// TestSendEndpointsRequireAdmin: a send mails every volunteer on the roster as
-// the admin, and reading one back lists their addresses. Neither is anonymous.
-func TestSendEndpointsRequireAdmin(t *testing.T) {
+// TestSendEndpointsRequireAnOrganiser: a send mails every volunteer on the roster as
+// the Organiser, and reading one back lists their addresses. Neither is anonymous.
+func TestSendEndpointsRequireAnOrganiser(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), &recordingMailer{})
 
 	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "")
@@ -147,7 +147,7 @@ func TestSendIsRefusedWithoutADeadline(t *testing.T) {
 	mailer := &recordingMailer{}
 	handler := newSendTestHandler(sendTestStore(), mailer)
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round", "", organiserCookie())
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Empty(t, mailer.recipients())
@@ -160,7 +160,7 @@ func TestSendIsRefusedForAnUnknownMode(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), mailer)
 
 	for _, query := range []string{"deadline=Friday", "mode=everyone&deadline=Friday", "mode=resend&deadline=Friday"} {
-		rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", adminCookie())
+		rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", organiserCookie())
 		assert.Equal(t, http.StatusBadRequest, rec.Code, query)
 	}
 	assert.Empty(t, mailer.recipients())
@@ -181,13 +181,13 @@ func TestResendMailsOneVolunteer(t *testing.T) {
 	assert.Equal(t, "bob", resp.Sent[0].VolunteerID)
 }
 
-// TestSendResultIsReadableOnlyByTheAdminWhoStartedIt: a finished send names
+// TestSendResultIsReadableOnlyByTheOrganiserWhoStartedIt: a finished send names
 // every volunteer it reached and every address it failed on, which belongs to
-// the admin who asked for it and to nobody else on the allowlist.
-func TestSendResultIsReadableOnlyByTheAdminWhoStartedIt(t *testing.T) {
+// the Organiser who asked for it and to nobody else on the allowlist.
+func TestSendResultIsReadableOnlyByTheOrganiserWhoStartedIt(t *testing.T) {
 	auth := newTestAuthenticator()
-	auth.stubEmail = testAdminEmail
-	auth.adminEmails["other@example.com"] = struct{}{}
+	auth.stubEmail = testOrganiserEmail
+	auth.organiserEmails["other@example.com"] = struct{}{}
 
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil,
 		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return &recordingMailer{}, nil },
@@ -195,14 +195,14 @@ func TestSendResultIsReadableOnlyByTheAdminWhoStartedIt(t *testing.T) {
 
 	jobID := startSendRequest(t, handler, "mode=round&deadline=Friday")
 
-	otherAdmin := &http.Cookie{
+	otherOrganiser := &http.Cookie{
 		Name:  sessionCookieName,
 		Value: signSession(testSecret, "other@example.com", time.Now().Add(time.Hour)),
 	}
-	rec := doRequest(t, handler, http.MethodGet, "/api/availability-sends/"+jobID, "", otherAdmin)
+	rec := doRequest(t, handler, http.MethodGet, "/api/availability-sends/"+jobID, "", otherOrganiser)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 
-	rec = doRequest(t, handler, http.MethodGet, "/api/availability-sends/"+jobID, "", adminCookie())
+	rec = doRequest(t, handler, http.MethodGet, "/api/availability-sends/"+jobID, "", organiserCookie())
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
@@ -211,7 +211,7 @@ func TestSendResultIsReadableOnlyByTheAdminWhoStartedIt(t *testing.T) {
 func TestUnknownSendIsNotFound(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), &recordingMailer{})
 
-	rec := doRequest(t, handler, http.MethodGet, "/api/availability-sends/no-such-job", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/api/availability-sends/no-such-job", "", organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
@@ -220,7 +220,7 @@ func TestUnknownSendIsNotFound(t *testing.T) {
 // parameter at all.
 func TestGmailStateRoundTrips(t *testing.T) {
 	want := gmailSendState{
-		Email:       testAdminEmail,
+		Email:       testOrganiserEmail,
 		Mode:        services.SendModeResend,
 		RotaID:      "rota-1",
 		Deadline:    "Friday 7 August",
@@ -238,11 +238,11 @@ func TestGmailStateRoundTrips(t *testing.T) {
 }
 
 // TestGmailStateRejectsTamperingAndAge: the state is the instruction, so an
-// edited one would be an admin action nobody authorised — a deadline swapped,
+// edited one would be an Organiser action nobody authorised — a deadline swapped,
 // or a resend re-pointed at somebody else.
 func TestGmailStateRejectsTamperingAndAge(t *testing.T) {
 	state := gmailSendState{
-		Email:    testAdminEmail,
+		Email:    testOrganiserEmail,
 		Mode:     services.SendModeRound,
 		Deadline: "Friday",
 		Expiry:   time.Now().Add(time.Minute).Unix(),
@@ -276,7 +276,7 @@ func TestGmailConsentAsksOnlyForTheSendScope(t *testing.T) {
 	}
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code)
 
 	consent, err := url.Parse(rec.Header().Get("Location"))
@@ -287,16 +287,16 @@ func TestGmailConsentAsksOnlyForTheSendScope(t *testing.T) {
 	assert.Equal(t, "true", query.Get("include_granted_scopes"))
 	assert.Empty(t, query.Get("prompt"), "a second send in the same session must not re-prompt")
 	assert.NotEqual(t, "offline", query.Get("access_type"), "a refresh token would be a standing credential")
-	assert.Equal(t, testAdminEmail, query.Get("login_hint"))
+	assert.Equal(t, testOrganiserEmail, query.Get("login_hint"))
 	assert.True(t, isGmailState(query.Get("state")))
 }
 
-// TestSendCallbackRejectsAStateForAnotherAdmin: the signature proves the
+// TestSendCallbackRejectsAStateForAnotherOrganiser: the signature proves the
 // instruction is ours, the session proves who is presenting it. A state captured
-// from one admin must not run in another's browser, under their Gmail account.
-func TestSendCallbackRejectsAStateForAnotherAdmin(t *testing.T) {
+// from one Organiser must not run in another's browser, under their Gmail account.
+func TestSendCallbackRejectsAStateForAnotherOrganiser(t *testing.T) {
 	auth := newTestAuthenticator()
-	auth.adminEmails["other@example.com"] = struct{}{}
+	auth.organiserEmails["other@example.com"] = struct{}{}
 	mailer := &recordingMailer{}
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil,
 		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil },
@@ -310,7 +310,7 @@ func TestSendCallbackRejectsAStateForAnotherAdmin(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/callback?code=x&state="+url.QueryEscape(signed), "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/auth/callback?code=x&state="+url.QueryEscape(signed), "", organiserCookie())
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Empty(t, mailer.recipients())
@@ -325,7 +325,7 @@ func TestSendCallbackRequiresASession(t *testing.T) {
 		zap.NewNop()).Routes()
 
 	signed, err := signGmailState(testSecret, gmailSendState{
-		Email:    testAdminEmail,
+		Email:    testOrganiserEmail,
 		Mode:     services.SendModeRound,
 		Deadline: "Friday",
 		Expiry:   time.Now().Add(time.Minute).Unix(),
@@ -340,12 +340,36 @@ func TestSendCallbackRequiresASession(t *testing.T) {
 
 // TestSendKeepsNoCredentialOnTheSession: the point of asking for gmail.send at
 // send time is that nothing survives the send. Whatever the callback does, it
-// must not come back having put a credential in the admin's cookie jar.
+// must not come back having put a credential in the Organiser's cookie jar.
 func TestSendKeepsNoCredentialOnTheSession(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), &recordingMailer{})
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
 
 	require.Equal(t, http.StatusFound, rec.Code)
 	assert.Empty(t, rec.Result().Cookies(), "starting a send must not write any cookie")
+}
+
+// TestSendCallbackRequiresAnOrganiser: the callback is not behind requireLevel,
+// so it checks the level itself. Someone moved to the Rota Editors between
+// starting a send and coming back from Google may no longer send, even with a
+// state signed for them.
+func TestSendCallbackRequiresAnOrganiser(t *testing.T) {
+	mailer := &recordingMailer{}
+	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil },
+		zap.NewNop()).Routes()
+
+	signed, err := signGmailState(testSecret, gmailSendState{
+		Email:    testRotaEditorEmail,
+		Mode:     services.SendModeRound,
+		Deadline: "Friday",
+		Expiry:   time.Now().Add(time.Minute).Unix(),
+	})
+	require.NoError(t, err)
+
+	rec := doRequest(t, handler, http.MethodGet, "/auth/callback?code=x&state="+url.QueryEscape(signed), "", rotaEditorCookie())
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Empty(t, mailer.recipients())
 }

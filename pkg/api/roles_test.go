@@ -75,7 +75,7 @@ func TestListRolesEndpointStatesAnAbsentCeiling(t *testing.T) {
 }
 
 // The rota is public and already names Roles on every chip, so the set of Roles
-// and their colours is not admin-gated: gating it would leave a logged-out
+// and their colours is not Organiser-gated: gating it would leave a logged-out
 // visitor's rota uncoloured.
 func TestListRolesEndpointIsPublic(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/roles", "")
@@ -110,7 +110,7 @@ func TestCreateRoleEndpoint(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles",
-		`{"name":"Food collector","priority":3,"colour":"amber"}`, adminCookie())
+		`{"name":"Food collector","priority":3,"colour":"amber"}`, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedRoles, 1)
@@ -131,15 +131,15 @@ func TestCreateRoleEndpointRefusesACeiling(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles",
-		`{"name":"Service volunteer","max":4,"priority":2,"colour":"teal"}`, adminCookie())
+		`{"name":"Service volunteer","max":4,"priority":2,"colour":"teal"}`, organiserCookie())
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Empty(t, store.insertedRoles)
 }
 
-// Which Roles exist is a decision about how the drop-in runs, so only an admin
+// Which Roles exist is a decision about how the drop-in runs, so only an Organiser
 // makes it. The read stays public; the writes do not.
-func TestCreateRoleEndpointRequiresAdmin(t *testing.T) {
+func TestCreateRoleEndpointRequiresAnOrganiser(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles",
@@ -149,7 +149,7 @@ func TestCreateRoleEndpointRequiresAdmin(t *testing.T) {
 	assert.Empty(t, store.insertedRoles, "a rejected request writes nothing")
 }
 
-// The service's refusals reach the client as its own reasons: an admin who
+// The service's refusals reach the client as its own reasons: an Organiser who
 // typed a name that is taken has made an ordinary mistake and is told which.
 func TestCreateRoleEndpointReportsRefusals(t *testing.T) {
 	for _, tc := range []struct {
@@ -170,7 +170,7 @@ func TestCreateRoleEndpointReportsRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &mockStore{roles: []db.Role{}, roleWriteErr: tc.insertErr}
 
-			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles", tc.body, adminCookie())
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles", tc.body, organiserCookie())
 
 			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
 		})
@@ -186,7 +186,7 @@ func TestUpdateRoleEndpoint(t *testing.T) {
 	}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/roles/"+id,
-		`{"name":"Shift lead","priority":4,"colour":"rose"}`, adminCookie())
+		`{"name":"Shift lead","priority":4,"colour":"rose"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	require.Len(t, store.updatedRoles, 1)
@@ -197,7 +197,7 @@ func TestUpdateRoleEndpoint(t *testing.T) {
 	assert.Equal(t, id, decodeRole(t, rec.Body.Bytes()).ID)
 }
 
-func TestUpdateRoleEndpointRequiresAdmin(t *testing.T) {
+func TestUpdateRoleEndpointRequiresAnOrganiser(t *testing.T) {
 	id := "4c1e2f8a-0b3d-4a5e-8c9f-1a2b3c4d5e6f"
 	store := &mockStore{roles: []db.Role{{ID: id, Name: "Team lead", Priority: 1, Colour: model.ColourViolet}}}
 
@@ -216,7 +216,7 @@ func TestUpdateRoleEndpointReportsAnUnknownRole(t *testing.T) {
 			store := &mockStore{roles: []db.Role{}, roleMissing: true}
 
 			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/roles/"+id,
-				`{"name":"Shift lead","priority":1,"colour":"violet"}`, adminCookie())
+				`{"name":"Shift lead","priority":1,"colour":"violet"}`, organiserCookie())
 
 			assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 		})
@@ -230,7 +230,7 @@ func TestUpdateRoleEndpointReportsADuplicateName(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}, roleWriteErr: db.ErrDuplicateRoleName}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/roles/"+id,
-		`{"name":"Food collector","priority":1,"colour":"violet"}`, adminCookie())
+		`{"name":"Food collector","priority":1,"colour":"violet"}`, organiserCookie())
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
 }
@@ -242,7 +242,7 @@ func TestRolesCannotBeDeleted(t *testing.T) {
 	id := "4c1e2f8a-0b3d-4a5e-8c9f-1a2b3c4d5e6f"
 	store := &mockStore{roles: []db.Role{{ID: id, Name: "Team lead", Priority: 1, Colour: model.ColourViolet}}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodDelete, "/api/roles/"+id, "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodDelete, "/api/roles/"+id, "", organiserCookie())
 
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }

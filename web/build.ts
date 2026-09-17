@@ -39,7 +39,7 @@ console.log("Build complete!");
 
 // A relative asset reference in index.html resolves against the document's base
 // URL. Without a <base> element that is the current path, so on a nested route
-// like /admin/volunteers the browser asks for /admin/chunk-*.js — not in the
+// like /organiser/volunteers the browser asks for /organiser/chunk-*.js — not in the
 // build, answered by the server's SPA fallback with index.html, and the page
 // dies on a module script served as text/html.
 //

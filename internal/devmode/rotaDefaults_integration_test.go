@@ -12,7 +12,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// The dev stack has no admin to set the shift times and no config key to read
+// The dev stack has no Organiser to set the shift times and no config key to read
 // them from, so the seed is what makes `scripts/dev-stack.sh start` hand over an
 // app that can allocate a rota rather than one that refuses.
 func TestSeedRotaDefaults(t *testing.T) {

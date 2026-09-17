@@ -19,12 +19,22 @@ import (
 // ServerConfig holds settings for the HTTP server
 type ServerConfig struct {
 	Port int `yaml:"port" validate:"required,min=1,max=65535"`
-	// SessionSecret signs admin session cookies (HMAC). Keep it secret and stable;
+	// SessionSecret signs session cookies (HMAC). Keep it secret and stable;
 	// rotating it invalidates all live sessions.
 	SessionSecret string `yaml:"sessionSecret" validate:"required,min=16"`
-	// AdminEmails is the allowlist of Google accounts permitted to log in as Admin.
-	// Compared case-insensitively and re-checked on every request.
-	AdminEmails []string `yaml:"adminEmails" validate:"required,min=1,dive,email"`
+	// OrganiserEmails is the allowlist of Google accounts permitted to log in as
+	// an Organiser, who can make every edit the app offers. At least one is
+	// required: without an Organiser nobody can set the app up. Compared
+	// case-insensitively and re-checked on every request, like RotaEditorEmails.
+	//
+	// It replaced adminEmails outright (#204). A config still carrying only the
+	// old key names no Organiser, so it fails to load here rather than warning
+	// and booting a server nobody can log in to.
+	OrganiserEmails []string `yaml:"organiserEmails" validate:"required,min=1,dive,email"`
+	// RotaEditorEmails is the allowlist of Google accounts permitted to log in as
+	// a Rota Editor, who can change shifts and nothing else. Optional. Someone on
+	// both lists is an Organiser.
+	RotaEditorEmails []string `yaml:"rotaEditorEmails,omitempty" validate:"omitempty,dive,email"`
 	// RedirectURI names which of the OAuth client's registered redirect URIs to
 	// use for the login flow. Optional: when empty the server picks one by
 	// locality. Set it where the default guess is wrong — chiefly a git worktree,
@@ -95,16 +105,22 @@ func checkBasePath(srv *ServerConfig) error {
 const DevEnv = "dev"
 
 // DevModeConfig turns on the credential-free development stubs: the roster is
-// read from a CSV file instead of Google Sheets, and login mints an admin
-// session for AdminEmail instead of redirecting to Google. Present only in
+// read from a CSV file instead of Google Sheets, and login mints a session for
+// OrganiserEmail or RotaEditorEmail instead of redirecting to Google. Present only in
 // drop_in_config.dev.yaml — see checkDevMode. Omit the block entirely for a
 // normal, Google-backed server.
 type DevModeConfig struct {
-	// AdminEmail is the account login signs in as. It must also appear in
-	// server.adminEmails, or the session it mints carries no authority.
-	AdminEmail string `yaml:"adminEmail" validate:"required,email"`
+	// OrganiserEmail is the account login signs in as. It must also be an
+	// Organiser in server.organiserEmails, or the session it mints carries the
+	// wrong authority.
+	OrganiserEmail string `yaml:"organiserEmail" validate:"required,email"`
+	// RotaEditorEmail is the account /auth/login?level=rotaEditor signs in as,
+	// so the Rota Editor's narrower screens can be driven too. Optional; when
+	// set it must be a Rota Editor in server.rotaEditorEmails and not also an
+	// Organiser.
+	RotaEditorEmail string `yaml:"rotaEditorEmail,omitempty" validate:"omitempty,email"`
 	// VolunteersCSV is a CSV export of the volunteer sheet — same header row,
-	// same columns — read at startup and on each admin sync. Relative paths
+	// same columns — read at startup and on each Organiser's sync. Relative paths
 	// resolve from the server's working directory.
 	VolunteersCSV string `yaml:"volunteersCSV" validate:"required"`
 }
@@ -123,7 +139,7 @@ type Config struct {
 	// did maxAllocationFrequency, requiresMale and defaultShiftSize. They are
 	// all settings now, edited on the Settings screen (ADR 0006, #128, #129 and
 	// #130): when the drop-in runs, what a shift asks for, and which optional
-	// allocator rules apply are an admin's decisions, not an operator's, and
+	// allocator rules apply are an Organiser's decisions, not an operator's, and
 	// none of them should take a redeploy.
 	//
 	// The two allocator keys were also two halves of one idea in two places —
@@ -136,7 +152,7 @@ type Config struct {
 	// Shape states every Role's Seats.
 	//
 	// rotaOverrides is gone too (#136), and with it the last domain setting in
-	// this file. Everything an override could say has a home an admin can reach:
+	// this file. Everything an override could say has a home an Organiser can reach:
 	// whether the drop-in runs on a date is Closed on the Shift (#132), who is
 	// pinned to it comes from the Standing Preallocations (#131), and how big it
 	// is comes from the default Shape (#129). It was a list of recurrence rules
@@ -191,7 +207,7 @@ func LoadPathWithEnv(path, env string) (*Config, error) {
 
 // checkDevMode rejects a devMode block outside the dev environment. The stubs
 // replace Google identity with a session minted for a configured address, so
-// enabling them anywhere real would hand admin to anyone who can reach
+// enabling them anywhere real would hand Organiser to anyone who can reach
 // /auth/login. Failing the load is deliberate: silently ignoring the block
 // would leave an operator believing a gate they set is off when it is on.
 func checkDevMode(cfg *Config, env string) error {

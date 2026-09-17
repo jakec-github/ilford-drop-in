@@ -13,7 +13,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// The dev stack has no admin to state a Shape, and a drop-in whose Shifts ask
+// The dev stack has no Organiser to state a Shape, and a drop-in whose Shifts ask
 // for nobody allocates nobody. The seed is what makes `scripts/dev-stack.sh
 // start` hand over an app that can allocate a rota.
 func TestSeedDefaultShape(t *testing.T) {

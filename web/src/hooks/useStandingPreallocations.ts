@@ -21,7 +21,7 @@ interface UseStandingPreallocations {
   removeStanding: (id: string) => Promise<void>;
 }
 
-// useStandingPreallocations owns the pins an admin has said to make every rota.
+// useStandingPreallocations owns the pins an Organiser has said to make every rota.
 // Only the settings screen uses it: nothing else reads them, because defining a
 // rota is the one moment they are spent.
 export function useStandingPreallocations(): UseStandingPreallocations {

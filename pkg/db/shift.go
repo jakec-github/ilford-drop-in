@@ -29,7 +29,7 @@ const shiftTimestampLayout = "2006-01-02T15:04:05"
 const shiftDateExpr = "s.start_at::date"
 
 // ErrShiftDateTaken reports that a write would have put two Shifts on one date.
-// It is named for the same reason ErrDuplicateRoleName is: an admin moving a
+// It is named for the same reason ErrDuplicateRoleName is: an Organiser moving a
 // Shift onto a day the drop-in already runs has made an ordinary mistake and is
 // told so, and reading the driver's error code is this package's job rather
 // than every caller's.
@@ -271,7 +271,7 @@ func setShiftTimes(ctx context.Context, q querier, id, startAt, endAt string) (b
 // those shifts ask for and the Preallocations its Standing Preallocations
 // seeded, in a single transaction — so a rotation can never exist without its
 // shifts, a shift can never exist without the Shape it was minted with, and a
-// rota can never be defined with only some of the pins an admin was promised.
+// rota can never be defined with only some of the pins an Organiser was promised.
 //
 // The Shapes arrive as their own argument rather than on each Shift because
 // they are read on their own too (GetShiftShapes): most readers of a Shift do
@@ -319,7 +319,7 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 			results.Close()
 			// A date this rota would have shared with one that already exists is
 			// reported as itself. It became an ordinary mistake when the start
-			// date became an admin's to state (issue #140): a rota begun a week
+			// date became an Organiser's to state (issue #140): a rota begun a week
 			// too early overlaps the last one, and "failed to insert shift"
 			// would tell nobody that.
 			if isShiftDateTaken(err) {

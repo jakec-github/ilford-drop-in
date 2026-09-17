@@ -10,7 +10,7 @@ import (
 
 // ErrDuplicateStandingPreallocation reports that the same subject is already
 // pinned on the same recurrence. Named for the same reason
-// ErrDuplicateRoleName is: an admin adding a promise they have already made has
+// ErrDuplicateRoleName is: an Organiser adding a promise they have already made has
 // made an ordinary mistake and is told so, rather than being shown a driver
 // error code.
 var ErrDuplicateStandingPreallocation = errors.New("that person is already pinned on those shifts")
@@ -30,7 +30,7 @@ func isDuplicateStanding(err error) bool {
 
 // GetStandingPreallocations reads every Standing Preallocation. There is no
 // range or filter to pass: they are part of the Rota Defaults, a settings record
-// an admin reads whole, and the two callers — the settings screen and rota
+// an Organiser reads whole, and the two callers — the settings screen and rota
 // definition — both want all of them.
 func (d *DB) GetStandingPreallocations(ctx context.Context) ([]StandingPreallocation, error) {
 	return getStandingPreallocations(ctx, d.pool)

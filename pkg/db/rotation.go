@@ -24,7 +24,7 @@ var ErrRotaAllocated = errors.New("rota has already been allocated")
 // every screen downstream address "the rota" without a picker.
 //
 // The round counts are here because they are what a discard destroys, and an
-// admin is entitled to know that before agreeing to it. They are counts rather
+// Organiser is entitled to know that before agreeing to it. They are counts rather
 // than the round itself: the round proper is a read of its own, needing the
 // roster to say who anybody is, and this one must answer on a screen that has
 // no round to show.

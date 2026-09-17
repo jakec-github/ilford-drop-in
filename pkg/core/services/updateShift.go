@@ -172,7 +172,7 @@ func (p UpdateShiftParams) times() (startAt, endAt string, err error) {
 	// Only that it ends after it starts. A Shift may run past midnight where
 	// the default times may not, and it has to be able to: the migration that
 	// made times mandatory gave the whole of their day to Shifts nobody had
-	// ever stated times for, and an admin correcting one has to be able to save
+	// ever stated times for, and an Organiser correcting one has to be able to save
 	// what they see.
 	if !end.After(start) {
 		return "", "", wrapf(ErrInvalidInput, "a shift has to end after it starts, and %s is not after %s", p.EndAt, p.StartAt)
@@ -206,7 +206,7 @@ func dayOf(timestamp string) string {
 }
 
 // dateTakenConflict turns the one-Shift-per-date index refusing a write into
-// the refusal an admin reads, naming the day two shifts would have shared.
+// the refusal an Organiser reads, naming the day two shifts would have shared.
 func dateTakenConflict(startAt string) error {
 	return wrapf(ErrConflict,
 		"the drop-in already runs on %s, and it cannot run twice on one day — move that shift first",

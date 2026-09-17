@@ -4,7 +4,7 @@
 }
 
 /* The two fields that say how long the rota is and when it starts, on one line,
-   then the button. Admin tools are desktop first, and on a desk they fit
+   then the button. Organiser tools are desktop first, and on a desk they fit
    across — the row wraps rather than stacking, so a narrow window loses one
    field to the next line at a time. */
 .define-rota-form {

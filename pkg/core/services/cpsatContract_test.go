@@ -237,7 +237,7 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Service volunteer", Priority: 2},
 	}, input.Roles)
 	// The optional rules travel with the problem too, in registry order, so
-	// the solver applies exactly what an admin switched on.
+	// the solver applies exactly what an Organiser switched on.
 	assert.Equal(t, []string{"max_frequency", "male_required"}, input.EnabledConstraints)
 
 	// Historical shifts sorted ascending by date with derived group keys.

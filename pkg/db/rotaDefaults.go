@@ -13,7 +13,7 @@ import (
 // screen. It arrives holding the shift times; the default Shape, the allocation
 // toggles and the Standing Preallocations join it in later tickets.
 //
-// Every field is a zero value until an admin fills it in. Nothing is seeded
+// Every field is a zero value until an Organiser fills it in. Nothing is seeded
 // (ADR 0006), so unset is the ordinary first state of a deployment rather than
 // a fault — the settings' emptiness blocks allocation and nothing else.
 //
@@ -24,14 +24,14 @@ import (
 // through Postgres's own parser rather than the app's.
 type RotaDefaults struct {
 	// ShiftStartTime and ShiftEndTime are wall-clock times of day in
-	// ShiftTimezone, e.g. "19:30". Empty means an admin has not set them.
+	// ShiftTimezone, e.g. "19:30". Empty means an Organiser has not set them.
 	ShiftStartTime string
 	ShiftEndTime   string
 	// ShiftTimezone is an IANA zone name, e.g. "Europe/London". Empty means
 	// unset; the domain falls back rather than guessing at read time.
 	ShiftTimezone string
 	// AllocationSettings is which optional allocator rules apply, as the JSON
-	// document the column holds. Empty means an admin has never saved the
+	// document the column holds. Empty means an Organiser has never saved the
 	// section, which reads as every rule off.
 	//
 	// Carried verbatim rather than decoded here: what the answers mean is the
@@ -128,7 +128,7 @@ func (d *DB) SaveAllocationSettings(ctx context.Context, settings string) error 
 }
 
 // deref reads a nullable text column as the empty string, which is how this
-// package spells "the admin has not set this".
+// package spells "the Organiser has not set this".
 func deref(value *string) string {
 	if value == nil {
 		return ""

@@ -34,7 +34,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	if volunteer == nil {
 		// The roster is whatever the last sync loaded; there is no self-fetch to
 		// fall back on. A volunteer added to the sheet but not yet synced 404s
-		// until an admin syncs — acceptable, since the editor is the syncer.
+		// until an Organiser syncs — acceptable, since the editor is the syncer.
 		h.writeError(w, http.StatusNotFound, "volunteer not found")
 		return
 	}
@@ -45,7 +45,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When the drop-in runs is a setting an admin keeps, so a change to it
+	// When the drop-in runs is a setting an Organiser keeps, so a change to it
 	// reaches every subscriber on their next poll rather than at the next
 	// deploy. Settings nobody has filled in yield all-day events rather than a
 	// failure — a subscription is not a feature to gate on them.

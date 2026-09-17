@@ -28,17 +28,43 @@ const (
 	stateCookieMaxAge = 10 * time.Minute
 )
 
-// Authenticator handles the OIDC login flow and admin session cookies. It proves
-// identity via a signed cookie and re-checks the admin allowlist from config on
-// every request, so the cookie carries identity, not authority.
+// Level is how much a signed-in person may do. There are two, and one contains
+// the other: an Organiser can do everything a Rota Editor can.
+type Level string
+
+const (
+	// LevelRotaEditor changes shifts and nothing else: Alterations and Cover
+	// on an allocated rota, Preallocations on the rota in flight.
+	LevelRotaEditor Level = "rotaEditor"
+	// LevelOrganiser makes every edit the app offers.
+	LevelOrganiser Level = "organiser"
+)
+
+// atLeast reports whether l may do what min may.
+func (l Level) atLeast(min Level) bool {
+	return l == LevelOrganiser || l == min
+}
+
+// Session is who a request comes from and what they may do.
+type Session struct {
+	Email string `json:"email"`
+	Level Level  `json:"level"`
+}
+
+// Authenticator handles the OIDC login flow and session cookies. It proves
+// identity via a signed cookie and re-checks the allowlists from config on
+// every request, so the cookie carries identity, not authority — which is also
+// why a level is never stored in the cookie: moving someone between lists takes
+// effect on their next request.
 type Authenticator struct {
-	oauth2Config *oauth2.Config
-	verifier     *oidc.IDTokenVerifier
-	secret       []byte
-	adminEmails  map[string]struct{} // lowercased allowlist
-	secure       bool                // set the cookie Secure flag (prod only)
-	logger       *zap.Logger
-	// syncVolunteers runs an admin-triggered volunteer sync using the server's
+	oauth2Config     *oauth2.Config
+	verifier         *oidc.IDTokenVerifier
+	secret           []byte
+	organiserEmails  map[string]struct{} // folded allowlist
+	rotaEditorEmails map[string]struct{} // folded allowlist
+	secure           bool                // set the cookie Secure flag (prod only)
+	logger           *zap.Logger
+	// syncVolunteers runs an Organiser-triggered volunteer sync using the server's
 	// own service account credential. Injected by the composition root; nil
 	// disables the sync endpoint.
 	syncVolunteers VolunteerSyncFunc
@@ -46,6 +72,9 @@ type Authenticator struct {
 	// session for this address directly. Set only by NewStubAuthenticator, which
 	// the dev environment alone can reach (see authstub.go).
 	stubEmail string
+	// stubRotaEditor is the address stub login signs in as when asked for a
+	// Rota Editor. Empty when dev mode names none.
+	stubRotaEditor string
 	// completeSend finishes an incremental gmail.send grant arriving at the
 	// shared callback. Set by NewHandler, because the send needs the store and
 	// the roster and this type has neither; nil means no sending is wired up.
@@ -70,9 +99,9 @@ func (a *Authenticator) isStubbed() bool {
 	return a.stubEmail != ""
 }
 
-// sameAdmin reports whether two addresses name the same admin, folded the way
-// the allowlist folds them so an equivalent form still matches.
-func (a *Authenticator) sameAdmin(x, y string) bool {
+// samePerson reports whether two addresses name the same person, folded the
+// way the allowlists fold them so an equivalent form still matches.
+func (a *Authenticator) samePerson(x, y string) bool {
 	return normaliseEmail(x) == normaliseEmail(y)
 }
 
@@ -99,25 +128,25 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 	}
 
 	return &Authenticator{
-		oauth2Config:   oauth2Config,
-		verifier:       provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
-		secret:         []byte(srv.SessionSecret),
-		adminEmails:    adminAllowlist(srv.AdminEmails),
-		secure:         env == "prod",
-		logger:         logger,
-		syncVolunteers: syncVolunteers,
-		basePath:       srv.BasePath,
+		oauth2Config:     oauth2Config,
+		verifier:         provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
+		secret:           []byte(srv.SessionSecret),
+		organiserEmails:  allowlist(srv.OrganiserEmails),
+		rotaEditorEmails: allowlist(srv.RotaEditorEmails),
+		secure:           env == "prod",
+		logger:           logger,
+		syncVolunteers:   syncVolunteers,
+		basePath:         srv.BasePath,
 	}, nil
 }
 
-// adminAllowlist folds the configured admin addresses into the lookup set
-// isAdmin checks.
-func adminAllowlist(emails []string) map[string]struct{} {
-	admin := make(map[string]struct{}, len(emails))
+// allowlist folds configured addresses into the lookup set levelOf checks.
+func allowlist(emails []string) map[string]struct{} {
+	folded := make(map[string]struct{}, len(emails))
 	for _, e := range emails {
-		admin[normaliseEmail(e)] = struct{}{}
+		folded[normaliseEmail(e)] = struct{}{}
 	}
-	return admin
+	return folded
 }
 
 // registerRoutes attaches the /auth endpoints to mux.
@@ -127,14 +156,14 @@ func (a *Authenticator) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /auth/me", a.handleMe)
 	// Syncing repopulates the roster from the sheet with the server's service
-	// account; it requires an admin session but no OAuth round-trip, so it is a
+	// account; it requires an Organiser but no OAuth round-trip, so it is a
 	// plain POST rather than a redirect dance.
-	mux.Handle("POST /auth/sync", a.requireAdmin(http.HandlerFunc(a.handleSync)))
+	mux.Handle("POST /auth/sync", a.requireLevel(LevelOrganiser, http.HandlerFunc(a.handleSync)))
 }
 
 // handleLogin starts the OIDC flow: stash a random state in a short-lived cookie
 // and redirect to Google's consent screen for identity scopes only. In dev mode
-// there is no consent screen to visit, so it signs the stub admin in on the spot.
+// there is no consent screen to visit, so it signs the stub account in on the spot.
 func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if a.stubEmail != "" {
 		a.handleStubLogin(w, r)
@@ -162,8 +191,8 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCallback completes the flow: verify state, exchange the code, verify the
-// ID token, check the allowlist, and set the session cookie. Non-admins are
-// rejected here with no cookie set.
+// ID token, check the allowlists, and set the session cookie. Someone on
+// neither list is rejected here with no cookie set.
 //
 // A send comes back through this same URI, because it is the one registered with
 // Google and adding a second is a manual step in the console for every
@@ -226,9 +255,10 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !claims.EmailVerified || !a.isAdmin(claims.Email) {
-		// Not an admin: no session is created. A session existing means admin.
-		a.logger.Warn("Rejected non-admin login",
+	if _, allowed := a.levelOf(claims.Email); !claims.EmailVerified || !allowed {
+		// On neither list: no session is created. A session existing means an
+		// Organiser or a Rota Editor.
+		a.logger.Warn("Rejected login from someone on neither allowlist",
 			zap.String("email", claims.Email),
 			zap.Bool("email_verified", claims.EmailVerified))
 		http.Error(w, "not authorised", http.StatusForbidden)
@@ -240,14 +270,14 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
 }
 
-// setSessionCookie issues the signed admin session for email.
+// setSessionCookie issues the signed session for email.
 func (a *Authenticator) setSessionCookie(w http.ResponseWriter, email string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName,
 		// Store the address the identity provider asserted, not the folded form,
-		// so /auth/me shows the admin the email they recognise. Authority is
-		// re-checked by isAdmin, which folds both sides, so the stored form need
-		// not be canonical.
+		// so /auth/me shows the email they recognise. Authority is re-checked by
+		// levelOf, which folds both sides, so the stored form need not be
+		// canonical.
 		Value:    signSession(a.secret, email, time.Now().Add(sessionDuration)),
 		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
@@ -263,71 +293,87 @@ func (a *Authenticator) handleLogout(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleMe reports the logged-in admin's email, or 401 if there is no valid
-// admin session. Used by the frontend to show logged-in state.
+// handleMe reports who is logged in and at what level, or 401 if there is no
+// valid session. Used by the frontend to show logged-in state and to decide
+// which screens and controls to offer.
 func (a *Authenticator) handleMe(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.adminFromRequest(r)
+	session, ok := a.sessionFromRequest(r)
 	if !ok {
 		http.Error(w, "not authenticated", http.StatusUnauthorized)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(map[string]string{"email": email}); err != nil {
+	if err := json.NewEncoder(w).Encode(session); err != nil {
 		a.logger.Error("Failed to encode /auth/me response", zap.Error(err))
 	}
 }
 
-// adminEmailContextKey keys the verified admin email stashed in a request's
-// context by requireAdmin. Unexported so only this package can set or read it.
-type adminEmailContextKey struct{}
+// sessionEmailContextKey keys the verified email stashed in a request's context
+// by requireLevel. Unexported so only this package can set or read it.
+type sessionEmailContextKey struct{}
 
-// requireAdmin wraps a handler, allowing it through only for a valid admin
-// session. It re-checks the allowlist on every request, so revoking an admin in
-// config locks out their still-valid cookie on the next request after reload.
-// The verified admin email is stashed in the request context so gated handlers
-// can attribute the action without re-parsing the cookie.
-func (a *Authenticator) requireAdmin(next http.Handler) http.Handler {
+// requireLevel wraps a handler, allowing it through only for a valid session at
+// min or above. No session is a 401; a session too junior for the route is a
+// 403, because the person is known and simply may not. It re-checks the
+// allowlists on every request, so removing someone from config — or moving them
+// from one list to the other — takes effect on their still-valid cookie on the
+// next request after reload. The verified email is stashed in the request
+// context so gated handlers can attribute the action without re-parsing the
+// cookie.
+func (a *Authenticator) requireLevel(min Level, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		email, ok := a.adminFromRequest(r)
+		session, ok := a.sessionFromRequest(r)
 		if !ok {
 			http.Error(w, "not authorised", http.StatusUnauthorized)
 			return
 		}
-		ctx := context.WithValue(r.Context(), adminEmailContextKey{}, email)
+		if !session.Level.atLeast(min) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		ctx := context.WithValue(r.Context(), sessionEmailContextKey{}, session.Email)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// adminEmail returns the verified admin email requireAdmin stashed in ctx. It is
-// only present on requests that passed through requireAdmin; the empty string
+// sessionEmail returns the verified email requireLevel stashed in ctx. It is
+// only present on requests that passed through requireLevel; the empty string
 // means the handler was not gated.
-func adminEmail(ctx context.Context) string {
-	email, _ := ctx.Value(adminEmailContextKey{}).(string)
+func sessionEmail(ctx context.Context) string {
+	email, _ := ctx.Value(sessionEmailContextKey{}).(string)
 	return email
 }
 
-// adminFromRequest returns the email of a valid admin session on the request, if
-// any. It checks both cookie integrity (identity) and allowlist membership
-// (authority).
-func (a *Authenticator) adminFromRequest(r *http.Request) (string, bool) {
+// sessionFromRequest returns the valid session on the request, if any. It
+// checks both cookie integrity (identity) and allowlist membership (authority).
+func (a *Authenticator) sessionFromRequest(r *http.Request) (Session, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		return "", false
+		return Session{}, false
 	}
 	email, err := verifySession(a.secret, cookie.Value, time.Now())
 	if err != nil {
-		return "", false
+		return Session{}, false
 	}
-	if !a.isAdmin(email) {
-		return "", false
+	level, ok := a.levelOf(email)
+	if !ok {
+		return Session{}, false
 	}
-	return email, true
+	return Session{Email: email, Level: level}, true
 }
 
-// isAdmin reports whether email is on the allowlist (case-insensitive).
-func (a *Authenticator) isAdmin(email string) bool {
-	_, ok := a.adminEmails[normaliseEmail(email)]
-	return ok
+// levelOf reports the level email holds (case-insensitive), and false when it
+// is on neither allowlist. Someone on both is an Organiser: that list already
+// allows everything the other does.
+func (a *Authenticator) levelOf(email string) (Level, bool) {
+	folded := normaliseEmail(email)
+	if _, ok := a.organiserEmails[folded]; ok {
+		return LevelOrganiser, true
+	}
+	if _, ok := a.rotaEditorEmails[folded]; ok {
+		return LevelRotaEditor, true
+	}
+	return "", false
 }
 
 // clearCookie expires the named cookie at path.
@@ -380,7 +426,7 @@ func isLocalhostURI(raw string) bool {
 }
 
 // normaliseEmail folds an email to a canonical form for allowlist comparison,
-// so an admin matches regardless of which equivalent form they type. It always
+// so a person matches regardless of which equivalent form they type. It always
 // lowercases and trims. For Gmail addresses it additionally folds the
 // googlemail.com alias, drops the insignificant dots Gmail ignores, and strips
 // +tag subaddressing — all three are Gmail-specific, so they are applied only to

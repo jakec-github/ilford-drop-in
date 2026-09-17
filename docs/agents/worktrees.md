@@ -53,7 +53,7 @@ yourself:
 set -a; source .worktree.env; set +a
 ```
 
-**Admin login needs a one-time human step.** The OIDC callback goes to the
+**Google login needs a one-time human step.** The OIDC callback goes to the
 frontend port, and Google only accepts redirect URIs registered with the web
 OAuth client. Register `http://localhost:5174/auth/callback` through
 `http://localhost:5178/auth/callback` once (Google Cloud console → Credentials →
@@ -71,7 +71,7 @@ cannot drift onto a worktree's port:
 ```
 
 Until that is done, `worktree-init.sh` leaves `server.redirectURI` out of the
-copied config and says so: the server still runs and everything but admin login
+copied config and says so: the server still runs and everything but Google login
 works. Once the URIs are registered, delete `drop_in_config.test.yaml` in the
 worktree and re-run the script to pick the right one up. Where the key *is* set,
 the server refuses to start if it names a URI the OAuth client does not have

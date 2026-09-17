@@ -45,9 +45,9 @@ type AddPreallocationParams struct {
 //
 // Role carries both the id and the name, as StandingPreallocationView does and
 // for the same reason: the id is what the row references and what an edit would
-// name, the name is what an admin recognises (issue #195).
+// name, the name is what an Organiser recognises (issue #195).
 //
-// There is one kind of these (issue #131). A pin an admin added by hand and a
+// There is one kind of these (issue #131). A pin somebody added by hand and a
 // pin a Standing Preallocation seeded when the rota was defined are the same
 // row, read the same way, and either may be removed — so nothing here says where
 // it came from, and nothing downstream branches on it.

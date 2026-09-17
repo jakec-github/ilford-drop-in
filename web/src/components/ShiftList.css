@@ -100,7 +100,7 @@
   color: var(--text);
 }
 
-/* Unallocated shifts (admin-only): a faint diagonal hatch marks them as
+/* Unallocated shifts (organiser-only): a faint diagonal hatch marks them as
    "rota not run yet", distinct from a closed shift's flat dimming. */
 .shift-row.unallocated {
   background-image: repeating-linear-gradient(
@@ -118,7 +118,7 @@
   min-width: 0;
 }
 
-/* An unallocated shift (admin-only) ----------------------------------------
+/* An unallocated shift (organiser-only) ----------------------------------------
 
    What the draft could not fill, then who is expected here, then what can be
    changed about it — down the row rather than across it, because the first is a
@@ -222,7 +222,7 @@
 
 /* Chips: colour = role held on this shift. Outlined by default, light fill on
    hover, solid fill when selected. Buttons rather than spans — they are
-   clickable on the public rota and are the handle for every edit on the admin
+   clickable on the public rota and are the handle for every edit on the Organiser
    one, so they have to be reachable by keyboard either way. */
 .chip {
   /* The Role's colour comes from the server as a palette token, which
@@ -271,7 +271,7 @@
   color: #fff;
 }
 
-/* A pinned name (admin-only, unallocated shifts). A .chip like every other name
+/* A pinned name (organiser-only, unallocated shifts). A .chip like every other name
    on the rota, which is what keeps it the same size as the drafted names beside
    it — it used to be a shape of its own, a size smaller, and read as a lesser
    kind of thing once the two shared a line. Solid, where a drafted name is
@@ -294,7 +294,7 @@
   background: var(--bg);
 }
 
-/* A drafted name (admin-only, unallocated shifts): the same chip as an
+/* A drafted name (organiser-only, unallocated shifts): the same chip as an
    allocated one, dashed. The dashes are what say "the solver put this here and
    the next solve may not": a pin above it on the same row is solid because a
    decision was made, and an allocated name elsewhere in the list is solid
@@ -316,7 +316,7 @@
 
 /* A draft the inputs have moved under: what the solver last said, still the
    best guess on screen, waiting on the solve that answers for the edit. Faded
-   rather than blanked — an admin adding five pins would otherwise watch the
+   rather than blanked — an Organiser adding five pins would otherwise watch the
    rota disappear five times. The transition is on the way in only, so the fresh
    draft arrives at full strength rather than fading up into place.
 

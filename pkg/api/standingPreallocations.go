@@ -7,7 +7,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
-// createStandingPreallocationRequest is one promise an admin is making for every
+// createStandingPreallocationRequest is one promise an Organiser is making for every
 // rota from now on: this person, in this Role, on the Shifts this rule names.
 //
 // The Role is named by id, unlike an ordinary pin, which names it by name. These
@@ -21,7 +21,7 @@ type createStandingPreallocationRequest struct {
 }
 
 // standingPreallocationResponse carries the Role both ways — the id, which is
-// what the row references, and the name, which is what an admin recognises — so
+// what the row references, and the name, which is what an Organiser recognises — so
 // a client can render one without holding the Roles listing beside it.
 type standingPreallocationResponse struct {
 	ID          string `json:"id"`

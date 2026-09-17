@@ -10,10 +10,10 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// TestAvailabilityRoundEndpointsRequireAdmin: a round's roster hands out every
+// TestAvailabilityRoundEndpointsRequireAnOrganiser: a round's roster hands out every
 // volunteer's link, which is a bearer credential for their availability. An
 // anonymous caller must not be able to read one, nor mint one.
-func TestAvailabilityRoundEndpointsRequireAdmin(t *testing.T) {
+func TestAvailabilityRoundEndpointsRequireAnOrganiser(t *testing.T) {
 	store := &mockStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", End: "2026-08-09", ShiftCount: 2}},
 		shifts: []db.Shift{
@@ -78,7 +78,7 @@ func TestAvailabilityRoundLinksAreAbsolute(t *testing.T) {
 		shifts:    []db.Shift{{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02"}},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/availability-rounds", `{}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/availability-rounds", `{}`, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.NotEmpty(t, store.availabilityRequests)

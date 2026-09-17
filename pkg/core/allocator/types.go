@@ -56,7 +56,7 @@ type Seat struct {
 // size and the Roles' ceilings — every capped Role asked for exactly its
 // ceiling, and the uncapped one took the size — which is the only Shape that
 // arithmetic could ever produce. The Seats are stated now, in the Rota Defaults
-// an admin edits on the Settings screen (issue #129, ADR 0006), and they reach
+// an Organiser edits on the Settings screen (issue #129, ADR 0006), and they reach
 // this package already resolved.
 
 // Preallocation pins one volunteer, or one custom entry, to a Role on a Shift

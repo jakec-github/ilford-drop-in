@@ -12,16 +12,16 @@ var testSecret = []byte("test-session-secret-0123456789ab")
 
 func TestSignVerifySession_RoundTrip(t *testing.T) {
 	now := time.Now()
-	token := signSession(testSecret, "admin@example.com", now.Add(time.Hour))
+	token := signSession(testSecret, "organiser@example.com", now.Add(time.Hour))
 
 	email, err := verifySession(testSecret, token, now)
 	require.NoError(t, err)
-	assert.Equal(t, "admin@example.com", email)
+	assert.Equal(t, "organiser@example.com", email)
 }
 
 func TestVerifySession_Expired(t *testing.T) {
 	now := time.Now()
-	token := signSession(testSecret, "admin@example.com", now.Add(-time.Second))
+	token := signSession(testSecret, "organiser@example.com", now.Add(-time.Second))
 
 	_, err := verifySession(testSecret, token, now)
 	assert.ErrorIs(t, err, errInvalidSession)
@@ -29,7 +29,7 @@ func TestVerifySession_Expired(t *testing.T) {
 
 func TestVerifySession_TamperedPayload(t *testing.T) {
 	now := time.Now()
-	token := signSession(testSecret, "admin@example.com", now.Add(time.Hour))
+	token := signSession(testSecret, "organiser@example.com", now.Add(time.Hour))
 
 	// Re-sign a different email under the same secret would be legitimate, so
 	// instead flip a byte in the encoded payload: the signature no longer matches.
@@ -41,7 +41,7 @@ func TestVerifySession_TamperedPayload(t *testing.T) {
 
 func TestVerifySession_WrongSecret(t *testing.T) {
 	now := time.Now()
-	token := signSession(testSecret, "admin@example.com", now.Add(time.Hour))
+	token := signSession(testSecret, "organiser@example.com", now.Add(time.Hour))
 
 	_, err := verifySession([]byte("a-completely-different-secret-!!"), token, now)
 	assert.ErrorIs(t, err, errInvalidSession)

@@ -60,7 +60,7 @@
 }
 
 /* What the drop-in as a whole runs on, read as a column of labelled facts
-   rather than a sentence: an admin checking the times is looking for one line,
+   rather than a sentence: an Organiser checking the times is looking for one line,
    and the section grows more of them as later settings land here. */
 .settings-facts {
   margin: 0;

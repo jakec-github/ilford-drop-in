@@ -59,7 +59,7 @@ func TestRoleTableWithNoRoles(t *testing.T) {
 }
 
 // A failed read is not the same as no Roles, and collapsing the two would show
-// an admin an empty settings screen when the database is unreachable.
+// an Organiser an empty settings screen when the database is unreachable.
 func TestRoleTableReportsAReadFailure(t *testing.T) {
 	_, err := RoleTable(context.Background(), stubRoleStore{err: errors.New("connection refused")})
 	require.Error(t, err)

@@ -9,14 +9,14 @@ interface UseDefineRota {
   proposal: RotaProposal | null;
   // The rota defined by the last successful call, or null before there is one.
   // Not a cache of server state: defining is not idempotent, so this is a record
-  // of what this admin just created.
+  // of what this Organiser just created.
   rota: DefinedRota | null;
   error: string | null;
   defining: boolean;
   define: (rota: NewRota) => Promise<void>;
 }
 
-// useDefineRota owns the one admin action of defining a rota: what the form
+// useDefineRota owns the one Organiser action of defining a rota: what the form
 // starts from, the attempt, and its outcome.
 //
 // The proposal is here rather than in a hook of its own because it is not a

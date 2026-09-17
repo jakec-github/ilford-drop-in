@@ -7,7 +7,7 @@ import { useAvailabilitySend } from "../hooks/useAvailabilitySend";
 import type { AvailabilityRound, AvailabilitySend, SendMode } from "../types";
 import "./AvailabilityPanel.css";
 
-// A send the admin has asked for but not yet given a deadline to. The deadline
+// A send the Organiser has asked for but not yet given a deadline to. The deadline
 // is the one thing a send cannot be started without, so it is what the dialog
 // exists to collect.
 interface PendingSend {
@@ -95,7 +95,7 @@ function SendDialog({
 // A running send counts up rather than spinning: it takes about ninety seconds,
 // and a bar with no numbers on it for that long is indistinguishable from a
 // hang. A finished one leads with its failures, because those are the ones that
-// still need an admin — the successes are only there to say how many there were.
+// still need an Organiser — the successes are only there to say how many there were.
 function SendReport({
   send,
   onDismiss,
@@ -193,10 +193,10 @@ export default function AvailabilityPanel() {
   return (
     // The panel is wrapped rather than laid out in place: the grid inside it is
     // as wide as the rota is long, so this is the one panel on the tab that has
-    // to be able to leave the admin column. What that takes is a box wider than
+    // to be able to leave the Organiser column. What that takes is a box wider than
     // the column to centre it in — see the CSS (issue #174).
     <div className="round-bleed">
-      <section className="admin-panel round">
+      <section className="organiser-panel round">
         <header className="round-head">
           <h2>Availability</h2>
           {round && !round.allocated && (

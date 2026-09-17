@@ -17,7 +17,7 @@ comes from now.
 Custom (free-text) preallocations have unknown gender: they occupy Seats
 but never satisfy the male requirement, so they narrow the escape.
 
-The rule is optional: it applies when an admin has switched male cover on
+The rule is optional: it applies when an Organiser has switched male cover on
 in the Allocation Settings, which is said by this constraint being in the
 run's list at all. It used to be said twice — a `requiresMale` config key
 *and* membership of the default constraint list — which were two halves of

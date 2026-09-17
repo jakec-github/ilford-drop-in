@@ -22,7 +22,7 @@ type RotaResult struct {
 	Rotation *db.Rotation
 	Shifts   []db.Shift
 	// Preallocations are ordinary Preallocations from the moment they are
-	// written: nothing marks them as having been seeded, and an admin may
+	// written: nothing marks them as having been seeded, and an Organiser may
 	// remove any of them (issue #131).
 	Preallocations []db.Preallocation
 	// Asked is how many volunteers were given a link by the round this
@@ -31,7 +31,7 @@ type RotaResult struct {
 	Asked int
 }
 
-// DefineRotaParams is the rota an admin has decided to make: how many shifts,
+// DefineRotaParams is the rota an Organiser has decided to make: how many shifts,
 // and from when.
 //
 // The hours and the Shape are not here. They are the Rota Defaults, and the
@@ -79,7 +79,7 @@ type definition struct {
 
 // validate reads a stated rota, or says why it will not.
 //
-// Only the two fields an admin states are checked here. The hours and the Shape
+// Only the two fields an Organiser states are checked here. The hours and the Shape
 // are read from the settings, which were validated where they were written, and
 // what defining asks of them is whether they were written at all.
 func (p DefineRotaParams) validate() (definition, error) {
@@ -96,12 +96,12 @@ func (p DefineRotaParams) validate() (definition, error) {
 	return definition{shiftCount: p.ShiftCount, startDate: startDate}, nil
 }
 
-// DefineRota creates the rota an admin has stated and mints its weekly shifts,
+// DefineRota creates the rota an Organiser has stated and mints its weekly shifts,
 // each carrying the default hours and a copy of the default Shape, with the
 // Standing Preallocations seeded onto the Shifts their rules land on. It then
 // opens the rota's availability round, giving every active volunteer their link.
 //
-// The round is opened here rather than being an admin's next click because
+// The round is opened here rather than being an Organiser's next click because
 // there is no rota a round is not wanted for: asking is how a rota is staffed,
 // and a defined rota with nobody asked is a rota nothing can happen to. It also
 // means every rota has a round from the moment it exists, which is what lets
@@ -109,7 +109,7 @@ func (p DefineRotaParams) validate() (definition, error) {
 // pressed a button (issue #188).
 //
 // Minting stays separate from *sending*: the links are written, and not one
-// email goes out until an admin sends the round with a deadline in it.
+// email goes out until an Organiser sends the round with a deadline in it.
 func DefineRota(
 	ctx context.Context,
 	database DefineRotaStore,
@@ -256,7 +256,7 @@ func DefineRota(
 	// atomically, so a rota can never exist half-formed.
 	if err := database.InsertDefinedRota(ctx, rotation, shifts, preallocations, requirements); err != nil {
 		// The one-Shift-per-date index answering. Reachable by hand now that the
-		// start date is an admin's to state — a rota begun a week too early
+		// start date is an Organiser's to state — a rota begun a week too early
 		// overlaps the last one — so it is answered as the ordinary mistake it
 		// is rather than as a failed insert.
 		if errors.Is(err, db.ErrShiftDateTaken) {
@@ -326,7 +326,7 @@ func openRound(
 //
 // The index names no date, so this works out which day it must have been: the
 // first minted date that falls inside a rota that already exists. That is the
-// day an admin has to move off, and naming the wrong one would be worse than
+// day an Organiser has to move off, and naming the wrong one would be worse than
 // naming none — so where nothing overlaps, the refusal says only what is
 // certain.
 func datesAlreadyTaken(shifts []db.Shift, rotations []db.Rotation) error {

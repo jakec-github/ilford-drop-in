@@ -15,7 +15,7 @@ type Role struct {
 	Name string
 	// Priority orders the filling of Seats when people are scarce, lowest
 	// first. A Role has no ceiling of its own: how many of it a Shift holds is
-	// that Shift's Shape, which an admin edits per Shift (issue #185).
+	// that Shift's Shape, which an Organiser edits per Shift (issue #185).
 	Priority int
 	// Colour is the palette token this Role is drawn in — see RoleColours. May
 	// be empty on the way in; NewRoles fills it in, so every Role the lookup

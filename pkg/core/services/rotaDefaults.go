@@ -32,7 +32,7 @@ type RotaDefaultsWriteStore interface {
 	SaveAllocationSettings(ctx context.Context, settings string) error
 }
 
-// RotaDefaults reads what an admin has decided about how the drop-in runs.
+// RotaDefaults reads what an Organiser has decided about how the drop-in runs.
 //
 // Read per call rather than held from startup: it is one row of a handful of
 // columns, and the whole point of moving it out of the config file is that
@@ -60,7 +60,7 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 //
 // It never fails, which is the rule from ADR 0006 read to its conclusion: a
 // document this build cannot understand must not be able to take down the one
-// screen an admin could fix it on. Every rule reading as off is a safe answer
+// screen an Organiser could fix it on. Every rule reading as off is a safe answer
 // — allocation still runs, with nothing optional applied — and the section
 // re-saves cleanly over it.
 //
@@ -99,7 +99,7 @@ func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger 
 		return model.RotaDefaults{}, err
 	}
 
-	// Every section at once, so an admin is told everything they have to go
+	// Every section at once, so an Organiser is told everything they have to go
 	// and fill in rather than one thing per attempt.
 	missing := append(defaults.MissingShiftTimes(), defaults.AllocationSettings.Missing()...)
 
@@ -111,7 +111,7 @@ func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger 
 
 	// An answer for a rule this build no longer has is dropped, not refused —
 	// but it is worth saying so once, here, because the rota about to be
-	// allocated is not the one an admin who switched that rule on expected.
+	// allocated is not the one an Organiser who switched that rule on expected.
 	if unknown := defaults.AllocationSettings.UnknownConstraints(); len(unknown) > 0 {
 		logger.Warn("Ignoring allocation settings for rules this build does not have",
 			zap.Strings("rules", unknown))
@@ -140,7 +140,7 @@ func plural(n int, one, many string) string {
 	return many
 }
 
-// readableDate is a stored date as it reads in a sentence an admin is shown —
+// readableDate is a stored date as it reads in a sentence an Organiser is shown —
 // "9 August 2026" rather than "2026-08-09". A value that is not a date comes
 // back unchanged: a refusal saying the wrong-looking thing is better than a
 // refusal that fails to be written.
@@ -152,14 +152,14 @@ func readableDate(date string) string {
 	return parsed.Format("2 January 2006")
 }
 
-// ShiftTimeParams is the shift-time settings as an admin states them: a start,
+// ShiftTimeParams is the shift-time settings as an Organiser states them: a start,
 // an end and the zone they are read in. All three together, because they are
 // one form and one idea — a start with no end describes nothing.
 type ShiftTimeParams struct {
 	// Start and End are times of day in model.ShiftTimeLayout ("19:30").
 	Start string
 	End   string
-	// Timezone is an IANA zone name. Empty means the default, so an admin who
+	// Timezone is an IANA zone name. Empty means the default, so an Organiser who
 	// never touches the field still saves settings that compute a time.
 	Timezone string
 }
@@ -167,7 +167,7 @@ type ShiftTimeParams struct {
 // shiftTimesOfDay reads a pair of stated shift times, or says why it will not,
 // and hands them back spelled in ShiftTimeLayout.
 //
-// Both places an admin states shift times come here: the settings screen, which
+// Both places an Organiser states shift times come here: the settings screen, which
 // says what every rota starts from, and the define form, which says what one
 // rota runs (issue #140). It is the same question in both, so it has one answer
 // and one wording.
@@ -193,7 +193,7 @@ func shiftTimesOfDay(statedStart, statedEnd string) (start, end string, err erro
 	return from.Format(model.ShiftTimeLayout), to.Format(model.ShiftTimeLayout), nil
 }
 
-// validate turns an admin's answers into the row to write, or says why it will
+// validate turns an Organiser's answers into the row to write, or says why it will
 // not.
 func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
 	start, end, err := shiftTimesOfDay(p.Start, p.End)
@@ -219,7 +219,7 @@ func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
 // parseShiftTime reads one time of day, naming which one it was when it cannot.
 //
 // Blank is refused rather than stored as unset: the settings record starts
-// empty and an admin filling in the form is filling it in. Clearing a time an
+// empty and an Organiser filling in the form is filling it in. Clearing a time an
 // allocation may already be gated on is not an edit anybody wants to make by
 // leaving a box blank.
 func parseShiftTime(value, which string) (time.Time, error) {
@@ -263,7 +263,7 @@ func SaveShiftTimeDefaults(ctx context.Context, store RotaDefaultsWriteStore, pa
 }
 
 // AllocationSettingsParams is the allocation-settings section of the settings
-// screen as an admin states it: an answer for every rule they were offered,
+// screen as an Organiser states it: an answer for every rule they were offered,
 // plus the one value a rule carries.
 //
 // Stated whole, like the shift times: the screen shows every rule at once, and
@@ -277,7 +277,7 @@ type AllocationSettingsParams struct {
 	MaxFrequency float64
 }
 
-// validate turns an admin's answers into the settings to store, or says why it
+// validate turns an Organiser's answers into the settings to store, or says why it
 // will not.
 //
 // Answers for rules this build does not have are dropped rather than refused.
@@ -296,7 +296,7 @@ func (p AllocationSettingsParams) validate() (model.AllocationSettings, error) {
 
 	// The value is only asked for when the rule that reads it is on. Off, it
 	// is kept as given: it constrains nothing there, and blanking it would
-	// lose the number an admin would want back on switching the rule on again.
+	// lose the number an Organiser would want back on switching the rule on again.
 	if settings.IsEnabled(model.MaxFrequencyConstraint) && (p.MaxFrequency <= 0 || p.MaxFrequency > 1) {
 		return model.AllocationSettings{}, wrapf(ErrInvalidInput,
 			"the maximum allocation frequency is a share of a rota between 0 and 1, and %v is not one", p.MaxFrequency)

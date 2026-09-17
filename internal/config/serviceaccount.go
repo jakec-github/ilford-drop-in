@@ -9,7 +9,7 @@ import (
 
 // ServiceAccountKey is a Google service account key with read access to the
 // volunteer sheet. The server authenticates as this account to populate the
-// volunteer roster at startup and on an admin-triggered sync — no per-user
+// volunteer roster at startup and on an Organiser-triggered sync — no per-user
 // token is involved. Only the fields needed to identify and sanity-check the
 // key are parsed; the raw JSON is retained to hand to the Google client
 // libraries, which parse the full key themselves.

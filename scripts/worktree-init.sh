@@ -234,7 +234,7 @@ done
 
 # Google only accepts redirect URIs registered with the web OAuth client, and the
 # server refuses to start on an unregistered one. Naming this worktree's URI is
-# therefore conditional on it being registered: without it everything but admin
+# therefore conditional on it being registered: without it everything but Google
 # login still works, which beats a server that will not boot.
 CONFIGURED_REDIRECT_URI="$REDIRECT_URI"
 REDIRECT_URI_REGISTERED=true
@@ -309,7 +309,7 @@ echo "Worktree ready."
 echo "  scripts/dev.sh test   → server on ${API_PORT}, frontend on http://localhost:${WEB_PORT}"
 if [[ "$REDIRECT_URI_REGISTERED" == false ]]; then
     echo ""
-    echo "  Admin login will NOT work in this worktree: ${REDIRECT_URI} is not"
+    echo "  Google login will NOT work in this worktree: ${REDIRECT_URI} is not"
     echo "  registered with the web OAuth client. Everything else runs. To fix it once"
     echo "  for all worktrees, add http://localhost:$((BASE_WEB_PORT + 1))/auth/callback ..."
     echo "  http://localhost:$((BASE_WEB_PORT + MAX_OFFSET))/auth/callback in the Google Cloud console"

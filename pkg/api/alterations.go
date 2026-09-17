@@ -54,9 +54,9 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		SwapDate:  req.SwapDate,
 		Reason:    req.Reason,
 		Role:      req.Role,
-		// The actor is the verified admin from the session, not a trusted
-		// client field. requireAdmin gates this route, so it is always set.
-		UserEmail: adminEmail(r.Context()),
+		// The actor is the verified person from the session, not a trusted
+		// client field. requireLevel gates this route, so it is always set.
+		UserEmail: sessionEmail(r.Context()),
 	}
 
 	result, err := services.ChangeRota(r.Context(), h.store, h.volunteers, h.cfg, params, h.logger)

@@ -16,7 +16,7 @@ interface UseAvailabilityRound {
   reload: () => Promise<void>;
 }
 
-// useAvailabilityRound owns the admin's view of the latest rota's round and the
+// useAvailabilityRound owns the Organiser's view of the latest rota's round and the
 // minting that fills it. They belong together because minting is only worth
 // doing to change what the list shows, so the hook adopts the round the mint
 // returns rather than making the view remember to reload.

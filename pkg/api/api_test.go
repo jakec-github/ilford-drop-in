@@ -71,7 +71,7 @@ type mockStore struct {
 	rolesErr error
 
 	// rotaDefaults overrides apiTestRotaDefaults for a test that cares what an
-	// admin has set — chiefly one about settings nobody has filled in, which is
+	// Organiser has set — chiefly one about settings nobody has filled in, which is
 	// where every deployment starts. rotaDefaultsErr makes the read fail.
 	rotaDefaults            *db.RotaDefaults
 	rotaDefaultsErr         error
@@ -180,7 +180,7 @@ func (m *mockStore) rotaAllocated(r db.Rotation) bool {
 }
 
 // allocate marks a rota as run, so a test that needs a second rota defined can
-// get past the one-rota-in-flight rule the way an admin would (issue #139).
+// get past the one-rota-in-flight rule the way an Organiser would (issue #139).
 func (m *mockStore) allocate(rotaID string) {
 	if m.allocatedRotas == nil {
 		m.allocatedRotas = make(map[string]bool)
@@ -844,14 +844,19 @@ func testVolunteers() *mockVolunteerClient {
 // callback endpoints are exercised via the live round-trip, not these tests.
 func newTestAuthenticator() *Authenticator {
 	return &Authenticator{
-		secret:      testSecret,
-		adminEmails: map[string]struct{}{testAdminEmail: {}},
-		logger:      zap.NewNop(),
+		secret:           testSecret,
+		organiserEmails:  map[string]struct{}{testOrganiserEmail: {}},
+		rotaEditorEmails: map[string]struct{}{testRotaEditorEmail: {}},
+		logger:           zap.NewNop(),
 	}
 }
 
-// testAdminEmail is the allowlisted admin newTestAuthenticator recognises.
-const testAdminEmail = "admin@example.com"
+// testOrganiserEmail and testRotaEditorEmail are the allowlisted people
+// newTestAuthenticator recognises, one at each level.
+const (
+	testOrganiserEmail  = "organiser@example.com"
+	testRotaEditorEmail = "editor@example.com"
+)
 
 func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Handler {
 	return newTestHandlerWithConfig(store, volunteers, apiTestCfg)
@@ -864,14 +869,23 @@ func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient,
 	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 }
 
-// adminCookie is a valid admin session cookie for testAdminEmail, signed with
-// the same secret newTestAuthenticator uses, so requests carrying it pass
-// requireAdmin on the gated write endpoints.
-func adminCookie() *http.Cookie {
+// sessionCookie is a validly signed session cookie for email, signed with the
+// same secret newTestAuthenticator uses. What it may do is up to the allowlists.
+func sessionCookie(email string) *http.Cookie {
 	return &http.Cookie{
 		Name:  sessionCookieName,
-		Value: signSession(testSecret, testAdminEmail, time.Now().Add(time.Hour)),
+		Value: signSession(testSecret, email, time.Now().Add(time.Hour)),
 	}
+}
+
+// organiserCookie is a session that passes every gate.
+func organiserCookie() *http.Cookie {
+	return sessionCookie(testOrganiserEmail)
+}
+
+// rotaEditorCookie is a session that passes only the Rota Editor's gates.
+func rotaEditorCookie() *http.Cookie {
+	return sessionCookie(testRotaEditorEmail)
 }
 
 func doRequest(t *testing.T, handler http.Handler, method, target, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
@@ -1056,7 +1070,7 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp struct {
@@ -1072,31 +1086,31 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	require.Len(t, resp.Alterations, 2)
 
 	// Proves ChangeRota persisted through the store, attributing the change to
-	// the verified admin session rather than any client-supplied field.
+	// the verified Organiser session rather than any client-supplied field.
 	require.NotNil(t, store.insertedCover)
 	assert.Equal(t, "Holiday cover", store.insertedCover.Reason)
-	assert.Equal(t, testAdminEmail, store.insertedCover.UserEmail)
+	assert.Equal(t, testOrganiserEmail, store.insertedCover.UserEmail)
 	assert.Len(t, store.insertedAlterations, 2)
 }
 
-// TestCreateAlterationEndpoint_Role proves an admin adding someone says which
+// TestCreateAlterationEndpoint_Role proves an Organiser adding someone says which
 // Seat they take — here a team lead, where the roster records them only as a
 // service volunteer. The roster is advice, not a gate.
 func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"Leading tonight"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedAlterations, 1)
 	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
 }
 
-// TestCreateAlterationEndpoint_RequiresAdmin proves the write endpoint is gated:
+// TestCreateAlterationEndpoint_RequiresASession proves the write endpoint is gated:
 // no session cookie means no attribution to trust, so the request is rejected
 // before any change is attempted.
-func TestCreateAlterationEndpoint_RequiresAdmin(t *testing.T) {
+func TestCreateAlterationEndpoint_RequiresASession(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
 
@@ -1112,7 +1126,7 @@ func TestCreateAlterationEndpoint_RejectsClientUserEmail(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","reason":"x","userEmail":"attacker@example.com"}`
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
@@ -1179,7 +1193,7 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/alterations", tt.body, adminCookie())
+			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/alterations", tt.body, organiserCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 		})
 	}
@@ -1266,7 +1280,7 @@ func TestUnknownAPIPathIsAJSONNotFound(t *testing.T) {
 func TestFrontendOwnsEverythingOutsideTheAPI(t *testing.T) {
 	handler := newFullStackHandler(&mockStore{})
 
-	for _, path := range []string{"/", "/admin", "/admin/volunteers", "/availability/some-token", "/volunteers"} {
+	for _, path := range []string{"/", "/organiser", "/organiser/volunteers", "/availability/some-token", "/volunteers"} {
 		rec := doRequest(t, handler, http.MethodGet, path, "")
 		require.Equal(t, http.StatusOK, rec.Code, path)
 		assert.Equal(t, testIndex, rec.Body.String(), path)

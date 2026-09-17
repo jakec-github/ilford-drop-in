@@ -200,9 +200,9 @@
   color: var(--accent);
 }
 
-/* Editing (admin only) ------------------------------------------------------
+/* Editing (Organiser only) ------------------------------------------------------
 
-   Everything below is only rendered while an admin has editing turned on. */
+   Everything below is only rendered while an Organiser has editing turned on. */
 
 .rota-edit-hint,
 .rota-edit-banner {

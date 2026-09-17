@@ -85,7 +85,7 @@ func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
 }
 
 // The event runs between the shift's own times, not between the times the
-// settings currently hold. A shift minted before an admin moved the drop-in an
+// settings currently hold. A shift minted before an Organiser moved the drop-in an
 // hour later keeps the hour it was minted with (ADR 0007), and a subscriber
 // sees the evening that was actually planned.
 func TestBuildVolunteerCalendar_ReadsTheShiftsOwnTimes(t *testing.T) {

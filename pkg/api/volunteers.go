@@ -16,12 +16,12 @@ import (
 // Name and FullName are both carried because they answer different questions.
 // Name is the display name: the shortest form that stays unambiguous across the
 // roster ("Aaliyah", "John E."), which is what a rota chip has room for. FullName
-// is always first plus last, which is what an admin looking at the roster itself
-// wants — a screen with room for it should not make an admin guess which John.
+// is always first plus last, which is what an Organiser looking at the roster itself
+// wants — a screen with room for it should not make an Organiser guess which John.
 //
 // Gender is the sheet's own text, uncoerced: the column is free text, so any
 // mapping to a fixed set of values would be this endpoint guessing on the
-// admin's behalf. The allocator's gender balancing does its own matching
+// Organiser's behalf. The allocator's gender balancing does its own matching
 // (allocator.GenderMale), and so does anything counting the roster.
 // Roles are every Role the volunteer holds, in priority order — a volunteer
 // holds a set, not one, and which of them they fill is decided per shift.
@@ -49,11 +49,11 @@ func heldRoles(roles []string) []string {
 }
 
 // handleListVolunteers returns the synced volunteer roster, sorted by name. It
-// is admin-gated: unlike the assignee names on GET /shifts, this exposes
+// needs a session: unlike the assignee names on GET /shifts, this exposes
 // volunteer ids, groups, and everyone not currently on a shift.
 //
-// Inactive volunteers are listed and flagged rather than filtered out — an
-// admin editing a past or unusual shift may legitimately need someone who has
+// Inactive volunteers are listed and flagged rather than filtered out — someone
+// editing a past or unusual shift may legitimately need someone who has
 // since stopped, and a picker that silently omits people is harder to explain
 // than one that greys them out.
 func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {

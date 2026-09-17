@@ -8,17 +8,17 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
-// rotaDefaultsResponse is the settings record: what an admin has decided about
+// rotaDefaultsResponse is the settings record: what an Organiser has decided about
 // how the drop-in as a whole runs. It holds the shift times and the default
 // Shape; the allocation toggles join them here in a later ticket.
 //
 // Times are the same "19:30" the database and the form field spell, not
 // timestamps: a time of day is not a moment until it is read against a date.
-// Empty means an admin has not set it, which is the ordinary first state of a
+// Empty means an Organiser has not set it, which is the ordinary first state of a
 // deployment rather than an error — so the client has a state to render, not
 // only a value.
 //
-// Timezone is the one an admin chose, or the default when they have not chosen.
+// Timezone is the one an Organiser chose, or the default when they have not chosen.
 // The fallback is resolved here rather than in the client so there is one answer
 // to what zone the drop-in runs in.
 type rotaDefaultsResponse struct {
@@ -50,7 +50,7 @@ type switchableConstraint struct {
 	ValueLabel string `json:"valueLabel,omitempty"`
 }
 
-// allocationSettingsResponse is an admin's answers.
+// allocationSettingsResponse is an Organiser's answers.
 //
 // Enabled carries an entry for every rule in the registry, including the ones
 // nobody has answered — the rule that an unanswered constraint is off is
@@ -73,7 +73,7 @@ type allocationSettingsRequest struct {
 //
 // The Role travels as both an id and a name because they answer different
 // questions — the id is what an edit names and what the row holds, the name is
-// what an admin recognises and what the colour is keyed on elsewhere.
+// what an Organiser recognises and what the colour is keyed on elsewhere.
 type seatResponse struct {
 	RoleID string `json:"roleId"`
 	Role   string `json:"role"`
@@ -96,7 +96,7 @@ type defaultShapeRequest struct {
 	Seats []seatRequest `json:"seats"`
 }
 
-// seatRequest is one Seat an admin is asking for. Zero is not a value it can
+// seatRequest is one Seat an Organiser is asking for. Zero is not a value it can
 // take: a Role asked for nought times is a Role the Shape does not name, and
 // the server says so rather than quietly dropping it.
 type seatRequest struct {
@@ -106,12 +106,12 @@ type seatRequest struct {
 
 // handleGetRotaDefaults reports the settings record.
 //
-// Admin-only, unlike the Roles listing beside it on the same screen. Roles are
+// Organiser-only, unlike the Roles listing beside it on the same screen. Roles are
 // public because the rota is coloured by them and a logged-out visitor would
 // otherwise read a colourless rota; nothing a visitor sees needs this. The
 // times themselves are not a secret — GET /api/shifts has always carried them —
 // but this is the settings screen's own resource, and the sections joining it
-// are an admin's business.
+// are an Organiser's business.
 func (h *Handler) handleGetRotaDefaults(w http.ResponseWriter, r *http.Request) {
 	defaults, err := services.RotaDefaults(r.Context(), h.store)
 	if err != nil {
@@ -130,7 +130,7 @@ func (h *Handler) handleGetRotaDefaults(w http.ResponseWriter, r *http.Request) 
 
 // handleSaveShiftTimeDefaults writes the default shift start, end and timezone
 // and answers with the settings as they now stand — including the timezone that
-// was filled in for an admin who left it blank.
+// was filled in for an Organiser who left it blank.
 //
 // PUT rather than PATCH: the three are one form, stated whole, and a partial
 // write of them could express a start with no end, which describes nothing.

@@ -115,13 +115,13 @@ function ShiftTimesForm({
 // One value rather than two booleans, so two dialogs cannot be open at once.
 type EditingDefaults = "times" | "shape" | null;
 
-// RotaDefaultsCard is the settings an admin keeps for the drop-in as a whole:
+// RotaDefaultsCard is the settings an Organiser keeps for the drop-in as a whole:
 // when the drop-in runs, and what a shift asks for.
 //
 // It is the one settings card read on two screens. On Settings it sits with the
 // rest; on the Allocation tab it sits under the define form, because those two
 // facts are what defining a rota spends and this is where they are stated
-// (issue #176). One component rather than a read-only copy: an admin who finds
+// (issue #176). One component rather than a read-only copy: an Organiser who finds
 // the hours wrong at the moment of defining should fix them there, and a copy
 // would be a second thing to keep true.
 //

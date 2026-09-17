@@ -182,7 +182,7 @@ func TestCoverageReadsEachShiftsOwnShape(t *testing.T) {
 	assert.Equal(t, 6, ordinaryOf(t, round, "2026-08-09").Needed)
 }
 
-// TestCoverageReportsTheDelta is the number an admin is really after: how far
+// TestCoverageReportsTheDelta is the number an Organiser is really after: how far
 // short of a full shift the answers so far leave them.
 func TestCoverageReportsTheDelta(t *testing.T) {
 	store, cfg := availabilityFixture()
@@ -199,7 +199,7 @@ func TestCoverageReportsTheDelta(t *testing.T) {
 	assert.Equal(t, -1, first.Delta, "two people for a shift of three is one short")
 }
 
-// TestCoverageReadsTheDefaultShape: what a shift needs is the Shape an admin
+// TestCoverageReadsTheDefaultShape: what a shift needs is the Shape an Organiser
 // stated in the settings, Role by Role — the same Shape allocation sends the
 // solver. A config file has nothing left to say about it: `defaultShiftSize` and
 // the `shiftSize` on a rota override both left in issue #129.
@@ -221,7 +221,7 @@ func TestCoverageReadsTheDefaultShape(t *testing.T) {
 }
 
 // A Role the Shape does not name has no Seats, so nobody is chased for it. That
-// is a Shape an admin can state now — the derivation this replaced gave every
+// is a Shape an Organiser can state now — the derivation this replaced gave every
 // Role a Seat count whether it was wanted or not.
 func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
 	store, cfg := availabilityFixture()
@@ -273,7 +273,7 @@ func TestCoverageSubtractsPreallocations(t *testing.T) {
 
 // TestCoverageCountsAPinnedTeamLeadAsCover: pinning a lead is a commitment the
 // allocator has to honour, so the date has cover whether or not that lead
-// answered. Without this the view would send an admin hunting for a lead it
+// answered. Without this the view would send an Organiser hunting for a lead it
 // already has.
 func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	store, cfg := availabilityFixture()
@@ -335,7 +335,7 @@ func TestCoverageSkipsVolunteersWhoHaveStopped(t *testing.T) {
 }
 
 // TestRoundGroupsTheRoster: the group is the unit of allocation, so it is the
-// unit an admin chases. One answer speaks for the pair, and the group's
+// unit an Organiser chases. One answer speaks for the pair, and the group's
 // availability is the intersection over whoever answered.
 func TestRoundGroupsTheRoster(t *testing.T) {
 	store, cfg := availabilityFixture()
@@ -392,8 +392,8 @@ func TestRoundEntriesCarryTheRolesTheyHold(t *testing.T) {
 	}
 }
 
-// TestRoundNamesPeopleAsTheRotaDoes: the round is an admin screen, and every
-// other admin screen — the rota, the volunteer list — calls someone by their
+// TestRoundNamesPeopleAsTheRotaDoes: the round is an Organiser screen, and every
+// other Organiser screen — the rota, the volunteer list — calls someone by their
 // display name. A grid of full names is a grid whose first column is wider than
 // the dates it exists to show.
 //

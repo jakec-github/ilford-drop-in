@@ -88,9 +88,10 @@ func run(env string, portOverride int) error {
 	var authenticator *api.Authenticator
 	var newMailer api.MailerFunc
 	if cfg.DevMode != nil {
-		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues an admin session without verifying identity",
+		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues a session without verifying identity",
 			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
-			zap.String("adminEmail", cfg.DevMode.AdminEmail))
+			zap.String("organiserEmail", cfg.DevMode.OrganiserEmail),
+			zap.String("rotaEditorEmail", cfg.DevMode.RotaEditorEmail))
 
 		// Nothing else creates Roles yet, and the roster below is read against
 		// them, so the seed has to run before the first sync.
@@ -156,8 +157,8 @@ func run(env string, portOverride int) error {
 		}
 
 		// The volunteer roster is fetched from the sheet with the server's own
-		// service account: once at startup (below) and again on each admin sync. The
-		// admin only triggers the refetch — no token is taken from them.
+		// service account: once at startup (below) and again on each Organiser sync. The
+		// Organiser only triggers the refetch — no token is taken from them.
 		serviceAccount, err := config.LoadServiceAccountWithEnv(env)
 		if err != nil {
 			return fmt.Errorf("failed to load service account: %w", err)
@@ -181,9 +182,9 @@ func run(env string, portOverride int) error {
 			return nil
 		}
 
-		// Populate the roster at startup so reads work before any admin syncs. A
+		// Populate the roster at startup so reads work before any Organiser syncs. A
 		// failure here (transient Sheets outage, say) is not fatal: the server boots
-		// with an empty roster and an admin can retry via the sync button, matching
+		// with an empty roster and an Organiser can retry via the sync button, matching
 		// the store's "degrade to no volunteers" behaviour.
 		if err := syncVolunteers(ctx); err != nil {
 			logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
@@ -194,7 +195,7 @@ func run(env string, portOverride int) error {
 			return fmt.Errorf("failed to create authenticator: %w", err)
 		}
 
-		// Availability emails go out as the signed-in admin, through a
+		// Availability emails go out as the signed-in Organiser, through a
 		// gmail.send token they grant per send and the server never stores.
 		// There is nothing to build here beyond the token itself — the client
 		// is constructed inside the send and discarded with it.
@@ -210,7 +211,7 @@ func run(env string, portOverride int) error {
 	if roles, err := services.RoleTable(ctx, database); err != nil {
 		logger.Warn("Failed to read roles at startup", zap.Error(err))
 	} else if len(roles.ByPriority()) == 0 {
-		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the admin settings screen")
+		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the Organiser settings screen")
 	}
 
 	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, logger)

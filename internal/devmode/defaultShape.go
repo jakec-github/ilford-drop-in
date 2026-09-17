@@ -24,8 +24,8 @@ var seedShape = map[string]int{
 }
 
 // SeedDefaultShape gives a dev database the Shape its Shifts ask for, once. No
-// migration seeds one (ADR 0006) — it is an admin's to state on the Settings
-// screen — but the credential-free dev stack has no admin, and a Shape asking
+// migration seeds one (ADR 0006) — it is an Organiser's to state on the Settings
+// screen — but the credential-free dev stack has no Organiser, and a Shape asking
 // for nobody is the one unset setting that would let a rota be allocated empty.
 //
 // It has its own guard rather than riding on SeedRoles, and the guard is this

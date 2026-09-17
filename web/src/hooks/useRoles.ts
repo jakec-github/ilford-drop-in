@@ -129,7 +129,7 @@ export function useRoles(): UseRoles {
 
   // Reloads whether or not the write landed, then re-throws so the caller can
   // say why. A refusal is the case that most needs the re-read: the server
-  // turned it down because what is held here is out of date — another admin
+  // turned it down because what is held here is out of date — another Organiser
   // took the name — so leaving the old list up would contradict the message
   // shown next to it.
   const write = useCallback(async (apply: () => Promise<void>) => {

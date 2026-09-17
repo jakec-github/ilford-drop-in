@@ -11,13 +11,13 @@ import (
 
 // The four switchable rules, pinned by name. These strings are the contract
 // with the Python constraint registry (constraints/__init__.py), which is the
-// authority on what they may mean; this list is what an admin is offered.
+// authority on what they may mean; this list is what an Organiser is offered.
 // pyallocator's own test pins the same four from the other side.
 func TestSwitchableConstraintsAreTheFourOptionalRules(t *testing.T) {
 	var names []string
 	for _, c := range model.SwitchableConstraints {
 		names = append(names, c.Name)
-		assert.NotEmpty(t, c.Label, "%s needs a label an admin can read", c.Name)
+		assert.NotEmpty(t, c.Label, "%s needs a label an Organiser can read", c.Name)
 		assert.NotEmpty(t, c.Description, "%s needs to say what it does", c.Name)
 	}
 
@@ -87,7 +87,7 @@ func TestMissingAllocationSettingsNamesAnEnabledFrequencyWithNoValue(t *testing.
 	assert.Empty(t, settings.Missing())
 }
 
-// Off, the value is not asked for — an admin who switches the rule off has not
+// Off, the value is not asked for — an Organiser who switches the rule off has not
 // left anything unfilled.
 func TestMissingAllocationSettingsIgnoresADisabledFrequency(t *testing.T) {
 	var settings model.AllocationSettings
@@ -118,7 +118,7 @@ func TestMaxAllocationCountWithTheRuleOff(t *testing.T) {
 
 // A rota one volunteer could work entirely still caps at one shift rather than
 // at none: a cap of zero is a rota nobody may work, which is never what an
-// admin setting a frequency meant.
+// Organiser setting a frequency meant.
 func TestMaxAllocationCountNeverFallsToZero(t *testing.T) {
 	settings := model.AllocationSettings{
 		Enabled:      map[string]bool{"max_frequency": true},

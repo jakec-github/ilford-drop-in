@@ -426,7 +426,7 @@ func buildPreallocationOverrides(
 // pin(s). Custom (non-volunteer) pins carry no id and are not checked.
 //
 // It matters most for the pins nobody typed recently: a Standing Preallocation
-// seeds one at definition and an admin may not look at it again before
+// seeds one at definition and an Organiser may not look at it again before
 // allocating, by which time the person can have left.
 //
 // Closed shifts are skipped: InitShifts strips their pins, so a stale one there

@@ -1,3 +1,4 @@
+import type { Session } from "./auth-context";
 import type {
   AllocateOutcome,
   AllocationSettings,
@@ -81,7 +82,7 @@ interface DefineRotaResponse {
 }
 
 // The API reports a rejected request as {"error": "..."}, and that message is
-// written to be read — "shift count must be positive, got 0" tells an admin what
+// written to be read — "shift count must be positive, got 0" tells an Organiser what
 // to change, where a bare 400 does not. Falls back to the status when the body
 // is not one of ours.
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -136,19 +137,18 @@ function toRotaShift(shift: ApiShift): RotaShift {
   };
 }
 
-// fetchCurrentAdmin returns the logged-in admin's email, or null if there is no
-// active admin session.
-export async function fetchCurrentAdmin(): Promise<string | null> {
+// fetchSession returns who is logged in and at what level, or null if there is
+// no active session.
+export async function fetchSession(): Promise<Session | null> {
   const res = await fetch("/auth/me");
   if (res.status === 401) return null;
   if (!res.ok) {
     throw new Error(`Failed to check login state (${res.status})`);
   }
-  const data = (await res.json()) as { email: string };
-  return data.email;
+  return (await res.json()) as Session;
 }
 
-// logout clears the admin session cookie.
+// logout clears the session cookie.
 export async function logout(): Promise<void> {
   const res = await fetch("/auth/logout", { method: "POST" });
   if (!res.ok) {
@@ -206,7 +206,7 @@ export async function fetchRoles(): Promise<ConfiguredRole[]> {
   return data.roles.map(toConfiguredRole);
 }
 
-// createRole adds a Role. Admin-only, and the server mints the id: it is what
+// createRole adds a Role. Organiser-only, and the server mints the id: it is what
 // every later reference is written against, so nothing outside the server
 // chooses it.
 //
@@ -240,7 +240,7 @@ export async function updateRole(id: string, role: RoleEdit): Promise<void> {
   }
 }
 
-// fetchRotaDefaults reads the settings record. Admin-only: nothing a logged-out
+// fetchRotaDefaults reads the settings record. Organiser-only: nothing a logged-out
 // visitor sees needs it, unlike the Roles beside it on the same screen.
 export async function fetchRotaDefaults(): Promise<RotaDefaults> {
   const res = await fetch("/api/rota-defaults");
@@ -258,7 +258,7 @@ export async function fetchRotaDefaults(): Promise<RotaDefaults> {
 //
 // Each section of the settings has its own endpoint, and each resolves with the
 // whole record rather than with nothing — partly because the server fills in a
-// timezone an admin left blank, and partly so a caller holds one thing after
+// timezone an Organiser left blank, and partly so a caller holds one thing after
 // saving any section.
 export async function saveShiftTimeDefaults(
   times: ShiftTimes,
@@ -340,7 +340,7 @@ function toPreallocation(p: ApiPreallocation): Preallocation {
 }
 
 // fetchPreallocations returns everyone already pinned to a shift from today
-// onwards, ordered by date. Admin-only: a pin names someone against a date the
+// onwards, ordered by date. Behind a session: a pin names someone against a date the
 // rota has not published.
 export async function fetchPreallocations(): Promise<Preallocation[]> {
   const today = new Date().toLocaleDateString("en-CA");
@@ -353,7 +353,7 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
 }
 
 // createPreallocation pins one person to a shift ahead of allocation, so the
-// allocator has to place them there. Admin-only, and refused once the rota has
+// allocator has to place them there. Behind a session, and refused once the rota has
 // been allocated — a pin can only promise something that has not happened yet.
 //
 // Resolves with nothing: the created pin comes back, but a caller showing pins
@@ -387,7 +387,7 @@ export async function createPreallocation(
 }
 
 // deletePreallocation removes one pin by id. Any of them can go: there is one
-// kind of pin, and an admin may take back any promise the rota has not been
+// kind of pin, and an Organiser or a Rota Editor may take back any promise the rota has not been
 // allocated on.
 export async function deletePreallocation(id: string): Promise<void> {
   const res = await fetch(`/api/preallocations/${encodeURIComponent(id)}`, {
@@ -412,8 +412,8 @@ interface ListStandingPreallocationsResponse {
   standingPreallocations: ApiStandingPreallocation[];
 }
 
-// fetchStandingPreallocations returns the pins an admin has said to make every
-// rota, in the order the settings screen lists them. Admin-only.
+// fetchStandingPreallocations returns the pins an Organiser has said to make every
+// rota, in the order the settings screen lists them. Organiser-only.
 export async function fetchStandingPreallocations(): Promise<
   StandingPreallocation[]
 > {
@@ -473,7 +473,7 @@ export async function deleteStandingPreallocation(id: string): Promise<void> {
 }
 
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,
-// already sorted by name server-side. Admin-only.
+// already sorted by name server-side. Behind a session.
 export async function fetchVolunteers(): Promise<Volunteer[]> {
   const res = await fetch("/api/volunteers");
   if (!res.ok) {
@@ -484,7 +484,7 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
 }
 
 // fetchRotaProposal reads what the define form starts from: where the next rota
-// would begin. Admin-only, like everything else about defining one.
+// would begin. Organiser-only, like everything else about defining one.
 export async function fetchRotaProposal(): Promise<RotaProposal> {
   const res = await fetch("/api/rotations/proposed");
   if (!res.ok) {
@@ -497,7 +497,7 @@ export async function fetchRotaProposal(): Promise<RotaProposal> {
 //
 // The hours the shifts run and what each asks for are the Rota Defaults', and
 // the server reads them as it mints — so a define is refused, with the settings
-// named, on a deployment that has not stated them. Admin-only, and deliberately
+// named, on a deployment that has not stated them. Organiser-only, and deliberately
 // not idempotent — the caller is expected to show what came back rather than
 // treat it as a repeatable action.
 export async function defineRota(rota: NewRota): Promise<DefinedRota> {
@@ -525,7 +525,7 @@ interface RotaInFlightResponse {
 }
 
 // fetchRotaInFlight reads the rota being worked on, or null when there is none —
-// which is also the answer to "may I define one". Admin-only.
+// which is also the answer to "may I define one". Organiser-only.
 export async function fetchRotaInFlight(): Promise<RotaInFlight | null> {
   const res = await fetch("/api/rotations/in-flight");
   if (!res.ok) {
@@ -600,7 +600,7 @@ function toDraftRotaState(data: DraftRotaAllocationResponse): DraftRotaState {
 }
 
 // fetchDraftRotaAllocation reads where the rota in flight's Draft Rota
-// Allocation has got to, and the rota it drafted. Admin-only, and the endpoint
+// Allocation has got to, and the rota it drafted. Organiser-only, and the endpoint
 // is separate from the shift listing for that reason: the listing is public, and
 // keeping it clear of the draft is what stops a speculative rota reaching the
 // volunteers named in it (ADR 0008).
@@ -626,7 +626,7 @@ export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null>
 }
 
 // solveDraftRotaAllocation re-solves the rota in flight and stores the answer as
-// its draft, replacing whatever was there. Admin-only.
+// its draft, replacing whatever was there. Organiser-only.
 //
 // Resolves with nothing: the solve's own summary comes back, but the draft it
 // wrote is read from the endpoint above — one shape for "what the draft says",
@@ -707,7 +707,7 @@ function personFields(
 // createAlteration records one change to a published rota: an add, a remove, a
 // move or a swap (see RotaChange). It resolves on success and throws the
 // server's own message otherwise — a 409 explains which volunteer contradicts
-// the shift's current state, which is worth showing the admin verbatim.
+// the shift's current state, which is worth showing verbatim.
 //
 // The rota it returns is not the changed one: alterations are layered over
 // allocations server-side, so the caller re-fetches the shifts rather than
@@ -756,7 +756,7 @@ async function patchShift(
 // setShiftClosed closes or reopens one shift, which is a change to what
 // allocation will do rather than to a rota that has been run. It throws the
 // server's own message on a refusal — a 409 says the rota has already been
-// allocated, which is exactly what the admin needs to read.
+// allocated, which is exactly what the Organiser needs to read.
 export function setShiftClosed(
   shiftId: string,
   closed: boolean,
@@ -968,7 +968,7 @@ export async function submitAvailability(
 }
 
 // fetchAvailabilityRound reads the latest rota's round: who was asked, their
-// link, and who has answered. Admin-only — it returns every volunteer's link.
+// link, and who has answered. Organiser-only — it returns every volunteer's link.
 export async function fetchAvailabilityRound(): Promise<AvailabilityRound> {
   const res = await fetch("/api/availability-rounds");
   if (!res.ok) {
@@ -1021,7 +1021,7 @@ function toOutcome(o: ApiSendOutcome): SendOutcome {
 
 // sendUrl is the address that starts a send. Navigating to it — not fetching it
 // — is the point: the server answers with a redirect to Google for the
-// gmail.send scope, and only a real navigation can carry the admin through a
+// gmail.send scope, and only a real navigation can carry the Organiser through a
 // consent screen and back.
 //
 // The deadline is quoted in the email and nowhere else. It is not stored, not
@@ -1036,8 +1036,8 @@ export function sendUrl(
   return `/auth/gmail?${params.toString()}`;
 }
 
-// fetchSend reports on a send in progress or just finished. Admin-only, and
-// readable only by the admin who started it: it names every volunteer it reached
+// fetchSend reports on a send in progress or just finished. Organiser-only, and
+// readable only by the Organiser who started it: it names every volunteer it reached
 // and every address it failed on.
 //
 // A send that has aged out of the server's memory is a 404, which is also the

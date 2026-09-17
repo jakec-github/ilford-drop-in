@@ -102,7 +102,7 @@ the same way, because nothing ever splits the path up.
 
 What moves is what leaves the app and cannot be corrected afterwards:
 
-- **The site's own pages** — the rota, the admin screens, the availability
+- **The site's own pages** — the rota, the Organiser screens, the availability
   form. They are bookmarked, and the availability form's URL is emailed.
 - **`/calendars/{filename}`**, the calendar feeds. Once a volunteer subscribes,
   the URL lives in their calendar app and fails silently if it moves.
@@ -173,7 +173,7 @@ purpose, so a database is in this state until somebody fills it, and the server
 warns at startup when it is. With no Roles nobody on the roster holds one and
 allocation refuses to run.
 
-They are created on **Admin → Settings**, which is reachable as soon as an admin
+They are created on **Organiser → Settings**, which is reachable as soon as an Organiser
 can log in — no SQL and no deploy. This is the pair the config used to carry:
 
 | Name | Most per shift | Priority | Colour |

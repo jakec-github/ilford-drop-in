@@ -11,7 +11,7 @@
 #   scripts/preallocs.sh create <date> custom "<value>"
 #   scripts/preallocs.sh delete <id>
 #
-# Every endpoint here is admin-only, so run `login` first: against the
+# Every endpoint here needs a session, so run `login` first: against the
 # credential-free dev stack it mints a session with no Google round trip (see
 # docs/agents/dev-stack.md). The cookie lands in COOKIE_JAR (default
 # ./cookies.txt) and every later command sends it.
@@ -38,7 +38,7 @@ set -euo pipefail
 API_URL="${API_URL:-http://localhost:8080}"
 COOKIE_JAR="${COOKIE_JAR:-cookies.txt}"
 
-# curl with the admin session attached. Sends nothing when there is no jar yet,
+# curl with the session attached. Sends nothing when there is no jar yet,
 # so the failure is the server's 401 — which names the problem — rather than
 # curl refusing to start on a file that is not there.
 api() {

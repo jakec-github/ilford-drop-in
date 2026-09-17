@@ -21,7 +21,7 @@ type RoleWriteStore interface {
 	UpdateRole(ctx context.Context, role db.Role) (bool, error)
 }
 
-// RoleParams is a Role as an admin states it. It is the same on the way in for
+// RoleParams is a Role as an Organiser states it. It is the same on the way in for
 // both operations, because an edit and a creation say the same things: a Role
 // must not be able to reach through an edit a state it could not have been
 // created in.
@@ -39,7 +39,7 @@ type RoleParams struct {
 	Colour string
 }
 
-// validate turns an admin's answers into the row to write, or says why it will
+// validate turns an Organiser's answers into the row to write, or says why it will
 // not. Priority is deliberately unchecked: it only orders Seats relative to one
 // another, so no value of it is wrong.
 func (p RoleParams) validate() (db.Role, error) {
@@ -100,7 +100,7 @@ func CreateRole(ctx context.Context, store RoleWriteStore, params RoleParams, lo
 // What it cannot fix is the half of the name contract this app does not own:
 // volunteers hold Roles by name in the roster Sheet, so a rename here without
 // the same edit there silently stops volunteers holding the Role. That is a
-// warning the screen gives at the point of rename, not a refusal — an admin
+// warning the screen gives at the point of rename, not a refusal — an Organiser
 // renaming a Role has decided to, and the roster validation warnings are the
 // standing check afterwards.
 func UpdateRole(ctx context.Context, store RoleWriteStore, id string, params RoleParams, logger *zap.Logger) (*model.Role, error) {

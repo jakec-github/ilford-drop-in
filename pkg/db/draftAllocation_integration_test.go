@@ -24,7 +24,7 @@ func draftFixture(t *testing.T, database *db.DB) (db.Rotation, db.Shift, db.Shif
 	return rota, first, second
 }
 
-// A draft round-trips whole: the outcome an admin reads during the availability
+// A draft round-trips whole: the outcome an Organiser reads during the availability
 // window, and the Seats it placed, scoped by shift the way allocations are.
 func TestReplaceDraftRotaAllocation(t *testing.T) {
 	database, _ := dbtest.New(t)
@@ -265,7 +265,7 @@ func TestInsertAllocationsAndSetAllocatedClearsTheDraft(t *testing.T) {
 // The double-allocation guard (issue #8) under the row lock that enforces it: a
 // second attempt on a rota that has already been allocated writes nothing and
 // says why. This is the last word on allocating the rota you were shown — every
-// check in front of it is a fast refusal, and two admins confirming the same
+// check in front of it is a fast refusal, and two Organisers confirming the same
 // draft at the same moment meet here.
 func TestInsertAllocationsAndSetAllocatedRefusesASecondAllocation(t *testing.T) {
 	database, _ := dbtest.New(t)

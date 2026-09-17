@@ -121,7 +121,7 @@ func TestSendRoundEmailsEveryUnsentRequest(t *testing.T) {
 	}
 }
 
-// TestSendRoundSkipsAlreadySentRequests: sending twice is how an admin tops up a
+// TestSendRoundSkipsAlreadySentRequests: sending twice is how an Organiser tops up a
 // round after new volunteers join, so it must not re-mail everyone who already
 // has their link.
 func TestSendRoundSkipsAlreadySentRequests(t *testing.T) {
@@ -173,7 +173,7 @@ func TestSendRoundSkipsVolunteersWhoHaveGoneInactive(t *testing.T) {
 }
 
 // TestSendRoundReportsAVolunteerWithNoEmailAddress: there is nothing to send to,
-// and silently dropping them would leave an admin believing the round went out
+// and silently dropping them would leave an Organiser believing the round went out
 // to everyone.
 func TestSendRoundReportsAVolunteerWithNoEmailAddress(t *testing.T) {
 	store := sendStore()
@@ -300,7 +300,7 @@ func TestSendRefusesOnceTheRotaIsAllocated(t *testing.T) {
 }
 
 // TestSendReportsNobodyToEmailWithoutFailing: a round already fully sent, or one
-// where everybody has answered, is a no-op an admin should see as "nothing to
+// where everybody has answered, is a no-op an Organiser should see as "nothing to
 // do" rather than an error.
 func TestSendReportsNobodyToEmailWithoutFailing(t *testing.T) {
 	store := sendStore()

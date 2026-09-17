@@ -18,10 +18,10 @@ type createPreallocationRequest struct {
 }
 
 // preallocationResponse is one pin. Role comes back twice for the reason a
-// standing one does: roleId is what the row references, role is what an admin
+// standing one does: roleId is what the row references, role is what an Organiser
 // recognises.
 //
-// There is one kind of them (issue #131) — a pin an admin made by hand and a
+// There is one kind of them (issue #131) — a pin somebody made by hand and a
 // pin a Standing Preallocation seeded at definition are the same row — so it
 // says nothing about where it came from and every one of them carries an id a
 // DELETE can be addressed at.
@@ -76,7 +76,7 @@ func (h *Handler) handleDeletePreallocation(w http.ResponseWriter, r *http.Reque
 }
 
 // handleListPreallocations returns every pin whose shift falls in the optional
-// from/to date range. Admin-only: it names people against dates the rota has not
+// from/to date range. Behind a session: it names people against dates the rota has not
 // published yet.
 func (h *Handler) handleListPreallocations(w http.ResponseWriter, r *http.Request) {
 	views, err := services.ListPreallocations(r.Context(), h.store, h.volunteers, h.cfg, services.ListPreallocationsParams{

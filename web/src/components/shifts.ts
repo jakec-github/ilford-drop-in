@@ -6,7 +6,7 @@ import type { Assignee, PersonRef, RotaShift } from "../types";
 // dev-server reload of one row does not tear down the page holding it.
 
 // A shift that exists but has not been through allocation yet: no assignees,
-// and not deliberately closed. Hidden from the public; flagged for admins.
+// and not deliberately closed. Hidden from the public; flagged for Organisers.
 export function isUnallocated(shift: RotaShift): boolean {
   return !shift.allocated && !shift.closed;
 }

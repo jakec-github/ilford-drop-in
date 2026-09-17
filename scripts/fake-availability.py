@@ -2,7 +2,7 @@
 """Answer a minted availability round with plausible random availability.
 
 This is a test-data helper for a dev or test stack, not a production tool. It
-reads a round back from the admin API, then submits an answer through each
+reads a round back from the Organiser API, then submits an answer through each
 volunteer's own public link — the same endpoint the form posts to, so what lands
 in the database is a real generation rather than seeded rows.
 
@@ -11,7 +11,7 @@ Usage:
     scripts/fake-availability.py --mean 0.6 --sd 0.16
     scripts/fake-availability.py --rota <rotaId> --seed 1 --dry-run
 
-Admin session: by default it logs in at /auth/login, which against the
+Organiser session: by default it logs in at /auth/login, which against the
 credential-free dev stack mints a session with no Google round trip (see
 docs/agents/dev-stack.md). Against anything with real OIDC that will not work —
 pass an existing session cookie with --session instead.
@@ -38,7 +38,7 @@ import urllib.request
 
 DEFAULT_API_URL = "http://localhost:8080"
 
-# The cookie the server issues an admin session in (pkg/api/auth.go).
+# The cookie the server issues a session in (pkg/api/auth.go).
 SESSION_COOKIE = "session"
 
 
@@ -119,7 +119,7 @@ class Client:
             )
 
     def whoami(self) -> str:
-        """The admin the session belongs to, checked before anything is written.
+        """The person the session belongs to, checked before anything is written.
 
         The server answers a bad session and a session for someone off the
         allowlist with the same 401, so this cannot say which it is — but it can
@@ -132,7 +132,7 @@ class Client:
             raise SystemExit(
                 f"the session was rejected by {self.base_url}. It is either "
                 "expired, from a different server, or for an address that is "
-                "not in that environment's server.adminEmails."
+                "not in that environment's server.organiserEmails."
             )
 
 
@@ -181,7 +181,7 @@ def main() -> int:
     parser.add_argument(
         "--session",
         default=os.environ.get("SESSION"),
-        help="an existing admin session cookie; omit to log in at /auth/login",
+        help="an existing Organiser session cookie; omit to log in at /auth/login",
     )
     parser.add_argument("--rota", default="", help="rota id; omit for the latest")
     parser.add_argument(

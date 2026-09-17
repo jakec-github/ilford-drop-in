@@ -13,7 +13,7 @@ import (
 // The hours every minted shift runs and what each of them asks for are not
 // here. They are the Rota Defaults, which are the only place they are stated
 // (issue #176), and defining spends whatever they say at the moment it runs.
-// The screen shows the settings card itself, so what an admin is looking at
+// The screen shows the settings card itself, so what an Organiser is looking at
 // when they press the button is the setting rather than a copy of it.
 type defineRotaRequest struct {
 	ShiftCount int `json:"shiftCount"`
@@ -42,7 +42,7 @@ type defineRotaResponseBody struct {
 // shifts, and opens its availability round.
 //
 // The round is not in the response: what it did is read back by GET
-// /availability-rounds, which the screen an admin lands on after defining is
+// /availability-rounds, which the screen an Organiser lands on after defining is
 // showing anyway. Nothing is emailed — minting writes the links, sending them
 // is its own action with its own deadline.
 //
@@ -90,7 +90,7 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 // the rota made by defining one right now would begin.
 //
 // The shift count is not here, and the form has no default for it either: no
-// rota implies how long the next one should be, so it is the one field an admin
+// rota implies how long the next one should be, so it is the one field an Organiser
 // has to state (issue #174). Neither are the hours or the Shape, which the form
 // no longer states at all — they are the Rota Defaults, read by the settings
 // card the define screen shows (issue #176).
@@ -165,7 +165,7 @@ func (h *Handler) handleGetRotaInFlight(w http.ResponseWriter, r *http.Request) 
 // handleDiscardRota destroys an unallocated rota and everything hanging off it.
 //
 // DELETE on the rotation itself, with no request body and nothing to confirm on
-// the way in: the confirmation an admin gives is a decision made in front of the
+// the way in: the confirmation an Organiser gives is a decision made in front of the
 // numbers, which the screen has already read from GET /rotations/in-flight.
 // Repeating it here as a token or a count would make the API's guarantee depend
 // on the caller's honesty, where the allocated check does not.

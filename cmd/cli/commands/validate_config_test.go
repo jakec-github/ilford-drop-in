@@ -139,16 +139,51 @@ func TestValidateConfigCmd_DevModeRejectedForProd(t *testing.T) {
 server:
   port: 8080
   sessionSecret: "sixteen-characters-long"
-  adminEmails:
-    - "admin@example.com"
+  organiserEmails:
+    - "organiser@example.com"
 devMode:
-  adminEmail: "admin@example.com"
+  organiserEmail: "organiser@example.com"
   volunteersCSV: "test_data/volunteers.csv"
 `)
 
 	_, err := runValidateConfig(t, "-e", "prod", path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "devMode")
+}
+
+// The summary counts each level: deploy-config.sh prints it before a config
+// ships, which is the moment to notice a list that is not what was meant.
+func TestValidateConfigCmd_SummarisesAccessLevels(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+`
+server:
+  port: 8080
+  sessionSecret: "sixteen-characters-long"
+  organiserEmails:
+    - "a@example.com"
+    - "b@example.com"
+  rotaEditorEmails:
+    - "c@example.com"
+`)
+
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+	assert.Contains(t, out, "port 8080, 2 organisers, 1 rota editor")
+}
+
+// adminEmails was replaced outright by organiserEmails (#204). A file still
+// carrying only the old key is refused before it ships, naming the key it needs.
+func TestValidateConfigCmd_RejectsAdminEmailsAlone(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+`
+server:
+  port: 8080
+  sessionSecret: "sixteen-characters-long"
+  adminEmails:
+    - "a@example.com"
+`)
+
+	_, err := runValidateConfig(t, "-e", "prod", path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "OrganiserEmails")
 }
 
 func TestValidateConfigCmd_RequiresEnv(t *testing.T) {

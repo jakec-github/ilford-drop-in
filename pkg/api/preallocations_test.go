@@ -38,7 +38,7 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 	store := preallocationTestStore()
 	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp struct {
@@ -52,7 +52,7 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 	assert.NotEmpty(t, resp.ID)
 	assert.Equal(t, "2026-01-11", resp.Date)
 	// Both, as a standing pin answers: the id is what the row references, the
-	// name is what an admin recognises.
+	// name is what an Organiser recognises.
 	assert.Equal(t, "role-service-volunteer", resp.RoleID)
 	assert.Equal(t, "Service volunteer", resp.Role)
 	assert.Equal(t, "bob", resp.VolunteerID)
@@ -67,7 +67,7 @@ func TestCreatePreallocationEndpoint_TeamLead(t *testing.T) {
 	store := preallocationTestStore()
 	body := `{"date":"2026-01-11","volunteerId":"alice","roleId":"role-team-lead"}`
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	require.Len(t, store.insertedPreallocations, 1)
 	assert.Equal(t, "role-team-lead", store.insertedPreallocations[0].RoleID)
@@ -180,7 +180,7 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, activeVolunteers()), http.MethodPost, "/api/preallocations", tt.body, adminCookie())
+			rec := doRequest(t, newTestHandler(tt.store, activeVolunteers()), http.MethodPost, "/api/preallocations", tt.body, organiserCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 		})
 	}
@@ -192,13 +192,13 @@ func TestDeletePreallocationEndpoint(t *testing.T) {
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", organiserCookie())
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 	assert.Equal(t, []string{"pin-1"}, store.deletedPreallocationIDs)
 }
 
 func TestDeletePreallocationEndpoint_NotFound(t *testing.T) {
-	rec := doRequest(t, newTestHandler(preallocationTestStore(), activeVolunteers()), http.MethodDelete, "/api/preallocations/ghost", "", adminCookie())
+	rec := doRequest(t, newTestHandler(preallocationTestStore(), activeVolunteers()), http.MethodDelete, "/api/preallocations/ghost", "", organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
@@ -209,7 +209,7 @@ func TestDeletePreallocationEndpoint_FrozenRota(t *testing.T) {
 	}
 	store.allocatedRotas = map[string]bool{"rota-1": true}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", organiserCookie())
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	assert.Empty(t, store.deletedPreallocationIDs, "a frozen rota must not delete the pin")
 }
@@ -221,7 +221,7 @@ func TestListPreallocationsEndpoint(t *testing.T) {
 		{ID: "pin-2", ShiftID: "s2", RoleID: "role-service-volunteer", CustomValue: "External Helper"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	resp := decodePreallocations(t, rec.Body.Bytes())
@@ -266,7 +266,7 @@ func TestListPreallocationsEndpoint_DateFilter(t *testing.T) {
 		{ID: "pin-2", ShiftID: "s2", RoleID: "role-service-volunteer", VolunteerID: "charlie"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations?from=2026-01-12", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations?from=2026-01-12", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	resp := decodePreallocations(t, rec.Body.Bytes())
@@ -281,11 +281,11 @@ func TestPreallocationsMethodNotAllowed(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-// TestPreallocationsRequireAdmin proves all three pin endpoints are gated:
+// TestPreallocationsRequireASession proves all three pin endpoints are gated:
 // without a session they are rejected, nothing is persisted or deleted, and the
 // listing gives nothing away — it names people against dates the rota has not
 // published.
-func TestPreallocationsRequireAdmin(t *testing.T) {
+func TestPreallocationsRequireASession(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},

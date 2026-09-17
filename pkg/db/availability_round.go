@@ -17,7 +17,7 @@ const availabilityRequestColumns = `id, rota_id, volunteer_id, token, sent_at`
 // it actually created.
 //
 // Skipping rather than failing is what makes minting a round idempotent: the
-// admin's job is "everyone active has a link", and running it again after the
+// Organiser's job is "everyone active has a link", and running it again after the
 // roster gains a volunteer must add that one link without re-tokening anyone.
 // Re-tokening would silently break links already distributed, so an existing
 // row always wins over the one offered here.
@@ -159,7 +159,7 @@ func scanAvailabilityRequest(row rowScanner) (AvailabilityRequest, error) {
 // afterwards. Pass nil for no bound.
 //
 // This is the one place the latest-generation query lives (ADR 0004). Every
-// consumer — the volunteer's own form, the admin roster, and the allocator when
+// consumer — the volunteer's own form, the Organiser roster, and the allocator when
 // it switches over — calls it rather than reimplementing the ordering, which is
 // how the group logic it replaces ended up written three times over.
 func (d *DB) GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]AvailabilityGeneration, error) {

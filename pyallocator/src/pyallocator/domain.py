@@ -104,7 +104,7 @@ class AllocationInput:
     against.
 
     enabled_constraints names the optional rules this run applies, from the
-    admin's Allocation Settings. Which rules those names may be is
+    Organiser's Allocation Settings. Which rules those names may be is
     constraints.SWITCHABLE_CONSTRAINTS' business; an unrecognised one is
     ignored. Empty means the fundamentals only — a rule nobody has switched
     on is off, and there is no default list on this side (ADR 0006).

@@ -13,7 +13,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// The dev stack has no admin to create Roles and no config key to read them
+// The dev stack has no Organiser to create Roles and no config key to read them
 // from, so the seed is what makes `scripts/dev-stack.sh start` hand over an app
 // anybody holds a Role in. The names have to be the ones
 // test_data/volunteers.csv spells, or the roster parses to nobody holding

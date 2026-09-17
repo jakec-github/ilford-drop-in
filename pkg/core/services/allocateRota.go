@@ -11,11 +11,11 @@ import (
 )
 
 // AllocateRotaOutcome is what came of an attempt to allocate the rota in
-// flight: either it was committed, or it had moved since the admin looked and
+// flight: either it was committed, or it had moved since the Organiser looked and
 // the fresh solve is what they are now being shown.
 //
 // Not an error in the second case. "The rota changed" is a well-formed answer
-// to "allocate the one I was shown" — the admin does the same thing next
+// to "allocate the one I was shown" — the Organiser does the same thing next
 // either way, which is read the rota in front of them — and the caller needs
 // the fresh rota to show, which an error could not carry.
 type AllocateRotaOutcome struct {
@@ -33,17 +33,17 @@ type AllocateRotaOutcome struct {
 }
 
 // AllocateRotaInFlight allocates the rota in flight — but only the one the
-// admin was shown.
+// Organiser was shown.
 //
 // It re-solves, hashes the answer, and commits it only if that hash is the one
-// the admin confirmed (ADR 0008). The solver is deterministic, so an identical
+// the Organiser confirmed (ADR 0008). The solver is deterministic, so an identical
 // hash means nothing that could change the rota has moved since they looked at
 // it. A different one means it has: nothing is committed, the fresh solve
-// becomes the draft, and the admin reads that one and confirms it instead.
+// becomes the draft, and the Organiser reads that one and confirms it instead.
 //
 // The comparison is against the hash the caller states rather than against the
-// stored draft's, and the difference matters exactly once: when another admin's
-// read re-solved the draft while this admin had the rota open. Comparing
+// stored draft's, and the difference matters exactly once: when another Organiser's
+// read re-solved the draft while this Organiser had the rota open. Comparing
 // against the store would then commit a rota nobody had looked at, which is the
 // one outcome this whole mechanism exists to prevent.
 //
@@ -51,7 +51,7 @@ type AllocateRotaOutcome struct {
 // the Rotation's stamp and the draft's removal are one transaction under the
 // row lock that makes double allocation impossible (issue #8). Every check
 // here is a fast refusal in front of that lock, never a substitute for it: two
-// admins can perfectly well confirm the same draft at the same moment, and the
+// Organisers can perfectly well confirm the same draft at the same moment, and the
 // store is what settles it.
 func AllocateRotaInFlight(
 	ctx context.Context,

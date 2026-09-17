@@ -18,9 +18,9 @@ import type {
   Volunteer,
 } from "../types";
 import { CUSTOM_CHOICE, DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
-import "./AdminSettings.css";
+import "./OrganiserSettings.css";
 
-// The colour a new Role starts on: the dullest token, so an admin who does not
+// The colour a new Role starts on: the dullest token, so an Organiser who does not
 // care about colour does not accidentally claim a distinctive one.
 const NEW_ROLE_COLOUR: RoleColour = DEFAULT_ROLE_COLOUR;
 
@@ -251,7 +251,7 @@ function RolesSettings() {
 // Which Shifts of a rota a Standing Preallocation lands on, offered as the
 // handful of answers anybody actually gives. Each is a recurrence rule, which is
 // what the server stores and what the seeding matches shift dates against; an
-// admin picks the sentence and never sees the rule.
+// Organiser picks the sentence and never sees the rule.
 //
 // Sundays because that is the day a rota is minted on — definition walks weekly
 // from a Sunday. A cadence that is not weekly is out of scope until rota
@@ -267,7 +267,7 @@ const STANDING_RULES: { rrule: string; label: string }[] = [
 
 // How a stored rule reads in the list. A rule this app did not offer — written
 // against the API, or offered by an older build — falls back to itself rather
-// than to nothing: it is still doing something, and an admin deciding whether to
+// than to nothing: it is still doing something, and an Organiser deciding whether to
 // remove it needs to see what.
 function describeRule(rrule: string): string {
   return STANDING_RULES.find((r) => r.rrule === rrule)?.label ?? rrule;
@@ -440,7 +440,7 @@ function StandingPreallocationForm({
   );
 }
 
-// StandingPreallocationsSettings is the pins an admin expects to make every
+// StandingPreallocationsSettings is the pins an Organiser expects to make every
 // rota. Add and remove are the only actions: a Standing Preallocation is one
 // promise, and half-changing one is not a thing to want.
 function StandingPreallocationsSettings() {
@@ -514,7 +514,7 @@ function StandingPreallocationsSettings() {
             ))}
           </ul>
           {/* Says the one thing about these that is not obvious from the list,
-              and the thing an admin is most likely to get wrong: removing one
+              and the thing an Organiser is most likely to get wrong: removing one
               does not unpin anybody from a rota that already exists. */}
           <p className="settings-caption">
             Removing a pin changes what the next rota starts from. The people it
@@ -651,7 +651,7 @@ function AllocationRulesForm({
 
 // AllocationRulesSettings is which optional rules the solver applies. The
 // fundamental ones are deliberately absent: a rota without them is not a rota,
-// so they are not an admin's decision to make.
+// so they are not an Organiser's decision to make.
 function AllocationRulesSettings() {
   const { defaults, saveAllocationRules } = useRotaDefaults();
   const [editing, setEditing] = useState(false);
@@ -719,16 +719,16 @@ function AllocationRulesSettings() {
   );
 }
 
-// AdminSettings is everything an admin decides about how the drop-in runs, as
+// OrganiserSettings is everything an Organiser decides about how the drop-in runs, as
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
 // of independent sections: the Rota Defaults the whole drop-in runs on, the
 // Roles volunteers hold, and the pins made every rota.
 //
 // The Rota Defaults card is the one section that is not only here — the define
 // screen shows the same component, because defining a rota is spending it
-// (issue #176). This screen remains where it belongs: an admin looking for a
+// (issue #176). This screen remains where it belongs: an Organiser looking for a
 // setting finds every one of them in one place.
-export default function AdminSettings() {
+export default function OrganiserSettings() {
   return (
     <>
       <RotaDefaultsCard />

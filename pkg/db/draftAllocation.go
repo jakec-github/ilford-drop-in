@@ -53,7 +53,7 @@ func (d *DB) GetDraftRotaAllocation(ctx context.Context, rotaID string) (*DraftR
 // the shifts it cares about, so the two can never disagree about which they
 // mean. An empty id set returns no rows without a query.
 //
-// Every caller of this is admin-gated, and must stay so. The whole reason
+// Every caller of this is Organiser-gated, and must stay so. The whole reason
 // drafts are a table of their own is that no public reader can reach one by
 // forgetting a join (ADR 0008).
 func (d *DB) GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]DraftAllocation, error) {

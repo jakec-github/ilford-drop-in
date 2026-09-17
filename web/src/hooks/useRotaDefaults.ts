@@ -9,7 +9,7 @@ import type { AllocationSettings, RotaDefaults, ShiftTimes } from "../types";
 
 interface UseRotaDefaults {
   // null while the first load is still in flight. A loaded record with empty
-  // times is a different thing entirely: it means an admin has not set them.
+  // times is a different thing entirely: it means an Organiser has not set them.
   defaults: RotaDefaults | null;
   error: string | null;
   // Writes the shift times and holds what the server stored — including the
@@ -25,7 +25,7 @@ interface UseRotaDefaults {
   saveAllocationRules: (settings: AllocationSettings) => Promise<void>;
 }
 
-// useRotaDefaults owns the settings an admin keeps for the drop-in as a whole.
+// useRotaDefaults owns the settings an Organiser keeps for the drop-in as a whole.
 // Only the settings screen reads it today; the rota and the availability pages
 // get their times already resolved, on the shifts they render.
 export function useRotaDefaults(): UseRotaDefaults {

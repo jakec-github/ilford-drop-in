@@ -1,7 +1,7 @@
 """The switchable-constraint registry: which rules an allocation runs with.
 
 The fundamentals always apply. The switchable ones apply only when the
-caller names them, which is how an admin's Allocation Settings reach the
+caller names them, which is how an Organiser's Allocation Settings reach the
 solver — Go sends the enabled list, and this module is the authority on
 what those names may mean.
 """
@@ -22,7 +22,7 @@ def names(constraints) -> list[str]:
 
 
 # The four switchable rules, pinned by name. These strings are the contract:
-# they are what the settings record stores, what Go's registry offers an admin
+# they are what the settings record stores, what Go's registry offers an Organiser
 # and what arrives in enabled_constraints. Renaming one here silently turns it
 # off on every deployment that had it on, so it takes a data migration.
 def test_the_switchable_registry_is_the_four_optional_rules():

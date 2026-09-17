@@ -30,14 +30,19 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslm
 server:
   port: 8080
   # Not a secret: it signs sessions for a server that has already decided to
-  # mint an admin session for anyone who asks. Real environments use a real one.
+  # mint a session for anyone who asks. Real environments use a real one.
   sessionSecret: 'dev-only-not-a-secret'
-  adminEmails:
+  organiserEmails:
     - 'agent@example.com'
+  rotaEditorEmails:
+    - 'rota-editor@example.com'
 
 devMode:
-  # Login signs in as this address without contacting Google. It must appear in
-  # server.adminEmails above, or the server refuses to start.
-  adminEmail: 'agent@example.com'
+  # /auth/login signs in as this address without contacting Google. It must be
+  # in server.organiserEmails above, or the server refuses to start.
+  organiserEmail: 'agent@example.com'
+  # /auth/login?level=rotaEditor signs in as this one instead. It must be in
+  # server.rotaEditorEmails and not an Organiser.
+  rotaEditorEmail: 'rota-editor@example.com'
   # A CSV export of the volunteer sheet — same header row, same columns.
   volunteersCSV: 'test_data/volunteers.csv'

@@ -14,9 +14,9 @@ import (
 //
 // This is what "allocate the rota you were shown" is enforced by (ADR 0008).
 // Allocating re-solves, hashes the answer, and commits only if it matches the
-// hash of the draft the admin was looking at. The solver is deterministic —
+// hash of the draft the Organiser was looking at. The solver is deterministic —
 // fixed seed, one worker — so an identical hash means the inputs that could
-// change the rota have not moved, and a different one means the admin is about
+// change the rota have not moved, and a different one means the Organiser is about
 // to commit a rota they have not seen.
 //
 // The comparison is on the output rather than on the assembled input, which was

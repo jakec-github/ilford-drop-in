@@ -96,11 +96,11 @@ type ShiftShapeWriteStore interface {
 // somebody will do a named job on this Shift; the solver treats a pin naming a
 // Role the Shift has no Seat for as an error rather than a rota it can produce,
 // and fewer Seats than pins is a Shift it cannot fill legally. Refusing here
-// means the admin reads the pin's name now, rather than an infeasible solve
+// means the Organiser reads the pin's name now, rather than an infeasible solve
 // later; removing the pin is the way through, and every pin can be removed.
 //
 // Being closed does not freeze anything. A closed Shift's Shape is what it will
-// ask for when it reopens, and an admin fixing one should not have to reopen it
+// ask for when it reopens, and an Organiser fixing one should not have to reopen it
 // first. Its pins are ignored for the same reason allocation strips them:
 // nobody works a day the drop-in is shut, so a pin there promises nothing.
 func SaveShiftShape(

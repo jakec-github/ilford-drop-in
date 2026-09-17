@@ -36,7 +36,7 @@ func TestCreateStandingPreallocationEndpoint(t *testing.T) {
 	store := &mockStore{}
 	body := `{"rrule":"FREQ=MONTHLY;BYDAY=1SU","roleId":"role-team-lead","volunteerId":"alice"}`
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/standing-preallocations", body, adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/standing-preallocations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedStanding, 1)
@@ -79,7 +79,7 @@ func TestCreateStandingPreallocationEndpoint_Errors(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(store)
 			}
-			rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/standing-preallocations", tt.body, adminCookie())
+			rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/standing-preallocations", tt.body, organiserCookie())
 			assert.Equal(t, tt.wantCode, rec.Code, rec.Body.String())
 		})
 	}
@@ -91,7 +91,7 @@ func TestListStandingPreallocationsEndpoint(t *testing.T) {
 		{ID: "sp-2", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/standing-preallocations", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/standing-preallocations", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	standing := decodeStandingPreallocations(t, rec.Body.Bytes())
@@ -106,7 +106,7 @@ func TestListStandingPreallocationsEndpoint(t *testing.T) {
 // Empty is the ordinary state of a deployment nobody has configured, and it
 // answers with a list rather than a null so a client has nothing to special-case.
 func TestListStandingPreallocationsEndpoint_Empty(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, activeVolunteers()), http.MethodGet, "/api/standing-preallocations", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, activeVolunteers()), http.MethodGet, "/api/standing-preallocations", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.JSONEq(t, `{"standingPreallocations":[]}`, rec.Body.String())
 }
@@ -117,16 +117,16 @@ func TestDeleteStandingPreallocationEndpoint(t *testing.T) {
 	}}
 
 	handler := newTestHandler(store, activeVolunteers())
-	rec := doRequest(t, handler, http.MethodDelete, "/api/standing-preallocations/sp-1", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodDelete, "/api/standing-preallocations/sp-1", "", organiserCookie())
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, []string{"sp-1"}, store.deletedStandingIDs)
 
-	rec = doRequest(t, handler, http.MethodDelete, "/api/standing-preallocations/sp-1", "", adminCookie())
+	rec = doRequest(t, handler, http.MethodDelete, "/api/standing-preallocations/sp-1", "", organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-// Every verb is admin-only: these name people against every rota to come.
-func TestStandingPreallocationsRequireAdmin(t *testing.T) {
+// Every verb is Organiser-only: these name people against every rota to come.
+func TestStandingPreallocationsRequireAnOrganiser(t *testing.T) {
 	handler := newTestHandler(&mockStore{}, activeVolunteers())
 
 	for _, tc := range []struct{ method, path, body string }{

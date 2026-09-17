@@ -6,10 +6,10 @@ availability, allocates volunteers to shifts, and publishes the resulting rota.
 
 It has two parts:
 
-- A **Go CLI** (`cmd/cli`) for the admin workflow — defining rotas, requesting
+- A **Go CLI** (`cmd/cli`) for the organiser workflow — defining rotas, requesting
   availability, allocating, and publishing.
 - A **Go web server + React frontend** (`cmd/server`, `web/`) that serves the
-  public rota page and admin tools.
+  public rota page and organiser tools.
 
 The volunteer roster lives in Google Sheets; scheduling data lives in Postgres;
 allocation is solved by a Python CP-SAT service (`pyallocator/`).
@@ -67,9 +67,9 @@ All commands take `-e`/`--env` to pick the config environment
 | `viewHistoricalResponses ...` | Inspect past availability responses. |
 
 The whole life of a rota is in the app now — defining it, preparing its shifts,
-asking volunteers, allocating and changing it afterwards all happen on Admin →
+asking volunteers, allocating and changing it afterwards all happen on Organiser →
 Allocation and the rota page. Allocating in particular could never be a command:
-it re-solves and commits only the rota the admin was shown, and a command that
+it re-solves and commits only the rota the Organiser was shown, and a command that
 solved and committed in one step could not honour that (ADR 0008). What is left
 here reads or writes the Google Sheets; see
 [`docs/local-setup.md`](docs/local-setup.md) for what they need.

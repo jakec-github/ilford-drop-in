@@ -44,7 +44,7 @@ var calendarReminders = []struct {
 // between (ADR 0007). The settings supply the zone those hours are read in, so
 // a subscriber in another country sees the evening at their own reckoning of
 // it, and a shift already minted keeps the hours it was planned for even after
-// an admin moves the drop-in's default times.
+// an Organiser moves the drop-in's default times.
 //
 // rotaURL is where the rota lives, for the link on each event. Empty leaves the
 // link out rather than writing a broken one.
@@ -129,7 +129,7 @@ func shiftDescription(shift Shift, volunteer model.Volunteer, roles model.Roles,
 	var lines []string
 
 	if role, named := ownRole(shift, volunteer, roles); named {
-		// The Role as an admin spelled it, rather than lower-cased to fit the
+		// The Role as an Organiser spelled it, rather than lower-cased to fit the
 		// sentence: a Role can be an acronym, and renaming somebody's job to
 		// make the grammar tidy is the wrong trade.
 		lines = append(lines, "You are on as "+role+".")
@@ -154,7 +154,7 @@ func shiftDescription(shift Shift, volunteer model.Volunteer, roles model.Roles,
 		lines = append(lines, others...)
 	} else {
 		// Said out loud, because an event listing nobody could equally mean the
-		// feed forgot to. A shift with one person on it is also worth an admin
+		// feed forgot to. A shift with one person on it is also worth an Organiser
 		// hearing about, and this is the copy that prompts it.
 		lines = append(lines, "", "Nobody else is on this shift yet.")
 	}

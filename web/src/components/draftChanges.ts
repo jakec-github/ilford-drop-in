@@ -1,6 +1,6 @@
 import type { Assignee, DraftShift } from "../types";
 
-// One difference between the rota an admin was shown and the rota the solver
+// One difference between the rota an Organiser was shown and the rota the solver
 // produced when they went to allocate it.
 //
 // Keyed by shift and by person, because that is how the difference reads out
@@ -31,9 +31,9 @@ function byPerson(assignees: Assignee[]): Map<string, Assignee> {
 // shift, in the order the rota is read.
 //
 // It exists because allocating can refuse: the server re-solves, finds a
-// different rota from the one the admin confirmed, and replaces the draft with
+// different rota from the one the Organiser confirmed, and replaces the draft with
 // it (ADR 0008). The new rota is already on screen — but "something changed,
-// look again" is not an answer an admin can act on, and reading two rotas
+// look again" is not an answer an Organiser can act on, and reading two rotas
 // side by side to spot the difference is exactly the work a computer should be
 // doing.
 export function compareDrafts(

@@ -1,4 +1,4 @@
-/* The responses grid. Desktop first: this is an admin tool for comparing dates
+/* The responses grid. Desktop first: this is an Organiser tool for comparing dates
    against each other, so it is laid out at the width that comparison needs and
    scrolls sideways on a phone rather than reflowing into one column. */
 
@@ -186,7 +186,7 @@ a.grid-name:hover {
   color: var(--text);
 }
 
-/* Answered is the state an admin is scanning for, so it takes a colour. "No
+/* Answered is the state an Organiser is scanning for, so it takes a colour. "No
    reply" stays neutral: on a fresh round that is every row, and colouring it
    would turn the whole list red for a round nobody has had time to answer. */
 .grid-tag--replied {
@@ -238,7 +238,7 @@ a.member-name:hover {
 }
 
 /* The link and its buttons. The URL always wraps rather than scrolls, because
-   an admin whose browser refused to copy needs to be able to read it. */
+   an Organiser whose browser refused to copy needs to be able to read it. */
 .member-link {
   display: flex;
   flex-wrap: wrap;

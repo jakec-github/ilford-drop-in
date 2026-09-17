@@ -12,7 +12,7 @@
   margin-bottom: 0.5rem;
 }
 
-/* The span leads because it is what identifies the rota an admin is looking
+/* The span leads because it is what identifies the rota an Organiser is looking
    at — there is only ever one, so nothing else has to. */
 .in-flight-span {
   margin: 0 0 0.25rem;
@@ -41,7 +41,7 @@
   background: rgba(185, 28, 28, 0.1);
 }
 
-/* Discard is the one destructive action in the admin area, so it is the one
+/* Discard is the one destructive action in the Organiser area, so it is the one
    button drawn in the warning colour. Specificity beats .button rather than
    relying on which stylesheet the bundler happens to emit last. */
 .button.discard-button {

@@ -19,7 +19,7 @@ import (
 // anonymous caller cannot ask for one to be solved — and the refusal comes
 // before the solve, since starting a thirty-second subprocess for a stranger
 // would be worth having even if it published nothing.
-func TestSolveDraftRotaAllocationRequiresAdmin(t *testing.T) {
+func TestSolveDraftRotaAllocationRequiresAnOrganiser(t *testing.T) {
 	store := &mockStore{}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/draft-rota-allocation", "")
@@ -28,10 +28,10 @@ func TestSolveDraftRotaAllocationRequiresAdmin(t *testing.T) {
 	assert.Empty(t, store.storedDrafts, "nothing was solved, let alone stored")
 }
 
-// Reading the draft is admin-only for the same reason as solving it: what comes
+// Reading the draft is Organiser-only for the same reason as solving it: what comes
 // back names people against Shifts nobody has decided yet, and the rota page and
 // its calendar feed are read by the very volunteers it names (ADR 0008).
-func TestGetDraftRotaAllocationRequiresAdmin(t *testing.T) {
+func TestGetDraftRotaAllocationRequiresAnOrganiser(t *testing.T) {
 	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "")
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -68,10 +68,10 @@ func draftedRotaStore() *mockStore {
 	}
 }
 
-// The rota an admin watches take shape: who the solver put where, keyed by Shift
+// The rota an Organiser watches take shape: who the solver put where, keyed by Shift
 // so the page can lay the draft over the rota it is already showing.
 func TestGetDraftRotaAllocationReportsTheRotaItDrafted(t *testing.T) {
-	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse
@@ -99,7 +99,7 @@ func TestGetDraftRotaAllocationWithAnInfeasibleDraft(t *testing.T) {
 	store.storedDrafts[0].SeatsFilled = 0
 	store.draftSeats = nil
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse
@@ -132,7 +132,7 @@ func TestGetDraftRotaAllocationReportsACleanDraft(t *testing.T) {
 		}},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse
@@ -168,7 +168,7 @@ func TestGetDraftRotaAllocationWhenTheSolveIsRefused(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse
@@ -189,7 +189,7 @@ func TestGetDraftRotaAllocationWithNoRotaInFlight(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "no rota in flight")
@@ -221,7 +221,7 @@ func TestGetDraftRotaAllocationWhenTheClientGivesUpWaiting(t *testing.T) {
 
 	gone, disconnect := context.WithCancel(t.Context())
 	req := httptest.NewRequestWithContext(gone, http.MethodGet, "/api/draft-rota-allocation", nil)
-	req.AddCookie(adminCookie())
+	req.AddCookie(organiserCookie())
 	rec := httptest.NewRecorder()
 
 	returned := make(chan struct{})
@@ -253,7 +253,7 @@ func TestGetDraftRotaAllocationWhenTheClientGivesUpWaiting(t *testing.T) {
 
 // Asking for a re-solve while one is running waits for it and then solves
 // anyway. Unlike a read, this cannot be satisfied by the running solve's answer:
-// the change that prompts an admin to press the button is usually a new
+// the change that prompts an Organiser to press the button is usually a new
 // volunteer on the roster Sheet, which moves no stamp here and which the running
 // solve may have started before.
 //
@@ -268,7 +268,7 @@ func TestSolveDraftRotaAllocationWaitsForTheRunningSolve(t *testing.T) {
 
 	answered := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		answered <- doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+		answered <- doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())
 	}()
 
 	select {
@@ -313,7 +313,7 @@ func TestASolveRunsUnderACeiling(t *testing.T) {
 	}}
 	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
 
-	rec := doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())
 	require.NotEqual(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
 
 	require.True(t, store.underCeiling, "the solve ran with no deadline at all")

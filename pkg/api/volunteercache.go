@@ -9,9 +9,9 @@ import (
 
 // volunteerStore holds the volunteer roster in memory. The roster is populated
 // from the volunteer sheet using the server's service account (see sync.go and
-// cmd/server/main.go): once at startup and again on each admin-triggered sync,
+// cmd/server/main.go): once at startup and again on each Organiser-triggered sync,
 // and served verbatim in between. It never fetches on its own, so between syncs
-// a volunteer added to the sheet 404s until an admin syncs — an accepted
+// a volunteer added to the sheet 404s until an Organiser syncs — an accepted
 // trade-off (see docs/oidc_admin_sync_plan.md).
 type volunteerStore struct {
 	mu     sync.RWMutex

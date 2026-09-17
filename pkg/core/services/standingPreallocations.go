@@ -18,7 +18,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// A Standing Preallocation is a Preallocation an admin expects to make every
+// A Standing Preallocation is a Preallocation an Organiser expects to make every
 // rota — the team who always take the first Sunday — kept in the Rota Defaults
 // and used to seed ordinary Preallocations when a Rotation is defined
 // (issue #131, ADR 0006).
@@ -27,7 +27,7 @@ import (
 // after the seeding: the Preallocations it made are ordinary, belong to the rota
 // that minted them, and outlive any later change to it. That is what makes
 // "there is one kind of Preallocation" true — the pins these produce are not a
-// second sort of thing with a different authority, and an admin may remove any
+// second sort of thing with a different authority, and an Organiser may remove any
 // of them.
 
 // StandingPreallocationStore is what reading and editing the Standing
@@ -45,7 +45,7 @@ type StandingPreallocationStore interface {
 //
 // Role carries both the id and the name because they answer different
 // questions — the id is what the row references and what an edit would name, the
-// name is what an admin recognises.
+// name is what an Organiser recognises.
 type StandingPreallocationView struct {
 	ID          string
 	RRule       string
@@ -56,7 +56,7 @@ type StandingPreallocationView struct {
 	Name        string // volunteer display name, or the custom entry verbatim
 }
 
-// AddStandingPreallocationParams is one promise an admin is making: this person,
+// AddStandingPreallocationParams is one promise an Organiser is making: this person,
 // in this Role, on the Shifts this rule names. Exactly one of VolunteerID and
 // Custom is set.
 type AddStandingPreallocationParams struct {
@@ -223,7 +223,7 @@ func DeleteStandingPreallocation(ctx context.Context, store StandingPreallocatio
 
 // seedPreallocations turns the Standing Preallocations into the ordinary
 // Preallocations a newly-defined rota starts with: one row per subject per Shift
-// their rule lands on. What comes back is indistinguishable from a pin an admin
+// their rule lands on. What comes back is indistinguishable from a pin an Organiser
 // added by hand, which is the point.
 //
 // A person fills at most one Seat on a Shift, so two rules naming the same
@@ -232,9 +232,9 @@ func DeleteStandingPreallocation(ctx context.Context, store StandingPreallocatio
 //
 // An unparseable rule fails the definition rather than being warned past. Every
 // other reader of an rrule in this package warns and skips because it is
-// rendering something an admin can still act on; here, skipping would mint a
+// rendering something an Organiser can still act on; here, skipping would mint a
 // rota quietly missing pins that were promised, and the rota is the thing an
-// admin then works from.
+// Organiser then works from.
 func seedPreallocations(
 	standing []db.StandingPreallocation,
 	shifts []db.Shift,
@@ -325,7 +325,7 @@ func subjectKey(volunteerID, custom string) string {
 	return "custom:" + custom
 }
 
-// roleName reads a Role id as the name an admin knows it by, degrading to the
+// roleName reads a Role id as the name an Organiser knows it by, degrading to the
 // raw id rather than to an empty string — a Role that has vanished under a
 // Standing Preallocation is exactly what needs to be visible.
 func roleName(roles model.Roles, roleID string) string {

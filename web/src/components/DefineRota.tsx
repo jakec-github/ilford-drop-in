@@ -6,7 +6,7 @@ import type { NewRota, RotaProposal } from "../types";
 import "./DefineRota.css";
 
 // "Sun 2 Aug 2026" — the weekday is worth showing here, unlike on the rota
-// itself: what an admin is checking is that the weeks they expected were taken.
+// itself: what an Organiser is checking is that the weeks they expected were taken.
 function formatShiftDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-GB", {
     weekday: "short",
@@ -21,13 +21,13 @@ function formatShiftDate(dateStr: string): string {
 // It used to carry the hours and the Shape as well, each prefilled from the
 // Rota Defaults and each a field of this rota alone (issue #140). They have
 // gone (issue #176). Two places to state the same thing was one too many: an
-// admin who set the hours here was surprised to find the settings unchanged,
+// Organiser who set the hours here was surprised to find the settings unchanged,
 // and one who set them on Settings was surprised to find them changeable here.
 // The Rota Defaults card below the form is now the only place either is said,
 // and defining spends whatever it shows.
 //
 // What is left is the two answers that are nobody's setting. The start date is
-// the one an admin is most likely to touch — a rota can begin after a break
+// the one an Organiser is most likely to touch — a rota can begin after a break
 // rather than the week after the last one.
 //
 // It is mounted on a loaded proposal and never sees a null one, which is what
@@ -44,7 +44,7 @@ function DefineRotaForm({
 }) {
   // Empty, unlike the date. That starts from the proposal because there is a
   // right answer to start from; how long the next rota should run is a decision
-  // nobody has made yet, and a number already in the box is one an admin can
+  // nobody has made yet, and a number already in the box is one an Organiser can
   // define a rota without ever reading (issue #174).
   const [shiftCount, setShiftCount] = useState("");
   const [startDate, setStartDate] = useState(proposal.startDate);
@@ -112,7 +112,7 @@ function DefineRotaForm({
 //
 // The Rota Defaults card is the same one the settings screen shows (issue
 // #176). It is here because this is the moment those settings are spent: an
-// admin about to define a rota is exactly the person who needs to see what its
+// Organiser about to define a rota is exactly the person who needs to see what its
 // shifts will run, and to fix it without leaving the screen if it is wrong.
 //
 // It used to carry a pointer to the rota already out under the form. That has
@@ -134,7 +134,7 @@ export default function DefineRota({
 
   return (
     <>
-      <section className="admin-panel define-rota">
+      <section className="organiser-panel define-rota">
         <h2>Define the next rota</h2>
 
         {proposal === null && !error && (

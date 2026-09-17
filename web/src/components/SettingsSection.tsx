@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import "./SettingsSection.css";
 
-// SettingsSection is one thing an admin decides about how the drop-in runs.
+// SettingsSection is one thing an Organiser decides about how the drop-in runs.
 // Each is its own card because they are independent: the Roles, the Rota
 // Defaults, the pins made every rota — and nothing about one section should
 // have to know how many others there are, or which screen it is being read on.
@@ -24,7 +24,7 @@ export default function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="admin-panel settings-section">
+    <section className="organiser-panel settings-section">
       <header className="settings-section-head">
         <div>
           <h2>{title}</h2>

@@ -13,9 +13,10 @@ import (
 
 func testAuth() *Authenticator {
 	return &Authenticator{
-		secret:      testSecret,
-		adminEmails: map[string]struct{}{"admin@example.com": {}},
-		logger:      zap.NewNop(),
+		secret:           testSecret,
+		organiserEmails:  map[string]struct{}{"organiser@example.com": {}},
+		rotaEditorEmails: map[string]struct{}{"editor@example.com": {}},
+		logger:           zap.NewNop(),
 	}
 }
 
@@ -30,11 +31,11 @@ func sessionCookieFor(a *Authenticator, email string) *http.Cookie {
 func TestNormaliseEmail(t *testing.T) {
 	cases := map[string]string{
 		// Case and whitespace.
-		"  Admin@Example.com  ": "admin@example.com",
+		"  Organiser@Example.com  ": "organiser@example.com",
 		// Gmail: googlemail alias, dots, and +tags all fold to one address.
 		"jakechorley@googlemail.com":    "jakechorley@gmail.com",
 		"jake.chorley@gmail.com":        "jakechorley@gmail.com",
-		"jakechorley+admin@gmail.com":   "jakechorley@gmail.com",
+		"jakechorley+rota@gmail.com":    "jakechorley@gmail.com",
 		"Jake.Chorley+x@googlemail.com": "jakechorley@gmail.com",
 		// Non-Gmail domains: dots and +tags are significant, left untouched.
 		"j.smith@company.com":    "j.smith@company.com",
@@ -47,104 +48,150 @@ func TestNormaliseEmail(t *testing.T) {
 	}
 }
 
-func TestIsAdmin_FoldsGmailVariants(t *testing.T) {
+func TestLevelOf_FoldsGmailVariants(t *testing.T) {
 	// Allowlist stores googlemail; a login as any equivalent Gmail form matches.
 	a := &Authenticator{
-		adminEmails: map[string]struct{}{normaliseEmail("jakechorley@googlemail.com"): {}},
-		logger:      zap.NewNop(),
+		organiserEmails: map[string]struct{}{normaliseEmail("jakechorley@googlemail.com"): {}},
+		logger:          zap.NewNop(),
 	}
-	assert.True(t, a.isAdmin("jakechorley@gmail.com"))
-	assert.True(t, a.isAdmin("jake.chorley@gmail.com"))
-	assert.True(t, a.isAdmin("jakechorley+admin@googlemail.com"))
-	assert.False(t, a.isAdmin("someoneelse@gmail.com"))
-}
-
-func TestIsAdmin_CaseInsensitive(t *testing.T) {
-	a := testAuth()
-	assert.True(t, a.isAdmin("admin@example.com"))
-	assert.True(t, a.isAdmin("ADMIN@example.com"))
-	assert.True(t, a.isAdmin("  Admin@Example.com  "))
-	assert.False(t, a.isAdmin("someone@example.com"))
-}
-
-func TestAdminFromRequest_ValidSession(t *testing.T) {
-	a := testAuth()
-	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
-	req.AddCookie(sessionCookieFor(a, "admin@example.com"))
-
-	email, ok := a.adminFromRequest(req)
-	assert.True(t, ok)
-	assert.Equal(t, "admin@example.com", email)
-}
-
-func TestAdminFromRequest_NoCookie(t *testing.T) {
-	a := testAuth()
-	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
-
-	_, ok := a.adminFromRequest(req)
+	for _, email := range []string{"jakechorley@gmail.com", "jake.chorley@gmail.com", "jakechorley+x@googlemail.com"} {
+		level, ok := a.levelOf(email)
+		assert.True(t, ok, email)
+		assert.Equal(t, LevelOrganiser, level, email)
+	}
+	_, ok := a.levelOf("someoneelse@gmail.com")
 	assert.False(t, ok)
 }
 
-func TestAdminFromRequest_TamperedCookie(t *testing.T) {
+func TestLevelOf_CaseInsensitive(t *testing.T) {
+	a := testAuth()
+	for _, email := range []string{"organiser@example.com", "ORGANISER@example.com", "  Organiser@Example.com  "} {
+		level, ok := a.levelOf(email)
+		assert.True(t, ok, email)
+		assert.Equal(t, LevelOrganiser, level, email)
+	}
+	_, ok := a.levelOf("someone@example.com")
+	assert.False(t, ok)
+}
+
+func TestLevelOf_EachAllowlistGivesItsLevel(t *testing.T) {
+	a := testAuth()
+
+	level, ok := a.levelOf("editor@example.com")
+	assert.True(t, ok)
+	assert.Equal(t, LevelRotaEditor, level)
+
+	level, ok = a.levelOf("organiser@example.com")
+	assert.True(t, ok)
+	assert.Equal(t, LevelOrganiser, level)
+}
+
+// Someone on both lists can do everything either list allows, which is
+// everything an Organiser can: the more senior level wins.
+func TestLevelOf_OnBothListsIsAnOrganiser(t *testing.T) {
+	a := testAuth()
+	a.rotaEditorEmails[normaliseEmail("organiser@example.com")] = struct{}{}
+
+	level, ok := a.levelOf("organiser@example.com")
+	assert.True(t, ok)
+	assert.Equal(t, LevelOrganiser, level)
+}
+
+func TestSessionFromRequest_ValidSession(t *testing.T) {
+	a := testAuth()
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.AddCookie(sessionCookieFor(a, "editor@example.com"))
+
+	session, ok := a.sessionFromRequest(req)
+	assert.True(t, ok)
+	assert.Equal(t, "editor@example.com", session.Email)
+	assert.Equal(t, LevelRotaEditor, session.Level)
+}
+
+func TestSessionFromRequest_NoCookie(t *testing.T) {
+	a := testAuth()
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+
+	_, ok := a.sessionFromRequest(req)
+	assert.False(t, ok)
+}
+
+func TestSessionFromRequest_TamperedCookie(t *testing.T) {
 	a := testAuth()
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "forged.value"})
 
-	_, ok := a.adminFromRequest(req)
+	_, ok := a.sessionFromRequest(req)
 	assert.False(t, ok)
 }
 
-func TestAdminFromRequest_ValidCookieButNotOnAllowlist(t *testing.T) {
+func TestSessionFromRequest_ValidCookieButNotOnAllowlist(t *testing.T) {
 	a := testAuth()
-	// A properly signed session for an email that is no longer an admin: the
+	// A properly signed session for an email on neither list any more: the
 	// cookie proves identity, but authority is re-checked against config.
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.AddCookie(sessionCookieFor(a, "removed@example.com"))
 
-	_, ok := a.adminFromRequest(req)
+	_, ok := a.sessionFromRequest(req)
 	assert.False(t, ok)
 }
 
-func TestRequireAdmin_AllowsAdmin(t *testing.T) {
-	a := testAuth()
-	called := false
-	handler := a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	}))
+func TestRequireLevel(t *testing.T) {
+	cases := []struct {
+		name   string
+		min    Level
+		email  string // empty means no session
+		status int
+	}{
+		{"organiser route, organiser", LevelOrganiser, "organiser@example.com", http.StatusOK},
+		{"organiser route, rota editor", LevelOrganiser, "editor@example.com", http.StatusForbidden},
+		{"organiser route, nobody", LevelOrganiser, "", http.StatusUnauthorized},
+		{"organiser route, off both lists", LevelOrganiser, "removed@example.com", http.StatusUnauthorized},
+		{"rota editor route, organiser", LevelRotaEditor, "organiser@example.com", http.StatusOK},
+		{"rota editor route, rota editor", LevelRotaEditor, "editor@example.com", http.StatusOK},
+		{"rota editor route, nobody", LevelRotaEditor, "", http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := testAuth()
+			var got string
+			handler := a.requireLevel(tc.min, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = sessionEmail(r.Context())
+				w.WriteHeader(http.StatusOK)
+			}))
 
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	req.AddCookie(sessionCookieFor(a, "admin@example.com"))
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			if tc.email != "" {
+				req.AddCookie(sessionCookieFor(a, tc.email))
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
 
-	assert.True(t, called)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestRequireAdmin_RejectsNonAdmin(t *testing.T) {
-	a := testAuth()
-	handler := a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Error("wrapped handler should not run")
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			assert.Equal(t, tc.status, rec.Code)
+			if tc.status == http.StatusOK {
+				assert.Equal(t, tc.email, got, "the handler should see who is asking")
+			} else {
+				assert.Empty(t, got, "the wrapped handler should not run")
+			}
+		})
+	}
 }
 
 func TestHandleMe_LoggedIn(t *testing.T) {
 	a := testAuth()
-	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
-	req.AddCookie(sessionCookieFor(a, "admin@example.com"))
-	rec := httptest.NewRecorder()
+	for email, level := range map[string]string{
+		"organiser@example.com": "organiser",
+		"editor@example.com":    "rotaEditor",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+		req.AddCookie(sessionCookieFor(a, email))
+		rec := httptest.NewRecorder()
 
-	a.handleMe(rec, req)
+		a.handleMe(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.JSONEq(t, `{"email":"admin@example.com"}`, rec.Body.String())
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.JSONEq(t, `{"email":"`+email+`","level":"`+level+`"}`, rec.Body.String())
+	}
 }
 
 func TestHandleMe_NotLoggedIn(t *testing.T) {
