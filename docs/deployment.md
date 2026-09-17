@@ -146,6 +146,16 @@ no deploy:
 
 Reverting is the same five steps with the old name.
 
+**Step 3 is what makes the edit take.** `SITE_DOMAIN` is read into Caddy's
+process environment once, when the container starts, so only a *new* container
+ever sees a new value. Neither of the two things that look like they would work
+does: `docker compose restart caddy` restarts the process with the environment
+it already has, and `caddy reload` re-adapts the Caddyfile from inside a process
+whose variable is still the old one. `--force-recreate` rather than a bare
+`up -d` for the same reason the config rollout uses it — it replaces the
+container unconditionally, rather than relying on compose noticing. Expect a few
+seconds of downtime while the new container starts and certifies the new name.
+
 ### When it is missing
 
 An absent or empty `SITE_DOMAIN` stops the stack rather than serving on a
