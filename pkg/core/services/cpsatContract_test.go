@@ -248,6 +248,51 @@ func TestBuildCpsatInput(t *testing.T) {
 	assert.Equal(t, []string{"couple_ab"}, input.HistoricalShifts[1].GroupKeys)
 }
 
+// Nobody has answered for a rota yet, which is every rota's state from the
+// moment it is defined until the first reply. That is a problem to solve, not
+// a refusal: the solver is handed no groups and answers with every Seat
+// unfilled but the pinned ones (issue #188). The groups travel as an empty
+// list rather than null, because pyallocator requires a list.
+func TestBuildCpsatInput_NobodyAnswered(t *testing.T) {
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female"},
+		{ID: "bob", FirstName: "Bob", LastName: "Jones", DisplayName: "Bob", Gender: "Male"},
+	}
+	shape := []allocator.Seat{
+		{Role: "Team lead", Count: 1},
+		{Role: "Service volunteer", Count: 2},
+	}
+	shiftSpecs := []allocator.ShiftSpec{
+		{Date: "2026-07-13", Shape: shape},
+		{Date: "2026-07-20", Shape: shape},
+	}
+	overrides := []allocator.ShiftOverride{
+		{
+			AppliesTo: func(date string) bool { return date == "2026-07-20" },
+			Preallocations: []allocator.Preallocation{
+				{Custom: "external_john", Role: "Service volunteer"},
+			},
+		},
+	}
+	roles := []allocator.Role{
+		{Name: "Team lead", Priority: 1},
+		{Name: "Service volunteer", Priority: 2},
+	}
+
+	input, err := allocator.BuildCpsatInput(volunteers, map[string][]int{}, shiftSpecs, overrides, nil, halfFrequencyWithMaleCover, roles)
+	require.NoError(t, err)
+
+	assert.Empty(t, input.Groups)
+	require.Len(t, input.Shifts, 2)
+	assert.Equal(t, []allocator.CpsatPreallocation{
+		{Custom: "external_john", Role: "Service volunteer"},
+	}, input.Shifts[1].Preallocations, "a pin needs nobody to have answered")
+
+	encoded, err := json.Marshal(input)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"groups":[]`)
+}
+
 // The keys the solver matches history against are the keys of the rota being
 // allocated, so the two must be minted by the same rule. This walks the whole
 // seam — database allocations through buildHistoricalShifts into the contract —

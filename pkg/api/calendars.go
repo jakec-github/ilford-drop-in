@@ -60,7 +60,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		*volunteer,
 		roles,
 		defaults,
-		siteURL(r),
+		h.siteURL(r),
 	)
 	if err != nil {
 		h.writeServiceError(w, err)

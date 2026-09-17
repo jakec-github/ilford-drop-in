@@ -136,7 +136,7 @@ func (h *Handler) handleMintAvailabilityRound(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, toRoundResponse(round, r))
+	h.writeJSON(w, http.StatusCreated, h.toRoundResponse(round, r))
 }
 
 // handleGetAvailabilityRound reports where a round has got to: who was asked,
@@ -149,7 +149,7 @@ func (h *Handler) handleGetAvailabilityRound(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, toRoundResponse(round, r))
+	h.writeJSON(w, http.StatusOK, h.toRoundResponse(round, r))
 }
 
 // handleAvailabilityForm serves what is behind a volunteer's link. It is public
@@ -197,16 +197,26 @@ func (h *Handler) handleSubmitAvailability(w http.ResponseWriter, r *http.Reques
 // the endpoint behind it. It is derived from the request rather than configured,
 // so a round minted through a dev stack on localhost yields links that work
 // there.
-func availabilityLink(r *http.Request, token string) string {
-	return siteURL(r) + "/availability/" + token
+func (h *Handler) availabilityLink(r *http.Request, token string) string {
+	return h.siteURL(r) + "/availability/" + token
 }
 
-// siteURL is where this server is being read from, as an absolute origin with
-// no trailing slash. Taken from the request rather than from configuration
-// because it is only ever wanted to hand back a link to whoever is asking, and
-// the host they asked on is the host that works for them — behind the proxy the
-// forwarded scheme is what says https.
-func siteURL(r *http.Request) string {
+// siteURL is where this site is being read from, as an absolute URL with no
+// trailing slash: the origin the request arrived on, plus the base path the
+// site is served under.
+//
+// The origin is taken from the request rather than from configuration because
+// it is only ever wanted to hand back a link to whoever is asking, and the host
+// they asked on is the host that works for them — behind the proxy the
+// forwarded scheme is what says https. The path cannot come from the request:
+// these links are minted by API handlers, and the API is not under the base
+// path (mountSite), so the request that asks for a link never carries one. It
+// comes from config, which is where the router got it too.
+//
+// Both the links this builds outlive the app's reach — an availability link is
+// emailed, and a calendar feed's rotaURL sits in a volunteer's calendar app —
+// so a missing path here is a broken link nobody can fix (issue #201).
+func (h *Handler) siteURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil {
 		scheme = "http"
@@ -214,10 +224,10 @@ func siteURL(r *http.Request) string {
 	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
 		scheme = forwarded
 	}
-	return scheme + "://" + r.Host
+	return scheme + "://" + r.Host + h.basePath()
 }
 
-func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availabilityRoundResponse {
+func (h *Handler) toRoundResponse(round *services.AvailabilityRound, r *http.Request) availabilityRoundResponse {
 	resp := availabilityRoundResponse{
 		RotaID:    round.RotaID,
 		Start:     round.RotaStart,
@@ -259,7 +269,7 @@ func toRoundResponse(round *services.AvailabilityRound, r *http.Request) availab
 			member := availabilityEntryResponse{
 				VolunteerID:       e.VolunteerID,
 				VolunteerName:     e.VolunteerName,
-				Link:              availabilityLink(r, e.Token),
+				Link:              h.availabilityLink(r, e.Token),
 				SentAt:            e.SentAt,
 				Replied:           e.Replied,
 				AvailableShiftIDs: e.AvailableShiftIDs,

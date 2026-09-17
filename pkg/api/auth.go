@@ -79,6 +79,18 @@ type Authenticator struct {
 	// shared callback. Set by NewHandler, because the send needs the store and
 	// the roster and this type has neither; nil means no sending is wired up.
 	completeSend http.HandlerFunc
+	// basePath is the path the site's own pages are served under, or "" for the
+	// root of the domain (issue #201). The OAuth endpoints themselves stay at
+	// the root — their callback URI is registered by hand in the Google console
+	// and is better off shared — so this is needed for one thing only: knowing
+	// where to send a browser once it has logged in.
+	basePath string
+}
+
+// siteRoot is the app's home page as a browser must ask for it, which is where
+// a completed login lands. The only thing this type needs the base path for.
+func (a *Authenticator) siteRoot() string {
+	return a.basePath + "/"
 }
 
 // isStubbed reports whether the Google round-trip has been replaced, which is
@@ -124,6 +136,7 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 		secure:           env == "prod",
 		logger:           logger,
 		syncVolunteers:   syncVolunteers,
+		basePath:         srv.BasePath,
 	}, nil
 }
 
@@ -254,7 +267,7 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	a.setSessionCookie(w, claims.Email)
 
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
 }
 
 // setSessionCookie issues the signed session for email.

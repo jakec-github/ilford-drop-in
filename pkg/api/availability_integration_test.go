@@ -184,7 +184,7 @@ func TestAvailabilityLinkOpensThePage(t *testing.T) {
 
 	rec = doRequest(t, handler, http.MethodGet, "/availability/"+token, "")
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "<html>app</html>", rec.Body.String(), "the link opens the app shell")
+	assert.Equal(t, testIndex, rec.Body.String(), "the link opens the app shell")
 
 	// An unknown token still renders the app, which reports the dead link from
 	// its own fetch — the same shape as every other client-side route.

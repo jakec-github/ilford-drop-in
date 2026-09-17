@@ -266,4 +266,5 @@ func TestResolveRedirectURI(t *testing.T) {
 		// is either to register the URI or to correct the config.
 		assert.Contains(t, err.Error(), "http://localhost:5173/auth/callback")
 	})
+
 }

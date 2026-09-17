@@ -1,6 +1,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import type { AccessLevel } from "../auth-context";
+import { BASE_PATH } from "../basePath";
 import type {
   Assignee,
   PersonRef,
@@ -100,7 +101,10 @@ function CalendarCopyButton({ volunteerId }: { volunteerId: string }) {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   async function handleCopy() {
-    const url = `${window.location.origin}/calendars/${volunteerId}.ics`;
+    // Absolute, because this is copied out of the app and pasted into a
+    // calendar client — and it carries the base path, because once subscribed
+    // it lives somewhere nobody here can reach to correct it (issue #201).
+    const url = `${window.location.origin}${BASE_PATH}/calendars/${volunteerId}.ics`;
     clearTimeout(timer.current);
     try {
       await navigator.clipboard.writeText(url);

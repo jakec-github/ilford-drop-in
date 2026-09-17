@@ -40,6 +40,63 @@ type ServerConfig struct {
 	// locality. Set it where the default guess is wrong — chiefly a git worktree,
 	// whose frontend runs on its own port (see docs/agents/worktrees.md).
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
+	// BasePath is the path the site's own pages are served under, such as
+	// "/rota" or "/ilford/rota". Optional: empty — dev, every test, and any
+	// deployment that has not set one — serves the site at the root of its
+	// domain, exactly as before.
+	//
+	// One or more segments, leading slash, no trailing slash. The value itself
+	// is a deployment's business and never appears in this repo; see
+	// checkBasePath for why the shape is enforced at load, and why its depth
+	// is not.
+	//
+	// It moves the pages and the calendar feeds, and deliberately not /api,
+	// /auth or /health — pkg/api.mountSite has the reasoning.
+	BasePath string `yaml:"basePath,omitempty"`
+}
+
+// basePathSegment is what one segment of a base path may hold: at least one
+// unreserved URL character, so nothing needing escaping ever reaches a link.
+var basePathSegment = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+
+// checkBasePath rejects a malformed server.basePath.
+//
+// Depth is deliberately not restricted: "/rota" and "/ilford/rota" are both
+// fine. Every piece of the machinery treats the path as an opaque prefix —
+// http.StripPrefix, the mux pattern, the <base> element, wouter's router base —
+// so nothing gains from it being a single segment, and a deployment that wants
+// to sit under an existing site's path needs more than one.
+//
+// The shape is checked at load rather than left to whatever the router makes of
+// it, because every way of getting it wrong fails quietly and late: a trailing
+// slash doubles into "//" in every minted link, a missing leading slash makes
+// the mux pattern relative and matches nothing, and a "." or ".." segment means
+// the path the config states and the path the browser asks for are different
+// strings. None of those surface until a volunteer's calendar stops refreshing
+// or a page cannot find its own assets. Startup is the one place they can still
+// be a typo.
+func checkBasePath(srv *ServerConfig) error {
+	if srv == nil || srv.BasePath == "" {
+		return nil
+	}
+
+	malformed := func() error {
+		return fmt.Errorf("server.basePath %q is not one or more URL-safe path segments with a leading slash and no trailing slash, such as \"/rota\" or \"/ilford/rota\"", srv.BasePath)
+	}
+
+	if !strings.HasPrefix(srv.BasePath, "/") || strings.HasSuffix(srv.BasePath, "/") {
+		return malformed()
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(srv.BasePath, "/"), "/") {
+		// "." and ".." are made of URL-safe characters but are not usable
+		// segments: the
+		// browser resolves them away, so the site would answer on a path the
+		// config never states.
+		if segment == "." || segment == ".." || !basePathSegment.MatchString(segment) {
+			return malformed()
+		}
+	}
+	return nil
 }
 
 // DevEnv is the only environment the development stubs may run in. It is
@@ -291,12 +348,13 @@ func unknownKeys(data []byte) []UnknownKey {
 	return unknown
 }
 
-// Validate checks the configuration struct against its field tags.
+// Validate checks the configuration struct against its field tags, plus the one
+// rule a tag cannot express: the shape of server.basePath.
 //
-// It used to parse the rrule on every rota override as well — a cross-field
-// rule validator.v10's tags cannot express — but overrides went in #136 along
-// with the rest of the domain settings, and what remains is deployment keys,
-// each of which its own tag describes completely.
+// It used to parse the rrule on every rota override as well, but overrides went
+// in #136 along with the rest of the domain settings. What remains is
+// deployment keys, and every one but the base path is described completely by
+// its own tag.
 //
 // It deliberately touches nothing but the config it was handed:
 // scripts/deploy-config.sh runs it from a laptop against a production config,
@@ -306,7 +364,7 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
-	return nil
+	return checkBasePath(cfg.Server)
 }
 
 // findConfigFile searches for config file in current directory and home directory

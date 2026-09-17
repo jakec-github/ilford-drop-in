@@ -9,12 +9,17 @@ import (
 )
 
 var testFrontend = fstest.MapFS{
-	"index.html":   {Data: []byte("<html>app</html>")},
+	// The base tag is the one token frontendHandler rewrites, so the stand-in
+	// build carries it exactly as web/index.html does.
+	"index.html":   {Data: []byte(`<html><head>` + baseTag + `</head>app</html>`)},
 	"chunk-abc.js": {Data: []byte("console.log(1)")},
 }
 
+// testIndex is what the stand-in build's index.html serves as at the root.
+const testIndex = `<html><head>` + baseTag + `</head>app</html>`
+
 func TestFrontendHandlerServesFiles(t *testing.T) {
-	handler := frontendHandler(testFrontend)
+	handler := frontendHandler(testFrontend, "")
 
 	tests := []struct {
 		name     string
@@ -22,8 +27,8 @@ func TestFrontendHandlerServesFiles(t *testing.T) {
 		wantBody string
 	}{
 		{"existing file", "/chunk-abc.js", "console.log(1)"},
-		{"root serves index", "/", "<html>app</html>"},
-		{"unknown path falls back to index", "/rota/2026-02-02", "<html>app</html>"},
+		{"root serves index", "/", testIndex},
+		{"unknown path falls back to index", "/shifts/2026-02-02", testIndex},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

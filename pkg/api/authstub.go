@@ -32,6 +32,7 @@ func NewStubAuthenticator(dev *config.DevModeConfig, srv *config.ServerConfig, l
 		syncVolunteers: syncVolunteers,
 		stubEmail:      dev.OrganiserEmail,
 		stubRotaEditor: dev.RotaEditorEmail,
+		basePath:       srv.BasePath,
 	}
 
 	// A session for an address that does not hold the level it is signed in
@@ -105,5 +106,5 @@ func (a *Authenticator) handleStubLogin(w http.ResponseWriter, r *http.Request) 
 	a.setSessionCookie(w, email)
 	a.logger.Warn("Dev mode: issued a session without verifying identity",
 		zap.String("email", email))
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
 }
