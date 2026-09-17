@@ -151,9 +151,8 @@ devMode:
 	assert.Contains(t, err.Error(), "devMode")
 }
 
-// The summary counts each level, and says when Organisers still come from the
-// deprecated key: deploy-config.sh prints this before a config ships, which is
-// the moment to notice a file that has not been rewritten yet.
+// The summary counts each level: deploy-config.sh prints it before a config
+// ships, which is the moment to notice a list that is not what was meant.
 func TestValidateConfigCmd_SummarisesAccessLevels(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+`
 server:
@@ -169,10 +168,11 @@ server:
 	out, err := runValidateConfig(t, "-e", "prod", path)
 	require.NoError(t, err)
 	assert.Contains(t, out, "port 8080, 2 organisers, 1 rota editor")
-	assert.NotContains(t, out, "adminEmails")
 }
 
-func TestValidateConfigCmd_FlagsTheDeprecatedAdminEmails(t *testing.T) {
+// adminEmails was replaced outright by organiserEmails (#204). A file still
+// carrying only the old key is refused before it ships, naming the key it needs.
+func TestValidateConfigCmd_RejectsAdminEmailsAlone(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+`
 server:
   port: 8080
@@ -181,10 +181,9 @@ server:
     - "a@example.com"
 `)
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
-	require.NoError(t, err)
-	assert.Contains(t, out, "port 8080, 1 organiser, 0 rota editors")
-	assert.Contains(t, out, "adminEmails is deprecated")
+	_, err := runValidateConfig(t, "-e", "prod", path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "OrganiserEmails")
 }
 
 func TestValidateConfigCmd_RequiresEnv(t *testing.T) {

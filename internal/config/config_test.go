@@ -415,7 +415,7 @@ func TestValidate_ServerConfig(t *testing.T) {
 	noOrganisers.Server.OrganiserEmails = nil
 	err := Validate(&noOrganisers)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "organiserEmails")
+	assert.Contains(t, err.Error(), "OrganiserEmails")
 
 	// Rota Editors are optional: an app run by its Organisers alone is fine.
 	noRotaEditors := base
@@ -433,29 +433,29 @@ func TestValidate_ServerConfig(t *testing.T) {
 	badRotaEditorEmail.Server.RotaEditorEmails = []string{"not-an-email"}
 	assert.Error(t, Validate(&badRotaEditorEmail))
 
-	// The deprecated key still counts as Organisers for one release, so a config
-	// not yet rewritten keeps loading.
-	onlyAdminEmails := base
-	onlyAdminEmails.Server = validServer()
-	onlyAdminEmails.Server.OrganiserEmails = nil
-	onlyAdminEmails.Server.AdminEmails = []string{"organiser@example.com"}
-	assert.NoError(t, Validate(&onlyAdminEmails))
-	assert.Equal(t, []string{"organiser@example.com"}, onlyAdminEmails.Server.Organisers())
-
-	badAdminEmail := base
-	badAdminEmail.Server = validServer()
-	badAdminEmail.Server.AdminEmails = []string{"not-an-email"}
-	assert.Error(t, Validate(&badAdminEmail))
 }
 
-// Organisers are both lists together while the old key is still read, so a
-// config carrying both during the switch loses nobody.
-func TestServerConfig_OrganisersJoinsTheDeprecatedKey(t *testing.T) {
-	srv := ServerConfig{
-		OrganiserEmails: []string{"a@example.com"},
-		AdminEmails:     []string{"b@example.com"},
-	}
-	assert.Equal(t, []string{"a@example.com", "b@example.com"}, srv.Organisers())
+// adminEmails is gone, not deprecated (#204): a config still naming only it
+// names no Organiser, and fails to load saying which key it needs, rather than
+// booting a server nobody can log in to.
+func TestLoadFromPath_AdminEmailsAloneIsRejected(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+volunteerSheetID: "sheet123"
+serviceVolunteersTab: "Volunteers"
+rotaSheetID: "rota456"
+databaseURL: "postgres://localhost:5432/test"
+gmailUserID: "user@example.com"
+server:
+  port: 8080
+  sessionSecret: "a-sufficiently-long-secret"
+  adminEmails:
+    - "organiser@example.com"
+`), 0644))
+
+	_, err := LoadFromPath(configPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "OrganiserEmails")
 }
 
 func TestValidate_DevMode(t *testing.T) {

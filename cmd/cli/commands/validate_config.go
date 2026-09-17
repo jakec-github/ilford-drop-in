@@ -88,16 +88,9 @@ func describeServer(cfg *config.Config) string {
 	if cfg.Server == nil {
 		return "not configured — the CLI runs, the web server does not"
 	}
-	summary := fmt.Sprintf("port %d, %s, %s", cfg.Server.Port,
-		plural(len(cfg.Server.Organisers()), "organiser"),
+	return fmt.Sprintf("port %d, %s, %s", cfg.Server.Port,
+		plural(len(cfg.Server.OrganiserEmails), "organiser"),
 		plural(len(cfg.Server.RotaEditorEmails), "rota editor"))
-	// Still read as Organisers for one release (issue #204), so the file is
-	// valid — but it is the file an operator is about to ship, and this is
-	// where they would notice it has not been rewritten.
-	if len(cfg.Server.AdminEmails) > 0 {
-		summary += " — adminEmails is deprecated: rename it to organiserEmails"
-	}
-	return summary
 }
 
 func plural(n int, noun string) string {

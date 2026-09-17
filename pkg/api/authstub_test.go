@@ -196,18 +196,3 @@ func TestNewStubAuthenticator_FoldsGmailVariants(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, LevelOrganiser, level)
 }
-
-// The deprecated adminEmails key still names Organisers for one release, so a
-// deploy that has not yet rewritten its config does not lock everybody out.
-func TestAuthenticator_ReadsAdminEmailsAsOrganisers(t *testing.T) {
-	srv := testServerConfig()
-	srv.OrganiserEmails = nil
-	srv.AdminEmails = []string{"organiser@example.com"}
-
-	a, err := NewStubAuthenticator(testDevModeConfig(), srv, zap.NewNop(), nil)
-
-	require.NoError(t, err)
-	level, ok := a.levelOf("organiser@example.com")
-	assert.True(t, ok)
-	assert.Equal(t, LevelOrganiser, level)
-}

@@ -24,32 +24,22 @@ type ServerConfig struct {
 	SessionSecret string `yaml:"sessionSecret" validate:"required,min=16"`
 	// OrganiserEmails is the allowlist of Google accounts permitted to log in as
 	// an Organiser, who can make every edit the app offers. At least one is
-	// required between this and AdminEmails. Compared case-insensitively and
-	// re-checked on every request, like RotaEditorEmails.
-	OrganiserEmails []string `yaml:"organiserEmails,omitempty" validate:"omitempty,dive,email"`
+	// required: without an Organiser nobody can set the app up. Compared
+	// case-insensitively and re-checked on every request, like RotaEditorEmails.
+	//
+	// It replaced adminEmails outright (#204). A config still carrying only the
+	// old key names no Organiser, so it fails to load here rather than warning
+	// and booting a server nobody can log in to.
+	OrganiserEmails []string `yaml:"organiserEmails" validate:"required,min=1,dive,email"`
 	// RotaEditorEmails is the allowlist of Google accounts permitted to log in as
 	// a Rota Editor, who can change shifts and nothing else. Optional. Someone on
 	// both lists is an Organiser.
 	RotaEditorEmails []string `yaml:"rotaEditorEmails,omitempty" validate:"omitempty,dive,email"`
-	// AdminEmails is the key OrganiserEmails replaced (issue #204), still read as
-	// Organisers for one release. Every deployed config carries it on the day
-	// the split lands, and a config key that stops meaning anything warns rather
-	// than fails — so dropping it outright would boot a server nobody could log
-	// in to. Delete it once test and prod configs name organiserEmails.
-	//
-	// Deprecated: use OrganiserEmails.
-	AdminEmails []string `yaml:"adminEmails,omitempty" validate:"omitempty,dive,email"`
 	// RedirectURI names which of the OAuth client's registered redirect URIs to
 	// use for the login flow. Optional: when empty the server picks one by
 	// locality. Set it where the default guess is wrong — chiefly a git worktree,
 	// whose frontend runs on its own port (see docs/agents/worktrees.md).
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
-}
-
-// Organisers is everyone who logs in as an Organiser: OrganiserEmails and, while
-// it is still read, the deprecated AdminEmails.
-func (s *ServerConfig) Organisers() []string {
-	return append(append([]string{}, s.OrganiserEmails...), s.AdminEmails...)
 }
 
 // DevEnv is the only environment the development stubs may run in. It is
@@ -196,10 +186,6 @@ func LoadFromPath(path string) (*Config, error) {
 		slog.Warn("config key is not one this version of the app knows; ignoring it",
 			"path", path, "key", unknown.Key, "line", unknown.Line)
 	}
-	if cfg.Server != nil && len(cfg.Server.AdminEmails) > 0 {
-		slog.Warn("server.adminEmails is deprecated and read as organiserEmails; rename it, as a later release will stop reading it",
-			"path", path)
-	}
 
 	if err := Validate(&cfg); err != nil {
 		return nil, err
@@ -309,10 +295,8 @@ func unknownKeys(data []byte) []UnknownKey {
 //
 // It used to parse the rrule on every rota override as well — a cross-field
 // rule validator.v10's tags cannot express — but overrides went in #136 along
-// with the rest of the domain settings, and what remains is deployment keys.
-// Each is described by its own tag bar one: while organiserEmails and the
-// deprecated adminEmails can both name Organisers, only the two together can
-// say whether there is one.
+// with the rest of the domain settings, and what remains is deployment keys,
+// each of which its own tag describes completely.
 //
 // It deliberately touches nothing but the config it was handed:
 // scripts/deploy-config.sh runs it from a laptop against a production config,
@@ -320,12 +304,6 @@ func unknownKeys(data []byte) []UnknownKey {
 func Validate(cfg *Config) error {
 	if err := validate.Struct(cfg); err != nil {
 		return fmt.Errorf("config validation failed: %w", err)
-	}
-
-	// The one rule a tag cannot say while two keys can name Organisers: between
-	// them, somebody must. Without an Organiser nobody can set the app up.
-	if cfg.Server != nil && len(cfg.Server.Organisers()) == 0 {
-		return errors.New("config validation failed: server.organiserEmails must name at least one Organiser")
 	}
 
 	return nil

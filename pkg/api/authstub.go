@@ -24,7 +24,7 @@ import (
 func NewStubAuthenticator(dev *config.DevModeConfig, srv *config.ServerConfig, logger *zap.Logger, syncVolunteers VolunteerSyncFunc) (*Authenticator, error) {
 	a := &Authenticator{
 		secret:           []byte(srv.SessionSecret),
-		organiserEmails:  allowlist(srv.Organisers()),
+		organiserEmails:  allowlist(srv.OrganiserEmails),
 		rotaEditorEmails: allowlist(srv.RotaEditorEmails),
 		// Dev runs over plain HTTP: a Secure cookie would be set and never sent back.
 		secure:         false,
