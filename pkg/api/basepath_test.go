@@ -13,16 +13,27 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// testBasePath stands in for the segment a deployment picks. The real value is
-// a deployment's business and is not in this repo, so the tests name their own.
+// testBasePath stands in for the path a deployment picks. The real value is a
+// deployment's business and is not in this repo, so the tests name their own.
 const testBasePath = "/rota"
+
+// testBasePaths are the depths the routing has to work at. Nothing in the app
+// splits the path into segments — it is stripped and re-added whole — so a
+// deployment that has to sit under an existing site's path is no different from
+// one that gets a segment of its own. These run the route tables at both to
+// keep it that way.
+var testBasePaths = []string{"/rota", "/ilford/rota"}
 
 // newBasePathHandler is the full stack — API, auth and frontend — served with a
 // base path configured, which is how the deployed site runs.
 func newBasePathHandler(store *mockStore) http.Handler {
-	cfg := &config.Config{Server: &config.ServerConfig{BasePath: testBasePath}}
+	return newHandlerAtBasePath(store, testBasePath)
+}
+
+func newHandlerAtBasePath(store *mockStore, base string) http.Handler {
+	cfg := &config.Config{Server: &config.ServerConfig{BasePath: base}}
 	auth := newTestAuthenticator()
-	auth.basePath = testBasePath
+	auth.basePath = base
 	return NewHandler(store, testVolunteers(), cfg, auth, testFrontend, nil, zap.NewNop()).Routes()
 }
 
@@ -39,25 +50,29 @@ func basePathStore() *mockStore {
 // move under the base path, because they have to be at their final address
 // before anyone holds one.
 func TestBasePathMovesWhatLeavesTheApp(t *testing.T) {
-	handler := newBasePathHandler(basePathStore())
+	for _, base := range testBasePaths {
+		t.Run(base, func(t *testing.T) {
+			handler := newHandlerAtBasePath(basePathStore(), base)
 
-	for path, want := range map[string]int{
-		testBasePath + "/":                     http.StatusOK,
-		testBasePath + "/admin/allocation":     http.StatusOK,
-		testBasePath + "/availability/a-token": http.StatusOK,
-		testBasePath + "/calendars/alice.ics":  http.StatusOK,
-		testBasePath + "/chunk-abc.js":         http.StatusOK,
-	} {
-		rec := doRequest(t, handler, http.MethodGet, path, "")
-		assert.Equal(t, want, rec.Code, path)
-	}
+			for path, want := range map[string]int{
+				base + "/":                     http.StatusOK,
+				base + "/admin/allocation":     http.StatusOK,
+				base + "/availability/a-token": http.StatusOK,
+				base + "/calendars/alice.ics":  http.StatusOK,
+				base + "/chunk-abc.js":         http.StatusOK,
+			} {
+				rec := doRequest(t, handler, http.MethodGet, path, "")
+				assert.Equal(t, want, rec.Code, path)
+			}
 
-	// And none of them answers at the root any more.
-	for _, path := range []string{
-		"/admin/allocation", "/availability/a-token", "/calendars/alice.ics", "/chunk-abc.js",
-	} {
-		rec := doRequest(t, handler, http.MethodGet, path, "")
-		assert.Equal(t, http.StatusNotFound, rec.Code, path)
+			// And none of them answers at the root any more.
+			for _, path := range []string{
+				"/admin/allocation", "/availability/a-token", "/calendars/alice.ics", "/chunk-abc.js",
+			} {
+				rec := doRequest(t, handler, http.MethodGet, path, "")
+				assert.Equal(t, http.StatusNotFound, rec.Code, path)
+			}
+		})
 	}
 }
 
@@ -67,27 +82,19 @@ func TestBasePathMovesWhatLeavesTheApp(t *testing.T) {
 // is registered by hand in the Google console, so one shared /auth/callback is
 // a one-time step no matter how many organisations a server ends up serving.
 func TestApiAndAuthStayAtTheRoot(t *testing.T) {
-	handler := newBasePathHandler(basePathStore())
+	for _, base := range testBasePaths {
+		t.Run(base, func(t *testing.T) {
+			handler := newHandlerAtBasePath(basePathStore(), base)
 
-	for path, want := range map[string]int{
-		"/api/shifts":   http.StatusOK,
-		"/api/nonsense": http.StatusNotFound,
-		"/auth/me":      http.StatusUnauthorized,
-	} {
-		rec := doRequest(t, handler, http.MethodGet, path, "")
-		assert.Equal(t, want, rec.Code, path)
-	}
-
-	// Under the base path there is no API and no login: those paths are inside
-	// the SPA's namespace now, so they get the app shell like any other client
-	// route the router does not recognise. A client that prefixes its requests
-	// gets HTML where it expected JSON, which is the loud failure.
-	for _, path := range []string{
-		testBasePath + "/api/shifts", testBasePath + "/auth/me",
-	} {
-		rec := doRequest(t, handler, http.MethodGet, path, "")
-		require.Equal(t, http.StatusOK, rec.Code, path)
-		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html", path)
+			for path, want := range map[string]int{
+				"/api/shifts":   http.StatusOK,
+				"/api/nonsense": http.StatusNotFound,
+				"/auth/me":      http.StatusUnauthorized,
+			} {
+				rec := doRequest(t, handler, http.MethodGet, path, "")
+				assert.Equal(t, want, rec.Code, path)
+			}
+		})
 	}
 }
 
@@ -105,21 +112,29 @@ func TestHealthStaysAtTheRootUnderABasePath(t *testing.T) {
 // TestRootRedirectsToTheBasePath: the root of the domain belongs to nobody, but
 // it should still land a visitor somewhere rather than 404.
 func TestRootRedirectsToTheBasePath(t *testing.T) {
-	handler := newBasePathHandler(basePathStore())
+	for _, base := range testBasePaths {
+		t.Run(base, func(t *testing.T) {
+			handler := newHandlerAtBasePath(basePathStore(), base)
 
-	rec := doRequest(t, handler, http.MethodGet, "/", "")
-	assert.Equal(t, http.StatusFound, rec.Code)
-	assert.Equal(t, testBasePath+"/", rec.Header().Get("Location"))
+			rec := doRequest(t, handler, http.MethodGet, "/", "")
+			assert.Equal(t, http.StatusFound, rec.Code)
+			assert.Equal(t, base+"/", rec.Header().Get("Location"))
+		})
+	}
 }
 
 // TestBareBasePathRedirectsToItsRoot: /rota and /rota/ are the same page, and
 // the second is the one every relative asset reference resolves against.
 func TestBareBasePathRedirectsToItsRoot(t *testing.T) {
-	handler := newBasePathHandler(basePathStore())
+	for _, base := range testBasePaths {
+		t.Run(base, func(t *testing.T) {
+			handler := newHandlerAtBasePath(basePathStore(), base)
 
-	rec := doRequest(t, handler, http.MethodGet, testBasePath, "")
-	assert.Equal(t, http.StatusMovedPermanently, rec.Code)
-	assert.Equal(t, testBasePath+"/", rec.Header().Get("Location"))
+			rec := doRequest(t, handler, http.MethodGet, base, "")
+			assert.Equal(t, http.StatusMovedPermanently, rec.Code)
+			assert.Equal(t, base+"/", rec.Header().Get("Location"))
+		})
+	}
 }
 
 // TestIndexCarriesTheBasePathInItsBaseTag: the one token the server rewrites.

@@ -553,17 +553,23 @@ func TestValidate_BasePath(t *testing.T) {
 	assert.NoError(t, Validate(withBasePath("")))
 	assert.NoError(t, Validate(withBasePath("/rota")))
 	assert.NoError(t, Validate(withBasePath("/ilford-drop-in")))
+	// Depth is not restricted: the path is only ever a prefix, and a deployment
+	// sitting under an existing site's path needs more than one segment.
+	assert.NoError(t, Validate(withBasePath("/ilford/rota")))
+	assert.NoError(t, Validate(withBasePath("/a/b/c")))
 
 	for _, bad := range []string{
 		"rota",       // no leading slash
 		"/rota/",     // trailing slash
 		"/",          // the root is not a base path
-		"/a/b",       // more than one segment
 		"/rota path", // not URL-safe
 		"//rota",     // empty first segment
+		"/a//b",      // empty middle segment
 		"/rota?x=1",  // query
 		"/rota#frag", // fragment
 		"/../rota",   // traversal
+		"/ilford/..", // traversal in the last segment
+		"/./rota",    // a "." segment resolves away
 	} {
 		assert.Error(t, Validate(withBasePath(bad)), "expected %q to be rejected", bad)
 	}

@@ -1,6 +1,6 @@
 // BASE_PATH is the path the app's own pages are served under: "" at the root of
-// a domain, "/something" where a deployment has put the site one level down
-// (issue #201).
+// a domain, "/something" — or "/some/thing", depth is not restricted — where a
+// deployment has put the site below it (issue #201).
 //
 // The value belongs to the deployment and appears nowhere in this repo. The
 // server rewrites index.html's <base> element as it serves the page, and this

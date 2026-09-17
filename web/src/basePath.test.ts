@@ -34,6 +34,14 @@ describe("BASE_PATH", () => {
     expect(BASE_PATH).toBe("/rota");
   });
 
+  test("keeps every segment when the site sits more than one level down", async () => {
+    // Nothing here splits the path up — wouter's router base and the two links
+    // that leave the app all take it whole — so depth costs nothing, and a
+    // deployment under an existing site's path needs it.
+    const { BASE_PATH } = await basePathWith("/ilford/rota/");
+    expect(BASE_PATH).toBe("/ilford/rota");
+  });
+
   test("is empty when there is no base element at all", async () => {
     const { BASE_PATH } = await basePathWith(null);
     expect(BASE_PATH).toBe("");

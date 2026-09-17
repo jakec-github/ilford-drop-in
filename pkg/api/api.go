@@ -103,11 +103,12 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 // the frontend, so the two can name things freely without colliding.
 const apiPrefix = "/api"
 
-// basePath is the single path segment the site's own URLs are served under, or
-// "" for a site at the root of its domain — dev, every test, and any deployment
-// that has not set one. It is configuration rather than a constant because the
-// value belongs to the deployment and never appears in this repo (issue #201).
-// Which URLs it applies to, and why not all of them, is mountSite's doc.
+// basePath is the path the site's own URLs are served under, or "" for a site
+// at the root of its domain — dev, every test, and any deployment that has not
+// set one. It is opaque here: one segment or several, it is only ever a prefix
+// to strip and re-add. Configuration rather than a constant because the value
+// belongs to the deployment and never appears in this repo (issue #201). Which
+// URLs it applies to, and why not all of them, is mountSite's doc.
 func (h *Handler) basePath() string {
 	if h.cfg == nil || h.cfg.Server == nil {
 		return ""

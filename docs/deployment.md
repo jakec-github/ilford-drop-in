@@ -96,8 +96,9 @@ dev, where the site is at the root.
 
 The value belongs to the deployment and is deliberately not in this repo: it is
 one key in `drop_in_config.<env>.yaml`, and the app derives everything else from
-it. A leading slash, one segment, no trailing slash; anything else fails at
-startup.
+it. A leading slash, one or more URL-safe segments, no trailing slash; anything
+else fails at startup. Depth is not restricted — `/rota` and `/ilford/rota` work
+the same way, because nothing ever splits the path up.
 
 What moves is what leaves the app and cannot be corrected afterwards:
 

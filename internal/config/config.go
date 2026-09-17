@@ -30,40 +30,61 @@ type ServerConfig struct {
 	// locality. Set it where the default guess is wrong — chiefly a git worktree,
 	// whose frontend runs on its own port (see docs/agents/worktrees.md).
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
-	// BasePath is the single path segment the site's own pages are served
-	// under, such as "/rota". Optional: empty — dev, every test, and any
+	// BasePath is the path the site's own pages are served under, such as
+	// "/rota" or "/ilford/rota". Optional: empty — dev, every test, and any
 	// deployment that has not set one — serves the site at the root of its
 	// domain, exactly as before.
 	//
-	// One segment, leading slash, no trailing slash. The value itself is a
-	// deployment's business and never appears in this repo; see checkBasePath
-	// for why the shape is enforced at load.
+	// One or more segments, leading slash, no trailing slash. The value itself
+	// is a deployment's business and never appears in this repo; see
+	// checkBasePath for why the shape is enforced at load, and why its depth
+	// is not.
 	//
 	// It moves the pages and the calendar feeds, and deliberately not /api,
 	// /auth or /health — pkg/api.mountSite has the reasoning.
 	BasePath string `yaml:"basePath,omitempty"`
 }
 
-// basePathPattern is the whole of what a base path may look like: a leading
-// slash and one segment of unreserved URL characters. It rules out the root,
-// a trailing slash, a second segment, a query or fragment, and "..".
-var basePathPattern = regexp.MustCompile(`^/[A-Za-z0-9._~-]+$`)
+// basePathSegment is what one segment of a base path may hold: at least one
+// unreserved URL character, so nothing needing escaping ever reaches a link.
+var basePathSegment = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
 
 // checkBasePath rejects a malformed server.basePath.
+//
+// Depth is deliberately not restricted: "/rota" and "/ilford/rota" are both
+// fine. Every piece of the machinery treats the path as an opaque prefix —
+// http.StripPrefix, the mux pattern, the <base> element, wouter's router base —
+// so nothing gains from it being a single segment, and a deployment that wants
+// to sit under an existing site's path needs more than one.
 //
 // The shape is checked at load rather than left to whatever the router makes of
 // it, because every way of getting it wrong fails quietly and late: a trailing
 // slash doubles into "//" in every minted link, a missing leading slash makes
-// the mux pattern relative and matches nothing, and a second segment splits a
-// cookie path from the path it is meant to cover. None of those surface until
-// a volunteer's calendar stops refreshing or a login says "invalid OAuth
-// state". Startup is the one place they can still be a typo.
+// the mux pattern relative and matches nothing, and a "." or ".." segment means
+// the path the config states and the path the browser asks for are different
+// strings. None of those surface until a volunteer's calendar stops refreshing
+// or a page cannot find its own assets. Startup is the one place they can still
+// be a typo.
 func checkBasePath(srv *ServerConfig) error {
 	if srv == nil || srv.BasePath == "" {
 		return nil
 	}
-	if !basePathPattern.MatchString(srv.BasePath) {
-		return fmt.Errorf("server.basePath %q is not a single path segment with a leading slash and no trailing slash, such as \"/rota\"", srv.BasePath)
+
+	malformed := func() error {
+		return fmt.Errorf("server.basePath %q is not one or more URL-safe path segments with a leading slash and no trailing slash, such as \"/rota\" or \"/ilford/rota\"", srv.BasePath)
+	}
+
+	if !strings.HasPrefix(srv.BasePath, "/") || strings.HasSuffix(srv.BasePath, "/") {
+		return malformed()
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(srv.BasePath, "/"), "/") {
+		// "." and ".." are made of URL-safe characters but are not usable
+		// segments: the
+		// browser resolves them away, so the site would answer on a path the
+		// config never states.
+		if segment == "." || segment == ".." || !basePathSegment.MatchString(segment) {
+			return malformed()
+		}
 	}
 	return nil
 }
