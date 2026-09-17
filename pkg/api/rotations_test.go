@@ -36,7 +36,7 @@ func defineBody(shiftCount int, startDate string) string {
 func TestDefineRotaEndpoint(t *testing.T) {
 	store := &mockStore{}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(6, "2026-08-02"), adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(6, "2026-08-02"), organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp defineRotaResponse
@@ -71,7 +71,7 @@ func TestDefineRotaEndpoint_MintsFromTheRotaDefaults(t *testing.T) {
 		defaultShape: []db.DefaultShapeSeat{{RoleID: "role-service-volunteer", Seats: 2}},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedShifts, 2)
@@ -101,7 +101,7 @@ func TestDefineRotaEndpoint_RefusesAStatedShiftTimeOrShape(t *testing.T) {
 	} {
 		store := &mockStore{}
 
-		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", body, adminCookie())
+		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", body, organiserCookie())
 		assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 		assert.Empty(t, store.insertedRotations)
 	}
@@ -128,7 +128,7 @@ func TestDefineRotaEndpoint_RefusesUnsetRotaDefaults(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), adminCookie())
+			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), organiserCookie())
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Contains(t, rec.Body.String(), tt.says)
 			assert.Empty(t, tt.store.insertedRotations, "nothing is minted against settings nobody has stated")
@@ -144,14 +144,14 @@ func TestDefineRotaEndpoint_NotIdempotent(t *testing.T) {
 	store := &mockStore{}
 	handler := newTestHandler(store, testVolunteers())
 
-	first := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), adminCookie())
+	first := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), organiserCookie())
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
 
 	var a, b defineRotaResponse
 	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &a))
 	store.allocate(a.Rotation.ID)
 
-	second := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-16"), adminCookie())
+	second := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-16"), organiserCookie())
 	require.Equal(t, http.StatusCreated, second.Code, second.Body.String())
 	require.NoError(t, json.Unmarshal(second.Body.Bytes(), &b))
 
@@ -167,10 +167,10 @@ func TestDefineRotaEndpoint_RefusedWhileARotaIsInFlight(t *testing.T) {
 	store := &mockStore{}
 	handler := newTestHandler(store, testVolunteers())
 
-	first := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), adminCookie())
+	first := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-02"), organiserCookie())
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
 
-	second := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-16"), adminCookie())
+	second := doRequest(t, handler, http.MethodPost, "/api/rotations", defineBody(2, "2026-08-16"), organiserCookie())
 	require.Equal(t, http.StatusConflict, second.Code, second.Body.String())
 	assert.Contains(t, second.Body.String(), "already in flight")
 	assert.Len(t, store.insertedRotations, 1, "the refused define minted nothing")
@@ -259,7 +259,7 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/rotations", tt.body, adminCookie())
+			rec := doRequest(t, newTestHandler(tt.store, testVolunteers()), http.MethodPost, "/api/rotations", tt.body, organiserCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 			assert.Empty(t, tt.store.insertedRotations, "a rejected request must not define a rota")
 		})
@@ -294,7 +294,7 @@ func TestRotaProposalEndpoint(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var resp rotaProposalBody
@@ -308,7 +308,7 @@ func TestRotaProposalEndpoint(t *testing.T) {
 func TestRotaProposalEndpoint_NeedsNoSettings(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}, noShape: true}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var resp rotaProposalBody
@@ -342,7 +342,7 @@ func TestRotaInFlightEndpoint_Nothing(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/in-flight", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/in-flight", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var resp rotaInFlightBodyResponse
@@ -368,7 +368,7 @@ func TestRotaInFlightEndpoint_WithRound(t *testing.T) {
 		repliedRequestIDs: map[string]bool{"req-1": true, "req-4": true},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/in-flight", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/in-flight", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var resp rotaInFlightBodyResponse
@@ -407,7 +407,7 @@ func TestDiscardRotaEndpoint(t *testing.T) {
 	}
 	handler := newTestHandler(store, testVolunteers())
 
-	rec := doRequest(t, handler, http.MethodDelete, "/api/rotations/live", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodDelete, "/api/rotations/live", "", organiserCookie())
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 	assert.Equal(t, []string{"live"}, store.discardedRotaIDs)
 	assert.Empty(t, store.rotations)
@@ -416,7 +416,7 @@ func TestDiscardRotaEndpoint(t *testing.T) {
 	assert.Empty(t, store.availabilityRequests, "and the round goes with the rota it asked about")
 
 	// Nothing is in flight any more, so the next rota can be defined.
-	rec = doRequest(t, handler, http.MethodGet, "/api/rotations/in-flight", "", adminCookie())
+	rec = doRequest(t, handler, http.MethodGet, "/api/rotations/in-flight", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var resp rotaInFlightBodyResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
@@ -432,7 +432,7 @@ func TestDiscardRotaEndpoint_RefusesAnAllocatedRota(t *testing.T) {
 		},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodDelete, "/api/rotations/done", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodDelete, "/api/rotations/done", "", organiserCookie())
 	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "never discarded")
 	assert.Len(t, store.rotations, 1, "the rota is still there")
@@ -440,7 +440,7 @@ func TestDiscardRotaEndpoint_RefusesAnAllocatedRota(t *testing.T) {
 }
 
 func TestDiscardRotaEndpoint_UnknownRota(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodDelete, "/api/rotations/nope", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodDelete, "/api/rotations/nope", "", organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
@@ -450,7 +450,7 @@ func TestDiscardRotaEndpoint_StoreFailure(t *testing.T) {
 		discardErr: errors.New("connection refused"),
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodDelete, "/api/rotations/live", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodDelete, "/api/rotations/live", "", organiserCookie())
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	assert.Len(t, store.rotations, 1)
 }

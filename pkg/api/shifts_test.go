@@ -40,7 +40,7 @@ func TestUpdateShiftClosesAShift(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()),
-		http.MethodPatch, "/api/shifts/s1", `{"closed":true}`, adminCookie())
+		http.MethodPatch, "/api/shifts/s1", `{"closed":true}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	assert.Equal(t, shiftUpdateResponse{
@@ -57,7 +57,7 @@ func TestUpdateShiftReopensAShift(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()),
-		http.MethodPatch, "/api/shifts/s2", `{"closed":false}`, adminCookie())
+		http.MethodPatch, "/api/shifts/s2", `{"closed":false}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	assert.False(t, decodeShiftUpdate(t, rec.Body.Bytes()).Closed)
@@ -71,7 +71,7 @@ func TestUpdateShiftIsVisibleInTheListing(t *testing.T) {
 	handler := newTestHandler(store, testVolunteers())
 
 	require.Equal(t, http.StatusOK, doRequest(t, handler,
-		http.MethodPatch, "/api/shifts/s1", `{"closed":true}`, adminCookie()).Code)
+		http.MethodPatch, "/api/shifts/s1", `{"closed":true}`, organiserCookie()).Code)
 
 	rec := doRequest(t, handler, http.MethodGet, "/api/shifts", "")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -96,7 +96,7 @@ func TestUpdateShiftRefusedOnAnAllocatedRota(t *testing.T) {
 	store.allocatedRotas = map[string]bool{"rota-1": true}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()),
-		http.MethodPatch, "/api/shifts/s1", `{"closed":true}`, adminCookie())
+		http.MethodPatch, "/api/shifts/s1", `{"closed":true}`, organiserCookie())
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 	assert.False(t, store.shiftsInRange[0].Closed)
 }
@@ -110,7 +110,7 @@ func TestUpdateShiftTimesOnAnAllocatedRota(t *testing.T) {
 	store.allocatedRotas = map[string]bool{"rota-1": true}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPatch,
-		"/api/shifts/s1", `{"start":"2026-12-20T18:00:00","end":"2026-12-20T20:00:00"}`, adminCookie())
+		"/api/shifts/s1", `{"start":"2026-12-20T18:00:00","end":"2026-12-20T20:00:00"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	assert.Equal(t, "2026-12-20T18:00:00", decodeShiftUpdate(t, rec.Body.Bytes()).Start)
@@ -124,7 +124,7 @@ func TestUpdateShiftMovesTheDate(t *testing.T) {
 	handler := newTestHandler(store, testVolunteers())
 
 	rec := doRequest(t, handler, http.MethodPatch,
-		"/api/shifts/s1", `{"start":"2026-12-23T19:30:00","end":"2026-12-23T21:30:00"}`, adminCookie())
+		"/api/shifts/s1", `{"start":"2026-12-23T19:30:00","end":"2026-12-23T21:30:00"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Equal(t, "2026-12-23", decodeShiftUpdate(t, rec.Body.Bytes()).Date)
 
@@ -148,7 +148,7 @@ func TestUpdateShiftRefusesADateAnotherShiftHolds(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPatch,
-		"/api/shifts/s1", `{"start":"2026-12-27T19:30:00","end":"2026-12-27T21:30:00"}`, adminCookie())
+		"/api/shifts/s1", `{"start":"2026-12-27T19:30:00","end":"2026-12-27T21:30:00"}`, organiserCookie())
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "27 December 2026")
 	assert.Equal(t, "2026-12-20T19:30:00", store.shiftsInRange[0].StartAt, "the shift stays where it was")
@@ -160,7 +160,7 @@ func TestUpdateShiftAcceptsTimesWithoutSeconds(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPatch,
-		"/api/shifts/s1", `{"start":"2026-12-20T18:00","end":"2026-12-20T20:00"}`, adminCookie())
+		"/api/shifts/s1", `{"start":"2026-12-20T18:00","end":"2026-12-20T20:00"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Equal(t, "2026-12-20T18:00:00", decodeShiftUpdate(t, rec.Body.Bytes()).Start)
 }
@@ -169,14 +169,14 @@ func TestUpdateShiftRejectsAnEndBeforeItsStart(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPatch,
-		"/api/shifts/s1", `{"start":"2026-12-20T21:30:00","end":"2026-12-20T19:30:00"}`, adminCookie())
+		"/api/shifts/s1", `{"start":"2026-12-20T21:30:00","end":"2026-12-20T19:30:00"}`, organiserCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	assert.Equal(t, "2026-12-20T19:30:00", store.shiftsInRange[0].StartAt)
 }
 
 func TestUpdateShiftUnknownShift(t *testing.T) {
 	rec := doRequest(t, newTestHandler(shiftEditTestStore(), testVolunteers()),
-		http.MethodPatch, "/api/shifts/ghost", `{"closed":true}`, adminCookie())
+		http.MethodPatch, "/api/shifts/ghost", `{"closed":true}`, organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
@@ -186,14 +186,14 @@ func TestUpdateShiftRequiresSomethingToChange(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()),
-		http.MethodPatch, "/api/shifts/s2", `{}`, adminCookie())
+		http.MethodPatch, "/api/shifts/s2", `{}`, organiserCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	assert.True(t, store.shiftsInRange[1].Closed, "the shut shift stays shut")
 }
 
 func TestUpdateShiftRejectsUnknownFields(t *testing.T) {
 	rec := doRequest(t, newTestHandler(shiftEditTestStore(), testVolunteers()),
-		http.MethodPatch, "/api/shifts/s1", `{"closed":true,"date":"2026-12-21"}`, adminCookie())
+		http.MethodPatch, "/api/shifts/s1", `{"closed":true,"date":"2026-12-21"}`, organiserCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 

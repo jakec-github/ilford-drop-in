@@ -16,10 +16,10 @@ import (
 // round-trip.
 func newSyncTestAuthenticator(syncFn VolunteerSyncFunc) *Authenticator {
 	return &Authenticator{
-		secret:         testSecret,
-		adminEmails:    map[string]struct{}{testAdminEmail: {}},
-		logger:         zap.NewNop(),
-		syncVolunteers: syncFn,
+		secret:          testSecret,
+		organiserEmails: map[string]struct{}{testOrganiserEmail: {}},
+		logger:          zap.NewNop(),
+		syncVolunteers:  syncFn,
 	}
 }
 
@@ -48,7 +48,7 @@ func TestSync_Success(t *testing.T) {
 		return nil
 	})
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", adminCookie())
+	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 	assert.True(t, called, "an admin sync must run the sync function")
 }
@@ -58,20 +58,20 @@ func TestSync_Failure(t *testing.T) {
 		return errors.New("sheets access denied")
 	})
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", adminCookie())
+	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusBadGateway, rec.Code, "a failed sheet fetch must surface as an upstream error")
 }
 
 func TestSync_NotConfigured(t *testing.T) {
 	a := newSyncTestAuthenticator(nil)
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", adminCookie())
+	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "with no sync function wired the endpoint is unavailable")
 }
 
 func TestSync_RejectsGet(t *testing.T) {
 	a := newSyncTestAuthenticator(func(context.Context) error { return nil })
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodGet, "/auth/sync", "", adminCookie())
+	rec := doRequest(t, syncTestHandler(a), http.MethodGet, "/auth/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code, "sync mutates state, so only POST is allowed")
 }

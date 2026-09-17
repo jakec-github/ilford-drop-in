@@ -139,16 +139,52 @@ func TestValidateConfigCmd_DevModeRejectedForProd(t *testing.T) {
 server:
   port: 8080
   sessionSecret: "sixteen-characters-long"
-  adminEmails:
-    - "admin@example.com"
+  organiserEmails:
+    - "organiser@example.com"
 devMode:
-  adminEmail: "admin@example.com"
+  organiserEmail: "organiser@example.com"
   volunteersCSV: "test_data/volunteers.csv"
 `)
 
 	_, err := runValidateConfig(t, "-e", "prod", path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "devMode")
+}
+
+// The summary counts each level, and says when Organisers still come from the
+// deprecated key: deploy-config.sh prints this before a config ships, which is
+// the moment to notice a file that has not been rewritten yet.
+func TestValidateConfigCmd_SummarisesAccessLevels(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+`
+server:
+  port: 8080
+  sessionSecret: "sixteen-characters-long"
+  organiserEmails:
+    - "a@example.com"
+    - "b@example.com"
+  rotaEditorEmails:
+    - "c@example.com"
+`)
+
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+	assert.Contains(t, out, "port 8080, 2 organisers, 1 rota editor")
+	assert.NotContains(t, out, "adminEmails")
+}
+
+func TestValidateConfigCmd_FlagsTheDeprecatedAdminEmails(t *testing.T) {
+	path := writeConfig(t, prodConfigYAML+`
+server:
+  port: 8080
+  sessionSecret: "sixteen-characters-long"
+  adminEmails:
+    - "a@example.com"
+`)
+
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+	assert.Contains(t, out, "port 8080, 1 organiser, 0 rota editors")
+	assert.Contains(t, out, "adminEmails is deprecated")
 }
 
 func TestValidateConfigCmd_RequiresEnv(t *testing.T) {

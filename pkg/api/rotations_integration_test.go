@@ -28,14 +28,14 @@ import (
 func defineFromProposal(t *testing.T, handler http.Handler, shiftCount int) *httptest.ResponseRecorder {
 	t.Helper()
 
-	rec := doRequest(t, handler, http.MethodGet, "/api/rotations/proposed", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/api/rotations/proposed", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var proposal rotaProposalBody
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &proposal))
 
 	body := fmt.Sprintf(`{"shiftCount":%d,"startDate":%q}`, shiftCount, proposal.StartDate)
-	return doRequest(t, handler, http.MethodPost, "/api/rotations", body, adminCookie())
+	return doRequest(t, handler, http.MethodPost, "/api/rotations", body, organiserCookie())
 }
 
 // TestDefineRotaEndpointIntegration drives POST /rotations against a real
@@ -146,7 +146,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 
 	// Nothing defined yet, so nothing is in flight — the state a rota may be
 	// defined in.
-	rec := doRequest(t, handler, http.MethodGet, "/api/rotations/in-flight", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/api/rotations/in-flight", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var inFlight rotaInFlightBodyResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &inFlight))
@@ -163,10 +163,10 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, roles)
 	pin := `{"date":"` + defined.Shifts[0].Date + `","volunteerId":"alice","roleId":"` + roles[0].ID + `"}`
-	rec = doRequest(t, handler, http.MethodPost, "/api/preallocations", pin, adminCookie())
+	rec = doRequest(t, handler, http.MethodPost, "/api/preallocations", pin, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
-	rec = doRequest(t, handler, http.MethodPost, "/api/availability-rounds", "", adminCookie())
+	rec = doRequest(t, handler, http.MethodPost, "/api/availability-rounds", "", organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, defined.Rotation.ID)
@@ -178,7 +178,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// The rota in flight is that rota, and it reports the round hanging off it.
-	rec = doRequest(t, handler, http.MethodGet, "/api/rotations/in-flight", "", adminCookie())
+	rec = doRequest(t, handler, http.MethodGet, "/api/rotations/in-flight", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &inFlight))
 	require.NotNil(t, inFlight.Rotation)
@@ -189,7 +189,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	assert.Equal(t, 1, inFlight.Rotation.Replied)
 
 	// Discard takes all of it, in one transaction.
-	rec = doRequest(t, handler, http.MethodDelete, "/api/rotations/"+defined.Rotation.ID, "", adminCookie())
+	rec = doRequest(t, handler, http.MethodDelete, "/api/rotations/"+defined.Rotation.ID, "", organiserCookie())
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 
 	rotations, err := database.GetRotations(ctx)
@@ -237,7 +237,7 @@ func TestDiscardRotaEndpointIntegration_RefusesAnAllocatedRota(t *testing.T) {
 		[]db.Allocation{{ID: uuid.New().String(), ShiftID: defined.Shifts[0].ID, Role: "Service volunteer", VolunteerID: "alice"}},
 		defined.Rotation.ID, time.Now()))
 
-	rec = doRequest(t, handler, http.MethodDelete, "/api/rotations/"+defined.Rotation.ID, "", adminCookie())
+	rec = doRequest(t, handler, http.MethodDelete, "/api/rotations/"+defined.Rotation.ID, "", organiserCookie())
 	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 
 	rotations, err := database.GetRotations(ctx)

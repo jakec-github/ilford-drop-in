@@ -45,7 +45,7 @@ func defaultShapeOf(t *testing.T, rec *httptest.ResponseRecorder) []seatResponse
 func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	store := &mockStore{}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
@@ -69,7 +69,7 @@ func TestGetRotaDefaultsEndpoint(t *testing.T) {
 func TestGetRotaDefaultsEndpointUnset(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}, noShape: true}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
@@ -101,7 +101,7 @@ func TestSaveRotaDefaultsEndpoint(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
-		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, adminCookie())
+		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Len(t, store.savedRotaDefaults, 1)
@@ -122,7 +122,7 @@ func TestSaveRotaDefaultsEndpointFillsInTheZone(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
-		`{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":""}`, adminCookie())
+		`{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":""}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Equal(t, "Europe/London", shiftTimesOf(t, rec).ShiftTimezone)
@@ -144,7 +144,7 @@ func TestSaveRotaDefaultsEndpointRejectsBadInput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times", request, adminCookie())
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times", request, organiserCookie())
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Empty(t, store.savedRotaDefaults)
@@ -164,7 +164,7 @@ func TestGetRotaDefaultsCarriesTheConstraintRegistry(t *testing.T) {
 		AllocationSettings: `{"enabled":{"no_back_to_back":true},"maxFrequency":0.34}`,
 	}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
@@ -202,7 +202,7 @@ func TestSaveAllocationSettingsEndpoint(t *testing.T) {
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/rota-defaults/allocation-settings",
-		`{"enabled":{"male_required":true,"max_frequency":true},"maxFrequency":0.5}`, adminCookie())
+		`{"enabled":{"male_required":true,"max_frequency":true},"maxFrequency":0.5}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Len(t, store.savedAllocationSettings, 1)
@@ -225,12 +225,12 @@ func TestSaveAllocationSettingsLeavesTheShiftTimesAlone(t *testing.T) {
 	store := &mockStore{}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
-		"/api/rota-defaults/allocation-settings", `{"enabled":{"no_back_to_back":true}}`, adminCookie())
+		"/api/rota-defaults/allocation-settings", `{"enabled":{"no_back_to_back":true}}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Empty(t, store.savedRotaDefaults, "the shift-time section is not written")
 
-	rec = doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", adminCookie())
+	rec = doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", organiserCookie())
 	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
 }
 
@@ -248,7 +248,7 @@ func TestSaveAllocationSettingsRejectsBadInput(t *testing.T) {
 			store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
 			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
-				"/api/rota-defaults/allocation-settings", request, adminCookie())
+				"/api/rota-defaults/allocation-settings", request, organiserCookie())
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Empty(t, store.savedAllocationSettings)
@@ -270,7 +270,7 @@ func TestSaveDefaultShapeEndpoint(t *testing.T) {
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
 		`{"seats":[{"roleId":"role-team-lead","count":1},{"roleId":"role-service-volunteer","count":6}]}`,
-		adminCookie())
+		organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Len(t, store.savedShapes, 1)
@@ -292,7 +292,7 @@ func TestSaveDefaultShapeEndpointEmpties(t *testing.T) {
 	store := &mockStore{}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
-		`{"seats":[]}`, adminCookie())
+		`{"seats":[]}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Len(t, store.savedShapes, 1)
@@ -306,7 +306,7 @@ func TestSaveDefaultShapeLeavesTheShiftTimesAlone(t *testing.T) {
 	store := &mockStore{}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
-		`{"seats":[{"roleId":"role-team-lead","count":1}]}`, adminCookie())
+		`{"seats":[{"roleId":"role-team-lead","count":1}]}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Empty(t, store.savedRotaDefaults, "the shift-time section is not written")
@@ -327,7 +327,7 @@ func TestSaveDefaultShapeEndpointRejectsBadInput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := &mockStore{}
 
-			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape", request, adminCookie())
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape", request, organiserCookie())
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Empty(t, store.savedShapes)

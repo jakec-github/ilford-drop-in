@@ -34,7 +34,7 @@ func TestAllocateRotaInFlightRequiresAdmin(t *testing.T) {
 func TestAllocateRotaInFlightRefusesAnUnstatedDraft(t *testing.T) {
 	store := draftedRotaStore()
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{}`, organiserCookie())
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "states the draft")
@@ -46,7 +46,7 @@ func TestAllocateRotaInFlightRefusesAnUnstatedDraft(t *testing.T) {
 func TestAllocateRotaInFlightRejectsAnUnreadableBody(t *testing.T) {
 	store := draftedRotaStore()
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":`, organiserCookie())
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "invalid request body")
@@ -62,7 +62,7 @@ func TestAllocateRotaInFlightRefusesWithNoDraft(t *testing.T) {
 	store.storedDrafts = nil
 	store.draftSeats = nil
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, organiserCookie())
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	assert.Contains(t, rec.Body.String(), "drafted")
@@ -75,7 +75,7 @@ func TestAllocateRotaInFlightRefusesAnAllocatedRota(t *testing.T) {
 	store := draftedRotaStore()
 	store.allocate("rota-1")
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, organiserCookie())
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	assert.Contains(t, rec.Body.String(), "no rota in flight")
@@ -98,7 +98,7 @@ func TestAllocateRotaInFlightWaitsForTheRunningSolve(t *testing.T) {
 
 	answered := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		answered <- doRequest(t, handler.Routes(), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, adminCookie())
+		answered <- doRequest(t, handler.Routes(), http.MethodPost, allocatePath, `{"draftHash":"abc"}`, organiserCookie())
 	}()
 
 	select {
@@ -121,7 +121,7 @@ func TestAllocateRotaInFlightWaitsForTheRunningSolve(t *testing.T) {
 // on the wire there is nothing for them to confirm, so it is part of the draft
 // rather than a second endpoint to ask.
 func TestGetDraftRotaAllocationCarriesTheHashToConfirm(t *testing.T) {
-	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, newTestHandler(draftedRotaStore(), testVolunteers()), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse

@@ -88,9 +88,10 @@ func run(env string, portOverride int) error {
 	var authenticator *api.Authenticator
 	var newMailer api.MailerFunc
 	if cfg.DevMode != nil {
-		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues an admin session without verifying identity",
+		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues a session without verifying identity",
 			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
-			zap.String("adminEmail", cfg.DevMode.AdminEmail))
+			zap.String("organiserEmail", cfg.DevMode.OrganiserEmail),
+			zap.String("rotaEditorEmail", cfg.DevMode.RotaEditorEmail))
 
 		// Nothing else creates Roles yet, and the roster below is read against
 		// them, so the seed has to run before the first sync.

@@ -91,7 +91,7 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	// rather than an exception to it, and is what the rota view renders (#143).
 	// Nothing has moved under this rota, so the read reports the stored draft
 	// rather than solving it again.
-	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var view draftRotaAllocationResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &view))
@@ -135,7 +135,7 @@ func TestSolveDraftRotaAllocationSaysWhichStepIsMissing(t *testing.T) {
 	dbtest.SeedRotaDefaults(t, database)
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "define a rota first")
@@ -157,7 +157,7 @@ func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 		{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Team lead", VolunteerID: "alice"},
 	}, rota.ID, time.Now().UTC()))
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())
 
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "already allocated")
@@ -198,7 +198,7 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 		SeatsFilled:  10,
 	}, nil))
 
-	rec := doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body draftRotaAllocationResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
@@ -220,7 +220,7 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 	// It comes back beside the draft rather than instead of it. The read
 	// succeeded; the solve it attempted on the way did not, and both of those
 	// are worth saying.
-	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+	rec = doRequest(t, handler, http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Contains(t, body.SolveError, "for nobody")
@@ -272,7 +272,7 @@ func readDraftWhileTheSlotIsHeld(t *testing.T, handler *Handler, release func())
 	t.Helper()
 	answered := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		answered <- doRequest(t, handler.Routes(), http.MethodGet, "/api/draft-rota-allocation", "", adminCookie())
+		answered <- doRequest(t, handler.Routes(), http.MethodGet, "/api/draft-rota-allocation", "", organiserCookie())
 	}()
 
 	select {

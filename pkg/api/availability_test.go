@@ -78,7 +78,7 @@ func TestAvailabilityRoundLinksAreAbsolute(t *testing.T) {
 		shifts:    []db.Shift{{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02"}},
 	}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/availability-rounds", `{}`, adminCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/availability-rounds", `{}`, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.NotEmpty(t, store.availabilityRequests)

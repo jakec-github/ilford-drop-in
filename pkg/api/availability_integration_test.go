@@ -198,7 +198,7 @@ func TestAvailabilityLinkOpensThePage(t *testing.T) {
 
 func mintRoundOverHTTP(t *testing.T, handler http.Handler) availabilityRoundResponse {
 	t.Helper()
-	rec := doRequest(t, handler, http.MethodPost, "/api/availability-rounds", `{}`, adminCookie())
+	rec := doRequest(t, handler, http.MethodPost, "/api/availability-rounds", `{}`, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var round availabilityRoundResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &round))
@@ -207,7 +207,7 @@ func mintRoundOverHTTP(t *testing.T, handler http.Handler) availabilityRoundResp
 
 func roundOverHTTP(t *testing.T, handler http.Handler) availabilityRoundResponse {
 	t.Helper()
-	rec := doRequest(t, handler, http.MethodGet, "/api/availability-rounds", "", adminCookie())
+	rec := doRequest(t, handler, http.MethodGet, "/api/availability-rounds", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var round availabilityRoundResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &round))

@@ -133,11 +133,11 @@ func (a *Authenticator) gmailOAuthConfig() *oauth2.Config {
 // Requesting the scope here rather than at login is the point of the design. The
 // session cookie carries identity, not authority, and re-checks the allowlist on
 // every request; a login-time grant would have the server holding a live Google
-// credential for sixty days that removing someone from adminEmails would not
+// credential for sixty days that removing someone from organiserEmails would not
 // revoke. It would also demand Gmail permission from an admin who only signed in
 // to look at a shift.
 func (h *Handler) handleGmailConsent(w http.ResponseWriter, r *http.Request) {
-	admin := adminEmail(r.Context())
+	admin := sessionEmail(r.Context())
 
 	state := gmailSendState{
 		Email:       admin,
@@ -210,16 +210,23 @@ func wrapInvalid(msg string) error {
 // of at login.
 func (h *Handler) completeGmailSend(w http.ResponseWriter, r *http.Request) {
 	// The signature proves the instruction is ours; the session proves who is
-	// asking now. Both are required, and they must name the same admin — a state
-	// signed for one admin must not be replayable in another's browser.
-	admin, ok := h.auth.adminFromRequest(r)
+	// asking now. Both are required, and they must name the same Organiser — a
+	// state signed for one must not be replayable in another's browser. The
+	// level is checked again here because this is not behind requireLevel: it
+	// arrives at the login callback, and someone demoted to Rota Editor between
+	// starting a send and finishing it may no longer send.
+	session, ok := h.auth.sessionFromRequest(r)
 	if !ok {
 		http.Error(w, "not authorised", http.StatusUnauthorized)
 		return
 	}
+	if !session.Level.atLeast(LevelOrganiser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	state, err := verifyGmailState(h.auth.secret, r.URL.Query().Get("state"), time.Now())
-	if err != nil || !h.auth.sameAdmin(state.Email, admin) {
+	if err != nil || !h.auth.samePerson(state.Email, session.Email) {
 		h.auth.logger.Warn("Rejected an availability send with an invalid state", zap.Error(err))
 		http.Error(w, "invalid OAuth state", http.StatusBadRequest)
 		return
@@ -240,7 +247,7 @@ func (h *Handler) completeGmailSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.startSend(w, r, admin, token, state)
+	h.startSend(w, r, session.Email, token, state)
 }
 
 // startSend registers the job, launches the send behind it, and redirects the
@@ -318,7 +325,7 @@ type sendResponse struct {
 // scoped to the admin who started it: a send lists every volunteer it reached
 // and every address it failed on.
 func (h *Handler) handleGetSend(w http.ResponseWriter, r *http.Request) {
-	snapshot, ok := h.sends.snapshot(r.PathValue("id"), adminEmail(r.Context()))
+	snapshot, ok := h.sends.snapshot(r.PathValue("id"), sessionEmail(r.Context()))
 	if !ok {
 		// Also the answer for a send that has aged out, which is indistinguishable
 		// from one that never existed and means the same thing to the page asking.

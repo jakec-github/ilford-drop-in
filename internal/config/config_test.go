@@ -190,7 +190,7 @@ func TestLoadFromPath_UnknownKey(t *testing.T) {
 		},
 		{
 			name:    "inside a nested block",
-			extra:   "server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  adminEmails:\n    - 'admin@example.com'\n  tlsCertPath: '/etc/ssl/cert.pem'\n",
+			extra:   "server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  organiserEmails:\n    - 'organiser@example.com'\n  tlsCertPath: '/etc/ssl/cert.pem'\n",
 			wantKey: "tlsCertPath",
 		},
 	}
@@ -387,9 +387,10 @@ func TestValidate_ServerConfig(t *testing.T) {
 
 	validServer := func() *ServerConfig {
 		return &ServerConfig{
-			Port:          8080,
-			SessionSecret: "a-sufficiently-long-secret",
-			AdminEmails:   []string{"admin@example.com"},
+			Port:             8080,
+			SessionSecret:    "a-sufficiently-long-secret",
+			OrganiserEmails:  []string{"organiser@example.com"},
+			RotaEditorEmails: []string{"editor@example.com"},
 		}
 	}
 
@@ -407,15 +408,54 @@ func TestValidate_ServerConfig(t *testing.T) {
 	missingSecret.Server.SessionSecret = ""
 	assert.Error(t, Validate(&missingSecret))
 
-	noAdmins := base
-	noAdmins.Server = validServer()
-	noAdmins.Server.AdminEmails = nil
-	assert.Error(t, Validate(&noAdmins))
+	// Nobody could set the app up: every screen that states a rota is an
+	// Organiser's.
+	noOrganisers := base
+	noOrganisers.Server = validServer()
+	noOrganisers.Server.OrganiserEmails = nil
+	err := Validate(&noOrganisers)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "organiserEmails")
+
+	// Rota Editors are optional: an app run by its Organisers alone is fine.
+	noRotaEditors := base
+	noRotaEditors.Server = validServer()
+	noRotaEditors.Server.RotaEditorEmails = nil
+	assert.NoError(t, Validate(&noRotaEditors))
+
+	badOrganiserEmail := base
+	badOrganiserEmail.Server = validServer()
+	badOrganiserEmail.Server.OrganiserEmails = []string{"not-an-email"}
+	assert.Error(t, Validate(&badOrganiserEmail))
+
+	badRotaEditorEmail := base
+	badRotaEditorEmail.Server = validServer()
+	badRotaEditorEmail.Server.RotaEditorEmails = []string{"not-an-email"}
+	assert.Error(t, Validate(&badRotaEditorEmail))
+
+	// The deprecated key still counts as Organisers for one release, so a config
+	// not yet rewritten keeps loading.
+	onlyAdminEmails := base
+	onlyAdminEmails.Server = validServer()
+	onlyAdminEmails.Server.OrganiserEmails = nil
+	onlyAdminEmails.Server.AdminEmails = []string{"organiser@example.com"}
+	assert.NoError(t, Validate(&onlyAdminEmails))
+	assert.Equal(t, []string{"organiser@example.com"}, onlyAdminEmails.Server.Organisers())
 
 	badAdminEmail := base
 	badAdminEmail.Server = validServer()
 	badAdminEmail.Server.AdminEmails = []string{"not-an-email"}
 	assert.Error(t, Validate(&badAdminEmail))
+}
+
+// Organisers are both lists together while the old key is still read, so a
+// config carrying both during the switch loses nobody.
+func TestServerConfig_OrganisersJoinsTheDeprecatedKey(t *testing.T) {
+	srv := ServerConfig{
+		OrganiserEmails: []string{"a@example.com"},
+		AdminEmails:     []string{"b@example.com"},
+	}
+	assert.Equal(t, []string{"a@example.com", "b@example.com"}, srv.Organisers())
 }
 
 func TestValidate_DevMode(t *testing.T) {
@@ -429,8 +469,9 @@ func TestValidate_DevMode(t *testing.T) {
 
 	validDevMode := func() *DevModeConfig {
 		return &DevModeConfig{
-			AdminEmail:    "agent@example.com",
-			VolunteersCSV: "test_data/volunteers.csv",
+			OrganiserEmail:  "agent@example.com",
+			RotaEditorEmail: "editor@example.com",
+			VolunteersCSV:   "test_data/volunteers.csv",
 		}
 	}
 
@@ -440,13 +481,24 @@ func TestValidate_DevMode(t *testing.T) {
 
 	missingEmail := base
 	missingEmail.DevMode = validDevMode()
-	missingEmail.DevMode.AdminEmail = ""
+	missingEmail.DevMode.OrganiserEmail = ""
 	assert.Error(t, Validate(&missingEmail))
 
 	badEmail := base
 	badEmail.DevMode = validDevMode()
-	badEmail.DevMode.AdminEmail = "not-an-email"
+	badEmail.DevMode.OrganiserEmail = "not-an-email"
 	assert.Error(t, Validate(&badEmail))
+
+	// Signing in as a Rota Editor is optional in dev.
+	noRotaEditor := base
+	noRotaEditor.DevMode = validDevMode()
+	noRotaEditor.DevMode.RotaEditorEmail = ""
+	assert.NoError(t, Validate(&noRotaEditor))
+
+	badRotaEditor := base
+	badRotaEditor.DevMode = validDevMode()
+	badRotaEditor.DevMode.RotaEditorEmail = "not-an-email"
+	assert.Error(t, Validate(&badRotaEditor))
 
 	missingCSV := base
 	missingCSV.DevMode = validDevMode()
@@ -456,11 +508,11 @@ func TestValidate_DevMode(t *testing.T) {
 
 // The dev stubs replace Google with a roster file and a session minted for a
 // configured address — catastrophic in prod, where anyone could then log in as
-// an admin. The env name is the gate: only "dev" may carry a devMode block.
+// an Organiser. The env name is the gate: only "dev" may carry a devMode block.
 func TestCheckDevMode_OnlyPermittedInDevEnv(t *testing.T) {
 	withDevMode := &Config{DevMode: &DevModeConfig{
-		AdminEmail:    "agent@example.com",
-		VolunteersCSV: "test_data/volunteers.csv",
+		OrganiserEmail: "agent@example.com",
+		VolunteersCSV:  "test_data/volunteers.csv",
 	}}
 
 	assert.NoError(t, checkDevMode(withDevMode, DevEnv))
@@ -490,10 +542,10 @@ gmailUserID: "user@example.com"
 server:
   port: 8080
   sessionSecret: "a-sufficiently-long-secret"
-  adminEmails:
-    - "admin@example.com"
+  organiserEmails:
+    - "agent@example.com"
 devMode:
-  adminEmail: "agent@example.com"
+  organiserEmail: "agent@example.com"
   volunteersCSV: "test_data/volunteers.csv"
 `
 	for _, env := range []string{"prod", DevEnv} {
@@ -508,7 +560,7 @@ devMode:
 	loaded, err := LoadWithEnv(DevEnv)
 	require.NoError(t, err)
 	require.NotNil(t, loaded.DevMode)
-	assert.Equal(t, "agent@example.com", loaded.DevMode.AdminEmail)
+	assert.Equal(t, "agent@example.com", loaded.DevMode.OrganiserEmail)
 }
 
 // `defaultShiftSize` was how big a Shift was until ticket #129. What a Shift

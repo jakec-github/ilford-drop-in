@@ -44,7 +44,7 @@ func decodeVolunteers(t *testing.T, body []byte) []volunteerBody {
 }
 
 func TestListVolunteersEndpoint(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, rosterVolunteers()), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, rosterVolunteers()), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 
@@ -76,7 +76,7 @@ func TestListVolunteersFullNameAlongsideDisplayName(t *testing.T) {
 			{ID: "solo", FirstName: "Prince", DisplayName: "Prince", Status: "Active"},
 		},
 	}
-	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	volunteers := decodeVolunteers(t, rec.Body.Bytes())
@@ -101,7 +101,7 @@ func TestListVolunteersSortedByFullName(t *testing.T) {
 			{ID: "i", FirstName: "Emma", LastName: "Williams", DisplayName: "Emma Williams", Status: "Active"},
 		},
 	}
-	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	volunteers := decodeVolunteers(t, rec.Body.Bytes())
@@ -124,7 +124,7 @@ func TestListVolunteersGenderPassesThrough(t *testing.T) {
 			{ID: "c", DisplayName: "C", Status: "Active"},
 		},
 	}
-	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	volunteers := decodeVolunteers(t, rec.Body.Bytes())
@@ -138,7 +138,7 @@ func TestListVolunteersGenderPassesThrough(t *testing.T) {
 // the roster is the full one, flagged rather than filtered, so an admin can see
 // who has stopped without the endpoint deciding for them.
 func TestListVolunteersIncludesInactive(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, rosterVolunteers()), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, rosterVolunteers()), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	volunteers := decodeVolunteers(t, rec.Body.Bytes())
@@ -148,7 +148,7 @@ func TestListVolunteersIncludesInactive(t *testing.T) {
 }
 
 func TestListVolunteersEmptyRoster(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, &mockVolunteerClient{}), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, &mockVolunteerClient{}), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.JSONEq(t, `{"volunteers":[]}`, rec.Body.String())
 }
@@ -165,6 +165,6 @@ func TestListVolunteersRequiresAdmin(t *testing.T) {
 
 func TestListVolunteersRosterError(t *testing.T) {
 	client := &mockVolunteerClient{err: errors.New("sheet unavailable")}
-	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", adminCookie())
+	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
