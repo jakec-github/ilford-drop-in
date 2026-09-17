@@ -151,9 +151,14 @@ process environment once, when the container starts, so only a *new* container
 ever sees a new value. Neither of the two things that look like they would work
 does: `docker compose restart caddy` restarts the process with the environment
 it already has, and `caddy reload` re-adapts the Caddyfile from inside a process
-whose variable is still the old one. `--force-recreate` rather than a bare
-`up -d` for the same reason the config rollout uses it — it replaces the
-container unconditionally, rather than relying on compose noticing. Expect a few
+whose variable is still the old one.
+
+A bare `docker compose up -d` would in fact do it — compose resolves `env_file`
+into the service's configuration and recreates the container when that changes,
+which is *not* true of the app's bind-mounted config file, whose contents
+compose cannot see (the issue #100 lesson, recorded in `deploy/compose.yaml`).
+`--force-recreate` is given above anyway: it is unconditional, so it does not
+ask the operator to remember which kinds of change compose notices. Expect a few
 seconds of downtime while the new container starts and certifies the new name.
 
 ### When it is missing
