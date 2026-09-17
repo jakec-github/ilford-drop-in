@@ -1,3 +1,7 @@
-word-all.com {
+# The site address is a fact about where the box is reached, not about what the
+# app does, so it lives on the droplet rather than in the repo (issue #202).
+# Caddy substitutes {$SITE_DOMAIN} from its own process environment, which
+# deploy/compose.yaml fills from the untracked /opt/dropin/site.env.
+{$SITE_DOMAIN} {
 	reverse_proxy app:8080
 }
