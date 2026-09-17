@@ -30,6 +30,7 @@ func NewStubAuthenticator(dev *config.DevModeConfig, srv *config.ServerConfig, l
 		logger:         logger,
 		syncVolunteers: syncVolunteers,
 		stubEmail:      dev.AdminEmail,
+		basePath:       srv.BasePath,
 	}
 
 	// A session for an address off the allowlist carries no authority, so login
@@ -79,5 +80,5 @@ func (a *Authenticator) handleStubLogin(w http.ResponseWriter, r *http.Request) 
 	a.setSessionCookie(w, a.stubEmail)
 	a.logger.Warn("Dev mode: issued an admin session without verifying identity",
 		zap.String("email", a.stubEmail))
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
 }

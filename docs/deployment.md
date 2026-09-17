@@ -30,7 +30,8 @@ alongside the merge.
 - Point the domain's A record (host `@`) at the IP **before** first boot of
   the stack — Caddy's certificate issuance needs the name to resolve.
 - The hostname lives in `deploy/Caddyfile`; change it there if the domain
-  changes, and update the Google web client's redirect URI to match.
+  changes, and update the Google web client's redirect URI to match. The site
+  itself may sit under a path below that host — see [Base path](#base-path).
 
 ### 2. Provision the box
 
@@ -57,7 +58,8 @@ scp oauthClientWeb.prod.json serviceAccount.prod.json root@<ip>:/opt/dropin/conf
 
 Check that `oauthClientWeb.prod.json` lists the production redirect URI
 (`https://<domain>/auth/callback`) and that it is also registered on the Google
-web client.
+web client. It stays at the root of the domain even when the site itself sits
+under a path — see [Base path](#base-path).
 
 `drop_in_config.prod.yaml` changes often, so it gets a script — see
 [Config rollout](#config-rollout) below. Run it once here too; it puts the file
@@ -85,6 +87,49 @@ Set `DEPLOY_ENABLED=true`, then run the workflow (Actions → Build and deploy �
 "Run workflow", or merge anything to main). The deploy job copies
 `deploy/compose.yaml` and `deploy/Caddyfile` to `/opt/dropin` and starts the
 stack; Caddy obtains its certificate on first boot.
+
+## Base path
+
+`server.basePath` in the environment's config puts the site's own pages under a
+single path segment — `/<path>/` rather than `/`. It is optional and absent in
+dev, where the site is at the root.
+
+The value belongs to the deployment and is deliberately not in this repo: it is
+one key in `drop_in_config.<env>.yaml`, and the app derives everything else from
+it. A leading slash, one or more URL-safe segments, no trailing slash; anything
+else fails at startup. Depth is not restricted — `/rota` and `/ilford/rota` work
+the same way, because nothing ever splits the path up.
+
+What moves is what leaves the app and cannot be corrected afterwards:
+
+- **The site's own pages** — the rota, the admin screens, the availability
+  form. They are bookmarked, and the availability form's URL is emailed.
+- **`/calendars/{filename}`**, the calendar feeds. Once a volunteer subscribes,
+  the URL lives in their calendar app and fails silently if it moves.
+
+`/` redirects to the base path, temporarily — the root may one day belong to
+something else.
+
+What stays at the root of the domain:
+
+- **`/api`.** Its only caller is the page's own JavaScript, which ships with the
+  server, so it can be pointed anywhere later at no cost.
+- **`/auth`.** Better off at the root, not merely cheaper: the callback URI is
+  registered by hand in the Google console, so one shared `/auth/callback` is a
+  one-time step however many sites a server ends up serving. **Nothing about
+  the Google web client changes when you set a base path.**
+- **`/health`**, which the deploy workflow, `scripts/deploy-config.sh` and
+  `scripts/dev-stack.sh` all poll.
+
+Caddy is not involved either way: it keeps proxying everything to `app:8080` and
+knows nothing about the path. So rolling a base path out is one step — set the
+key and run `scripts/deploy-config.sh`.
+
+Changing it afterwards breaks every link already handed out, and two kinds of
+link are out of reach once sent: a subscribed calendar feed lives in a
+volunteer's calendar app and fails silently, and an availability link has been
+emailed. That is why the path was set before go-live rather than after
+(issue #201).
 
 ## Config rollout
 

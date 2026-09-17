@@ -34,7 +34,16 @@ const gmailStateMaxAge = 10 * time.Minute
 // Allocation tab, which is where the round is asked from (issue #145). The job
 // id goes in the query so the page can pick the send back up — the redirect
 // returns immediately and the emails go out behind it.
+//
+// A path within the site, so it is prefixed with the base path before it is
+// redirected to — see Handler.sendReturnURL.
 const sendReturnPath = "/admin/allocation"
+
+// sendReturnURL is sendReturnPath as the browser must ask for it: under the
+// path the site is served at.
+func (h *Handler) sendReturnURL() string {
+	return h.basePath() + sendReturnPath
+}
 
 // gmailSendState is the pending send, carried through Google and back. It is
 // signed rather than stored: the round trip is the only thing that needs to
@@ -229,14 +238,14 @@ func (h *Handler) completeGmailSend(w http.ResponseWriter, r *http.Request) {
 	// been sent, so this is a cancellation rather than an error.
 	if reason := r.URL.Query().Get("error"); reason != "" {
 		h.auth.logger.Info("Availability send cancelled at the consent screen", zap.String("reason", reason))
-		http.Redirect(w, r, sendReturnPath+"?sendError="+url.QueryEscape("Gmail access was not granted, so nothing was sent."), http.StatusFound)
+		http.Redirect(w, r, h.sendReturnURL()+"?sendError="+url.QueryEscape("Gmail access was not granted, so nothing was sent."), http.StatusFound)
 		return
 	}
 
 	token, err := h.auth.gmailOAuthConfig().Exchange(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
 		h.auth.logger.Warn("Gmail code exchange failed", zap.Error(err))
-		http.Redirect(w, r, sendReturnPath+"?sendError="+url.QueryEscape("Could not get permission to send mail, so nothing was sent."), http.StatusFound)
+		http.Redirect(w, r, h.sendReturnURL()+"?sendError="+url.QueryEscape("Could not get permission to send mail, so nothing was sent."), http.StatusFound)
 		return
 	}
 
@@ -254,7 +263,7 @@ func (h *Handler) startSend(w http.ResponseWriter, r *http.Request, admin string
 	mailer, err := h.newMailer(r.Context(), token)
 	if err != nil {
 		h.logger.Error("Failed to build a mail client for the send", zap.Error(err))
-		http.Redirect(w, r, sendReturnPath+"?sendError="+url.QueryEscape("Could not reach Gmail, so nothing was sent."), http.StatusFound)
+		http.Redirect(w, r, h.sendReturnURL()+"?sendError="+url.QueryEscape("Could not reach Gmail, so nothing was sent."), http.StatusFound)
 		return
 	}
 
@@ -264,7 +273,7 @@ func (h *Handler) startSend(w http.ResponseWriter, r *http.Request, admin string
 	// Built from the request that started the send, not from the callback's
 	// context: this is the address the app answers on, and it is what the
 	// volunteer has to be able to paste into a browser.
-	link := func(token string) string { return availabilityLink(r, token) }
+	link := func(token string) string { return h.availabilityLink(r, token) }
 
 	params := services.SendParams{
 		RotaID:      state.RotaID,
@@ -291,7 +300,7 @@ func (h *Handler) startSend(w http.ResponseWriter, r *http.Request, admin string
 		h.sends.finish(jobID, report, err)
 	}()
 
-	http.Redirect(w, r, sendReturnPath+"?send="+url.QueryEscape(jobID), http.StatusFound)
+	http.Redirect(w, r, h.sendReturnURL()+"?send="+url.QueryEscape(jobID), http.StatusFound)
 }
 
 type sendEmailResponse struct {

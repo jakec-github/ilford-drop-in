@@ -528,3 +528,49 @@ func TestLoadFromPath_ShiftSizeKeyIsIgnoredNotRejected(t *testing.T) {
 	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
 	assert.Contains(t, logged.String(), "defaultShiftSize")
 }
+
+func TestValidate_BasePath(t *testing.T) {
+	base := Config{
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+		DatabaseURL:          "postgres://localhost:5432/test",
+		GmailUserID:          "user@example.com",
+	}
+
+	withBasePath := func(path string) *Config {
+		cfg := base
+		cfg.Server = &ServerConfig{
+			Port:          8080,
+			SessionSecret: "a-sufficiently-long-secret",
+			AdminEmails:   []string{"admin@example.com"},
+			BasePath:      path,
+		}
+		return &cfg
+	}
+
+	// Absent is the default everywhere but the deployed environments.
+	assert.NoError(t, Validate(withBasePath("")))
+	assert.NoError(t, Validate(withBasePath("/rota")))
+	assert.NoError(t, Validate(withBasePath("/ilford-drop-in")))
+	// Depth is not restricted: the path is only ever a prefix, and a deployment
+	// sitting under an existing site's path needs more than one segment.
+	assert.NoError(t, Validate(withBasePath("/ilford/rota")))
+	assert.NoError(t, Validate(withBasePath("/a/b/c")))
+
+	for _, bad := range []string{
+		"rota",       // no leading slash
+		"/rota/",     // trailing slash
+		"/",          // the root is not a base path
+		"/rota path", // not URL-safe
+		"//rota",     // empty first segment
+		"/a//b",      // empty middle segment
+		"/rota?x=1",  // query
+		"/rota#frag", // fragment
+		"/../rota",   // traversal
+		"/ilford/..", // traversal in the last segment
+		"/./rota",    // a "." segment resolves away
+	} {
+		assert.Error(t, Validate(withBasePath(bad)), "expected %q to be rejected", bad)
+	}
+}
