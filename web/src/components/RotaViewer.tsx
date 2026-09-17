@@ -161,11 +161,8 @@ type EditDialog =
       // Fully specified bar the reason and, when role is set, the role —
       // both of which the dialog collects.
       change: Omit<RotaChange, "reason" | "role">;
-      // Offered only for a move: the Role the moved person takes on the
-      // shift they land on. A swap keeps whoever it moves in the role they
-      // already held, and a remove has nobody coming in, so neither needs
-      // this — see askSwap and askRemove.
-      role?: { initial: Role; leadTaken: boolean };
+      // Offered only for a move — see askSwap and askRemove.
+      role?: { initial: Role };
     }
   // Someone being pinned to, or unpinned from, a shift the rota has not been
   // run for. Not alterations: nothing is on the rota yet to alter.
@@ -490,20 +487,13 @@ export default function RotaViewer({
   // showing them twice.
   function askMove(to: string) {
     if (!pending) return;
-    // A shift has one team-lead Seat, so the choice is only real where the
-    // destination has none — same rule onAdd applies below, and the same
-    // reason: which one shift's single lead is has been settled by someone
-    // already there.
-    const leadTaken = rotaShifts
-      .find((s) => s.date === to)
-      ?.assignees.some((a) => a.role === TEAM_LEAD_ROLE) ?? false;
     setDialog({
       kind: "confirm",
       title: `Move ${pending.name}?`,
       summary: `${pending.name} moves from ${formatShiftDateLong(pending.date)} to ${formatShiftDateLong(to)}.`,
       confirmLabel: "Move",
       change: { date: to, in: pending.person, swapDate: pending.date },
-      role: { initial: pending.role, leadTaken },
+      role: { initial: pending.role },
     });
   }
 
