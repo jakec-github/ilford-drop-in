@@ -72,14 +72,16 @@ function DialogActions({
   );
 }
 
-// ConfirmChangeDialog collects the reason for a change the admin has already
-// described by picking chips — a remove, a move or a swap. The summary spells
-// out what is about to happen, because a drag that landed one row off is
-// otherwise indistinguishable from the one that was meant.
+// ConfirmChangeDialog collects the reason for a change already described by
+// picking chips — a remove, a move or a swap.
+//
+// role is offered only for a move: defaults to what the person already
+// held, but can be changed.
 export function ConfirmChangeDialog({
   title,
   summary,
   confirmLabel,
+  role,
   busy,
   onCancel,
   onConfirm,
@@ -87,21 +89,40 @@ export function ConfirmChangeDialog({
   title: string;
   summary: string;
   confirmLabel: string;
+  // Defaults the picker to what the person already held.
+  role?: { initial: Role };
   busy: boolean;
   onCancel: () => void;
-  onConfirm: (reason: string) => void;
+  onConfirm: (reason: string, role?: Role) => void;
 }) {
   const [reason, setReason] = useState("");
+  const [chosenRole, setChosenRole] = useState<Role>(
+    role?.initial ?? SERVICE_VOLUNTEER_ROLE,
+  );
 
   return (
     <Dialog title={title} onClose={onCancel}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onConfirm(reason.trim());
+          onConfirm(reason.trim(), role ? chosenRole : undefined);
         }}
       >
         <p className="rota-edit-summary">{summary}</p>
+
+        {role && (
+          <label className="rota-edit-field">
+            Role
+            <select
+              value={chosenRole}
+              onChange={(e) => setChosenRole(e.target.value as Role)}
+            >
+              <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
+              <option value={TEAM_LEAD_ROLE}>Team lead</option>
+            </select>
+          </label>
+        )}
+
         <ReasonField value={reason} onChange={setReason} />
         <DialogActions
           confirmLabel={confirmLabel}

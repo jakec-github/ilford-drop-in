@@ -785,6 +785,62 @@ func TestChangeRota_MoveWithNothingToInheritTakesNoRole(t *testing.T) {
 	assert.Equal(t, "", addedAlteration(t, store).Role)
 }
 
+// An explicit Role on a move overrides what it would otherwise inherit from
+// the shift the volunteer is leaving — the admin dragging them onto an open
+// area chooses the Role there rather than carrying the old one across
+// unasked.
+func TestChangeRota_MoveWithExplicitRoleOverridesInheritance(t *testing.T) {
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-12", Role: "Team lead", VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "alice",
+		SwapDate:  "2025-01-12",
+		Role:      "Service volunteer",
+		Reason:    "Alice moves a week earlier, covering rather than leading",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
+	require.NoError(t, err)
+	assert.Equal(t, "Service volunteer", addedAlteration(t, store).Role)
+}
+
+// A move naming Team lead onto a shift that already has one succeeds too,
+// same as an add would (TestChangeRota_ExplicitRoleIsNotCountedAgainstTheShift):
+// nothing here counts how many of a Role a shift ends up with regardless of
+// how the incoming volunteer arrived (issue #185). The frontend's own
+// leadTaken check (RotaEditDialogs.tsx) still steers an admin away from this
+// as the default UI choice, but the server has no ceiling to enforce behind
+// it.
+func TestChangeRota_MoveWithRoleNotCountedAgainstTheShift(t *testing.T) {
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "bob",
+		SwapDate:  "2025-01-12",
+		Role:      "Team lead",
+		Reason:    "Bob moves a week earlier, co-leading",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
+	require.NoError(t, err)
+	assert.Equal(t, "Team lead", addedAlteration(t, store).Role)
+}
+
 // addedAlteration returns the single "add" alteration the store recorded.
 func addedAlteration(t *testing.T, store *mockChangeRotaStore) db.Alteration {
 	t.Helper()
