@@ -1,4 +1,4 @@
-import { Link, Redirect, Route, Switch, useLocation } from "wouter";
+import { Link, Redirect, Route, Router, Switch, useLocation } from "wouter";
 import RotaViewer from "./components/RotaViewer";
 import AdminPage from "./components/AdminPage";
 import AvailabilityForm from "./components/AvailabilityForm";
@@ -6,6 +6,7 @@ import { ADMIN_TABS } from "./components/adminTabs";
 import { useRota } from "./hooks/useRota";
 import { useAuth } from "./auth-context";
 import Button from "./ui/Button";
+import { apiUrl, BASE_PATH } from "./basePath";
 
 // AuthStatus shows a login link when logged out, or the admin's email plus a
 // logout button when logged in. It reads the global auth state so login status
@@ -20,7 +21,7 @@ function AuthStatus() {
 
   if (email === null) {
     return (
-      <a className="auth-status" href="/auth/login">
+      <a className="auth-status" href={apiUrl("/auth/login")}>
         Admin login
       </a>
     );
@@ -85,42 +86,47 @@ function HomeView() {
 
 function App() {
   return (
-    <Switch>
-      {/* The volunteer's own page, outside the shell the rest of the app
-          shares. Whoever opens this link is not an admin and has nowhere else
-          to go: a nav bar offering "Admin login" would be noise on the one
-          screen a volunteer ever sees. */}
-      <Route path="/availability/:token">
-        {(params) => <AvailabilityForm token={params.token} />}
-      </Route>
+    // Every client route is relative to the path the site is served under, so
+    // the router is told once and nothing below it — no <Link>, no <Route> —
+    // has to know (issue #201).
+    <Router base={BASE_PATH}>
+      <Switch>
+        {/* The volunteer's own page, outside the shell the rest of the app
+            shares. Whoever opens this link is not an admin and has nowhere
+            else to go: a nav bar offering "Admin login" would be noise on the
+            one screen a volunteer ever sees. */}
+        <Route path="/availability/:token">
+          {(params) => <AvailabilityForm token={params.token} />}
+        </Route>
 
-      <Route>
-        <>
-          <Header />
-          <Switch>
-            <Route path="/" component={HomeView} />
+        <Route>
+          <>
+            <Header />
+            <Switch>
+              <Route path="/" component={HomeView} />
 
-            {/* /admin is the admin area's front door, not a page of its own: it
-                lands on the first tab. */}
-            <Route path="/admin">
-              <Redirect to={ADMIN_TABS[0].path} replace />
-            </Route>
-
-            {ADMIN_TABS.map((tab) => (
-              <Route key={tab.path} path={tab.path}>
-                <AdminPage tab={tab} />
+              {/* /admin is the admin area's front door, not a page of its
+                  own: it lands on the first tab. */}
+              <Route path="/admin">
+                <Redirect to={ADMIN_TABS[0].path} replace />
               </Route>
-            ))}
 
-            <Route>
-              <p className="app-status">
-                Page not found. <Link href="/">Back to the rota</Link>
-              </p>
-            </Route>
-          </Switch>
-        </>
-      </Route>
-    </Switch>
+              {ADMIN_TABS.map((tab) => (
+                <Route key={tab.path} path={tab.path}>
+                  <AdminPage tab={tab} />
+                </Route>
+              ))}
+
+              <Route>
+                <p className="app-status">
+                  Page not found. <Link href="/">Back to the rota</Link>
+                </p>
+              </Route>
+            </Switch>
+          </>
+        </Route>
+      </Switch>
+    </Router>
   );
 }
 

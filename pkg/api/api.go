@@ -103,6 +103,17 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 // the frontend, so the two can name things freely without colliding.
 const apiPrefix = "/api"
 
+// basePath is the single path segment the whole site is served under, or "" for
+// a site at the root of its domain — dev, every test, and any deployment that
+// has not set one. It is configuration rather than a constant because the value
+// belongs to the deployment and never appears in this repo (issue #201).
+func (h *Handler) basePath() string {
+	if h.cfg == nil || h.cfg.Server == nil {
+		return ""
+	}
+	return h.cfg.Server.BasePath
+}
+
 // Routes returns the API's route table.
 //
 // The data endpoints live under /api and the frontend gets everything else,
@@ -110,11 +121,14 @@ const apiPrefix = "/api"
 // is the volunteer's page, /api/availability/{token} is the JSON behind it — and
 // what makes a mistyped endpoint a 404 rather than index.html with a 200.
 //
-// Three paths deliberately stay unprefixed: /health, which the deploy tooling
-// and scripts/dev-stack.sh poll; /auth, a browser redirect flow whose callback
-// URI is registered with Google; and /calendars/{filename}, whose URLs are
-// subscribed to from volunteers' calendar apps and so cannot be moved without
-// breaking subscriptions that live outside this app.
+// Two paths stay unprefixed within the site: /auth, a browser redirect flow
+// whose callback URI is registered with Google, and /calendars/{filename},
+// whose URLs are subscribed to from volunteers' calendar apps and cannot be
+// moved once anyone holds one. Moving them is exactly why the base path had to
+// land before go-live, while nobody had subscribed to anything (issue #201).
+//
+// The whole of that then sits under basePath, and /health alone stays at the
+// root of the domain — see mountSite.
 func (h *Handler) Routes() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /shifts", h.handleListShifts)
@@ -218,24 +232,62 @@ func (h *Handler) Routes() http.Handler {
 	api.HandleFunc("GET /availability/{token}", h.handleAvailabilityForm)
 	api.HandleFunc("POST /availability/{token}", h.handleSubmitAvailability)
 
-	mux := http.NewServeMux()
-	mux.Handle(apiPrefix+"/", http.StripPrefix(apiPrefix, h.apiRouter(api)))
-	mux.HandleFunc("GET /health", h.handleHealth)
-	mux.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
-	h.auth.registerRoutes(mux)
+	site := http.NewServeMux()
+	site.Handle(apiPrefix+"/", http.StripPrefix(apiPrefix, h.apiRouter(api)))
+	site.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
+	h.auth.registerRoutes(site)
 	// Sits under /auth rather than /api because it is the same browser redirect
 	// dance as login and shares its registered callback URI — it is an OAuth
 	// endpoint that happens to start a send, not a data endpoint.
-	mux.Handle("GET /auth/gmail", h.auth.requireAdmin(http.HandlerFunc(h.handleGmailConsent)))
+	site.Handle("GET /auth/gmail", h.auth.requireAdmin(http.HandlerFunc(h.handleGmailConsent)))
 	if hasFrontend(h.frontend) {
 		// Registered without a method: a pattern matching fewer methods than
 		// /api/ but more paths conflicts with it. frontendHandler turns away
 		// anything but GET and HEAD itself.
-		mux.Handle("/", frontendHandler(h.frontend))
+		site.Handle("/", frontendHandler(h.frontend, h.basePath()))
 	} else {
 		h.logger.Info("No frontend build embedded; serving API only")
 	}
-	return mux
+
+	return h.mountSite(site)
+}
+
+// mountSite puts the site under its base path, and /health at the root
+// whatever that path is.
+//
+// /health is infrastructure rather than part of the site: the deploy workflow,
+// scripts/deploy-config.sh and scripts/dev-stack.sh all poll it, and leaving it
+// at the root means none of them has to learn a path that differs per
+// environment and is not in this repo. It is the one deliberate exception —
+// everything else moves wholesale, because a URL that survives the move is a
+// URL that breaks the next one.
+//
+// With no base path configured the site is the whole server, which is dev and
+// every test.
+func (h *Handler) mountSite(site http.Handler) http.Handler {
+	root := http.NewServeMux()
+	root.HandleFunc("GET /health", h.handleHealth)
+
+	base := h.basePath()
+	if base == "" {
+		root.Handle("/", site)
+		return root
+	}
+
+	root.Handle(base+"/", http.StripPrefix(base, site))
+	// The bare base path and the base path with its slash are the same page,
+	// and the second is what every relative asset reference in index.html
+	// resolves against. Permanent: base+"/" is where the site lives for as long
+	// as the base path is what it is.
+	root.Handle(base, http.RedirectHandler(base+"/", http.StatusMovedPermanently))
+	// The root of the domain does something sensible rather than 404ing, but
+	// only temporarily: the point of the base path is that the root may one day
+	// belong to nobody, or to a page that picks between organisations, and a
+	// permanent redirect cached in a volunteer's browser would outlive that.
+	// Exactly "/" — anything else out here is not ours and should say so.
+	root.Handle("GET /{$}", http.RedirectHandler(base+"/", http.StatusFound))
+
+	return root
 }
 
 // apiRouter serves the API mux, answering anything it does not route in JSON.

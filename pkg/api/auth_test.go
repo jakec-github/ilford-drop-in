@@ -184,39 +184,62 @@ func TestResolveRedirectURI(t *testing.T) {
 	}
 
 	t.Run("picks by locality when no preference is given", func(t *testing.T) {
-		got, err := resolveRedirectURI(uris, "test", "")
+		got, err := resolveRedirectURI(uris, "test", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "http://localhost:5173/auth/callback", got)
 
-		got, err = resolveRedirectURI(uris, "prod", "")
+		got, err = resolveRedirectURI(uris, "prod", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "https://dropin.example.org/auth/callback", got)
 	})
 
 	t.Run("falls back to the first URI when none matches the wanted locality", func(t *testing.T) {
-		got, err := resolveRedirectURI([]string{"http://localhost:5173/auth/callback"}, "prod", "")
+		got, err := resolveRedirectURI([]string{"http://localhost:5173/auth/callback"}, "prod", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "http://localhost:5173/auth/callback", got)
 	})
 
 	t.Run("errors when no URIs are registered", func(t *testing.T) {
-		_, err := resolveRedirectURI(nil, "test", "")
+		_, err := resolveRedirectURI(nil, "test", "", "")
 		require.Error(t, err)
 	})
 
 	// A worktree serves the frontend on its own port, so it needs to name the
 	// registered callback that matches it rather than take the first localhost one.
 	t.Run("honours a preferred URI that is registered", func(t *testing.T) {
-		got, err := resolveRedirectURI(uris, "test", "http://localhost:5175/auth/callback")
+		got, err := resolveRedirectURI(uris, "test", "http://localhost:5175/auth/callback", "")
 		require.NoError(t, err)
 		assert.Equal(t, "http://localhost:5175/auth/callback", got)
 	})
 
 	t.Run("rejects a preferred URI that is not registered", func(t *testing.T) {
-		_, err := resolveRedirectURI(uris, "test", "http://localhost:9999/auth/callback")
+		_, err := resolveRedirectURI(uris, "test", "http://localhost:9999/auth/callback", "")
 		require.Error(t, err)
 		// The message should point at what is actually registered, since the fix
 		// is either to register the URI or to correct the config.
 		assert.Contains(t, err.Error(), "http://localhost:5173/auth/callback")
+	})
+
+	// Under a base path the callback moves with the rest of the site. A URI
+	// left at the root is a config that disagrees with the Google console, and
+	// the only other place it would show up is a rejected consent screen
+	// halfway through a login.
+	t.Run("rejects a URI whose path is not the callback under the base path", func(t *testing.T) {
+		_, err := resolveRedirectURI(uris, "prod", "", "/rota")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "/rota/auth/callback")
+
+		got, err := resolveRedirectURI(
+			[]string{"https://dropin.example.org/rota/auth/callback"}, "prod", "", "/rota")
+		require.NoError(t, err)
+		assert.Equal(t, "https://dropin.example.org/rota/auth/callback", got)
+	})
+
+	// And with no base path the callback is at the root, which is where it has
+	// always been — a URI pointing anywhere else was never going to work.
+	t.Run("rejects a URI whose path is not the callback at all", func(t *testing.T) {
+		_, err := resolveRedirectURI([]string{"https://dropin.example.org/oauth2"}, "prod", "", "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "/auth/callback")
 	})
 }

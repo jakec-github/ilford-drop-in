@@ -30,7 +30,8 @@ alongside the merge.
 - Point the domain's A record (host `@`) at the IP **before** first boot of
   the stack — Caddy's certificate issuance needs the name to resolve.
 - The hostname lives in `deploy/Caddyfile`; change it there if the domain
-  changes, and update the Google web client's redirect URI to match.
+  changes, and update the Google web client's redirect URI to match. The site
+  itself may sit under a path below that host — see [Base path](#base-path).
 
 ### 2. Provision the box
 
@@ -55,9 +56,11 @@ The two credentials change about once a year, so they go up by hand:
 scp oauthClientWeb.prod.json serviceAccount.prod.json root@<ip>:/opt/dropin/config/
 ```
 
-Check that `oauthClientWeb.prod.json` lists the production redirect URI
-(`https://<domain>/auth/callback`) and that it is also registered on the Google
-web client.
+Check that `oauthClientWeb.prod.json` lists the production redirect URI and that
+it is also registered on the Google web client. It has to name the callback the
+server actually serves, which is under the base path if one is set — see [Base
+path](#base-path). The server refuses to start on a mismatch rather than letting
+it surface as a rejected consent screen halfway through a login.
 
 `drop_in_config.prod.yaml` changes often, so it gets a script — see
 [Config rollout](#config-rollout) below. Run it once here too; it puts the file
@@ -85,6 +88,38 @@ Set `DEPLOY_ENABLED=true`, then run the workflow (Actions → Build and deploy �
 "Run workflow", or merge anything to main). The deploy job copies
 `deploy/compose.yaml` and `deploy/Caddyfile` to `/opt/dropin` and starts the
 stack; Caddy obtains its certificate on first boot.
+
+## Base path
+
+`server.basePath` in the environment's config puts the whole site under a single
+path segment — `/<path>/` rather than `/`. It is optional and absent in dev,
+where the site is at the root.
+
+The value belongs to the deployment and is deliberately not in this repo: it is
+one key in `drop_in_config.<env>.yaml`, and the app derives everything else from
+it. A leading slash, one segment, no trailing slash; anything else fails at
+startup.
+
+What follows from setting it:
+
+- Every URL the site serves moves — the rota, the admin screens, the
+  availability form, `/api`, `/auth` and the calendar feeds. `/` redirects to
+  the base path.
+- **`/health` stays at the root.** It is infrastructure rather than part of the
+  site, and the deploy workflow, `scripts/deploy-config.sh` and
+  `scripts/dev-stack.sh` all poll it. It is the one exception.
+- **The Google web client must carry the new redirect URI**,
+  `https://<domain>/<path>/auth/callback`, both in the console and in
+  `oauthClientWeb.<env>.json` on the box. Do this before rolling out the config:
+  the server checks the two agree and will not start otherwise.
+- **Caddy is not involved.** It keeps proxying everything to `app:8080` and
+  knows nothing about the path.
+
+Changing the base path after go-live breaks every link already handed out, and
+two kinds of link are out of reach once sent: a subscribed calendar feed lives
+in a volunteer's calendar app and fails silently, and an availability link has
+been emailed. That is why the path was set before go-live rather than after
+(issue #201).
 
 ## Config rollout
 

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useAuth } from "../auth-context";
 import { ADMIN_TABS, type AdminTab } from "./adminTabs";
+import { apiUrl } from "../basePath";
 import "./AdminPage.css";
 
 function WipPanel({ title }: { title: string }) {
@@ -24,7 +25,7 @@ export default function AdminPage({ tab }: { tab: AdminTab }) {
   if (email === null) {
     return (
       <p className="app-status">
-        This page is for admins. <a href="/auth/login">Admin login</a>
+        This page is for admins. <a href={apiUrl("/auth/login")}>Admin login</a>
       </p>
     );
   }
