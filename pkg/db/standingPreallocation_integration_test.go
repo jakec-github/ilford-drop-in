@@ -101,7 +101,7 @@ func TestStandingPreallocationRefusesARepeat(t *testing.T) {
 }
 
 // Defining a rota writes its rotation, its shifts and its seeded pins in one
-// transaction, so a rota can never exist with only some of the pins an admin
+// transaction, so a rota can never exist with only some of the pins an Organiser
 // was promised.
 func TestInsertDefinedRotaWritesSeededPreallocations(t *testing.T) {
 	database, _ := dbtest.New(t)

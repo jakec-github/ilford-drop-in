@@ -139,7 +139,7 @@ func TestDraftRotaAllocationDirtiness(t *testing.T) {
 			assert.True(t, status.SolvedAt.Equal(solved))
 			assert.Equal(t, "OPTIMAL", status.SolverStatus)
 			assert.Equal(t, 10, status.SeatsAsked)
-			assert.Equal(t, 8, status.SeatsFilled, "two Seats short, which is what an admin acts on")
+			assert.Equal(t, 8, status.SeatsFilled, "two Seats short, which is what an Organiser acts on")
 			assert.Equal(t, 1.25, status.Diagnostics.SolveTimeSeconds, "read back out of the solver's own JSON")
 		})
 	}
@@ -163,7 +163,7 @@ func TestDraftRotaAllocationOfAnUndraftedRota(t *testing.T) {
 	assert.Empty(t, status.SolverStatus)
 }
 
-// The rota a draft drafted, which is what an admin watching it take shape reads:
+// The rota a draft drafted, which is what an Organiser watching it take shape reads:
 // who the solver put where, keyed by Shift and named against the roster, with
 // the Shifts it staffed nobody on left out.
 func TestDraftRotaAllocationCarriesTheRotaItDrafted(t *testing.T) {
@@ -222,7 +222,7 @@ func TestDraftRotaAllocationOfAnUndraftedRotaReadsNoRoster(t *testing.T) {
 }
 
 // No rota in flight, nothing to draft. Said as the missing step rather than as
-// an empty answer, because that is what an admin has to do about it — and it is
+// an empty answer, because that is what an Organiser has to do about it — and it is
 // what stops anything solving when there is no unallocated Rotation.
 func TestDraftRotaAllocationWithNoRotaInFlight(t *testing.T) {
 	store := &mockAllocateRotaStore{

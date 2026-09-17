@@ -40,7 +40,7 @@ type AvailabilityStore interface {
 }
 
 // AvailabilityShift is one of a rota's shifts as both the volunteer's form and
-// the admin roster present it. Closed shifts are carried rather than filtered
+// the Organiser roster present it. Closed shifts are carried rather than filtered
 // out: a volunteer seeing the date listed and shut knows the drop-in is not
 // running, where a missing date just looks like a mistake.
 type AvailabilityShift struct {
@@ -54,7 +54,7 @@ type AvailabilityShift struct {
 	Closed bool
 }
 
-// AvailabilityEntry is one volunteer's place in a round, as an admin sees it.
+// AvailabilityEntry is one volunteer's place in a round, as an Organiser sees it.
 //
 // Replied is the whole point of the roster: it says who still needs chasing.
 // CoveredBy softens that for a volunteer whose group partner has already
@@ -82,10 +82,10 @@ type AvailabilityEntry struct {
 
 // AvailabilityRound is a rota's round: how each of its shifts is looking, and
 // where everyone asked has got to. Allocated marks the round closed — links stop
-// working then, so an admin looking at an allocated round is reading history.
+// working then, so an Organiser looking at an allocated round is reading history.
 //
 // Groups, not volunteers, are the top level: a group is allocated as a unit and
-// answers as a unit, so it is the grain an admin reads a round at. Each group
+// answers as a unit, so it is the grain an Organiser reads a round at. Each group
 // carries its members, whose links are the per-volunteer grain a request is
 // actually minted at.
 type AvailabilityRound struct {
@@ -221,7 +221,7 @@ func mintRequestsFor(
 // who has answered. rotaID empty means the latest rota.
 //
 // The links are part of the product, not a debug affordance — copying one is how
-// an admin resends out of band, and how the loop is drivable over HTTP before
+// an Organiser resends out of band, and how the loop is drivable over HTTP before
 // sending exists at all.
 func GetAvailabilityRound(
 	ctx context.Context,
@@ -487,7 +487,7 @@ func allocatableRequests(
 	return out
 }
 
-// buildRound assembles the admin's view of a round from its requests and the
+// buildRound assembles the Organiser's view of a round from its requests and the
 // latest generation behind each.
 func buildRound(
 	ctx context.Context,
@@ -548,7 +548,7 @@ func buildRound(
 		// Known, and still volunteering: allocatableRequests dropped everyone
 		// else before the loop was reached.
 		volunteer, _ := findVolunteer(volunteers, r.VolunteerID)
-		// The admin's own screen, so the short name — see displayName.
+		// The Organiser's own screen, so the short name — see displayName.
 		entry.VolunteerName = displayName(volunteer)
 		entry.Roles = volunteer.Roles
 		if !hasReplied {

@@ -266,9 +266,9 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 	}
 }
 
-// TestDefineRotaRequiresAdmin proves the route is gated: without a session the
+// TestDefineRotaRequiresAnOrganiser proves the route is gated: without a session the
 // request is rejected and no rota is defined.
-func TestDefineRotaRequiresAdmin(t *testing.T) {
+func TestDefineRotaRequiresAnOrganiser(t *testing.T) {
 	store := &mockStore{}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rotations", defineBody(6, "2026-08-02"))
@@ -316,7 +316,7 @@ func TestRotaProposalEndpoint_NeedsNoSettings(t *testing.T) {
 	assert.NotEmpty(t, resp.StartDate)
 }
 
-func TestRotaProposalRequiresAdmin(t *testing.T) {
+func TestRotaProposalRequiresAnOrganiser(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/rotations/proposed", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
@@ -383,7 +383,7 @@ func TestRotaInFlightEndpoint_WithRound(t *testing.T) {
 	assert.Equal(t, 1, resp.Rotation.Replied, "the allocated rota's answer is not this rota's")
 }
 
-func TestRotaInFlightRequiresAdmin(t *testing.T) {
+func TestRotaInFlightRequiresASession(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/rotations/in-flight", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
@@ -455,7 +455,7 @@ func TestDiscardRotaEndpoint_StoreFailure(t *testing.T) {
 	assert.Len(t, store.rotations, 1)
 }
 
-func TestDiscardRotaRequiresAdmin(t *testing.T) {
+func TestDiscardRotaRequiresAnOrganiser(t *testing.T) {
 	store := &mockStore{
 		rotations: []db.Rotation{{ID: "live", Start: "2026-08-02", End: "2026-08-23", ShiftCount: 4}},
 	}

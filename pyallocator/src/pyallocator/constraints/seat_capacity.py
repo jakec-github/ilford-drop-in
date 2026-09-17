@@ -7,7 +7,7 @@ their Role's Seats before the solver sees them.
 
 The Shape is the only ceiling. A Role used to carry a max of its own and
 this applied that as a second, unconditional one; since a Shift's Shape
-states every Role's count and an admin edits it per Shift (#137/#138), that
+states every Role's count and an Organiser edits it per Shift (#137/#138), that
 ceiling had nothing left to say and went with the field (#185).
 
 This replaces the pre-Roles pair shift_capacity + at_most_one_team_lead: a

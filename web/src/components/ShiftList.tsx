@@ -89,7 +89,7 @@ function groupColour(key: string): string {
 // The corner dot marking group membership, on whichever kind of chip is showing
 // the person: an allocated one or a drafted one. Group is why two names appear
 // together, which is worth seeing on a draft as much as on the rota — it is
-// often the explanation of a placement an admin was not expecting.
+// often the explanation of a placement an Organiser was not expecting.
 function GroupDot({ group }: { group: string }) {
   return (
     <span
@@ -104,7 +104,7 @@ function GroupDot({ group }: { group: string }) {
 // render, so a row's props are the same object between renders.
 const NO_DRAFT: Map<string, Assignee[]> = new Map();
 
-// Pending is the person the admin has picked up, on their way to another shift.
+// Pending is the person the editor has picked up, on their way to another shift.
 // The same state backs both routes to a move or a swap, so the drop handlers do
 // not care which was used.
 export interface Pending {
@@ -155,7 +155,7 @@ export interface RowEdit {
   // The server's message from a change that was refused against this shift.
   error: string | null;
   // Pinning is the unallocated row's half of editing: those rows have nobody on
-  // them to drag, and what an admin can change there is who allocation will be
+  // them to drag, and what can be changed there is who allocation will be
   // made to place.
   onPin: () => void;
   onUnpin: (pin: Preallocation) => void;
@@ -331,7 +331,7 @@ function swapBlockedReason(
   return `${assignee.name} is already on ${formatShiftDateLong(pending.date)}`;
 }
 
-// What a pin means. There is one kind, whether an admin made it here or a
+// What a pin means. There is one kind, whether somebody made it here or a
 // Standing Preallocation seeded it when the rota was defined, so there is one
 // thing to say about it.
 function pinTitle(pin: Preallocation): string {
@@ -345,7 +345,7 @@ function pinTitle(pin: Preallocation): string {
 // What a drafted name means. Deliberately the same sentence shape as pinTitle,
 // because these are the two things on an unallocated row that are not on the
 // rota — and the difference between them is the whole point: a pin is a promise
-// an admin made, a draft Seat is a guess the solver made and will make again.
+// somebody made, a draft Seat is a guess the solver made and will make again.
 function draftTitle(assignee: Assignee): string {
   const role =
     assignee.role === SERVICE_VOLUNTEER_ROLE
@@ -355,7 +355,7 @@ function draftTitle(assignee: Assignee): string {
 }
 
 // One name expected on a shift the rota has not been run for, and on what
-// footing: an admin's pin, or a Seat the last solve filled.
+// footing: a pin, or a Seat the last solve filled.
 type Planned =
   { kind: "pin"; pin: Preallocation } | { kind: "draft"; assignee: Assignee };
 
@@ -393,7 +393,7 @@ function plannedFor(pins: Preallocation[], drafted: Assignee[]): Planned[] {
 }
 
 // PlannedList shows who is expected on a shift the rota has not been run for:
-// the people an admin has pinned to it, and whoever the last solve put in the
+// the people pinned to it, and whoever the last solve put in the
 // Seats around them.
 //
 // One row rather than the two it used to be (issue #193). Pins and draft were a
@@ -540,12 +540,12 @@ function ShiftRow({
   edit,
 }: {
   shift: RotaShift;
-  // Everyone already pinned to this shift. Only ever non-empty for an admin
+  // Everyone already pinned to this shift. Only ever non-empty when signed in
   // looking at a shift whose rota has not been allocated.
   pins: Preallocation[];
   // Who the last solve put on this shift. Only ever non-empty on the same rows
   // as pins, and for the same reason: a draft only exists for a rota that has
-  // not been allocated, and only an admin is shown one.
+  // not been allocated, and only the signed in are shown one.
   drafted: Assignee[];
   draftSolved: boolean;
   draftStale: boolean;
@@ -567,7 +567,7 @@ function ShiftRow({
   // asking for no one is not a full shift, it is one still to be stated.
   const judged = unallocated && draftSolved && shift.shape.length > 0;
   const unfilledRoles = judged ? shiftDeficit(shift.shape, drafted) : [];
-  // Every Seat spoken for. Worth marking as much as the gaps are: what an admin
+  // Every Seat spoken for. Worth marking as much as the gaps are: what an Organiser
   // is doing on this screen is finding the rows that still need them, and a
   // green edge is what lets the eye skip one.
   const filled = judged && unfilledRoles.length === 0;
@@ -819,18 +819,18 @@ function ShiftRow({
 
 // ShiftList draws a rota's shifts, one stacked row each: when the shift runs,
 // and then whoever is on it — allocated, pinned or drafted — plus whatever this
-// caller lets an admin change about it.
+// caller lets whoever is looking change about it.
 //
 // It fetches nothing. Everything it draws arrives as props, which is what lets
 // the rota page and the Allocation tab render the same rows from two quite
 // different sets of hooks without either drifting from the other.
 //
-// The rows are mobile first, and they are used on an admin screen anyway, which
+// The rows are mobile first, and they are used on an Organiser screen anyway, which
 // `CLAUDE.md` otherwise asks to be designed for the desk. Two reasons, and the
 // first is the one that matters: there is one component, so the two screens
 // cannot show the same shift differently or be updated apart — which is the
 // whole point of the extraction. The second is that these rows read better at a
-// desk than the table they replaced on the Allocation tab: what an admin is
+// desk than the table they replaced on the Allocation tab: what an Organiser is
 // doing there is preparing shifts one at a time, and a row per shift with its
 // pins, its draft and its controls together is the shape of that job.
 export default function ShiftList({
@@ -869,7 +869,7 @@ export default function ShiftList({
   // has no search, and its rows have nobody allocated to highlight.
   selectedName?: string;
   onSelectName?: (name: string) => void;
-  // What an admin may change about a given row, or null where nothing can be
+  // What whoever is editing may change about a given row, or null where nothing can be
   // changed. A function of the shift rather than a flag, because what one row
   // offers depends on what is in flight elsewhere in the list.
   rowEdit?: ((shift: RotaShift) => RowEdit) | null;

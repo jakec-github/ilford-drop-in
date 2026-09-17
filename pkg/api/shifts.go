@@ -35,7 +35,7 @@ type shiftResponse struct {
 	//
 	// Public, like the roles it names: what a shift is asking for is the same
 	// kind of fact as when it runs, and the rota page renders it for whoever is
-	// looking. Editing it is admin-only.
+	// looking. Editing it is Organiser-only.
 	Shape     []seatResponse     `json:"shape"`
 	Allocated bool               `json:"allocated"`
 	Assignees []assigneeResponse `json:"assignees"`

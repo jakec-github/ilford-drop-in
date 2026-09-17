@@ -77,7 +77,7 @@ type CpsatInput struct {
 	MaxAllocationCount int         `json:"max_allocation_count"`
 	Roles              []CpsatRole `json:"roles"`
 	// EnabledConstraints names the optional solver rules this run applies —
-	// the admin's Allocation Settings, in registry order. Python applies
+	// the Organiser's Allocation Settings, in registry order. Python applies
 	// exactly these on top of its fundamentals and holds no default list of
 	// its own (ADR 0006, issue #130); a name it does not know it ignores.
 	EnabledConstraints []string               `json:"enabled_constraints"`

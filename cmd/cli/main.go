@@ -55,12 +55,12 @@ left here reads or writes a Sheet.`,
 	// Add commands with lazy initialization
 	// These will use the app context after it's initialized by PersistentPreRunE
 	// There is no defineRota, allocateRota or changeRota command. The whole life
-	// of a rota is in the app: it is defined on Admin → Allocation, allocated
+	// of a rota is in the app: it is defined on Organiser → Allocation, allocated
 	// from the draft on the same screen, and altered a person at a time on the
 	// rota page (issues #140, #144, #145; #64 for the editor).
 	//
 	// Allocating is the one that could never come back. It re-solves and commits
-	// only the rota the admin was shown, and a command that solved and committed
+	// only the rota the Organiser was shown, and a command that solved and committed
 	// in one step could not honour that — two paths where one breaks the rule is
 	// worse than one path (ADR 0008).
 	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))

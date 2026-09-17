@@ -139,7 +139,7 @@ func TestSaveDefaultShapeAcceptsNothing(t *testing.T) {
 }
 
 // The Shape is the only thing that says how many of a Role a Shift asks for, so
-// there is no ceiling above it to bump into: an admin who wants two Team leads
+// there is no ceiling above it to bump into: an Organiser who wants two Team leads
 // on a shift says so here (issue #185).
 func TestSaveDefaultShapeAllowsAnyCountOfAnyRole(t *testing.T) {
 	store := &stubDefaultShapeStore{roles: shapeRoles()}
@@ -179,7 +179,7 @@ func TestSaveDefaultShapeRefusesBadInput(t *testing.T) {
 	}
 }
 
-// A write the database refuses is a failure rather than an admin's mistake, and
+// A write the database refuses is a failure rather than an Organiser's mistake, and
 // stays one all the way out — the API answers 500, not 400.
 func TestSaveDefaultShapeSurfacesAWriteFailure(t *testing.T) {
 	store := &stubDefaultShapeStore{roles: shapeRoles(), writeErr: errors.New("connection refused")}

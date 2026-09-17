@@ -16,7 +16,7 @@ interface UsePreallocations {
   // the caller shows it rather than inventing one.
   addPin: (pin: NewPreallocation) => Promise<void>;
   // Removes one pin by id, then reloads. Any pin can go: there is one kind of
-  // them, and an admin may take back any promise a rota has not been allocated
+  // them, and an Organiser or a Rota Editor may take back any promise a rota has not been allocated
   // on.
   removePin: (id: string) => Promise<void>;
 }
@@ -29,7 +29,7 @@ interface UsePreallocationsOptions {
 }
 
 // usePreallocations owns the pins the rota page shows against shifts that have
-// not been allocated yet, and the two ways an admin changes them.
+// not been allocated yet, and the two ways they are changed.
 //
 // A write re-reads the listing rather than patching what is held: pins are
 // ordered server-side, and the server can refuse one. What comes back from the

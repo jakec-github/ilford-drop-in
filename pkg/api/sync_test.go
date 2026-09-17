@@ -11,7 +11,7 @@ import (
 )
 
 // newSyncTestAuthenticator builds an Authenticator wired for the sync path: the
-// admin allowlist and session secret used by adminCookie, plus the injected
+// Organiser allowlist and session secret used by organiserCookie, plus the injected
 // sync function. No OAuth config is needed — sync no longer runs an OAuth
 // round-trip.
 func newSyncTestAuthenticator(syncFn VolunteerSyncFunc) *Authenticator {
@@ -29,7 +29,7 @@ func syncTestHandler(a *Authenticator) http.Handler {
 	return mux
 }
 
-func TestSync_RequiresAdmin(t *testing.T) {
+func TestSync_RequiresAnOrganiser(t *testing.T) {
 	called := false
 	a := newSyncTestAuthenticator(func(context.Context) error {
 		called = true
@@ -37,8 +37,8 @@ func TestSync_RequiresAdmin(t *testing.T) {
 	})
 
 	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "")
-	assert.Equal(t, http.StatusUnauthorized, rec.Code, "syncing without an admin session must be rejected")
-	assert.False(t, called, "sync must not run without a verified admin session")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "syncing without an Organiser session must be rejected")
+	assert.False(t, called, "sync must not run without a verified Organiser session")
 }
 
 func TestSync_Success(t *testing.T) {
@@ -50,7 +50,7 @@ func TestSync_Success(t *testing.T) {
 
 	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
-	assert.True(t, called, "an admin sync must run the sync function")
+	assert.True(t, called, "an Organiser sync must run the sync function")
 }
 
 func TestSync_Failure(t *testing.T) {

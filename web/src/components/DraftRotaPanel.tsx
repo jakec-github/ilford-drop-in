@@ -50,7 +50,7 @@ function timeAgo(iso: string): string {
   return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
-// What the solve concluded, in the terms an admin acts on.
+// What the solve concluded, in the terms an Organiser acts on.
 //
 // The two outcomes lead to different work, so they are worded as different
 // sentences rather than as a status with a number beside it. Unfilled Seats are
@@ -78,7 +78,7 @@ function describeOutcome(state: DraftRotaState): string {
 //
 // What it no longer says in advance is that the rota may not be this one.
 // Allocating re-solves and commits only what it can still reproduce, but that
-// is a branch the admin is shown when it happens (see ChangeReport), and
+// is a branch the Organiser is shown when it happens (see ChangeReport), and
 // explaining it up front cost two paragraphs on the screen every allocation
 // passes through to warn about the case most of them never hit.
 function AllocateDialog({
@@ -126,11 +126,11 @@ function AllocateDialog({
 const CHANGES_WORTH_LISTING = 10;
 
 // What changed under an allocation that was refused: the difference between the
-// rota the admin confirmed and the one the solver produced when they did.
+// rota the Organiser confirmed and the one the solver produced when they did.
 //
 // Named one by one while there are few, because that is when the names are the
 // whole answer: "Ada is on the 9th now" is usually recognisable as the change
-// the admin was waiting for, and enough on its own to allocate again. Counted
+// the Organiser was waiting for, and enough on its own to allocate again. Counted
 // when there are many, because a rota the solver has re-balanced end to end is
 // one fact, not thirty — and the rota it re-balanced into is on the screen
 // below.
@@ -213,9 +213,9 @@ type PrepDialog =
 // gates its own: preparing the rota in flight is the only thing this tab is
 // for.
 //
-// Admin-only, like everything else about a draft, and mounted on the Allocation
+// Organiser-only, like everything else about a draft, and mounted on the Allocation
 // tab alone — which is also the only screen a draft appears on at all. The rota
-// page draws the same rows for the shifts of the rota in flight, and an admin
+// page draws the same rows for the shifts of the rota in flight, and an Organiser
 // can pin, close and shape them there, but it shows no drafted names: the rota
 // is what has been decided, and a draft is a guess the next solve may replace.
 export default function DraftRotaPanel({
@@ -246,7 +246,7 @@ export default function DraftRotaPanel({
   loadError: string | null;
   // True while a fresh solve is owed to an edit made here. The drafted names
   // fade and Allocate goes away: what is on screen is a rota that predates
-  // something the admin has just changed, and committing it is exactly what
+  // something the Organiser has just changed, and committing it is exactly what
   // ADR 0008 exists to stop.
   stale: boolean;
   solving: boolean;

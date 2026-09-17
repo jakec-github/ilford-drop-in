@@ -17,7 +17,7 @@ const allocatePath = "/api/rotations/in-flight/allocation"
 // Allocating is the act that publishes the rota: afterwards it reaches the
 // public shift listing and the calendar feeds volunteers subscribe to. A
 // stranger cannot start one, and the refusal comes before the solve.
-func TestAllocateRotaInFlightRequiresAdmin(t *testing.T) {
+func TestAllocateRotaInFlightRequiresAnOrganiser(t *testing.T) {
 	store := draftedRotaStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, allocatePath, `{"draftHash":"abc"}`)
@@ -69,7 +69,7 @@ func TestAllocateRotaInFlightRefusesWithNoDraft(t *testing.T) {
 	assert.Empty(t, store.insertedAllocations)
 }
 
-// The rota went out while this admin had the page open. There is no rota in
+// The rota went out while this Organiser had the page open. There is no rota in
 // flight to allocate, and saying so beats a solve that would be thrown away.
 func TestAllocateRotaInFlightRefusesAnAllocatedRota(t *testing.T) {
 	store := draftedRotaStore()
@@ -117,7 +117,7 @@ func TestAllocateRotaInFlightWaitsForTheRunningSolve(t *testing.T) {
 	}
 }
 
-// The draft an admin reads carries the fingerprint they allocate by. Without it
+// The draft an Organiser reads carries the fingerprint they allocate by. Without it
 // on the wire there is nothing for them to confirm, so it is part of the draft
 // rather than a second endpoint to ask.
 func TestGetDraftRotaAllocationCarriesTheHashToConfirm(t *testing.T) {

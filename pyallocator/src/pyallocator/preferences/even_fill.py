@@ -95,7 +95,7 @@ def _priority_bands(roles: tuple[Role, ...]) -> dict[int, int]:
     """{priority: band}, the highest-priority Roles in the highest band.
 
     Banded by the priority itself rather than by position, so Roles an
-    admin gave the same priority are peers — which is what saying so meant,
+    Organiser gave the same priority are peers — which is what saying so meant,
     and priorities are deliberately not unique (013_role.sql).
     """
     distinct = sorted({role.priority for role in roles})

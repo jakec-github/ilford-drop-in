@@ -9,7 +9,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// A rota proposal is the define form before an admin has touched it: where the
+// A rota proposal is the define form before an Organiser has touched it: where the
 // rota they are about to define would begin (issue #140).
 //
 // It is arithmetic over the rotas that already exist, done here rather than in

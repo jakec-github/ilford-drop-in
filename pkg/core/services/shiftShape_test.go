@@ -324,7 +324,7 @@ func TestSaveShiftShapeShiftVanishesUnderTheLock(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-// A write the database refuses is a failure rather than an admin's mistake, and
+// A write the database refuses is a failure rather than an Organiser's mistake, and
 // stays one all the way out — the API answers 500, not 400.
 func TestSaveShiftShapeSurfacesAWriteFailure(t *testing.T) {
 	store := shapeEditStore()

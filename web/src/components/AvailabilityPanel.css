@@ -1,7 +1,7 @@
-/* The responses panel is allowed out of the admin column when the desk has
+/* The responses panel is allowed out of the Organiser column when the desk has
    room for it (issue #174).
    The grid inside is as wide as the rota is long, so no fixed column can
-   promise it fits — a thirteen-week rota needs about 1250px and the wide admin
+   promise it fits — a thirteen-week rota needs about 1250px and the wide Organiser
    shell gives it 974. It used to scroll sideways on a screen with hundreds of
    spare pixels either side of the page.
    This wrapper reclaims those: it widens into the gutter the centred page
@@ -29,7 +29,7 @@
 }
 
 /* Title left, the one action top right — the same shape as the volunteers tab,
-   so the admin area reads consistently. */
+   so the Organiser area reads consistently. */
 .round-head {
   display: flex;
   justify-content: space-between;

@@ -73,7 +73,7 @@ function memberNote(member: AvailabilityEntry): string {
 
 // The URL, the button that copies it, and whatever else can be done with one
 // person's link. The URL is shown in full as well as copied: copying fails
-// silently on an insecure origin or a locked-down browser, and an admin who can
+// silently on an insecure origin or a locked-down browser, and an Organiser who can
 // read it can always select it by hand.
 function CopyableLink({
   link,
@@ -106,7 +106,7 @@ function CopyableLink({
 // Everything there is to do with one person, behind the row's disclosure: open
 // their form, copy their link, mail it to them again.
 //
-// Opening the form is how an admin answers on somebody's behalf — the phone call
+// Opening the form is how an Organiser answers on somebody's behalf — the phone call
 // that ends "put me down for the 14th" — so it is a real link to the real page a
 // volunteer sees, in a new tab. An allocated round has no working links left, so
 // it drops to plain text rather than offering a 410.
@@ -243,7 +243,7 @@ function AnswerCell({
 // One group's row: who they are, and their answer across the dates.
 //
 // The group is the unit, not the volunteer: its members are allocated together
-// and one reply speaks for all of them, so it is the row an admin chases and the
+// and one reply speaks for all of them, so it is the row an Organiser chases and the
 // row the answer belongs to. Members appear inside the disclosure, where their
 // individual links live.
 function GroupRow({
@@ -332,7 +332,7 @@ function GroupRow({
 // along the top, and each Role's surplus or deficit in the same columns above
 // the answers that produced it.
 //
-// It is deliberately wider than a phone. An admin reading a round is comparing
+// It is deliberately wider than a phone. An Organiser reading a round is comparing
 // dates against each other, which is what the grid is for, and squeezing that
 // into one column would cost the comparison to save a scroll.
 export default function ResponseGrid({

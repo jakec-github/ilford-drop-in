@@ -119,7 +119,7 @@ function ShiftChoice({
 }
 
 // AvailabilityForm is the volunteer's page: the one screen someone who is not an
-// admin ever sees. Mobile first — it is opened from a phone, from an email.
+// Organiser ever sees. Mobile first — it is opened from a phone, from an email.
 //
 // It lands with every open date already on yes, matching the Google form it
 // replaces. That is deliberate and not just inherited: a mis-tap then records
@@ -180,8 +180,8 @@ export default function AvailabilityForm({ token }: { token: string }) {
       {form.counts === false && (
         <p className="availability-not-counted" role="status">
           You are not currently down as volunteering, so you will not be put on
-          the rota. You can still answer below — ask an admin to put you back on
-          and your answer will count.
+          the rota. You can still answer below — ask an organiser to put you
+          back on and your answer will count.
         </p>
       )}
 

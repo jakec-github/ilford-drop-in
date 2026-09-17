@@ -22,7 +22,7 @@ function formatSpan(rota: RotaInFlight): string {
   return `${short(rota.start)} – ${short(rota.end)} ${year}`;
 }
 
-// How far the round has got, in a sentence an admin can act on. Kept apart from
+// How far the round has got, in a sentence an Organiser can act on. Kept apart from
 // the discard warning below: this one is about what still needs doing, that one
 // is about what would be lost.
 function describeRound(rota: RotaInFlight): string {

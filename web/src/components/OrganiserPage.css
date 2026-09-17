@@ -5,7 +5,7 @@
 }
 
 /* A tab whose content is a grid gets the desk it needs. The default width
-   stays for the rest: most admin tools are lists, and a list stretched across
+   stays for the rest: most Organiser tools are lists, and a list stretched across
    a wide screen reads worse, not better. */
 .organiser-page--wide {
   max-width: 64rem;

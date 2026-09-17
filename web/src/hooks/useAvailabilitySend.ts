@@ -11,7 +11,7 @@ const POLL_INTERVAL_MS = 2000;
 interface UseAvailabilitySend {
   // The send this page came back to, or null when it did not come back to one.
   send: AvailabilitySend | null;
-  // Set when a send never started: the admin declined at the consent screen, or
+  // Set when a send never started: the Organiser declined at the consent screen, or
   // Google refused. Distinct from a send that ran and failed on some addresses,
   // which is reported inside the send itself.
   error: string | null;
@@ -27,10 +27,10 @@ interface UseAvailabilitySend {
 //
 // A send is not a request this page makes: it is a full-page trip out to Google
 // for the gmail.send grant, which lands back here with a job id in the query.
-// Everything the admin sees of it — how far it has got, who it reached, who it
+// Everything the Organiser sees of it — how far it has got, who it reached, who it
 // failed on — is read back from that id. The URL is therefore the state, which
 // is why dismissing means navigating rather than setting a flag: a reload has to
-// land on the same screen the admin last saw.
+// land on the same screen the Organiser last saw.
 //
 // onFinished is called once the send stops, because the round it acted on has
 // changed underneath the page — every volunteer it reached now carries a sent

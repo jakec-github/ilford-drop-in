@@ -8,11 +8,11 @@ import (
 )
 
 // sendJobRetention is how long a finished send stays readable. Long enough for
-// an admin to come back to the tab they left it in, short enough that the names
+// an Organiser to come back to the tab they left it in, short enough that the names
 // and addresses it lists do not sit in memory all week.
 const sendJobRetention = 30 * time.Minute
 
-// sendJob is one availability send: the thirty-odd emails an admin set going,
+// sendJob is one availability send: the thirty-odd emails an Organiser set going,
 // and where they have got to.
 //
 // A send exists as a job rather than as the body of a request because it takes
@@ -23,9 +23,9 @@ const sendJobRetention = 30 * time.Minute
 // watches this instead.
 type sendJob struct {
 	id string
-	// The admin who started it. A send names every volunteer it reached and
+	// The Organiser who started it. A send names every volunteer it reached and
 	// every address it failed on, so it is readable only by them.
-	admin   string
+	owner   string
 	mode    services.SendMode
 	started time.Time
 
@@ -51,7 +51,7 @@ type sendJobSnapshot struct {
 }
 
 // sendJobs is the in-memory register of sends. In memory and not in the
-// database on purpose: a job is a progress bar for one admin's browser tab, not
+// database on purpose: a job is a progress bar for one Organiser's browser tab, not
 // a fact about the rota. What a send actually changed — sent_at on each request
 // — is written to Postgres as it goes, so nothing here is the only copy of
 // anything.
@@ -65,10 +65,10 @@ func newSendJobs() *sendJobs {
 	return &sendJobs{jobs: make(map[string]*sendJob), now: time.Now}
 }
 
-// start registers a new job for admin and returns its id. Expired jobs are swept
+// start registers a new job for Organiser and returns its id. Expired jobs are swept
 // on the way in: sends are rare and always arrive one at a time, so there is
 // nothing to gain from a timer doing it separately.
-func (s *sendJobs) start(id, admin string, mode services.SendMode) {
+func (s *sendJobs) start(id, owner string, mode services.SendMode) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,7 +79,7 @@ func (s *sendJobs) start(id, admin string, mode services.SendMode) {
 		}
 	}
 
-	s.jobs[id] = &sendJob{id: id, admin: admin, mode: mode, started: now}
+	s.jobs[id] = &sendJob{id: id, owner: owner, mode: mode, started: now}
 }
 
 // progress records how far a running send has got.
@@ -112,15 +112,15 @@ func (s *sendJobs) finish(id string, report *services.SendReport, err error) {
 	}
 }
 
-// snapshot returns a copy of admin's job. A job belonging to a different admin
+// snapshot returns a copy of Organiser's job. A job belonging to a different Organiser
 // is reported as absent rather than forbidden: to the caller asking, it is not
 // a job that exists.
-func (s *sendJobs) snapshot(id, admin string) (sendJobSnapshot, bool) {
+func (s *sendJobs) snapshot(id, owner string) (sendJobSnapshot, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	job, ok := s.jobs[id]
-	if !ok || job.admin != admin || s.now().Sub(job.started) > sendJobRetention {
+	if !ok || job.owner != owner || s.now().Sub(job.started) > sendJobRetention {
 		return sendJobSnapshot{}, false
 	}
 

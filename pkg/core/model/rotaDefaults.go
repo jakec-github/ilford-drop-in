@@ -12,7 +12,7 @@ import (
 const DefaultShiftTimezone = "Europe/London"
 
 // ShiftTimeLayout is how a time of day is spelled everywhere it crosses a
-// boundary — the settings API, the database, an admin's form field. Hours and
+// boundary — the settings API, the database, an Organiser's form field. Hours and
 // minutes only: the drop-in does not start at half past seven and eleven
 // seconds.
 const ShiftTimeLayout = "15:04"
@@ -24,7 +24,7 @@ const ShiftTimeLayout = "15:04"
 // be a different kind of thing.
 const ShiftTimestampLayout = "2006-01-02T15:04:05"
 
-// RotaDefaults is what an admin has decided about how the drop-in as a whole
+// RotaDefaults is what an Organiser has decided about how the drop-in as a whole
 // runs: one live, global record, edited on the Settings screen rather than set
 // by an operator in the config file (ADR 0006). It holds the default shift
 // times today; the default Shape, the allocation toggles and the Standing
@@ -48,7 +48,7 @@ type RotaDefaults struct {
 	AllocationSettings AllocationSettings
 }
 
-// Timezone is the zone the shift times are read in: the one an admin chose, or
+// Timezone is the zone the shift times are read in: the one an Organiser chose, or
 // the default when they have not chosen.
 func (d RotaDefaults) Timezone() string {
 	if d.ShiftTimezone == "" {
@@ -57,7 +57,7 @@ func (d RotaDefaults) Timezone() string {
 	return d.ShiftTimezone
 }
 
-// MissingShiftTimes names the shift-time settings an admin has yet to fill in,
+// MissingShiftTimes names the shift-time settings an Organiser has yet to fill in,
 // worded as they read on the Settings screen so the message an allocation
 // refuses with can be acted on without translation. Empty means a time can be
 // computed.
@@ -90,7 +90,7 @@ func (d RotaDefaults) HasShiftTimes() bool {
 // Unlike ShiftTimes it does not consult the shift-time settings at all. The
 // times come from the Shift, which has carried its own since it was minted; the
 // settings supply only the zone to read them in, and that always has an answer.
-// So a Shift keeps the times it was minted with even after an admin changes the
+// So a Shift keeps the times it was minted with even after an Organiser changes the
 // defaults, which is the point of storing them on the Shift.
 //
 // An untimed Shift is refused rather than answered with a midnight nobody

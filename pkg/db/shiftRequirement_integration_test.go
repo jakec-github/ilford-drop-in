@@ -57,7 +57,7 @@ func TestEditingTheDefaultShapeLeavesAnExistingShiftAlone(t *testing.T) {
 	}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, minted))
 
-	// An admin rethinks the settings entirely: fewer places, and no lead.
+	// An Organiser rethinks the settings entirely: fewer places, and no lead.
 	require.NoError(t, database.SaveDefaultShape(ctx, []db.DefaultShapeSeat{
 		{RoleID: ids["Service volunteer"], Seats: 2},
 	}))

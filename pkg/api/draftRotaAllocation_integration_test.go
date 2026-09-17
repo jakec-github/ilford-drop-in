@@ -23,9 +23,9 @@ import (
 // Drafts live in tables of their own precisely so that no public reader can
 // stumble into one. This proves it from the outside, against a real Postgres:
 // with a draft placing Alice on a Shift, the two endpoints that carry a rota to
-// people who are not admins carry nothing of it.
+// people who are not Organisers carry nothing of it.
 //
-// Both matter, and the second matters more. GET /api/shifts has no admin gate at
+// Both matter, and the second matters more. GET /api/shifts has no Organiser gate at
 // all. /calendars/{filename} pushes to calendar apps volunteers have already
 // subscribed to — so a leak there does not wait to be looked at, it arrives on
 // somebody's phone, and it arrives repeatedly, because drafts re-solve all
@@ -87,7 +87,7 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "alice")
 	assert.NotContains(t, rec.Body.String(), "External Org")
 
-	// And with an admin session, the whole draft — which is the point of the gate
+	// And with an Organiser session, the whole draft — which is the point of the gate
 	// rather than an exception to it, and is what the rota view renders (#143).
 	// Nothing has moved under this rota, so the read reports the stored draft
 	// rather than solving it again.
@@ -125,7 +125,7 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "20260809")
 }
 
-// A draft is solved for the rota in flight, so an admin with no rota in flight
+// A draft is solved for the rota in flight, so an Organiser with no rota in flight
 // is told which step is missing. Drafting is the first thing to put these
 // refusals in front of a browser, and "internal server error" would be the
 // wrong answer to "you have not defined a rota yet".
@@ -168,7 +168,7 @@ func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 }
 
 // The loop this ticket exists for, against a real Postgres: an input moves, and
-// the next admin to read the draft causes it to be solved again (issue #142).
+// the next Organiser to read the draft causes it to be solved again (issue #142).
 //
 // The solve itself is a CP-SAT subprocess, which no Go test runs — so what is
 // proved here is the decision to solve, by way of the input refusal that only

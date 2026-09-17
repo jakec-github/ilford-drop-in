@@ -1,5 +1,5 @@
 /* One panel: the draft's report, and under it the shifts it is a report on.
-   It takes the admin area's own panel chrome (.organiser-panel) rather than a box
+   It takes the Organiser area's own panel chrome (.organiser-panel) rather than a box
    of its own — there is nothing special about this section's edges, only about
    what is inside them. */
 .draft-panel-head {
@@ -17,7 +17,7 @@
   color: var(--text-h);
 }
 
-/* The one line an admin is here for, so it carries the weight the heading
+/* The one line an Organiser is here for, so it carries the weight the heading
    would otherwise take. */
 .draft-panel-state {
   margin: 0;
@@ -63,7 +63,7 @@
 }
 
 /* An allocation that would not commit. Bordered in the accent because it is the
-   answer to something the admin just did, unlike the standing report above it. */
+   answer to something the Organiser just did, unlike the standing report above it. */
 .draft-panel-moved {
   margin: 8px 0 0;
   padding: 8px 10px;
@@ -135,7 +135,7 @@
   font-size: 0.875rem;
 }
 
-/* Beside the controls it disables: a solve is owed to something the admin has
+/* Beside the controls it disables: a solve is owed to something the Organiser has
    just changed, and the two buttons next to this are the ones that answer for
    it. Covers the debounce as well as the request — from the reader's side they
    are one wait, and splitting them would flick the spinner on twice. */

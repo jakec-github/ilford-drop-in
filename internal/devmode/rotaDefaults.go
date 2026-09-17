@@ -27,7 +27,7 @@ var seedRotaDefaults = db.RotaDefaults{
 
 // seedAllocationSettings are the optional allocator rules the dev stack starts
 // with: the three that were the solver's hardcoded default list before they
-// became an admin's choice, at the frequency the config file used to carry.
+// became an Organiser's choice, at the frequency the config file used to carry.
 // one_shift_per_month stays off, as it always was — it is regularly
 // unsatisfiable at real volunteer numbers.
 var seedAllocationSettings = model.AllocationSettings{
@@ -40,9 +40,9 @@ var seedAllocationSettings = model.AllocationSettings{
 }
 
 // SeedRotaDefaults gives a dev database its shift times and its allocation
-// settings, once. No migration seeds them (ADR 0006) — they are an admin's to
+// settings, once. No migration seeds them (ADR 0006) — they are an Organiser's to
 // choose on the Settings screen — but the credential-free dev stack has no
-// admin, and `scripts/dev-stack.sh start` is supposed to hand over an app that
+// Organiser, and `scripts/dev-stack.sh start` is supposed to hand over an app that
 // can allocate a rota.
 //
 // It is a seed, not a reset: settings that have already been set are left

@@ -52,7 +52,7 @@ type SendParams struct {
 	Progress func(done, total int)
 }
 
-// SentEmail is one email that went out, named the way an admin would recognise
+// SentEmail is one email that went out, named the way an Organiser would recognise
 // the person it went to.
 type SentEmail struct {
 	VolunteerID   string
@@ -60,7 +60,7 @@ type SentEmail struct {
 	Email         string
 }
 
-// FailedEmail is one that did not go out, carrying the reason so an admin can
+// FailedEmail is one that did not go out, carrying the reason so an Organiser can
 // tell a dead address from a Gmail hiccup worth retrying.
 type FailedEmail struct {
 	VolunteerID   string
@@ -78,7 +78,7 @@ type SendReport struct {
 	Failed []FailedEmail
 }
 
-// SendAvailabilityEmails emails a round's links as the admin who triggered it,
+// SendAvailabilityEmails emails a round's links as the Organiser who triggered it,
 // through the mailer they are holding a short-lived token for.
 //
 // A failed address is reported and the batch carries on: one bad mailbox must
@@ -161,7 +161,7 @@ func SendAvailabilityEmails(
 		name := volunteerName(r.volunteer)
 
 		if r.volunteer.Email == "" {
-			// Nothing to send to. Reported rather than skipped: an admin who
+			// Nothing to send to. Reported rather than skipped: an Organiser who
 			// saw nothing would believe the round reached everybody.
 			fail(FailedEmail{
 				VolunteerID:   r.volunteer.ID,
@@ -193,7 +193,7 @@ func SendAvailabilityEmails(
 		if params.Mode != SendModeReminder {
 			if err := database.MarkAvailabilityRequestSent(ctx, r.request.ID); err != nil {
 				// The email is already gone, so this cannot be undone. Report it
-				// as a failure so the admin knows the row is out of step: the
+				// as a failure so the Organiser knows the row is out of step: the
 				// cost is one duplicate email if they send again, which is far
 				// better than a volunteer silently dropping out of the round.
 				logger.Error("Sent an availability email but failed to stamp sent_at",

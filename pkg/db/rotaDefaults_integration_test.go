@@ -76,7 +76,7 @@ func TestSaveRotaDefaultsClearsFields(t *testing.T) {
 }
 
 // The database is the backstop for a shift that ends before it starts. The
-// service refuses it first with a message an admin can act on; this is what
+// service refuses it first with a message an Organiser can act on; this is what
 // stops anything else writing one.
 func TestSaveRotaDefaultsRefusesEndBeforeStart(t *testing.T) {
 	database, _ := dbtest.New(t)
@@ -105,7 +105,7 @@ func TestSaveAllocationSettings(t *testing.T) {
 }
 
 // Each section of the settings is saved without touching the others, so an
-// admin editing the toggles cannot blank the shift times and the other way
+// Organiser editing the toggles cannot blank the shift times and the other way
 // round.
 func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 	database, _ := dbtest.New(t)

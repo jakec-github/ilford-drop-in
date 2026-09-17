@@ -56,7 +56,7 @@ func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	assert.Equal(t, "Europe/London", body.ShiftTimezone)
 
 	// Each Seat carries the Role's name as well as its id: the id is what an
-	// edit names, the name is what an admin reads.
+	// edit names, the name is what an Organiser reads.
 	assert.Equal(t, []seatResponse{
 		{RoleID: "role-team-lead", Role: "Team lead", Count: 1},
 		{RoleID: "role-service-volunteer", Role: "Service volunteer", Count: 4},
@@ -80,9 +80,9 @@ func TestGetRotaDefaultsEndpointUnset(t *testing.T) {
 	assert.Equal(t, "Europe/London", body.ShiftTimezone)
 }
 
-// Both verbs are admin-only. Nothing a logged-out visitor sees needs the
-// settings record, and the sections joining it are an admin's business.
-func TestRotaDefaultsEndpointIsAdminOnly(t *testing.T) {
+// Both verbs are Organiser-only. Nothing a logged-out visitor sees needs the
+// settings record, and the sections joining it are an Organiser's business.
+func TestRotaDefaultsEndpointIsOrganiserOnly(t *testing.T) {
 	handler := newTestHandler(&mockStore{}, testVolunteers())
 
 	rec := doRequest(t, handler, http.MethodGet, "/api/rota-defaults", "")
@@ -115,7 +115,7 @@ func TestSaveRotaDefaultsEndpoint(t *testing.T) {
 	assert.Equal(t, "UTC", body.ShiftTimezone)
 }
 
-// The answer carries the zone that was filled in for an admin who left the
+// The answer carries the zone that was filled in for an Organiser who left the
 // field blank, so the form shows what was actually stored rather than what was
 // typed.
 func TestSaveRotaDefaultsEndpointFillsInTheZone(t *testing.T) {
@@ -128,7 +128,7 @@ func TestSaveRotaDefaultsEndpointFillsInTheZone(t *testing.T) {
 	assert.Equal(t, "Europe/London", shiftTimesOf(t, rec).ShiftTimezone)
 }
 
-// An admin's mistake is a 400 carrying the message the service wrote, not a
+// An Organiser's mistake is a 400 carrying the message the service wrote, not a
 // 500: the screen shows it beside the field.
 func TestSaveRotaDefaultsEndpointRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
@@ -234,7 +234,7 @@ func TestSaveAllocationSettingsLeavesTheShiftTimesAlone(t *testing.T) {
 	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
 }
 
-// An admin's mistake is a 400 carrying the service's own message, not a 500.
+// An Organiser's mistake is a 400 carrying the service's own message, not a 500.
 func TestSaveAllocationSettingsRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
 		"frequency on with no value": `{"enabled":{"max_frequency":true}}`,
@@ -256,7 +256,7 @@ func TestSaveAllocationSettingsRejectsBadInput(t *testing.T) {
 	}
 }
 
-func TestSaveAllocationSettingsIsAdminOnly(t *testing.T) {
+func TestSaveAllocationSettingsIsOrganiserOnly(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodPut,
 		"/api/rota-defaults/allocation-settings", `{"enabled":{}}`)
 
@@ -313,7 +313,7 @@ func TestSaveDefaultShapeLeavesTheShiftTimesAlone(t *testing.T) {
 	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
 }
 
-// An admin's mistake is a 400 carrying the service's message.
+// An Organiser's mistake is a 400 carrying the service's message.
 func TestSaveDefaultShapeEndpointRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
 		"no seats":            `{"seats":[{"roleId":"role-team-lead","count":0}]}`,

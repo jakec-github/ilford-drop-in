@@ -22,7 +22,7 @@ type availabilityShiftResponse struct {
 }
 
 // availabilityEntryResponse is one volunteer's place in a round. The link is
-// returned in full because copying it is how an admin distributes one out of
+// returned in full because copying it is how an Organiser distributes one out of
 // band, and the fallback for a volunteer whose email bounces.
 type availabilityEntryResponse struct {
 	VolunteerID   string `json:"volunteerId"`
@@ -56,7 +56,7 @@ type availabilityGroupResponse struct {
 
 // availabilityCoverageResponse is one shift's staffing picture: what it still
 // needs and who is available for it, one entry per configured Role in priority
-// order, which is what tells an admin the lead Seat is still empty. A closed
+// order, which is what tells an Organiser the lead Seat is still empty. A closed
 // shift carries no roles — it is not a shift that is short of people.
 //
 // There is no shift-level total. It used to carry the uncapped Role's four
@@ -115,12 +115,12 @@ type submitAvailabilityRequest struct {
 }
 
 // handleMintAvailabilityRound creates an availability request, with its own
-// link, for every active volunteer on a rota. Admin-gated, and idempotent:
+// link, for every active volunteer on a rota. Organiser-gated, and idempotent:
 // running it again after the roster changes tops the round up without
 // re-tokening anyone, so links already distributed keep working.
 func (h *Handler) handleMintAvailabilityRound(w http.ResponseWriter, r *http.Request) {
 	var req mintRoundRequest
-	// An empty body means the latest rota, which is what the admin screen sends.
+	// An empty body means the latest rota, which is what the Organiser screen sends.
 	if r.ContentLength != 0 {
 		decoder := json.NewDecoder(r.Body)
 		decoder.DisallowUnknownFields()
@@ -140,7 +140,7 @@ func (h *Handler) handleMintAvailabilityRound(w http.ResponseWriter, r *http.Req
 }
 
 // handleGetAvailabilityRound reports where a round has got to: who was asked,
-// their link, and who has answered. Admin-gated — it exposes every volunteer's
+// their link, and who has answered. Organiser-gated — it exposes every volunteer's
 // bearer link.
 func (h *Handler) handleGetAvailabilityRound(w http.ResponseWriter, r *http.Request) {
 	round, err := services.GetAvailabilityRound(r.Context(), h.store, h.volunteers, h.cfg, h.logger, r.URL.Query().Get("rotaId"))

@@ -75,7 +75,7 @@ func TestListRolesEndpointStatesAnAbsentCeiling(t *testing.T) {
 }
 
 // The rota is public and already names Roles on every chip, so the set of Roles
-// and their colours is not admin-gated: gating it would leave a logged-out
+// and their colours is not Organiser-gated: gating it would leave a logged-out
 // visitor's rota uncoloured.
 func TestListRolesEndpointIsPublic(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodGet, "/api/roles", "")
@@ -137,9 +137,9 @@ func TestCreateRoleEndpointRefusesACeiling(t *testing.T) {
 	assert.Empty(t, store.insertedRoles)
 }
 
-// Which Roles exist is a decision about how the drop-in runs, so only an admin
+// Which Roles exist is a decision about how the drop-in runs, so only an Organiser
 // makes it. The read stays public; the writes do not.
-func TestCreateRoleEndpointRequiresAdmin(t *testing.T) {
+func TestCreateRoleEndpointRequiresAnOrganiser(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/roles",
@@ -149,7 +149,7 @@ func TestCreateRoleEndpointRequiresAdmin(t *testing.T) {
 	assert.Empty(t, store.insertedRoles, "a rejected request writes nothing")
 }
 
-// The service's refusals reach the client as its own reasons: an admin who
+// The service's refusals reach the client as its own reasons: an Organiser who
 // typed a name that is taken has made an ordinary mistake and is told which.
 func TestCreateRoleEndpointReportsRefusals(t *testing.T) {
 	for _, tc := range []struct {
@@ -197,7 +197,7 @@ func TestUpdateRoleEndpoint(t *testing.T) {
 	assert.Equal(t, id, decodeRole(t, rec.Body.Bytes()).ID)
 }
 
-func TestUpdateRoleEndpointRequiresAdmin(t *testing.T) {
+func TestUpdateRoleEndpointRequiresAnOrganiser(t *testing.T) {
 	id := "4c1e2f8a-0b3d-4a5e-8c9f-1a2b3c4d5e6f"
 	store := &mockStore{roles: []db.Role{{ID: id, Name: "Team lead", Priority: 1, Colour: model.ColourViolet}}}
 

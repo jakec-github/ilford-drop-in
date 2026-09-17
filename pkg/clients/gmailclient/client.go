@@ -23,7 +23,7 @@ type Client struct {
 // OAuth client configuration behind it.
 //
 // This is now the only way to build one, and it is the web server's path. The
-// admin has just granted gmail.send through incremental consent, so the token is
+// Organiser has just granted gmail.send through incremental consent, so the token is
 // already minted, short-lived, and carries no refresh token — a static token
 // source is the honest shape for it. There is nothing to refresh with, and a
 // client that quietly renewed itself would be a standing Google credential,

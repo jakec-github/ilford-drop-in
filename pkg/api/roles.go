@@ -33,7 +33,7 @@ type listRolesResponse struct {
 	Roles []roleResponse `json:"roles"`
 }
 
-// roleRequest is a Role as an admin states it, and is the body of both writes:
+// roleRequest is a Role as an Organiser states it, and is the body of both writes:
 // an edit says everything a creation says, because a Role must not be able to
 // reach through an edit a state it could not have been created in.
 //
@@ -71,7 +71,7 @@ func (h *Handler) handleListRoles(w http.ResponseWriter, r *http.Request) {
 // handleCreateRole adds a Role and answers with it, id included — the client
 // has to address that id to edit it, and it was minted server-side.
 //
-// Admin-only: which Roles exist is a decision about how the drop-in runs.
+// Organiser-only: which Roles exist is a decision about how the drop-in runs.
 func (h *Handler) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 	params, ok := h.decodeRoleRequest(w, r)
 	if !ok {

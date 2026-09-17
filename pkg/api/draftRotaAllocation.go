@@ -19,7 +19,7 @@ import (
 // solve slot and re-solves if it needs to, so what comes back always speaks for
 // the inputs as they stood (issue #179).
 //
-// seatsFilled against seatsAsked is the number that changes what an admin does
+// seatsFilled against seatsAsked is the number that changes what an Organiser does
 // next: four Seats unfilled is somebody to chase, INFEASIBLE is a conflict to go
 // and resolve, and there is still availability window left to do either in.
 // shifts is what they read once they have decided to look (issue #143).
@@ -52,7 +52,7 @@ type draftRotaAllocationResponse struct {
 	// (ADR 0008). Empty for a rota nobody has drafted — there is nothing to
 	// confirm.
 	Hash string `json:"hash"`
-	// SolveTimeSeconds is the one diagnostic worth an admin's attention: the
+	// SolveTimeSeconds is the one diagnostic worth an Organiser's attention: the
 	// solve sits on the allocate path too, so a rota creeping towards the
 	// solver's thirty-second ceiling is worth seeing before it gets there. The
 	// rest of the diagnostics are stored, not shown.
@@ -75,7 +75,7 @@ type draftShiftResponse struct {
 // moved.
 //
 // Solving on read is the whole design (issue #142). A draft that only refreshed
-// when an admin asked it to would be stale exactly when it mattered, and the
+// when an Organiser asked it to would be stale exactly when it mattered, and the
 // alternative — a timer re-solving the rota through the night — would spend
 // solves on a rota nobody is looking at. Reading is the moment the answer is
 // wanted, and the solve that produces it is quick enough to wait out.
@@ -92,7 +92,7 @@ type draftShiftResponse struct {
 // answer; one whose edit it predates gets its own solve. It terminates because
 // every solve captures the inputs stamp as it starts, so the queue drains.
 //
-// Admin-only, and that gate is the endpoint's whole reason to exist as its own
+// Organiser-only, and that gate is the endpoint's whole reason to exist as its own
 // resource rather than as a field of GET /api/shifts. That listing is public and
 // stays that way: it never reads a draft table, so no future edit to it can leak
 // a speculative rota to the volunteers who subscribe to the rota page and its
@@ -159,10 +159,10 @@ func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Re
 // having beside the GET above. The roster is a Google Sheet with no change
 // notification, so a new volunteer or a newly held Role moves no stamp here —
 // and that is precisely the change nobody could have predicted. This is the
-// admin saying "look again anyway".
+// Organiser saying "look again anyway".
 //
 // It runs inline rather than as a job, unlike an availability send. pyallocator
-// caps itself at thirty seconds, so this is a request an admin waits out with a
+// caps itself at thirty seconds, so this is a request an Organiser waits out with a
 // spinner rather than one they come back to.
 //
 // A solve already running is waited for and then solved past, rather than
@@ -210,7 +210,7 @@ func (h *Handler) solveDraftRotaAllocation(r *http.Request) (*services.DraftRota
 }
 
 // draftStatus is the wire form of a draft's state, from either handler. One
-// shape for both: an admin asking "where is the rota up to" is asking one
+// shape for both: an Organiser asking "where is the rota up to" is asking one
 // question, whether or not their request is what caused the solve.
 func draftStatus(status *services.DraftRotaAllocationStatus) draftRotaAllocationResponse {
 	response := draftRotaAllocationResponse{

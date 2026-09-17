@@ -71,7 +71,7 @@ type mockStore struct {
 	rolesErr error
 
 	// rotaDefaults overrides apiTestRotaDefaults for a test that cares what an
-	// admin has set — chiefly one about settings nobody has filled in, which is
+	// Organiser has set — chiefly one about settings nobody has filled in, which is
 	// where every deployment starts. rotaDefaultsErr makes the read fail.
 	rotaDefaults            *db.RotaDefaults
 	rotaDefaultsErr         error
@@ -180,7 +180,7 @@ func (m *mockStore) rotaAllocated(r db.Rotation) bool {
 }
 
 // allocate marks a rota as run, so a test that needs a second rota defined can
-// get past the one-rota-in-flight rule the way an admin would (issue #139).
+// get past the one-rota-in-flight rule the way an Organiser would (issue #139).
 func (m *mockStore) allocate(rotaID string) {
 	if m.allocatedRotas == nil {
 		m.allocatedRotas = make(map[string]bool)
@@ -1086,14 +1086,14 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	require.Len(t, resp.Alterations, 2)
 
 	// Proves ChangeRota persisted through the store, attributing the change to
-	// the verified admin session rather than any client-supplied field.
+	// the verified Organiser session rather than any client-supplied field.
 	require.NotNil(t, store.insertedCover)
 	assert.Equal(t, "Holiday cover", store.insertedCover.Reason)
 	assert.Equal(t, testOrganiserEmail, store.insertedCover.UserEmail)
 	assert.Len(t, store.insertedAlterations, 2)
 }
 
-// TestCreateAlterationEndpoint_Role proves an admin adding someone says which
+// TestCreateAlterationEndpoint_Role proves an Organiser adding someone says which
 // Seat they take — here a team lead, where the roster records them only as a
 // service volunteer. The roster is advice, not a gate.
 func TestCreateAlterationEndpoint_Role(t *testing.T) {
@@ -1107,10 +1107,10 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
 }
 
-// TestCreateAlterationEndpoint_RequiresAdmin proves the write endpoint is gated:
+// TestCreateAlterationEndpoint_RequiresASession proves the write endpoint is gated:
 // no session cookie means no attribution to trust, so the request is rejected
 // before any change is attempted.
-func TestCreateAlterationEndpoint_RequiresAdmin(t *testing.T) {
+func TestCreateAlterationEndpoint_RequiresASession(t *testing.T) {
 	store := alterationTestStore()
 	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
 

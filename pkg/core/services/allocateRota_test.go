@@ -101,7 +101,7 @@ func allocatableRota() (*mockAllocateRotaStore, *mockVolClient) {
 
 // draftThenAllocate is the whole journey in one helper: solve a draft, then
 // allocate confirming the hash that draft came back with. Which is the point of
-// the design — an admin allocates the rota they were shown — so most of these
+// the design — an Organiser allocates the rota they were shown — so most of these
 // tests start by being shown one.
 func draftThenAllocate(
 	t *testing.T,
@@ -118,7 +118,7 @@ func draftThenAllocate(
 	return shown, outcome, err
 }
 
-// The rota an admin was shown is the rota that gets allocated: re-solving
+// The rota an Organiser was shown is the rota that gets allocated: re-solving
 // answered the same thing, so the answer is committed and the Rotation stamped.
 func TestAllocateRotaInFlightCommitsTheRotaItWasShown(t *testing.T) {
 	store, volunteers := allocatableRota()
@@ -147,7 +147,7 @@ func TestAllocateRotaInFlightCommitsTheRotaItWasShown(t *testing.T) {
 }
 
 // The whole point of confirming by output hash: if re-solving answers something
-// else, the inputs have moved since the admin looked, and nothing is committed.
+// else, the inputs have moved since the Organiser looked, and nothing is committed.
 // The fresh solve becomes the draft, so what they are shown next is the rota as
 // it now stands — and that is the one they can confirm.
 func TestAllocateRotaInFlightRefusesARotaThatHasMoved(t *testing.T) {
@@ -169,7 +169,7 @@ func TestAllocateRotaInFlightRefusesARotaThatHasMoved(t *testing.T) {
 
 	require.Len(t, store.storedDrafts, 2, "the fresh solve replaced the draft")
 	assert.NotEqual(t, shown.Hash, outcome.Solve.Hash, "and it is a different rota")
-	assert.Equal(t, 2, len(outcome.Solve.Shifts), "which the admin is shown, to confirm instead")
+	assert.Equal(t, 2, len(outcome.Solve.Shifts), "which the Organiser is shown, to confirm instead")
 }
 
 // An infeasible solve is not a rota, so there is nothing to allocate. It is
@@ -229,7 +229,7 @@ func TestAllocateRotaInFlightRefusesAnUnstatedDraft(t *testing.T) {
 	assert.Empty(t, store.insertedAllocations)
 }
 
-// The rota was allocated while this admin had the page open — by another admin,
+// The rota was allocated while this Organiser had the page open — by another Organiser,
 // or by their own second tab. There is no rota in flight any more, and saying so
 // is more use than a solve that would be thrown away.
 func TestAllocateRotaInFlightRefusesAnAllocatedRota(t *testing.T) {
@@ -247,7 +247,7 @@ func TestAllocateRotaInFlightRefusesAnAllocatedRota(t *testing.T) {
 	assert.Empty(t, store.insertedAllocations, "no allocations should be written")
 }
 
-// The last word belongs to the store, not to any check above it. Two admins can
+// The last word belongs to the store, not to any check above it. Two Organisers can
 // confirm the same draft at the same moment and both reach a solve that matches;
 // the row lock in InsertAllocationsAndSetAllocated is what makes exactly one of
 // them win, and the loser's refusal has to reach the screen.
@@ -266,7 +266,7 @@ func TestAllocateRotaInFlightSurfacesTheStoresRefusal(t *testing.T) {
 }
 
 // Incomplete settings block allocation and nothing else (ADR 0006). The refusal
-// has to name what is missing: an admin who has not filled the settings in has
+// has to name what is missing: an Organiser who has not filled the settings in has
 // nothing else telling them which box is empty, and this fires before the
 // solver so nothing is written.
 func TestAllocateRotaInFlightRefusesWhenTheShiftTimesAreNotSet(t *testing.T) {
@@ -309,7 +309,7 @@ func TestAllocateRotaInFlightRefusesWhenTheShiftTimesAreNotSet(t *testing.T) {
 // A Shift asking for nobody is the one gap that would not fail loudly: the
 // solve succeeds and staffs nobody. Since Shifts own their Shapes the question
 // is asked of the rota's Shifts rather than of the settings (issue #137), and
-// the refusal names the dates so an admin can see which rota it means.
+// the refusal names the dates so an Organiser can see which rota it means.
 func TestAllocateRotaInFlightRefusesWhenAShiftAsksForNobody(t *testing.T) {
 	store, volunteers := allocatableRota()
 	store.noShape = true

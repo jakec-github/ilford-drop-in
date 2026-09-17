@@ -125,8 +125,8 @@ func TestSaveShiftShapeRejectsUnknownFields(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
-// Anyone may read what a shift asks for; only an admin may change it.
-func TestSaveShiftShapeRequiresAdmin(t *testing.T) {
+// Anyone may read what a shift asks for; only an Organiser may change it.
+func TestSaveShiftShapeRequiresAnOrganiser(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,

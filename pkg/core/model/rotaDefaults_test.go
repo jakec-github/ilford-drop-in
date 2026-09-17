@@ -10,7 +10,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// A zone an admin has chosen is used; no zone falls back rather than failing,
+// A zone an Organiser has chosen is used; no zone falls back rather than failing,
 // because without one a time of day cannot become a moment at all.
 func TestShiftTimezone(t *testing.T) {
 	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
@@ -97,7 +97,7 @@ func TestShiftInstantsReadTheStoredTimesInTheZone(t *testing.T) {
 	assert.Equal(t, "2026-07-12T20:30:00Z", end.UTC().Format(time.RFC3339))
 }
 
-// The zone an admin chose is what the stored times are read in. Unlike
+// The zone an Organiser chose is what the stored times are read in. Unlike
 // ShiftTimes this needs no shift-time settings at all: the times come from the
 // Shift, and the settings supply only the zone to read them in.
 func TestShiftInstantsUseTheChosenZone(t *testing.T) {

@@ -67,7 +67,7 @@ func TestListVolunteersEndpoint(t *testing.T) {
 // TestListVolunteersFullNameAlongsideDisplayName proves the two names are both
 // carried and are not the same thing: name is the shortest form that stays
 // unambiguous (what a rota chip shows), fullName is always first plus last (what
-// an admin roster shows). A volunteer with no surname recorded gets no dangling
+// an Organiser roster shows). A volunteer with no surname recorded gets no dangling
 // space.
 func TestListVolunteersFullNameAlongsideDisplayName(t *testing.T) {
 	client := &mockVolunteerClient{
@@ -90,7 +90,7 @@ func TestListVolunteersFullNameAlongsideDisplayName(t *testing.T) {
 }
 
 // TestListVolunteersSortedByFullName proves the ordering follows the full name,
-// which is what the admin roster renders. Display names can disagree: a unique
+// which is what the Organiser roster renders. Display names can disagree: a unique
 // "Emma" shortens to "Emma" and would sort before both disambiguated Emmas,
 // putting the rendered list out of alphabetical order.
 func TestListVolunteersSortedByFullName(t *testing.T) {
@@ -114,7 +114,7 @@ func TestListVolunteersSortedByFullName(t *testing.T) {
 
 // TestListVolunteersGenderPassesThrough proves gender crosses the API verbatim
 // rather than being coerced into a two-value enum. It is free text on the sheet:
-// the admin roster reports what is recorded, and a caller counting male
+// the Organiser roster reports what is recorded, and a caller counting male
 // volunteers decides for itself what counts.
 func TestListVolunteersGenderPassesThrough(t *testing.T) {
 	client := &mockVolunteerClient{
@@ -135,7 +135,7 @@ func TestListVolunteersGenderPassesThrough(t *testing.T) {
 }
 
 // TestListVolunteersIncludesInactive proves left volunteers are still listed —
-// the roster is the full one, flagged rather than filtered, so an admin can see
+// the roster is the full one, flagged rather than filtered, so an Organiser can see
 // who has stopped without the endpoint deciding for them.
 func TestListVolunteersIncludesInactive(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, rosterVolunteers()), http.MethodGet, "/api/volunteers", "", organiserCookie())
@@ -153,10 +153,10 @@ func TestListVolunteersEmptyRoster(t *testing.T) {
 	assert.JSONEq(t, `{"volunteers":[]}`, rec.Body.String())
 }
 
-// TestListVolunteersRequiresAdmin proves the roster is admin-only: it exposes
+// TestListVolunteersRequiresASession proves the roster is Organiser-only: it exposes
 // volunteer ids, groups and everyone not currently on a shift, which the public
 // rota does not.
-func TestListVolunteersRequiresAdmin(t *testing.T) {
+func TestListVolunteersRequiresASession(t *testing.T) {
 	volunteers := rosterVolunteers()
 	rec := doRequest(t, newTestHandler(&mockStore{}, volunteers), http.MethodGet, "/api/volunteers", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)

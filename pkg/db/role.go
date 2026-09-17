@@ -11,7 +11,7 @@ import (
 
 // ErrDuplicateRoleName reports that a write would have given two Roles the same
 // name. It is named because it is the one write failure a caller answers
-// differently from "the database is unhappy": an admin typing a name that is
+// differently from "the database is unhappy": an Organiser typing a name that is
 // already taken has made an ordinary mistake and is told so, and translating
 // the driver's error code is this package's job rather than every caller's.
 var ErrDuplicateRoleName = errors.New("a role with that name already exists")
@@ -35,7 +35,7 @@ func isDuplicateName(err error) bool {
 // a holder may be allocated to one.
 //
 // Roles were a `roles:` list in the config file until ticket #126; they are rows
-// now so an admin can edit them on a screen (ADR 0006). The id is the identity
+// now so an Organiser can edit them on a screen (ADR 0006). The id is the identity
 // other tables reference, so a rename never breaks a reference; the name is what
 // the volunteer roster spells, since the roster is a Google Sheet holding Role
 // names in a cell.

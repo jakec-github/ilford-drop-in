@@ -19,7 +19,7 @@ import (
 //
 // It exists because there are two things to do with a solve and only one way to
 // produce one: allocating commits it as the rota, and drafting stores it as a
-// Draft Rota Allocation for an admin to watch (ADR 0008). The two must solve the
+// Draft Rota Allocation for an Organiser to watch (ADR 0008). The two must solve the
 // same problem from the same inputs — the ADR's confirm-by-output-hash rests on
 // it — so the assembly and the solve live here and the callers differ only in
 // what they write.
@@ -58,7 +58,7 @@ type rotaSolve struct {
 // both callers have something to say about it.
 //
 // Every one of those refusals carries ErrInvalidInput or ErrConflict, because
-// they describe a step the admin has not taken yet rather than a fault. They
+// they describe a step the Organiser has not taken yet rather than a fault. They
 // reach a browser now that drafting is an endpoint, and "internal server error"
 // would be the wrong thing to tell somebody who has simply not minted the
 // availability round.
@@ -196,7 +196,7 @@ func solveRotaInFlight(
 
 	// Preallocations (issue #39): each pin becomes a synthetic exact-date
 	// override, so InitShifts applies them with no new merge logic. The
-	// `preallocation` table is the whole set — pins an admin made by hand and
+	// `preallocation` table is the whole set — pins an Organiser made by hand and
 	// pins a Standing Preallocation seeded when the rota was defined are the
 	// same rows (issue #131).
 	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
@@ -276,7 +276,7 @@ func solveRotaInFlight(
 // open Shift's Shape. A closed Shift asks for nobody however it is shaped, so it
 // counts for nothing.
 //
-// It is the denominator of "four Seats unfilled" — the thing an admin most wants
+// It is the denominator of "four Seats unfilled" — the thing an Organiser most wants
 // from a draft — and it is derived rather than stored, since the Shapes it comes
 // from are right there on the Shifts.
 func (s *rotaSolve) seatsAsked() int {

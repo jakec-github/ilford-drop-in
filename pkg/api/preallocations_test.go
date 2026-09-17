@@ -52,7 +52,7 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 	assert.NotEmpty(t, resp.ID)
 	assert.Equal(t, "2026-01-11", resp.Date)
 	// Both, as a standing pin answers: the id is what the row references, the
-	// name is what an admin recognises.
+	// name is what an Organiser recognises.
 	assert.Equal(t, "role-service-volunteer", resp.RoleID)
 	assert.Equal(t, "Service volunteer", resp.Role)
 	assert.Equal(t, "bob", resp.VolunteerID)
@@ -281,11 +281,11 @@ func TestPreallocationsMethodNotAllowed(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-// TestPreallocationsRequireAdmin proves all three pin endpoints are gated:
+// TestPreallocationsRequireASession proves all three pin endpoints are gated:
 // without a session they are rejected, nothing is persisted or deleted, and the
 // listing gives nothing away — it names people against dates the rota has not
 // published.
-func TestPreallocationsRequireAdmin(t *testing.T) {
+func TestPreallocationsRequireASession(t *testing.T) {
 	store := preallocationTestStore()
 	store.manualPreallocations = []db.Preallocation{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// sessionDuration is how long an admin session cookie stays valid.
+// sessionDuration is how long an Organiser session cookie stays valid.
 const sessionDuration = 60 * 24 * time.Hour
 
 // errInvalidSession covers every reason a session token fails verification
@@ -20,7 +20,7 @@ var errInvalidSession = errors.New("invalid session")
 // signSession produces a session token proving the holder authenticated as email.
 // The token is "<payload>.<sig>" where payload is base64url("<email>|<expiryUnix>")
 // and sig is an HMAC-SHA256 of the payload under secret. It proves identity only;
-// authority (admin allowlist membership) is re-checked separately on every request.
+// authority (Organiser allowlist membership) is re-checked separately on every request.
 func signSession(secret []byte, email string, expiry time.Time) string {
 	payload := email + "|" + strconv.FormatInt(expiry.Unix(), 10)
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(payload))

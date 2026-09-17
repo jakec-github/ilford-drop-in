@@ -62,8 +62,8 @@ func volunteerName(v model.Volunteer) string {
 }
 
 // displayName is the shortest form that still identifies someone — how the rota
-// and the volunteer list name them, and so how the admin's view of a round does
-// too. An admin reading a grid of thirty rows already knows who these people
+// and the volunteer list name them, and so how the Organiser's view of a round does
+// too. An Organiser reading a grid of thirty rows already knows who these people
 // are; the surname is width spent on nothing.
 //
 // Falls back to the full name, which is also what the sheet client falls back to

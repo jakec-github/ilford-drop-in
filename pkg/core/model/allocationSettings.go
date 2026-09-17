@@ -2,12 +2,12 @@ package model
 
 import "slices"
 
-// SwitchableConstraint is one optional allocator rule an admin can switch on.
+// SwitchableConstraint is one optional allocator rule an Organiser can switch on.
 //
 // Name is the contract: it is the key the settings record stores an answer
 // under, and the name the solver is sent. It matches a constraint in
 // pyallocator's SWITCHABLE_CONSTRAINTS exactly — that registry is the authority
-// on what the rule *does* (ADR 0006), and this list is what an admin is offered.
+// on what the rule *does* (ADR 0006), and this list is what an Organiser is offered.
 // The two are pinned by a test on each side, because a name that drifts would
 // quietly switch a rule off on every deployment that had it on.
 //
@@ -30,7 +30,7 @@ type SwitchableConstraint struct {
 // in.
 //
 // The fundamental constraints are deliberately absent. A rota without them is
-// not a rota, so they are not an admin's decision to make.
+// not a rota, so they are not an Organiser's decision to make.
 var SwitchableConstraints = []SwitchableConstraint{
 	{
 		Name:        MaxFrequencyConstraint,
@@ -59,10 +59,10 @@ var SwitchableConstraints = []SwitchableConstraint{
 	},
 }
 
-// AllocationSettings is which optional allocator rules apply: an admin's
+// AllocationSettings is which optional allocator rules apply: an Organiser's
 // answers, not the rules themselves.
 //
-// Every field is a zero value until an admin saves the section, and that reads
+// Every field is a zero value until an Organiser saves the section, and that reads
 // as every rule off. Unset is the ordinary first state of a deployment rather
 // than a fault (ADR 0006) — a rota allocated with none of these switched on is
 // a legal rota, just an unconstrained one.
@@ -78,7 +78,7 @@ type AllocationSettings struct {
 	Enabled map[string]bool `json:"enabled,omitempty"`
 	// MaxFrequency is the share of a rota's shifts one volunteer may work,
 	// between 0 and 1. Read only when max_frequency is enabled; zero when an
-	// admin has never set it.
+	// Organiser has never set it.
 	//
 	// It is a top-level field rather than something hanging off the toggle
 	// because it is the only rule that carries a value. A second one would get
@@ -134,7 +134,7 @@ func (s AllocationSettings) UnknownConstraints() []string {
 	return unknown
 }
 
-// Missing names the answers an admin has yet to give that a rule they switched
+// Missing names the answers an Organiser has yet to give that a rule they switched
 // on needs, worded as they read on the Settings screen. Empty means these
 // settings can be allocated against.
 //
@@ -157,7 +157,7 @@ func (s AllocationSettings) Missing() []string {
 // contract is never a nonsense one.
 //
 // It rounds down, as the config-derived cap always did, but never to zero: a
-// frequency an admin set to mean "not often" must not come out meaning "never".
+// frequency an Organiser set to mean "not often" must not come out meaning "never".
 func (s AllocationSettings) MaxAllocationCount(shiftCount int) int {
 	if !s.IsEnabled(MaxFrequencyConstraint) || !validFrequency(s.MaxFrequency) {
 		return shiftCount
@@ -170,7 +170,7 @@ func (s AllocationSettings) MaxAllocationCount(shiftCount int) int {
 	return count
 }
 
-// validFrequency reports whether a share of a rota is one an admin could have
+// validFrequency reports whether a share of a rota is one an Organiser could have
 // meant: more than none of it, and no more than all of it.
 func validFrequency(frequency float64) bool {
 	return frequency > 0 && frequency <= 1

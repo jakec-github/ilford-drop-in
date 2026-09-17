@@ -20,7 +20,7 @@ interface UseVolunteersOptions {
   enabled?: boolean;
 }
 
-// useVolunteers owns the admin roster: the read and the sync that invalidates
+// useVolunteers owns the roster: the read and the sync that invalidates
 // it. They belong together because a sync is only worth firing to change what
 // the list shows, so the hook reloads on success and the view never has to
 // remember to.

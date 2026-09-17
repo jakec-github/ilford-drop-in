@@ -10,10 +10,10 @@ import type {
 import { CUSTOM_CHOICE, SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
 import "./RotaEditDialogs.css";
 
-// The Role to offer for a volunteer before the admin says otherwise: the
+// The Role to offer for a volunteer before whoever is editing says otherwise: the
 // highest-priority one they hold, which the API lists first. It is the right
 // answer far more often than not — pinning a team lead is nearly always pinning
-// them to lead — and the admin can still choose the other.
+// them to lead — and whoever is editing can still choose the other.
 function defaultRoleFor(volunteer: Volunteer | null | undefined): Role {
   return volunteer?.roles[0] ?? SERVICE_VOLUNTEER_ROLE;
 }
@@ -150,7 +150,7 @@ export type AssigneeChange =
 //
 // Role is stated rather than inferred: the service infers it from the shift and
 // the volunteer's own roster role, and those rules are invisible from here. On
-// an add to a leadless shift the admin chooses; everywhere else the answer is
+// an add to a leadless shift the editor chooses; everywhere else the answer is
 // forced and the dialog says what it is instead of asking.
 export function AssigneeDialog({
   dateLabel,
@@ -187,7 +187,7 @@ export function AssigneeDialog({
       ? { volunteerId: choice }
       : null;
 
-  // Only the add-to-a-leadless-shift case is the admin's to answer; the other
+  // Only the add-to-a-leadless-shift case is the editor's to answer; the other
   // two are settled by the shift itself.
   const incomingRole: Role =
     change.kind === "replace"
@@ -199,7 +199,7 @@ export function AssigneeDialog({
   function handleChoice(value: string) {
     setChoice(value);
     // Default to the role the volunteer holds on the roster: it is the right
-    // answer far more often than not, and the admin can still say otherwise.
+    // answer far more often than not, and the editor can still say otherwise.
     const chosen = volunteers?.find((v) => v.id === value);
     setRole(defaultRoleFor(chosen));
   }
@@ -342,7 +342,7 @@ export function PinDialog({
   volunteersError: string | null;
   // Whether this shift's single team-lead slot is already spoken for. A second
   // lead is a 409, and the way out is to remove the pin that holds it — which
-  // an admin can do for any of them (issue #131).
+  // an Organiser or a Rota Editor can do for any of them (issue #131).
   leadPinned: boolean;
   // Everyone already pinned here, by the name shown. Repeating a name is
   // allowed for a custom entry (issue #195) — an organisation sending two
@@ -368,7 +368,7 @@ export function PinDialog({
       : null;
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
-  // The Seat is the admin's to fill only when the person holds the Role and it
+  // The Seat is the editor's to fill only when the person holds the Role and it
   // is not already at its ceiling. Team lead's ceiling is one in S1, so one pin
   // is the whole of it; S3 reads real ceilings from the server.
   const canChooseRole =
@@ -437,7 +437,7 @@ export function PinDialog({
           </label>
         )}
 
-        {/* A note, not a refusal: pinning a name twice is how an admin says an
+        {/* A note, not a refusal: pinning a name twice is how the editor says an
             organisation is sending two people (issue #195). Worth saying,
             because the other reason to be typing it is a slip. */}
         {repeatedName && (

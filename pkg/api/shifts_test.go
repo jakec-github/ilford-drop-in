@@ -197,9 +197,9 @@ func TestUpdateShiftRejectsUnknownFields(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
-// Anyone may read the rota; only an admin may change what allocation will do
+// Anyone may read the rota; only an Organiser may change what allocation will do
 // with it.
-func TestUpdateShiftRequiresAdmin(t *testing.T) {
+func TestUpdateShiftRequiresAnOrganiser(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()),

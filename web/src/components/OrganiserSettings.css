@@ -10,7 +10,7 @@
 }
 
 /* Name, then its facts, then the one action. The name column is fixed rather
-   than fluid so the facts line up down the list — an admin comparing ceilings
+   than fluid so the facts line up down the list — an Organiser comparing ceilings
    and priorities is reading a column, not a sentence. */
 .role-row {
   display: flex;
@@ -58,7 +58,7 @@
   text-align: left;
 }
 
-/* The desk is the design target for admin tools, but the facts are the first
+/* The desk is the design target for Organiser tools, but the facts are the first
    thing to give: on a phone they drop under the name rather than squeezing it
    to nothing. */
 @media (max-width: 30rem) {
@@ -196,7 +196,7 @@
 
 @media (max-width: 30rem) {
   /* No room for two columns on a phone: the rule reads as a heading with its
-     answer under it. Admin tools are desktop first, but they stay usable. */
+     answer under it. Organiser tools are desktop first, but they stay usable. */
   .rule-facts .settings-fact {
     display: block;
   }

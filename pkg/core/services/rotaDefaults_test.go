@@ -90,7 +90,7 @@ func TestSaveShiftTimeDefaults(t *testing.T) {
 	assert.True(t, saved.HasShiftTimes())
 }
 
-// An admin who never touches the zone field still saves settings that compute a
+// An Organiser who never touches the zone field still saves settings that compute a
 // time, rather than settings that fall back for the rest of their life.
 func TestSaveShiftTimeDefaultsFillsInTheZone(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
@@ -125,7 +125,7 @@ func TestSaveShiftTimeDefaultsRefusesEqualTimes(t *testing.T) {
 }
 
 // Every way of getting a time wrong is an ordinary mistake with a message, not
-// a failure: an admin is typing into a form.
+// a failure: an Organiser is typing into a form.
 func TestSaveShiftTimeDefaultsRefusesBadInput(t *testing.T) {
 	cases := map[string]ShiftTimeParams{
 		"no start":         {Start: "", End: "21:30"},
@@ -147,7 +147,7 @@ func TestSaveShiftTimeDefaultsRefusesBadInput(t *testing.T) {
 	}
 }
 
-// A write the database refuses is a failure rather than an admin's mistake, and
+// A write the database refuses is a failure rather than an Organiser's mistake, and
 // stays one all the way out — the API answers 500, not 400.
 func TestSaveShiftTimeDefaultsSurfacesAWriteFailure(t *testing.T) {
 	store := &stubRotaDefaultsStore{writeErr: errors.New("connection refused")}
@@ -173,7 +173,7 @@ func TestRotaDefaultsReadsTheAllocationSettings(t *testing.T) {
 
 // A document this build cannot read is not allowed to take the settings screen
 // down with it: it reads as no answers, which is a state the screen renders and
-// an admin can fix by saving the section (ADR 0006 — never an error).
+// an Organiser can fix by saving the section (ADR 0006 — never an error).
 func TestRotaDefaultsToleratesUnreadableAllocationSettings(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
 		ShiftStartTime:     "19:30",
@@ -224,7 +224,7 @@ func TestSaveAllocationSettingsDropsUnknownRules(t *testing.T) {
 }
 
 // The one rule that carries a value cannot be switched on without one. Refused
-// at the point of saving, where an admin can see the box they left empty.
+// at the point of saving, where an Organiser can see the box they left empty.
 func TestSaveAllocationSettingsRefusesAnEnabledFrequencyWithNoValue(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
 
@@ -251,7 +251,7 @@ func TestSaveAllocationSettingsRefusesAFrequencyOutOfRange(t *testing.T) {
 
 // A value left over from when the rule was on is stored as given rather than
 // refused: with the rule off it constrains nothing, and blanking it would lose
-// what an admin would want back when they switch the rule on again.
+// what an Organiser would want back when they switch the rule on again.
 func TestSaveAllocationSettingsKeepsTheValueWhenTheRuleIsOff(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
 

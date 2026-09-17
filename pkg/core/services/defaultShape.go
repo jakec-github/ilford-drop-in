@@ -40,7 +40,7 @@ type DefaultShapeWriteStore interface {
 	SaveDefaultShape(ctx context.Context, shape []db.DefaultShapeSeat) error
 }
 
-// SeatParams is one line of the Shape as an admin states it: this many of this
+// SeatParams is one line of the Shape as an Organiser states it: this many of this
 // Role. A Role the Shape does not name is left out rather than sent as zero —
 // zero Seats of a Role is not something a Shape can say.
 type SeatParams struct {
@@ -87,10 +87,10 @@ func storedSeats(rows []db.DefaultShapeSeat) []storedSeat {
 	return seats
 }
 
-// statedSeats reads a Shape an admin has stated, or says why it will not.
+// statedSeats reads a Shape an Organiser has stated, or says why it will not.
 //
 // Every rule here is about the Shape alone — which Roles exist, and what a Role
-// can be asked for — so both Shapes an admin edits are checked by it: the
+// can be asked for — so both Shapes an Organiser edits are checked by it: the
 // default one on the settings screen, and one Shift's own (issue #138). What
 // differs between them is what else the Shape has to agree with, and that stays
 // with each caller.

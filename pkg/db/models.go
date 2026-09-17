@@ -108,7 +108,7 @@ type Allocation struct {
 //
 // It is the draft's outcome rather than its content — the Seats are
 // DraftAllocation rows — because an infeasible solve and a rota nobody has
-// solved yet both store no Seats, and an admin needs to tell those apart.
+// solved yet both store no Seats, and an Organiser needs to tell those apart.
 type DraftRotaAllocation struct {
 	RotaID       string // UUID
 	SolvedAt     time.Time
@@ -159,7 +159,7 @@ type DraftAllocation struct {
 // does.
 //
 // There is one kind of these however it came to exist (issue #131): a row an
-// admin added by hand and a row a Standing Preallocation seeded at definition
+// Organiser added by hand and a row a Standing Preallocation seeded at definition
 // are the same thing, and either may be removed.
 type Preallocation struct {
 	ID          string // UUID
@@ -169,7 +169,7 @@ type Preallocation struct {
 	CustomValue string // nullable
 }
 
-// StandingPreallocation is a Preallocation an admin expects to make every rota,
+// StandingPreallocation is a Preallocation an Organiser expects to make every rota,
 // held in the Rota Defaults and used to seed real ones when a Rotation is
 // defined (issue #131). RRule says which of the rota's Shifts it lands on, the
 // same recurrence-rule vocabulary the config's Rota Overrides used.

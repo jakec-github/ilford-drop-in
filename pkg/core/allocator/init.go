@@ -49,7 +49,7 @@ type InitVolunteerGroupsInput struct {
 //
 // Nobody left is a state, not a failure. Every rota is in it from the moment it
 // is defined until the first answer arrives, and the solver has an answer for
-// it: a rota with every Seat unfilled, which is precisely what an admin
+// it: a rota with every Seat unfilled, which is precisely what an Organiser
 // watching a draft take shape should see at that point. Refusing here instead
 // meant the draft could not be produced at all before the answers came in.
 func InitVolunteerGroups(input InitVolunteerGroupsInput) *VolunteerState {

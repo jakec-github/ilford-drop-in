@@ -363,7 +363,7 @@ export default function RotaViewer({
     }
   }
 
-  // --- Editing (admin only) -------------------------------------------------
+  // --- Editing (signed in) ------------------------------------------------------
 
   function stopEditing() {
     setEditRequested(false);
@@ -545,7 +545,7 @@ export default function RotaViewer({
     // Nobody can be on one shift twice, which rules out both ends of a swap
     // independently: the carried person must not already be on the destination,
     // and whoever they trade with must not already be on the shift they came
-    // from. The server enforces both; ruling them out here means the admin is
+    // from. The server enforces both; ruling them out here means the editor is
     // not offered a drop that can only end in a refusal.
     const carriedFrom = pending
       ? rotaShifts.find((s) => s.date === pending.date)

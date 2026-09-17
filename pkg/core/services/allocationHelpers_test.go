@@ -827,7 +827,7 @@ func TestFetchGroupAvailability_IndicesFollowShiftOrder(t *testing.T) {
 //
 // The refusal names the step rather than the rota. Reading a draft re-solves it
 // (issue #142), so this is what the Allocation tab shows for every rota between
-// being defined and its round being minted — a sentence an admin acts on, not a
+// being defined and its round being minted — a sentence an Organiser acts on, not a
 // row id.
 func TestFetchGroupAvailability_NoRoundMinted(t *testing.T) {
 	store := availabilityRound(nil)
@@ -836,5 +836,5 @@ func TestFetchGroupAvailability_NoRoundMinted(t *testing.T) {
 		context.Background(), store, "rota-1", nil, availabilityShiftIDs, zap.NewNop())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "availability round")
-	assert.NotContains(t, err.Error(), "rota-1", "no row id in a message an admin reads")
+	assert.NotContains(t, err.Error(), "rota-1", "no row id in a message an Organiser reads")
 }

@@ -30,8 +30,8 @@ var seedRoles = []model.Role{
 }
 
 // SeedRoles gives a dev database its Roles, once. No migration seeds Roles
-// (ADR 0006) — they are an admin's to choose, and the settings screen that lets
-// them is the next ticket — but the credential-free dev stack has no admin, and
+// (ADR 0006) — they are an Organiser's to choose, and the settings screen that lets
+// them is the next ticket — but the credential-free dev stack has no Organiser, and
 // `scripts/dev-stack.sh start` is supposed to hand over a usable app.
 //
 // It is a seed, not a reset: a database that already has any Role is left

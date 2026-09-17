@@ -16,7 +16,7 @@ type VolunteerSyncFunc func(ctx context.Context) error
 // handleSync repopulates the volunteer roster from the sheet. It is gated by
 // requireLevel, so only a logged-in Organiser reaches it. Unlike login there is no
 // OAuth round-trip: the server reads the sheet with its own service account, so
-// the admin only needs to be authorised — no token is taken from them. Reads
+// the Organiser only needs to be authorised — no token is taken from them. Reads
 // with the current (pre-sync) roster keep working while a sync is in flight,
 // since the store swaps the slice wholesale only once the fetch succeeds.
 func (a *Authenticator) handleSync(w http.ResponseWriter, r *http.Request) {

@@ -92,7 +92,7 @@ type Config struct {
 	// did maxAllocationFrequency, requiresMale and defaultShiftSize. They are
 	// all settings now, edited on the Settings screen (ADR 0006, #128, #129 and
 	// #130): when the drop-in runs, what a shift asks for, and which optional
-	// allocator rules apply are an admin's decisions, not an operator's, and
+	// allocator rules apply are an Organiser's decisions, not an operator's, and
 	// none of them should take a redeploy.
 	//
 	// The two allocator keys were also two halves of one idea in two places —
@@ -105,7 +105,7 @@ type Config struct {
 	// Shape states every Role's Seats.
 	//
 	// rotaOverrides is gone too (#136), and with it the last domain setting in
-	// this file. Everything an override could say has a home an admin can reach:
+	// this file. Everything an override could say has a home an Organiser can reach:
 	// whether the drop-in runs on a date is Closed on the Shift (#132), who is
 	// pinned to it comes from the Standing Preallocations (#131), and how big it
 	// is comes from the default Shape (#129). It was a list of recurrence rules

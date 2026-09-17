@@ -5,10 +5,10 @@ Add new constraint modules here.
 FUNDAMENTAL_CONSTRAINTS are what makes a rota a rota. They always apply and
 nothing can switch them off.
 
-SWITCHABLE_CONSTRAINTS are the optional rules an admin chooses in the
+SWITCHABLE_CONSTRAINTS are the optional rules an Organiser chooses in the
 Allocation Settings. This list is the **authority on which toggles exist**
 (ADR 0006): the settings record stores answers keyed by the names here, and
-Go offers an admin exactly these. A rule arriving or leaving is an edit to
+Go offers an Organiser exactly these. A rule arriving or leaving is an edit to
 this list and nothing else — no migration, and no default list anywhere but
 here.
 

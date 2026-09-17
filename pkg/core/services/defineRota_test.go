@@ -80,7 +80,7 @@ var testShape = []db.DefaultShapeSeat{
 	{RoleID: "role-service-volunteer", Seats: 4},
 }
 
-// definable is a deployment a rota can be defined against: an admin has said
+// definable is a deployment a rota can be defined against: an Organiser has said
 // when the drop-in runs and what a shift asks for. Everything else about it is
 // empty, and tests that care about one part set it.
 func definable() *mockDB {
@@ -146,7 +146,7 @@ func TestDefineRota_MintsWeeklyFromTheStatedStart(t *testing.T) {
 	}
 }
 
-// The cadence is the start date's own weekday, not Sunday: a rota an admin
+// The cadence is the start date's own weekday, not Sunday: a rota an Organiser
 // began on a Saturday runs on Saturdays. Nothing offers a cadence beyond
 // weekly, which is deliberate (issue #140).
 func TestDefineRota_KeepsTheStartDatesWeekday(t *testing.T) {
@@ -164,7 +164,7 @@ func TestDefineRota_KeepsTheStartDatesWeekday(t *testing.T) {
 		[]string{result.Shifts[0].Date, result.Shifts[1].Date, result.Shifts[2].Date})
 }
 
-// A rota may start whenever an admin says, including after a break — which is
+// A rota may start whenever an Organiser says, including after a break — which is
 // the reason the date is stated rather than derived. Nothing here consults the
 // rota that came before beyond the one-rota-in-flight rule.
 func TestDefineRota_StartsAfterABreak(t *testing.T) {
@@ -242,7 +242,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	assert.Equal(t, "role-service-volunteer", result.Preallocations[0].RoleID)
 
 	// One store call, so a rota can never exist with only some of the pins an
-	// admin was promised.
+	// Organiser was promised.
 	require.Len(t, mock.insertedPins, 1)
 	assert.Equal(t, result.Preallocations, mock.insertedPins[0])
 }
@@ -375,7 +375,7 @@ func TestDefineRota_AllowedWhenEveryRotaIsAllocated(t *testing.T) {
 }
 
 // Where more than one rota is somehow unallocated — a deployment predating the
-// rule, or rows edited by hand — the admin is pointed at the earliest, which is
+// rule, or rows edited by hand — the Organiser is pointed at the earliest, which is
 // the one that has to be dealt with first.
 func TestDefineRota_NamesTheEarliestRotaInFlight(t *testing.T) {
 	mock := definable()
@@ -390,7 +390,7 @@ func TestDefineRota_NamesTheEarliestRotaInFlight(t *testing.T) {
 	assert.NotContains(t, err.Error(), "2026-09-06")
 }
 
-// A start date an admin chose can land on a day the drop-in already runs, which
+// A start date an Organiser chose can land on a day the drop-in already runs, which
 // the one-Shift-per-date index refuses. It is an ordinary mistake, so it is
 // answered as one: the day, the rota covering it, and where to start instead.
 func TestDefineRota_RefusesADateAlreadyTaken(t *testing.T) {
@@ -447,7 +447,7 @@ func TestDefineRota_RotationsReadFails(t *testing.T) {
 
 // Defining a rota asks everybody about it: every active volunteer holds a link
 // for it before the request is over, so the draft has a round to read and an
-// admin's next act is sending the links rather than making them (issue #188).
+// Organiser's next act is sending the links rather than making them (issue #188).
 func TestDefineRota_OpensTheRound(t *testing.T) {
 	mock := definable()
 

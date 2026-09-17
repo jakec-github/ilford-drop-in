@@ -13,7 +13,7 @@ function timeOfDay(timestamp: string): string {
 // That second case is not a shift anybody typed: it is what the migration that
 // made times mandatory left behind on a deployment where nobody had ever said
 // when the drop-in runs. Rendering it as the day it is beats rendering
-// "00:00–00:00", and an admin puts the real hours on it from the rota.
+// "00:00–00:00", and an Organiser puts the real hours on it from the rota.
 export function formatShiftTimes(start: string, end: string): string {
   const from = timeOfDay(start);
   const to = timeOfDay(end);

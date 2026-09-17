@@ -1,6 +1,6 @@
 """Public solve() entrypoint: input -> problem -> model -> solver -> output.
 
-The constraint list comes from the input's enabled_constraints — the admin's
+The constraint list comes from the input's enabled_constraints — the Organiser's
 Allocation Settings, decided in the app and sent by Go — rather than from a
 default list held here. Preferences still default to the production registry:
 they are a weighted objective rather than a rule, and are not switchable.

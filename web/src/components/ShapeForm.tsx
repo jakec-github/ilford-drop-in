@@ -7,7 +7,7 @@ import "./ShapeForm.css";
 // ShapeForm is editing a Shape: every Role, with how many Seats of it is being
 // asked for.
 //
-// One form for both Shapes an admin states — the default one on the settings
+// One form for both Shapes an Organiser states — the default one on the settings
 // screen, and one Shift's own on the rota (issue #138) — because the question
 // is the same in both places and only the words around it differ. What they
 // hand in is the same list of Seats, and both are refused by the same rules on

@@ -337,7 +337,7 @@ func volunteerLabel(id string, volunteersByID map[string]model.Volunteer) string
 }
 
 // shiftChange is one shift's half of a rota change: who leaves it, who joins
-// it, and the Role the joining volunteer takes when the admin named one. A swap
+// it, and the Role the joining volunteer takes when whoever made the change named one. A swap
 // is two of these — the second with in and out exchanged.
 type shiftChange struct {
 	shiftID   string
@@ -424,9 +424,9 @@ func validateRole(params ChangeRotaParams, roles model.Roles) error {
 	return nil
 }
 
-// warnUnheldRole notes an admin placing someone in a Role the roster does not
+// warnUnheldRole notes someone placing someone in a Role the roster does not
 // record them as holding. It proceeds: the structure (one Seat, one person) is
-// enforced, but who is up to the job on the day is the admin's call, and the
+// enforced, but who is up to the job on the day is the call of whoever is changing the rota, and the
 // roster is standing advice rather than a gate on a cover (ADR 0005).
 func warnUnheldRole(params ChangeRotaParams, volunteersByID map[string]model.Volunteer, logger *zap.Logger) {
 	if params.Role == "" || params.In == "" {

@@ -79,7 +79,7 @@ func TestSeedPreallocations_CollapsesOverlappingRules(t *testing.T) {
 	assert.Equal(t, "role-service-volunteer", byShift["shift-2"].RoleID)
 }
 
-// A rule nobody can parse would silently drop a promise an admin has made, so
+// A rule nobody can parse would silently drop a promise an Organiser has made, so
 // definition refuses rather than minting a rota missing its pins.
 func TestSeedPreallocations_UnparseableRuleFails(t *testing.T) {
 	standing := []db.StandingPreallocation{{
@@ -150,7 +150,7 @@ func TestAddStandingPreallocation_VolunteerHappyPath(t *testing.T) {
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
 	assert.Equal(t, "alice", store.inserted[0].VolunteerID)
-	assert.Equal(t, "Team lead", view.Role, "the view names the Role an admin recognises")
+	assert.Equal(t, "Team lead", view.Role, "the view names the Role an Organiser recognises")
 	assert.Equal(t, "Alice", view.Name)
 }
 
@@ -223,7 +223,7 @@ func TestAddStandingPreallocation_Refusals(t *testing.T) {
 	}
 }
 
-// The same promise made twice is a slip, and the message says so in the admin's
+// The same promise made twice is a slip, and the message says so in the Organiser's
 // own terms rather than in the database's.
 func TestAddStandingPreallocation_Duplicate(t *testing.T) {
 	store := &mockStandingStore{insertErr: db.ErrDuplicateStandingPreallocation}

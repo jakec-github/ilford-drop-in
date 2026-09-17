@@ -125,8 +125,8 @@ func TestDeleteStandingPreallocationEndpoint(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-// Every verb is admin-only: these name people against every rota to come.
-func TestStandingPreallocationsRequireAdmin(t *testing.T) {
+// Every verb is Organiser-only: these name people against every rota to come.
+func TestStandingPreallocationsRequireAnOrganiser(t *testing.T) {
 	handler := newTestHandler(&mockStore{}, activeVolunteers())
 
 	for _, tc := range []struct{ method, path, body string }{

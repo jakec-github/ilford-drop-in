@@ -12,7 +12,7 @@ import (
 )
 
 // allocateRotaRequest states which rota is being allocated: not by id — there is
-// only one in flight — but by the fingerprint of the draft the admin was looking
+// only one in flight — but by the fingerprint of the draft the Organiser was looking
 // at when they decided.
 //
 // Required, and deliberately not defaultable. A request that named no draft
@@ -35,17 +35,17 @@ type allocateRotaResponse struct {
 	// Rota is the solve this attempt ran, in the same shape the draft is read
 	// in — because that is what it was until the moment it was committed. When
 	// the allocation was refused it is the fresh draft that replaced the one
-	// confirmed, which is what the admin reads and confirms instead.
+	// confirmed, which is what the Organiser reads and confirms instead.
 	Rota draftRotaAllocationResponse `json:"rota"`
 }
 
-// handleAllocateRotaInFlight allocates the rota in flight — the one the admin
+// handleAllocateRotaInFlight allocates the rota in flight — the one the Organiser
 // was shown, and no other.
 //
 // It re-solves, and commits only if the answer fingerprints identically to the
 // draft named in the request (ADR 0008). A different answer means an allocator
-// input moved while the admin was reading, so nothing is committed: the fresh
-// solve becomes the draft and comes back as a 409, for the admin to read and
+// input moved while the Organiser was reading, so nothing is committed: the fresh
+// solve becomes the draft and comes back as a 409, for the Organiser to read and
 // confirm instead. That is a conflict rather than a failure — the request was
 // understood and answered — and the body is the same shape either way.
 //
@@ -61,12 +61,12 @@ type allocateRotaResponse struct {
 //
 // Waiting rather than refusing (issue #179) has one consequence worth stating:
 // a solve landing while this request is queued may have moved the rota, so the
-// hash the admin confirmed no longer matches and nothing is committed. That
+// hash the Organiser confirmed no longer matches and nothing is committed. That
 // makes the change report an ordinary outcome of allocating during a burst of
 // edits rather than a rare one — which is correct, and already what the report
 // is for.
 //
-// Admin-only, like everything else about the rota being decided. This is the
+// Organiser-only, like everything else about the rota being decided. This is the
 // act that publishes it: after this the rota reaches GET /api/shifts and the
 // calendar feed volunteers subscribe to.
 func (h *Handler) handleAllocateRotaInFlight(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (h *Handler) handleAllocateRotaInFlight(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := h.drafts.acquire(r.Context()); err != nil {
-		// The admin closed the tab or gave up while queueing. Nothing is
+		// The Organiser closed the tab or gave up while queueing. Nothing is
 		// written, which is the whole answer: allocating is the one thing here
 		// that must not happen without somebody watching it.
 		h.logger.Debug("An allocation left the solve queue", zap.Error(err))

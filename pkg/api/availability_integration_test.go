@@ -14,7 +14,7 @@ import (
 )
 
 // TestAvailabilityLoopIntegration drives the whole slice over HTTP against a
-// real Postgres, in the order an admin and a volunteer actually meet it: define
+// real Postgres, in the order an Organiser and a volunteer actually meet it: define
 // a rota, mint a round, open a link, submit, change your mind. It is the
 // acceptance criterion "the whole loop is drivable over HTTP" executed rather
 // than described, and the only test that proves the migration, the handlers and
@@ -93,7 +93,7 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	reopened = formOverHTTP(t, handler, http.MethodGet, token, "")
 	assert.Equal(t, narrowed, reopened.SelectedShiftIDs)
 
-	// The admin roster now reports bob as replied, and the other two as not.
+	// The Organiser roster now reports bob as replied, and the other two as not.
 	current := roundOverHTTP(t, handler)
 	assert.True(t, entryFor(t, current, "bob").Replied)
 	assert.Equal(t, narrowed, entryFor(t, current, "bob").AvailableShiftIDs)

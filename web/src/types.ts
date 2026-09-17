@@ -64,7 +64,7 @@ export interface ConfiguredRole {
   colour: RoleColour;
 }
 
-// RoleEdit is a Role as an admin states it: everything editable, and nothing
+// RoleEdit is a Role as an Organiser states it: everything editable, and nothing
 // else. The same shape creates one and edits one, because an edit says
 // everything a creation says — a Role must not be able to reach through an edit
 // a state it could not have been created in.
@@ -83,19 +83,19 @@ export interface RoleEdit {
 //
 // Times are 24-hour "HH:MM" — the same thing an <input type="time"> reads and
 // writes — not timestamps: a time of day is not a moment until it is read
-// against a date. Empty means an admin has not set it, which is where every
+// against a date. Empty means an Organiser has not set it, which is where every
 // deployment starts and is a state the screen renders rather than an error.
 export interface ShiftTimes {
   shiftStartTime: string;
   shiftEndTime: string;
   // An IANA zone name. Never empty on the way out of the server: it answers
-  // with the default when an admin has not chosen one, so there is one answer
+  // with the default when an Organiser has not chosen one, so there is one answer
   // to what zone the drop-in runs in.
   shiftTimezone: string;
 }
 
 // ShapeSeat is one line of a Shape: this many places of one Role. roleId is what
-// an edit names; role is the name an admin reads, and what a colour is keyed on
+// an edit names; role is the name an Organiser reads, and what a colour is keyed on
 // elsewhere.
 export interface ShapeSeat {
   roleId: string;
@@ -117,7 +117,7 @@ export interface SwitchableConstraint {
   valueLabel?: string;
 }
 
-// AllocationSettings is which optional allocator rules an admin has switched
+// AllocationSettings is which optional allocator rules an Organiser has switched
 // on. `enabled` carries an answer for every rule the server knows, so nothing
 // here has to know that a missing one means off.
 export interface AllocationSettings {
@@ -131,7 +131,7 @@ export interface AllocationSettings {
 // allocation answers are about.
 export interface RotaDefaults extends ShiftTimes {
   // What every shift asks for, in the order its Seats are filled. Empty means
-  // an admin has not stated one — the state every deployment starts in, and the
+  // an Organiser has not stated one — the state every deployment starts in, and the
   // one thing that stops a rota being allocated without saying anything else.
   defaultShape: ShapeSeat[];
   allocationSettings: AllocationSettings;
@@ -151,7 +151,7 @@ export interface Assignee {
   volunteerId: string | null;
 }
 
-// Volunteer is one entry of the admin roster. roles are the jobs they will do —
+// Volunteer is one entry of the roster. roles are the jobs they will do —
 // holding a Role is what makes them eligible for its Seats — unlike
 // Assignee.role, which is the single Role they hold on one shift. Group is their
 // group key, or null when they are not in one.
@@ -174,7 +174,7 @@ export interface Volunteer {
 
 // DefinedRota is a rota that has just been defined: the span it covers and the
 // dates of the shifts it minted, in order. Returned by the define call so the
-// admin can see what they created — defining is not idempotent, so what came
+// Organiser can see what they created — defining is not idempotent, so what came
 // back is the only confirmation of which weeks were taken.
 export interface DefinedRota {
   id: string;
@@ -193,7 +193,7 @@ export interface RotaProposal {
   startDate: string;
 }
 
-// NewRota is a rota an admin has stated, as POST /api/rotations takes it: how
+// NewRota is a rota an Organiser has stated, as POST /api/rotations takes it: how
 // many shifts, and from when.
 //
 // The hours and the Shape are not here. They are the Rota Defaults, stated on
@@ -206,7 +206,7 @@ export interface NewRota {
 
 // RotaInFlight is the rota being worked on: the one Rotation that has not been
 // allocated yet. There is at most one, because defining a second is refused
-// while this exists — which is what lets every admin screen say "the rota"
+// while this exists — which is what lets every Organiser screen say "the rota"
 // without offering a picker.
 //
 // The round counts are what a discard would destroy, and they are on this read
@@ -237,7 +237,7 @@ export interface DraftShift {
 // and the rota it drafted. There is one draft, for the one rota in flight, so
 // this is the whole of what the rota page knows about drafting.
 //
-// Admin-only, all of it. A draft names people against shifts nobody has decided
+// Organiser-only, all of it. A draft names people against shifts nobody has decided
 // yet and is replaced wholesale every time an input moves, so showing one to a
 // volunteer would tell them they are working a shift they may well not be
 // (ADR 0008).
@@ -288,7 +288,7 @@ export interface DraftRotaState {
 // moved since it was shown and the fresh draft is what to read instead.
 //
 // Not an error in the second case. It is the mechanism working — nothing was
-// committed, and the admin now has the rota as it actually stands to confirm —
+// committed, and the Organiser now has the rota as it actually stands to confirm —
 // so it comes back as an outcome to render rather than a message to apologise
 // with.
 export type AllocateOutcome =
@@ -346,7 +346,7 @@ export interface AvailabilityShift {
   closed: boolean;
 }
 
-// AvailabilityEntry is one volunteer's place in a round, as an admin sees it.
+// AvailabilityEntry is one volunteer's place in a round, as an Organiser sees it.
 //
 // link is the volunteer's whole URL, ready to copy — distribution is
 // copy-the-link until sending is built, and stays the fallback when an email
@@ -433,7 +433,7 @@ export interface ShiftCoverage {
 
 // RoleCoverage is one Role's Seats on one shift. Someone holding two Roles is
 // counted under both — they could fill either, so these do not sum to the
-// shift's total. delta is the number an admin is really after: negative is
+// shift's total. delta is the number an Organiser is really after: negative is
 // short.
 export interface RoleCoverage {
   role: Role;
@@ -446,7 +446,7 @@ export interface RoleCoverage {
 
 // AvailabilityRound is a rota's round: how each of its shifts is looking, and
 // where everyone asked has got to. allocated means the round is closed — the
-// links have stopped working, so an admin looking at it is reading history.
+// links have stopped working, so an Organiser looking at it is reading history.
 export interface AvailabilityRound {
   rotaId: string;
   start: string;
@@ -500,7 +500,7 @@ export interface RotaShift {
   // on the shift itself. Frozen once the rota is allocated.
   closed: boolean;
   // allocated is false for a minted shift whose rota has not been run yet: it
-  // exists but has no assignees. Shown only to admins (with a distinct style).
+  // exists but has no assignees. Shown only to the signed in (with a distinct style).
   allocated: boolean;
   // What this shift asks for, in the order its Seats are filled. The shift's
   // own — a copy of the default Shape taken when the rota was defined, editable
@@ -515,9 +515,9 @@ export interface RotaShift {
 // shift, before allocation has run. name is what to show — a volunteer's display
 // name, or a custom entry (an outside group, say) verbatim.
 //
-// There is one kind of these however it came to exist: a pin an admin made by
+// There is one kind of these however it came to exist: a pin somebody made by
 // hand and a pin a Standing Preallocation seeded when the rota was defined are
-// the same thing, both carry an id, and an admin may remove either.
+// the same thing, both carry an id, and an Organiser or a Rota Editor may remove either.
 export interface Preallocation {
   id: string;
   date: string;
@@ -543,7 +543,7 @@ export interface NewPreallocation {
   roleId: string;
 }
 
-// StandingPreallocation is a Preallocation an admin expects to make every rota —
+// StandingPreallocation is a Preallocation an Organiser expects to make every rota —
 // the team who always take the first Sunday — kept with the Rota Defaults and
 // used to seed ordinary ones when a rota is defined. It is a convenience at
 // definition, not a standing fact: the pins it has already made are ordinary and

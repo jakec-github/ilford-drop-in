@@ -50,7 +50,7 @@ func TestARotaStartsWithNothingMovedUnderIt(t *testing.T) {
 	assert.True(t, inputsChangedAt(t, database).IsZero(), "nothing has moved under a rota nobody has touched")
 }
 
-// Every input an admin or a volunteer can move, one at a time. Each starts from
+// Every input an Organiser or a volunteer can move, one at a time. Each starts from
 // the stamp the one before it left, so the test also proves the stamp moves
 // forwards rather than merely becoming non-zero once.
 func TestEveryAllocatorInputStampsTheRota(t *testing.T) {

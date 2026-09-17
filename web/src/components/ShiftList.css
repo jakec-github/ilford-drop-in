@@ -222,7 +222,7 @@
 
 /* Chips: colour = role held on this shift. Outlined by default, light fill on
    hover, solid fill when selected. Buttons rather than spans — they are
-   clickable on the public rota and are the handle for every edit on the admin
+   clickable on the public rota and are the handle for every edit on the Organiser
    one, so they have to be reachable by keyboard either way. */
 .chip {
   /* The Role's colour comes from the server as a palette token, which
@@ -316,7 +316,7 @@
 
 /* A draft the inputs have moved under: what the solver last said, still the
    best guess on screen, waiting on the solve that answers for the edit. Faded
-   rather than blanked — an admin adding five pins would otherwise watch the
+   rather than blanked — an Organiser adding five pins would otherwise watch the
    rota disappear five times. The transition is on the way in only, so the fresh
    draft arrives at full strength rather than fading up into place.
 

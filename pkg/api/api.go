@@ -37,7 +37,7 @@ type Store interface {
 	Ping(ctx context.Context) error
 }
 
-// MailerFunc builds a mail client from an admin's freshly-granted Gmail access
+// MailerFunc builds a mail client from an Organiser's freshly-granted Gmail access
 // token. It is injected rather than constructed here so the server's Google
 // dependencies stay in the composition root, and so dev mode can hand over a
 // client that writes emails to the log instead of sending them.
@@ -62,7 +62,7 @@ type Handler struct {
 	// requests because a round takes about ninety seconds — see sendjobs.go.
 	sends *sendJobs
 	// drafts is the one solve slot draft solves take turns in, so that two
-	// admins reading the rota at once do not start two solvers over the same
+	// Organisers reading the rota at once do not start two solvers over the same
 	// inputs — see draftsolves.go.
 	drafts *draftSolves
 }
@@ -118,7 +118,7 @@ const apiPrefix = "/api"
 func (h *Handler) Routes() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /shifts", h.handleListShifts)
-	// Editing a Shift is admin-only, and admin-only for a reason the listing is
+	// Editing a Shift is Organiser-only, and Organiser-only for a reason the listing is
 	// not: closing one is an allocator input, and the rota is solved around it.
 	api.Handle("PATCH /shifts/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateShift)))
 	// A Shape is its own resource under the Shift rather than another field of
@@ -129,16 +129,16 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("PUT /shifts/{id}/shape", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftShape)))
 	// Public alongside the rota: it is what tells a client which Roles exist
 	// and what each is drawn in, and the rota names Roles on every chip. The
-	// writes beside it are admin-only — which Roles exist is a decision about
+	// writes beside it are Organiser-only — which Roles exist is a decision about
 	// how the drop-in runs — and there is no DELETE, because a Role is
 	// permanent (ADR 0006).
 	api.HandleFunc("GET /roles", h.handleListRoles)
 	api.Handle("POST /roles", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateRole)))
 	api.Handle("PUT /roles/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateRole)))
-	// The settings record, admin-only throughout. Unlike the Roles beside it on
+	// The settings record, Organiser-only throughout. Unlike the Roles beside it on
 	// the same screen, nothing a logged-out visitor sees needs it: the shift
 	// times already reach the public on GET /shifts, and the sections joining
-	// this one are an admin's business.
+	// this one are an Organiser's business.
 	//
 	// One GET for the record and a PUT per section, each named. The screen
 	// draws every section from the one read; a section is written whole — the
@@ -167,7 +167,7 @@ func (h *Handler) Routes() http.Handler {
 	// it, because what it changes is the Rotation — the draft is what it
 	// confirms, not what it writes.
 	api.Handle("POST /rotations/in-flight/allocation", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAllocateRotaInFlight)))
-	// The rota in flight's Draft Rota Allocation. Admin-only, and the gate is
+	// The rota in flight's Draft Rota Allocation. Organiser-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has
 	// decided yet, and it is replaced wholesale every time an input moves.
 	// Publishing one would tell a volunteer they are working a shift they may
@@ -189,12 +189,14 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("GET /draft-rota-allocation", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetDraftRotaAllocation)))
 	api.Handle("POST /draft-rota-allocation", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
 	api.Handle("POST /alterations", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreateAlteration)))
-	// Reading pins is admin-only alongside writing them: a listing names people
+	// Reading pins is gated alongside writing them: a listing names people
 	// against dates whose rota has not been allocated, let alone published, and
-	// nothing outside the admin UI has any use for it.
-	// The Standing Preallocations, part of the Rota Defaults: the pins an admin
+	// nothing a logged-out visitor sees has any use for it. Pins are a Rota
+	// Editor's to make as well as an Organiser's, and so are the reads beside
+	// them: the roster to pick someone from, and the rota in flight to pin to.
+	// The Standing Preallocations, part of the Rota Defaults: the pins an Organiser
 	// expects to make every rota, which seed ordinary Preallocations when one is
-	// defined. Admin-only throughout, like the settings screen they live on.
+	// defined. Organiser-only throughout, like the settings screen they live on.
 	// There is no PUT — a promise is made or it is not, and editing one is
 	// removing it and making the one that was meant.
 	api.Handle("GET /standing-preallocations", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListStandingPreallocations)))
@@ -204,7 +206,7 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("POST /preallocations", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePreallocation)))
 	api.Handle("DELETE /preallocations/{id}", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePreallocation)))
 	api.Handle("GET /volunteers", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListVolunteers)))
-	// Rounds are admin-only: the roster hands out every volunteer's link, which
+	// Rounds are Organiser-only: the roster hands out every volunteer's link, which
 	// is a bearer credential for their availability.
 	api.Handle("POST /availability-rounds", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleMintAvailabilityRound)))
 	api.Handle("GET /availability-rounds", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetAvailabilityRound)))
@@ -214,7 +216,7 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("GET /availability-sends/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetSend)))
 	// The volunteer's own link, public by design — the link is the identity and
 	// volunteers never log in. Registered under a separate prefix from the
-	// admin rounds above so neither path can shadow the other.
+	// Organiser rounds above so neither path can shadow the other.
 	api.HandleFunc("GET /availability/{token}", h.handleAvailabilityForm)
 	api.HandleFunc("POST /availability/{token}", h.handleSubmitAvailability)
 
