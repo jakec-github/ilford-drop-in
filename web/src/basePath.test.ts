@@ -22,19 +22,16 @@ afterEach(() => {
 
 describe("BASE_PATH", () => {
   test("is empty at the root of a domain, which is dev and every test", async () => {
-    const { BASE_PATH, apiUrl } = await basePathWith("/");
+    const { BASE_PATH } = await basePathWith("/");
     expect(BASE_PATH).toBe("");
-    expect(apiUrl("/api/shifts")).toBe("/api/shifts");
   });
 
   test("is the path the server wrote into the base tag, without its trailing slash", async () => {
-    const { BASE_PATH, apiUrl } = await basePathWith("/rota/");
-    expect(BASE_PATH).toBe("/rota");
+    const { BASE_PATH } = await basePathWith("/rota/");
     // The trailing slash belongs in the element, where relative asset
     // references resolve against it, and nowhere else — a URL built from it
     // must not double up.
-    expect(apiUrl("/api/shifts")).toBe("/rota/api/shifts");
-    expect(apiUrl("/auth/login")).toBe("/rota/auth/login");
+    expect(BASE_PATH).toBe("/rota");
   });
 
   test("is empty when there is no base element at all", async () => {
@@ -43,16 +40,19 @@ describe("BASE_PATH", () => {
   });
 });
 
-// Every request the app makes has to carry the base path, and there is nothing
-// about a missed one that shows up in dev — the site is at the root there, so
-// a raw "/api/..." works perfectly until it is deployed under a path, where it
-// reaches the domain's root and 404s. api.ts is the one place requests are
+// The API and /auth stay at the root of the domain however the site is served,
+// and what keeps a request there is its leading slash: an absolute path resets
+// the path when the URL is resolved, so the <base> element never applies. Drop
+// the slash and the request silently starts resolving against the base instead
+// — which in dev, where the base is "/", still works, and under a base path
+// asks a page's directory for the API. api.ts is the one place requests are
 // made (views never call fetch), so this is the whole of the rule.
-test("every request in api.ts goes through apiUrl", async () => {
+test("every request in api.ts names a root-absolute path", async () => {
   const source = await Bun.file(new URL("./api.ts", import.meta.url)).text();
 
-  const bare = [...source.matchAll(/fetch\(\s*(["'`]\/[^"'`]*)/g)].map(
+  const paths = [...source.matchAll(/fetch\(\s*["'`]([^"'`]*)/g)].map(
     (m) => m[1],
   );
-  expect(bare).toEqual([]);
+  expect(paths.length).toBeGreaterThan(0);
+  expect(paths.filter((p) => !p.startsWith("/"))).toEqual([]);
 });

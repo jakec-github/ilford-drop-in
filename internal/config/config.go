@@ -30,17 +30,17 @@ type ServerConfig struct {
 	// locality. Set it where the default guess is wrong — chiefly a git worktree,
 	// whose frontend runs on its own port (see docs/agents/worktrees.md).
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
-	// BasePath is the single path segment the whole site is served under, such
-	// as "/rota". Optional: empty — dev, every test, and any deployment that
-	// has not set one — serves the site at the root of its domain, exactly as
-	// before.
+	// BasePath is the single path segment the site's own pages are served
+	// under, such as "/rota". Optional: empty — dev, every test, and any
+	// deployment that has not set one — serves the site at the root of its
+	// domain, exactly as before.
 	//
 	// One segment, leading slash, no trailing slash. The value itself is a
 	// deployment's business and never appears in this repo; see checkBasePath
 	// for why the shape is enforced at load.
 	//
-	// /health deliberately stays at the root whatever this says — the deploy
-	// tooling polls it and should not have to learn the path (pkg/api.Routes).
+	// It moves the pages and the calendar feeds, and deliberately not /api,
+	// /auth or /health — pkg/api.mountSite has the reasoning.
 	BasePath string `yaml:"basePath,omitempty"`
 }
 

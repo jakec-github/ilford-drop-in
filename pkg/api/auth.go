@@ -50,19 +50,18 @@ type Authenticator struct {
 	// shared callback. Set by NewHandler, because the send needs the store and
 	// the roster and this type has neither; nil means no sending is wired up.
 	completeSend http.HandlerFunc
-	// basePath is the path the site is served under, or "" for the root of the
-	// domain (issue #201). Both cookies this type sets are scoped by path, so
-	// this has to match what Routes mounts the site under: a state cookie
-	// scoped to /auth when login lives at <base>/auth is never sent back, and
-	// every login fails with "invalid OAuth state".
+	// basePath is the path the site's own pages are served under, or "" for the
+	// root of the domain (issue #201). The OAuth endpoints themselves stay at
+	// the root — their callback URI is registered by hand in the Google console
+	// and is better off shared — so this is needed for one thing only: knowing
+	// where to send a browser once it has logged in.
 	basePath string
 }
 
-// path prefixes a site path with the base the site is served under, so a
-// handler can name an absolute path — a cookie's scope, somewhere to redirect
-// to — without knowing where the site is mounted.
-func (a *Authenticator) path(p string) string {
-	return a.basePath + p
+// siteRoot is the app's home page as a browser must ask for it, which is where
+// a completed login lands. The only thing this type needs the base path for.
+func (a *Authenticator) siteRoot() string {
+	return a.basePath + "/"
 }
 
 // isStubbed reports whether the Google round-trip has been replaced, which is
@@ -86,7 +85,7 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 		return nil, fmt.Errorf("failed to discover OIDC provider: %w", err)
 	}
 
-	redirectURL, err := resolveRedirectURI(webCfg.Web.RedirectURIs, env, srv.RedirectURI, srv.BasePath)
+	redirectURL, err := resolveRedirectURI(webCfg.Web.RedirectURIs, env, srv.RedirectURI)
 	if err != nil {
 		return nil, err
 	}
@@ -150,12 +149,9 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:  stateCookieName,
-		Value: state,
-		// Scoped to the OAuth endpoints, under the site's base path. Get this
-		// wrong and the browser simply does not send the cookie back, which
-		// handleCallback can only report as an invalid state.
-		Path:     a.path("/auth"),
+		Name:     stateCookieName,
+		Value:    state,
+		Path:     "/auth",
 		MaxAge:   int(stateCookieMaxAge.Seconds()),
 		HttpOnly: true,
 		Secure:   a.secure,
@@ -241,7 +237,7 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	a.setSessionCookie(w, claims.Email)
 
-	http.Redirect(w, r, a.path("/"), http.StatusFound)
+	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
 }
 
 // setSessionCookie issues the signed admin session for email.
@@ -253,7 +249,7 @@ func (a *Authenticator) setSessionCookie(w http.ResponseWriter, email string) {
 		// re-checked by isAdmin, which folds both sides, so the stored form need
 		// not be canonical.
 		Value:    signSession(a.secret, email, time.Now().Add(sessionDuration)),
-		Path:     a.path("/"),
+		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
 		HttpOnly: true,
 		Secure:   a.secure,
@@ -263,7 +259,7 @@ func (a *Authenticator) setSessionCookie(w http.ResponseWriter, email string) {
 
 // handleLogout clears the session cookie.
 func (a *Authenticator) handleLogout(w http.ResponseWriter, _ *http.Request) {
-	a.clearCookie(w, sessionCookieName, a.path("/"))
+	a.clearCookie(w, sessionCookieName, "/")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -353,28 +349,11 @@ func (a *Authenticator) clearCookie(w http.ResponseWriter, name, path string) {
 // clearer error than the consent screen would. Otherwise the URI is chosen by
 // locality: a localhost URI for dev (env != "prod"), a non-localhost URI for
 // prod, falling back to the first registered URI if none matches.
-//
-// Whichever it picks has to be the callback this server actually serves, which
-// under a base path is <base>/auth/callback. A URI left at the root after the
-// site moved under a path is a config that disagrees with the Google console,
-// and the only sign of it would be a rejected consent screen halfway through a
-// login — so it fails at startup instead.
-func resolveRedirectURI(uris []string, env, preferred, basePath string) (string, error) {
+func resolveRedirectURI(uris []string, env, preferred string) (string, error) {
 	if len(uris) == 0 {
 		return "", fmt.Errorf("no redirect URI registered with the OAuth client for env %q", env)
 	}
 
-	chosen, err := chooseRedirectURI(uris, env, preferred)
-	if err != nil {
-		return "", err
-	}
-	if err := checkRedirectURIPath(chosen, basePath); err != nil {
-		return "", err
-	}
-	return chosen, nil
-}
-
-func chooseRedirectURI(uris []string, env, preferred string) (string, error) {
 	if preferred != "" {
 		if slices.Contains(uris, preferred) {
 			return preferred, nil
@@ -389,20 +368,6 @@ func chooseRedirectURI(uris []string, env, preferred string) (string, error) {
 		}
 	}
 	return uris[0], nil
-}
-
-// checkRedirectURIPath asserts that a redirect URI names the callback this
-// server serves under basePath.
-func checkRedirectURIPath(uri, basePath string) error {
-	want := basePath + "/auth/callback"
-	parsed, err := url.Parse(uri)
-	if err != nil {
-		return fmt.Errorf("redirect URI %q could not be parsed: %w", uri, err)
-	}
-	if parsed.Path != want {
-		return fmt.Errorf("redirect URI %q has path %q, but this server serves the login callback at %q; register the right URI with the OAuth client, or set server.redirectURI to one that is", uri, parsed.Path, want)
-	}
-	return nil
 }
 
 func isLocalhostURI(raw string) bool {

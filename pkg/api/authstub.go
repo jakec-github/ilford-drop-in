@@ -80,5 +80,5 @@ func (a *Authenticator) handleStubLogin(w http.ResponseWriter, r *http.Request) 
 	a.setSessionCookie(w, a.stubEmail)
 	a.logger.Warn("Dev mode: issued an admin session without verifying identity",
 		zap.String("email", a.stubEmail))
-	http.Redirect(w, r, a.path("/"), http.StatusFound)
+	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
 }

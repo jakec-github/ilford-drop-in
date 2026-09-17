@@ -19,12 +19,12 @@ const baseTag = `<base href="/" />`
 // paths that match a file in the build are served as-is; anything else gets
 // index.html so client-side routes resolve on hard navigation.
 //
-// base is the path the site is served under, or "" for the root. Every asset
-// reference in index.html is relative, so the <base> element is what they all
-// resolve against — and it is also what the frontend reads back
-// (web/src/basePath.ts) to prefix its own routes and requests. Rewriting that
-// one element is the whole of what the frontend is told about the path, which
-// is why the path can stay out of the build.
+// base is the path the site's pages are served under, or "" for the root. Every
+// asset reference in index.html is relative, so the <base> element is what they
+// all resolve against — and it is also what the frontend reads back
+// (web/src/basePath.ts) to prefix its own client routes. Rewriting that one
+// element is the whole of what the frontend is told about the path, which is
+// why the path can stay out of the build.
 //
 // It is registered as the mux's catch-all without a method pattern (see
 // Routes), so it enforces the method itself: a page is only ever fetched.

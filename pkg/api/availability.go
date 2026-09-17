@@ -209,8 +209,9 @@ func (h *Handler) availabilityLink(r *http.Request, token string) string {
 // it is only ever wanted to hand back a link to whoever is asking, and the host
 // they asked on is the host that works for them — behind the proxy the
 // forwarded scheme is what says https. The path cannot come from the request:
-// the mux strips it before any handler runs (Routes), so it comes from config,
-// which is the same place the mux got it.
+// these links are minted by API handlers, and the API is not under the base
+// path (mountSite), so the request that asks for a link never carries one. It
+// comes from config, which is where the router got it too.
 //
 // Both the links this builds outlive the app's reach — an availability link is
 // emailed, and a calendar feed's rotaURL sits in a volunteer's calendar app —

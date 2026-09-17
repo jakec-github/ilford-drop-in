@@ -6,7 +6,7 @@ import { ADMIN_TABS } from "./components/adminTabs";
 import { useRota } from "./hooks/useRota";
 import { useAuth } from "./auth-context";
 import Button from "./ui/Button";
-import { apiUrl, BASE_PATH } from "./basePath";
+import { BASE_PATH } from "./basePath";
 
 // AuthStatus shows a login link when logged out, or the admin's email plus a
 // logout button when logged in. It reads the global auth state so login status
@@ -21,7 +21,7 @@ function AuthStatus() {
 
   if (email === null) {
     return (
-      <a className="auth-status" href={apiUrl("/auth/login")}>
+      <a className="auth-status" href="/auth/login">
         Admin login
       </a>
     );

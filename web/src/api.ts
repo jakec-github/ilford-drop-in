@@ -34,7 +34,6 @@ import {
   ROLE_COLOURS,
   SERVICE_VOLUNTEER_ROLE,
 } from "./types";
-import { apiUrl } from "./basePath";
 
 interface ApiAssignee {
   volunteerId?: string;
@@ -140,7 +139,7 @@ function toRotaShift(shift: ApiShift): RotaShift {
 // fetchCurrentAdmin returns the logged-in admin's email, or null if there is no
 // active admin session.
 export async function fetchCurrentAdmin(): Promise<string | null> {
-  const res = await fetch(apiUrl("/auth/me"));
+  const res = await fetch("/auth/me");
   if (res.status === 401) return null;
   if (!res.ok) {
     throw new Error(`Failed to check login state (${res.status})`);
@@ -151,7 +150,7 @@ export async function fetchCurrentAdmin(): Promise<string | null> {
 
 // logout clears the admin session cookie.
 export async function logout(): Promise<void> {
-  const res = await fetch(apiUrl("/auth/logout"), { method: "POST" });
+  const res = await fetch("/auth/logout", { method: "POST" });
   if (!res.ok) {
     throw new Error(`Failed to log out (${res.status})`);
   }
@@ -159,7 +158,7 @@ export async function logout(): Promise<void> {
 
 export async function fetchRota(): Promise<RotaShift[]> {
   const today = new Date().toLocaleDateString("en-CA");
-  const res = await fetch(apiUrl(`/api/shifts?from=${today}`));
+  const res = await fetch(`/api/shifts?from=${today}`);
   if (!res.ok) {
     throw new Error(`Failed to load shifts (${res.status})`);
   }
@@ -199,7 +198,7 @@ function toConfiguredRole(role: ApiRole): ConfiguredRole {
 // fetchRoles returns the Roles the drop-in offers, highest priority first. Public, like
 // the rota: the chips it colours are on a page nobody has to log in to see.
 export async function fetchRoles(): Promise<ConfiguredRole[]> {
-  const res = await fetch(apiUrl("/api/roles"));
+  const res = await fetch("/api/roles");
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load roles"));
   }
@@ -215,7 +214,7 @@ export async function fetchRoles(): Promise<ConfiguredRole[]> {
 // the listing rather than splicing it in — the order Roles come back in is the
 // order their seats are filled, which is the server's to decide.
 export async function createRole(role: RoleEdit): Promise<void> {
-  const res = await fetch(apiUrl("/api/roles"), {
+  const res = await fetch("/api/roles", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(role),
@@ -231,7 +230,7 @@ export async function createRole(role: RoleEdit): Promise<void> {
 // There is no deleteRole, and there will not be one: a Role is permanent so
 // that nothing referencing it can dangle (ADR 0006).
 export async function updateRole(id: string, role: RoleEdit): Promise<void> {
-  const res = await fetch(apiUrl(`/api/roles/${encodeURIComponent(id)}`), {
+  const res = await fetch(`/api/roles/${encodeURIComponent(id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(role),
@@ -244,7 +243,7 @@ export async function updateRole(id: string, role: RoleEdit): Promise<void> {
 // fetchRotaDefaults reads the settings record. Admin-only: nothing a logged-out
 // visitor sees needs it, unlike the Roles beside it on the same screen.
 export async function fetchRotaDefaults(): Promise<RotaDefaults> {
-  const res = await fetch(apiUrl("/api/rota-defaults"));
+  const res = await fetch("/api/rota-defaults");
   if (!res.ok) {
     throw new Error(
       await errorMessage(res, "Failed to load the rota defaults"),
@@ -264,7 +263,7 @@ export async function fetchRotaDefaults(): Promise<RotaDefaults> {
 export async function saveShiftTimeDefaults(
   times: ShiftTimes,
 ): Promise<RotaDefaults> {
-  const res = await fetch(apiUrl("/api/rota-defaults/shift-times"), {
+  const res = await fetch("/api/rota-defaults/shift-times", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(times),
@@ -281,7 +280,7 @@ export async function saveShiftTimeDefaults(
 export async function saveDefaultShape(
   seats: { roleId: string; count: number }[],
 ): Promise<RotaDefaults> {
-  const res = await fetch(apiUrl("/api/rota-defaults/shape"), {
+  const res = await fetch("/api/rota-defaults/shape", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ seats }),
@@ -301,7 +300,7 @@ export async function saveDefaultShape(
 export async function saveAllocationSettings(
   settings: AllocationSettings,
 ): Promise<AllocationSettings> {
-  const res = await fetch(apiUrl("/api/rota-defaults/allocation-settings"), {
+  const res = await fetch("/api/rota-defaults/allocation-settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
@@ -345,7 +344,7 @@ function toPreallocation(p: ApiPreallocation): Preallocation {
 // rota has not published.
 export async function fetchPreallocations(): Promise<Preallocation[]> {
   const today = new Date().toLocaleDateString("en-CA");
-  const res = await fetch(apiUrl(`/api/preallocations?from=${today}`));
+  const res = await fetch(`/api/preallocations?from=${today}`);
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load preallocations"));
   }
@@ -377,7 +376,7 @@ export async function createPreallocation(
     body.custom = pin.person.custom;
   }
 
-  const res = await fetch(apiUrl("/api/preallocations"), {
+  const res = await fetch("/api/preallocations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -391,12 +390,9 @@ export async function createPreallocation(
 // kind of pin, and an admin may take back any promise the rota has not been
 // allocated on.
 export async function deletePreallocation(id: string): Promise<void> {
-  const res = await fetch(
-    apiUrl(`/api/preallocations/${encodeURIComponent(id)}`),
-    {
-      method: "DELETE",
-    },
-  );
+  const res = await fetch(`/api/preallocations/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to remove the pin"));
   }
@@ -421,7 +417,7 @@ interface ListStandingPreallocationsResponse {
 export async function fetchStandingPreallocations(): Promise<
   StandingPreallocation[]
 > {
-  const res = await fetch(apiUrl("/api/standing-preallocations"));
+  const res = await fetch("/api/standing-preallocations");
   if (!res.ok) {
     throw new Error(
       await errorMessage(res, "Failed to load the standing preallocations"),
@@ -454,7 +450,7 @@ export async function createStandingPreallocation(
     body.custom = standing.person.custom;
   }
 
-  const res = await fetch(apiUrl("/api/standing-preallocations"), {
+  const res = await fetch("/api/standing-preallocations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -468,7 +464,7 @@ export async function createStandingPreallocation(
 // to the rotas that minted them and are left exactly as they are.
 export async function deleteStandingPreallocation(id: string): Promise<void> {
   const res = await fetch(
-    apiUrl(`/api/standing-preallocations/${encodeURIComponent(id)}`),
+    `/api/standing-preallocations/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
   if (!res.ok) {
@@ -479,7 +475,7 @@ export async function deleteStandingPreallocation(id: string): Promise<void> {
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,
 // already sorted by name server-side. Admin-only.
 export async function fetchVolunteers(): Promise<Volunteer[]> {
-  const res = await fetch(apiUrl("/api/volunteers"));
+  const res = await fetch("/api/volunteers");
   if (!res.ok) {
     throw new Error(`Failed to load volunteers (${res.status})`);
   }
@@ -490,7 +486,7 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
 // fetchRotaProposal reads what the define form starts from: where the next rota
 // would begin. Admin-only, like everything else about defining one.
 export async function fetchRotaProposal(): Promise<RotaProposal> {
-  const res = await fetch(apiUrl("/api/rotations/proposed"));
+  const res = await fetch("/api/rotations/proposed");
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the next rota"));
   }
@@ -505,7 +501,7 @@ export async function fetchRotaProposal(): Promise<RotaProposal> {
 // not idempotent — the caller is expected to show what came back rather than
 // treat it as a repeatable action.
 export async function defineRota(rota: NewRota): Promise<DefinedRota> {
-  const res = await fetch(apiUrl("/api/rotations"), {
+  const res = await fetch("/api/rotations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rota),
@@ -531,7 +527,7 @@ interface RotaInFlightResponse {
 // fetchRotaInFlight reads the rota being worked on, or null when there is none —
 // which is also the answer to "may I define one". Admin-only.
 export async function fetchRotaInFlight(): Promise<RotaInFlight | null> {
-  const res = await fetch(apiUrl("/api/rotations/in-flight"));
+  const res = await fetch("/api/rotations/in-flight");
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the rota"));
   }
@@ -548,7 +544,7 @@ export async function fetchRotaInFlight(): Promise<RotaInFlight | null> {
 // numbers on the screen, and a token echoed back here would make the guarantee
 // depend on the caller rather than on the server.
 export async function discardRota(id: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/rotations/${encodeURIComponent(id)}`), {
+  const res = await fetch(`/api/rotations/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -621,7 +617,7 @@ function toDraftRotaState(data: DraftRotaAllocationResponse): DraftRotaState {
 // #179). What resolves always speaks for the inputs as they stand, so there is
 // nothing here to poll and no retry policy to hold.
 export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null> {
-  const res = await fetch(apiUrl("/api/draft-rota-allocation"));
+  const res = await fetch("/api/draft-rota-allocation");
   if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the draft rota"));
@@ -641,9 +637,7 @@ export async function fetchDraftRotaAllocation(): Promise<DraftRotaState | null>
 // It takes as long as the solver does, up to a thirty-second ceiling, so a
 // caller needs a spinner rather than an optimistic UI.
 export async function solveDraftRotaAllocation(): Promise<void> {
-  const res = await fetch(apiUrl("/api/draft-rota-allocation"), {
-    method: "POST",
-  });
+  const res = await fetch("/api/draft-rota-allocation", { method: "POST" });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to solve the draft rota"));
   }
@@ -669,7 +663,7 @@ interface AllocateRotaResponse {
 export async function allocateRotaInFlight(
   hash: string,
 ): Promise<AllocateOutcome> {
-  const res = await fetch(apiUrl("/api/rotations/in-flight/allocation"), {
+  const res = await fetch("/api/rotations/in-flight/allocation", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ draftHash: hash }),
@@ -728,7 +722,7 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   if (change.swapDate) body.swapDate = change.swapDate;
   if (change.role) body.role = change.role;
 
-  const res = await fetch(apiUrl("/api/alterations"), {
+  const res = await fetch("/api/alterations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -749,14 +743,11 @@ async function patchShift(
   body: { closed?: boolean; start?: string; end?: string },
   fallback: string,
 ): Promise<void> {
-  const res = await fetch(
-    apiUrl(`/api/shifts/${encodeURIComponent(shiftId)}`),
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  const res = await fetch(`/api/shifts/${encodeURIComponent(shiftId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     throw new Error(await errorMessage(res, fallback));
   }
@@ -805,14 +796,11 @@ export async function setShiftShape(
   shiftId: string,
   seats: { roleId: string; count: number }[],
 ): Promise<void> {
-  const res = await fetch(
-    apiUrl(`/api/shifts/${encodeURIComponent(shiftId)}/shape`),
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seats }),
-    },
-  );
+  const res = await fetch(`/api/shifts/${encodeURIComponent(shiftId)}/shape`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seats }),
+  });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to save the shift shape"));
   }
@@ -946,9 +934,7 @@ function linkFailure(status: number): AvailabilityLinkError | null {
 export async function fetchAvailabilityForm(
   token: string,
 ): Promise<AvailabilityFormState> {
-  const res = await fetch(
-    apiUrl(`/api/availability/${encodeURIComponent(token)}`),
-  );
+  const res = await fetch(`/api/availability/${encodeURIComponent(token)}`);
   if (!res.ok) {
     throw (
       linkFailure(res.status) ??
@@ -967,14 +953,11 @@ export async function submitAvailability(
   token: string,
   shiftIds: string[],
 ): Promise<AvailabilityFormState> {
-  const res = await fetch(
-    apiUrl(`/api/availability/${encodeURIComponent(token)}`),
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shiftIds }),
-    },
-  );
+  const res = await fetch(`/api/availability/${encodeURIComponent(token)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shiftIds }),
+  });
   if (!res.ok) {
     throw (
       linkFailure(res.status) ??
@@ -987,7 +970,7 @@ export async function submitAvailability(
 // fetchAvailabilityRound reads the latest rota's round: who was asked, their
 // link, and who has answered. Admin-only — it returns every volunteer's link.
 export async function fetchAvailabilityRound(): Promise<AvailabilityRound> {
-  const res = await fetch(apiUrl("/api/availability-rounds"));
+  const res = await fetch("/api/availability-rounds");
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to load the round"));
   }
@@ -998,7 +981,7 @@ export async function fetchAvailabilityRound(): Promise<AvailabilityRound> {
 // rota. Safe to repeat: running it again after the roster changes tops the round
 // up without replacing links already handed out.
 export async function mintAvailabilityRound(): Promise<AvailabilityRound> {
-  const res = await fetch(apiUrl("/api/availability-rounds"), {
+  const res = await fetch("/api/availability-rounds", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -1050,7 +1033,7 @@ export function sendUrl(
 ): string {
   const params = new URLSearchParams({ mode, deadline });
   if (volunteerId) params.set("volunteerId", volunteerId);
-  return apiUrl(`/auth/gmail?${params.toString()}`);
+  return `/auth/gmail?${params.toString()}`;
 }
 
 // fetchSend reports on a send in progress or just finished. Admin-only, and
@@ -1061,9 +1044,7 @@ export function sendUrl(
 // answer for one that never existed — the same thing to a page that has an id
 // from an old tab.
 export async function fetchSend(id: string): Promise<AvailabilitySend> {
-  const res = await fetch(
-    apiUrl(`/api/availability-sends/${encodeURIComponent(id)}`),
-  );
+  const res = await fetch(`/api/availability-sends/${encodeURIComponent(id)}`);
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to read the send"));
   }
@@ -1084,7 +1065,7 @@ export async function fetchSend(id: string): Promise<AvailabilitySend> {
 // its own service account, so this is a plain authenticated POST with no OAuth
 // redirect dance.
 export async function syncVolunteers(): Promise<void> {
-  const res = await fetch(apiUrl("/auth/sync"), { method: "POST" });
+  const res = await fetch("/auth/sync", { method: "POST" });
   if (!res.ok) {
     throw new Error(`Failed to sync volunteers (${res.status})`);
   }

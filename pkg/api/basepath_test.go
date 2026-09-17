@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -18,8 +17,8 @@ import (
 // a deployment's business and is not in this repo, so the tests name their own.
 const testBasePath = "/rota"
 
-// newBasePathHandler is the full stack — API, auth and frontend — served under
-// a base path, which is how the deployed site runs.
+// newBasePathHandler is the full stack — API, auth and frontend — served with a
+// base path configured, which is how the deployed site runs.
 func newBasePathHandler(store *mockStore) http.Handler {
 	cfg := &config.Config{Server: &config.ServerConfig{BasePath: testBasePath}}
 	auth := newTestAuthenticator()
@@ -35,37 +34,64 @@ func basePathStore() *mockStore {
 	}
 }
 
-// TestBasePathMovesTheWholeSite: every namespace moves together. Anything that
-// answered at the root and still does is a link that will break the day the
-// site moves again.
-func TestBasePathMovesTheWholeSite(t *testing.T) {
+// TestBasePathMovesWhatLeavesTheApp: the URLs that end up somewhere we cannot
+// reach to correct them — a bookmark, an emailed link, a calendar subscription —
+// move under the base path, because they have to be at their final address
+// before anyone holds one.
+func TestBasePathMovesWhatLeavesTheApp(t *testing.T) {
 	handler := newBasePathHandler(basePathStore())
 
-	// The API, the OAuth endpoints, the calendar feeds and the SPA's own
-	// routes, all under the base path.
 	for path, want := range map[string]int{
-		testBasePath + "/api/shifts":           http.StatusOK,
-		testBasePath + "/api/nonsense":         http.StatusNotFound,
-		testBasePath + "/auth/me":              http.StatusUnauthorized,
-		testBasePath + "/calendars/alice.ics":  http.StatusOK,
 		testBasePath + "/":                     http.StatusOK,
 		testBasePath + "/admin/allocation":     http.StatusOK,
 		testBasePath + "/availability/a-token": http.StatusOK,
+		testBasePath + "/calendars/alice.ics":  http.StatusOK,
+		testBasePath + "/chunk-abc.js":         http.StatusOK,
 	} {
 		rec := doRequest(t, handler, http.MethodGet, path, "")
 		assert.Equal(t, want, rec.Code, path)
 	}
 
-	// And nothing at the root, which is where they all used to be.
+	// And none of them answers at the root any more.
 	for _, path := range []string{
-		"/api/shifts", "/auth/me", "/calendars/alice.ics", "/admin/allocation", "/chunk-abc.js",
+		"/admin/allocation", "/availability/a-token", "/calendars/alice.ics", "/chunk-abc.js",
 	} {
 		rec := doRequest(t, handler, http.MethodGet, path, "")
 		assert.Equal(t, http.StatusNotFound, rec.Code, path)
 	}
 }
 
-// TestHealthStaysAtTheRootUnderABasePath: the one deliberate exception. The
+// TestApiAndAuthStayAtTheRoot: the URLs whose only client is the page's own
+// JavaScript do not move, because that client ships with the server and can be
+// pointed anywhere later. /auth is the stronger case of the two — its callback
+// is registered by hand in the Google console, so one shared /auth/callback is
+// a one-time step no matter how many organisations a server ends up serving.
+func TestApiAndAuthStayAtTheRoot(t *testing.T) {
+	handler := newBasePathHandler(basePathStore())
+
+	for path, want := range map[string]int{
+		"/api/shifts":   http.StatusOK,
+		"/api/nonsense": http.StatusNotFound,
+		"/auth/me":      http.StatusUnauthorized,
+	} {
+		rec := doRequest(t, handler, http.MethodGet, path, "")
+		assert.Equal(t, want, rec.Code, path)
+	}
+
+	// Under the base path there is no API and no login: those paths are inside
+	// the SPA's namespace now, so they get the app shell like any other client
+	// route the router does not recognise. A client that prefixes its requests
+	// gets HTML where it expected JSON, which is the loud failure.
+	for _, path := range []string{
+		testBasePath + "/api/shifts", testBasePath + "/auth/me",
+	} {
+		rec := doRequest(t, handler, http.MethodGet, path, "")
+		require.Equal(t, http.StatusOK, rec.Code, path)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html", path)
+	}
+}
+
+// TestHealthStaysAtTheRootUnderABasePath: infrastructure rather than site. The
 // deploy workflow, scripts/deploy-config.sh and scripts/dev-stack.sh all poll
 // it, and none of them knows the path.
 func TestHealthStaysAtTheRootUnderABasePath(t *testing.T) {
@@ -127,7 +153,8 @@ func TestCalendarFeedCarriesTheBasePath(t *testing.T) {
 }
 
 // TestAvailabilityLinkCarriesTheBasePath: the other link the app cannot reach
-// once it is out — this one is emailed.
+// once it is out — this one is emailed. It is minted by an API handler, which
+// is not under the base path, so the path can only come from config.
 func TestAvailabilityLinkCarriesTheBasePath(t *testing.T) {
 	cfg := &config.Config{Server: &config.ServerConfig{BasePath: testBasePath}}
 	h := NewHandler(basePathStore(), testVolunteers(), cfg, newTestAuthenticator(), nil, nil, zap.NewNop())
@@ -140,45 +167,42 @@ func TestAvailabilityLinkCarriesTheBasePath(t *testing.T) {
 	assert.Equal(t, "http://example.com/availability/a-token", plain.availabilityLink(req, "a-token"))
 }
 
-// TestStateCookieIsScopedToTheOAuthEndpointsUnderTheBasePath: the sharpest of
-// the path mistakes. The browser simply does not send a cookie scoped to /auth
-// back to <base>/auth/callback, and the callback can only report that as an
-// invalid state.
-func TestStateCookieIsScopedToTheOAuthEndpointsUnderTheBasePath(t *testing.T) {
-	a := newTestAuthenticator()
-	a.basePath = testBasePath
-	a.oauth2Config = &oauth2.Config{
-		ClientID:    "client",
-		Endpoint:    oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/auth"},
-		RedirectURL: "https://dropin.example.org" + testBasePath + "/auth/callback",
-	}
+// TestSendReturnsToTheAllocationTabUnderTheBasePath: the send's round trip ends
+// on a page, and a page is under the path even though the /auth endpoint that
+// redirects to it is not.
+func TestSendReturnsToTheAllocationTabUnderTheBasePath(t *testing.T) {
+	cfg := &config.Config{Server: &config.ServerConfig{BasePath: testBasePath}}
+	h := NewHandler(basePathStore(), testVolunteers(), cfg, newTestAuthenticator(), nil, nil, zap.NewNop())
 
-	rec := httptest.NewRecorder()
-	a.handleLogin(rec, httptest.NewRequest(http.MethodGet, testBasePath+"/auth/login", nil))
-
-	require.Equal(t, http.StatusFound, rec.Code)
-	assert.Equal(t, testBasePath+"/auth", cookieNamed(t, rec, stateCookieName).Path)
+	assert.Equal(t, testBasePath+sendReturnPath, h.sendReturnURL())
 }
 
-// TestLoginCookiesAreScopedToTheBasePath: both cookies are scoped by path, and
-// a scope that does not cover the site is a cookie the browser never sends
-// back. The state cookie is the sharper of the two — without it every login
-// fails at the callback with "invalid OAuth state", which says nothing about a
-// path.
-func TestLoginCookiesAreScopedToTheBasePath(t *testing.T) {
+// TestLoginCookiesStayAtTheRoot: /auth did not move, so neither did the scope
+// of the cookies it sets. The session cookie covers the whole domain because
+// the API it authenticates is at the root too.
+func TestLoginCookiesStayAtTheRoot(t *testing.T) {
 	a := newTestAuthenticator()
 	a.basePath = testBasePath
 
 	rec := httptest.NewRecorder()
 	a.setSessionCookie(rec, testAdminEmail)
-	session := cookieNamed(t, rec, sessionCookieName)
-	assert.Equal(t, testBasePath+"/", session.Path)
+	assert.Equal(t, "/", cookieNamed(t, rec, sessionCookieName).Path)
 
-	// Logging out has to clear it at the path it was set at, or the browser
-	// keeps the old cookie alongside the expired one.
 	rec = httptest.NewRecorder()
 	a.handleLogout(rec, httptest.NewRequest(http.MethodPost, "/auth/logout", nil))
-	assert.Equal(t, testBasePath+"/", cookieNamed(t, rec, sessionCookieName).Path)
+	assert.Equal(t, "/", cookieNamed(t, rec, sessionCookieName).Path)
+}
+
+// TestLoginLandsOnTheSiteUnderTheBasePath: the one thing the Authenticator
+// needs the base path for. The callback is at the root, but what it sends the
+// browser to afterwards is the app's home page, which is not.
+func TestLoginLandsOnTheSiteUnderTheBasePath(t *testing.T) {
+	a := newTestAuthenticator()
+	a.basePath = testBasePath
+	assert.Equal(t, testBasePath+"/", a.siteRoot())
+
+	plain := newTestAuthenticator()
+	assert.Equal(t, "/", plain.siteRoot())
 }
 
 func cookieNamed(t *testing.T, rec *httptest.ResponseRecorder, name string) *http.Cookie {
