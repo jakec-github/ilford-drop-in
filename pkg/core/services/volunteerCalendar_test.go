@@ -18,8 +18,9 @@ var calendarTestDefaults = model.RotaDefaults{
 	ShiftTimezone:  "Europe/London",
 }
 
-// Where the rota lives, as the handler reads it off the request.
-const calendarTestURL = "https://word-all.com"
+// Where the rota lives, as the handler reads it off the request. A test value,
+// not the deployment's — the site's own domain is not in this repo (issue #202).
+const calendarTestURL = "https://drop-in.example"
 
 func calendarTestVolunteer() model.Volunteer {
 	return model.Volunteer{ID: "alice", DisplayName: "Alice", Roles: []string{"Team lead", "Service volunteer"}}

@@ -35,7 +35,20 @@ ufw --force enable
 # config files (drop_in_config.prod.yaml, oauthClientWeb.prod.json,
 # serviceAccount.prod.json) go in config/, which compose mounts into the
 # container whole — scripts/deploy-config.sh ships the first, the other two are
-# scp'd by hand. See docs/deployment.md.
+# scp'd by hand. site.env beside them holds the domain. See docs/deployment.md.
 mkdir -p /opt/dropin/config
+
+# The domain Caddy serves. It is deployment, not code, so it is not in the repo
+# (issue #202) — deploy/compose.yaml reads it from this file, and Caddy refuses
+# to start while it is empty. Written as a skeleton rather than left absent so a
+# fresh box fails at "fill this in" rather than at a file that is not there.
+if [ ! -f /opt/dropin/site.env ]; then
+  cat >/opt/dropin/site.env <<'EOF'
+# The domain this box answers on. Hostname only — no scheme, no path, no port.
+# Its A record must already point here: Caddy certifies this name on first boot.
+SITE_DOMAIN=
+EOF
+  echo "Created /opt/dropin/site.env — set SITE_DOMAIN before the first deploy"
+fi
 
 echo "Provisioning complete."

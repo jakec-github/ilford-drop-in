@@ -5,6 +5,30 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # The domain Caddy serves and certifies. It belongs to the deployment, not
+    # the repo, so it comes from an untracked /opt/dropin/site.env the operator
+    # writes once (issue #202).
+    #
+    # env_file rather than compose interpolation, and site.env rather than .env,
+    # for two separate reasons. The Caddyfile's {$SITE_DOMAIN} is resolved by
+    # Caddy itself, so the value has to reach the *process* environment —
+    # interpolation would only substitute it into this file. And the deploy
+    # workflow writes /opt/dropin/.env wholesale on every deploy, so anything
+    # put there survives exactly until the next merge.
+    env_file: ./site.env
+    # Left to itself Caddy does refuse an empty site address, but as
+    # "unrecognized global option: reverse_proxy" — because ` { ... }` parses as
+    # a global options block — which names the wrong thing entirely. Say what is
+    # actually wrong first, then hand over to the image's own command.
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$$SITE_DOMAIN" ]; then
+          echo "SITE_DOMAIN is empty or unset: set it in /opt/dropin/site.env (see docs/deployment.md)" >&2
+          exit 1
+        fi
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

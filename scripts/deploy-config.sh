@@ -19,7 +19,9 @@
 #     not, printing the logs — rather than exiting 0 over a dead server.
 #
 # The host comes from the argument, $DEPLOY_HOST, or a DEPLOY_HOST line in the
-# untracked .deploy.env at the repo root.
+# untracked .deploy.env at the repo root. The domain it answers on comes from
+# SITE_DOMAIN in the same places: it is the droplet's fact, not the repo's, so
+# there is nothing in the checkout left to read it from (issue #202).
 #
 
 set -euo pipefail
@@ -55,9 +57,10 @@ Usage: $0 [host] [-y]
           line in $REPO_ROOT/.deploy.env (untracked).
   -y      skip the confirmation prompt.
 
-Environment:
+Environment, each also readable from $REPO_ROOT/.deploy.env:
   DEPLOY_HOST             droplet address
-  HEALTH_URL              what to poll afterwards (default: the host in deploy/Caddyfile)
+  SITE_DOMAIN             the domain the site answers on, for the health poll
+  HEALTH_URL              what to poll afterwards (default: https://\$SITE_DOMAIN/health)
   DEPLOY_CONFIG_TIMEOUT   seconds to wait for the app to answer (default: 90)
 EOF
     exit 1
@@ -74,18 +77,49 @@ for arg in "$@"; do
     esac
 done
 
-if [[ -z "$HOST" ]]; then
-    HOST="${DEPLOY_HOST:-}"
-fi
-if [[ -z "$HOST" && -f "$REPO_ROOT/.deploy.env" ]]; then
+# .deploy.env carries the facts about the maintainer's droplet that the repo
+# deliberately does not — its address, and the domain it answers on. Read it
+# unconditionally, since the health URL needs it however the host was given, but
+# let an explicit environment win over the file.
+ENV_DEPLOY_HOST="${DEPLOY_HOST:-}"
+ENV_SITE_DOMAIN="${SITE_DOMAIN:-}"
+if [[ -f "$REPO_ROOT/.deploy.env" ]]; then
     set -a
     # shellcheck disable=SC1091
     source "$REPO_ROOT/.deploy.env"
     set +a
+fi
+if [[ -n "$ENV_DEPLOY_HOST" ]]; then
+    DEPLOY_HOST="$ENV_DEPLOY_HOST"
+fi
+if [[ -n "$ENV_SITE_DOMAIN" ]]; then
+    SITE_DOMAIN="$ENV_SITE_DOMAIN"
+fi
+
+if [[ -z "$HOST" ]]; then
     HOST="${DEPLOY_HOST:-}"
 fi
 if [[ -z "$HOST" ]]; then
     echo "No host given: pass one, set DEPLOY_HOST, or put DEPLOY_HOST=<ip> in .deploy.env" >&2
+    exit 1
+fi
+
+# Work the health URL out now rather than after the recreate. A run that cannot
+# tell what to poll should say so before it ships anything, not once the config
+# is on the box and the container has been replaced.
+if [[ -n "${HEALTH_URL:-}" ]]; then
+    HEALTH="$HEALTH_URL"
+elif [[ -n "${SITE_DOMAIN:-}" ]]; then
+    HEALTH="https://${SITE_DOMAIN}/health"
+else
+    echo "Nothing to poll after shipping: no SITE_DOMAIN and no HEALTH_URL." >&2
+    echo "" >&2
+    echo "The site's domain lives on the droplet now rather than in the repo" >&2
+    echo "(issue #202), so this script has to be told it. Either:" >&2
+    echo "" >&2
+    echo "  add SITE_DOMAIN=<domain> to $REPO_ROOT/.deploy.env, beside DEPLOY_HOST" >&2
+    echo "  or set SITE_DOMAIN in the environment" >&2
+    echo "  or set HEALTH_URL to the URL outright" >&2
     exit 1
 fi
 
@@ -97,22 +131,6 @@ remote() {
 
 compose() {
     remote "cd ${REMOTE_DIR} && docker compose $*"
-}
-
-# The domain is Caddy's, and Caddy's config is in the repo, so the health URL is
-# derived from it rather than being a second place to update when it changes.
-health_url() {
-    if [[ -n "${HEALTH_URL:-}" ]]; then
-        echo "$HEALTH_URL"
-        return
-    fi
-    local domain
-    domain="$(awk 'NF && $1 !~ /^#/ { sub(/\{.*/, "", $0); print $1; exit }' "$REPO_ROOT/deploy/Caddyfile")"
-    if [[ -z "$domain" ]]; then
-        echo "Could not read a domain from deploy/Caddyfile — set HEALTH_URL" >&2
-        exit 1
-    fi
-    echo "https://${domain}/health"
 }
 
 fail_with_logs() {
@@ -200,12 +218,11 @@ compose "up -d --force-recreate app"
 # 6. Prove it came back. Without this the script would exit 0 over a server that
 #    is crash-looping on the file it just shipped, which is the failure this
 #    whole script exists to make impossible to miss.
-url="$(health_url)"
 echo ""
-echo "Waiting for ${url}..."
+echo "Waiting for ${HEALTH}..."
 deadline=$((SECONDS + READY_TIMEOUT_SECONDS))
 while ((SECONDS < deadline)); do
-    if curl -fsS -o /dev/null --max-time 5 "$url"; then
+    if curl -fsS -o /dev/null --max-time 5 "$HEALTH"; then
         echo ""
         echo "Config shipped and the app is answering."
         exit 0
@@ -213,4 +230,4 @@ while ((SECONDS < deadline)); do
     sleep 2
 done
 
-fail_with_logs "Timed out after ${READY_TIMEOUT_SECONDS}s: ${url} never answered."
+fail_with_logs "Timed out after ${READY_TIMEOUT_SECONDS}s: ${HEALTH} never answered."

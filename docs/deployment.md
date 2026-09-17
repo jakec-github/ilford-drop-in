@@ -29,9 +29,9 @@ alongside the merge.
 - Create the droplet (Ubuntu LTS, London). Note its IP.
 - Point the domain's A record (host `@`) at the IP **before** first boot of
   the stack — Caddy's certificate issuance needs the name to resolve.
-- The hostname lives in `deploy/Caddyfile`; change it there if the domain
-  changes, and update the Google web client's redirect URI to match. The site
-  itself may sit under a path below that host — see [Base path](#base-path).
+- Write the domain into `/opt/dropin/site.env` on the box. It is not in the
+  repo — see [The site's domain](#the-sites-domain). The site itself may sit
+  under a path below that host — see [Base path](#base-path).
 
 ### 2. Provision the box
 
@@ -40,15 +40,25 @@ scp scripts/provision.sh root@<ip>:
 ssh root@<ip> ./provision.sh
 ```
 
-Idempotent: installs Docker, enables ufw (22/80/443), creates a 2G swap file
-and `/opt/dropin/config`.
+Idempotent: installs Docker, enables ufw (22/80/443), creates a 2G swap file,
+`/opt/dropin/config`, and a `/opt/dropin/site.env` skeleton with an empty
+`SITE_DOMAIN`. Fill that in — the stack will not start until you do.
 
 ### 3. Config files
 
-The server reads three files, and they all live in **`/opt/dropin/config/`** —
-the directory `deploy/compose.yaml` mounts into the container as `/app`. They
-are the one thing the repo cannot regenerate; keep copies with other personal
-secrets.
+Four untracked files live on the droplet. Three are the server's, in
+**`/opt/dropin/config/`** — the directory `deploy/compose.yaml` mounts into the
+container as `/app`. The fourth is Caddy's, a level up.
+
+| File | What it is | How it gets there |
+| --- | --- | --- |
+| `config/drop_in_config.prod.yaml` | the app's config | [`scripts/deploy-config.sh`](#config-rollout) |
+| `config/oauthClientWeb.prod.json` | Google web client | `scp`, about once a year |
+| `config/serviceAccount.prod.json` | Google service account | `scp`, about once a year |
+| `site.env` | `SITE_DOMAIN=<domain>` for Caddy | written by hand, once |
+
+The three in `config/` are the one thing the repo cannot regenerate; keep copies
+with other personal secrets.
 
 The two credentials change about once a year, so they go up by hand:
 
@@ -86,7 +96,68 @@ Repository **variable**:
 Set `DEPLOY_ENABLED=true`, then run the workflow (Actions → Build and deploy →
 "Run workflow", or merge anything to main). The deploy job copies
 `deploy/compose.yaml` and `deploy/Caddyfile` to `/opt/dropin` and starts the
-stack; Caddy obtains its certificate on first boot.
+stack; Caddy obtains its certificate on first boot. `site.env` must already be
+there with a domain in it, or the stack will not come up.
+
+## The site's domain
+
+The domain is a fact about where the box is reached, not about what the app
+does, so it lives on the droplet exactly as the config files do (issue #202).
+`deploy/Caddyfile` reads it from the environment:
+
+```
+{$SITE_DOMAIN} {
+	reverse_proxy app:8080
+}
+```
+
+and `deploy/compose.yaml` gives the caddy service `env_file: ./site.env`,
+pointing at an untracked `/opt/dropin/site.env`:
+
+```sh
+ssh root@<ip> 'echo SITE_DOMAIN=example.org > /opt/dropin/site.env'
+```
+
+Hostname only — no scheme, no path, no port. Two details are deliberate and
+worth not undoing:
+
+- **`site.env`, not `.env`.** The deploy workflow writes `/opt/dropin/.env`
+  wholesale on every deploy, so anything else put there survives until the next
+  merge and no longer.
+- **`env_file`, not compose interpolation.** Caddy resolves `{$SITE_DOMAIN}`
+  itself, so the value has to reach its *process* environment; substituting it
+  into the compose file would not get it there.
+
+### Changing it
+
+A domain move is a droplet-side change and nothing else — no commit, no merge,
+no deploy:
+
+1. Point the new name's A record at the droplet and wait for it to resolve.
+2. Rewrite `/opt/dropin/site.env`.
+3. `ssh root@<ip> 'cd /opt/dropin && docker compose up -d --force-recreate caddy'`.
+   Caddy obtains a certificate for the new name as it starts.
+4. Update the Google web client's authorised redirect URI to
+   `https://<new domain>/auth/callback`, and `server.redirectURI` in
+   `drop_in_config.prod.yaml` with it — then run
+   [`scripts/deploy-config.sh`](#config-rollout).
+5. Update `SITE_DOMAIN` in your own `.deploy.env`, so the config rollout polls
+   the right host.
+
+Reverting is the same five steps with the old name.
+
+### When it is missing
+
+An absent or empty `SITE_DOMAIN` stops the stack rather than serving on a
+wildcard address with no certificate:
+
+- **No `site.env` at all** — `docker compose up` refuses to run, so the deploy
+  job itself goes red: `env file /opt/dropin/site.env not found`.
+- **Empty `SITE_DOMAIN`** — the caddy container exits, saying so by name:
+  `SITE_DOMAIN is empty or unset: set it in /opt/dropin/site.env`. That check is
+  in `deploy/compose.yaml` rather than left to Caddy, which rejects the empty
+  site address as "unrecognized global option: reverse_proxy" — loud, but about
+  the wrong thing.
 
 ## Base path
 
@@ -142,8 +213,20 @@ scripts/deploy-config.sh <ip>          # or set DEPLOY_HOST, or put it in .deplo
 
 It validates the local file, shows what it configures, asks, copies it to
 `/opt/dropin/config/`, recreates the app container, and waits for
-`https://<domain>/health` to answer — exiting non-zero with the app's logs if it
-does not. There is no `docker compose` step to run afterwards.
+`https://$SITE_DOMAIN/health` to answer — exiting non-zero with the app's logs if
+it does not. There is no `docker compose` step to run afterwards.
+
+`.deploy.env` names the box it is all pointed at. Both lines are needed — the
+domain is no longer anywhere in the checkout for the script to read:
+
+```sh
+DEPLOY_HOST=<ip>
+SITE_DOMAIN=<domain>
+```
+
+Either can be given in the environment instead, and `HEALTH_URL` overrides the
+poll URL outright. With no domain to work one out from, the script says so and
+stops before shipping anything.
 
 Three things it is doing on purpose:
 
