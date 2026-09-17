@@ -22,11 +22,11 @@ does not apply to you.
   Server data behind per-resource hooks — views never call `fetch` directly.
   No state library; if server caching ever earns a dependency, TanStack Query.
 - Design: volunteer-facing pages (the rota, the availability form) are mobile
-  first — a volunteer reads them on a phone. Admin tools are **desktop first**:
+  first — a volunteer reads them on a phone. Organiser tools are **desktop first**:
   they must stay usable on a phone, but where the two conflict, design for the
-  desk. An admin tool comparing several things at once (the responses grid) is
+  desk. An Organiser tool comparing several things at once (the responses grid) is
   allowed to be wider than a phone and scroll sideways; do not fold it into one
-  column to avoid that. `admin-page--wide` on a tab widens the shell for one.
+  column to avoid that. `organiser-page--wide` on a tab widens the shell for one.
   A grid whose width is data — the responses grid is as wide as the rota is
   long — needs more than a wider fixed shell: `.round-bleed` lets that one
   panel out of the column as far as the viewport allows, so it only scrolls
@@ -35,7 +35,7 @@ does not apply to you.
   as stacked mobile-first rows, and the Allocation tab uses those rows rather
   than a table of its own. Sharing one component is what stops the two screens
   showing the same shift differently, and that is worth more than a layout
-  tuned per screen — so do not "fix" the admin side back into a table. It keeps
+  tuned per screen — so do not "fix" the Organiser side back into a table. It keeps
   its own column width inside the wider shell rather than stretching to it —
   wide enough for its rows, so a shift asking for eight people takes the room it
   needs, and no wider.

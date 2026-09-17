@@ -31,8 +31,8 @@ await assertRootAbsoluteAssets();
 console.log("Build complete!");
 
 // A relative asset reference in index.html resolves against the current path,
-// so on a nested route like /admin/volunteers the browser asks for
-// /admin/chunk-*.js. That is not in the build, the server's SPA fallback answers
+// so on a nested route like /organiser/volunteers the browser asks for
+// /organiser/chunk-*.js. That is not in the build, the server's SPA fallback answers
 // with index.html, and the page dies on a module script served as text/html.
 // publicPath above makes every reference root-absolute; this fails the build if
 // that ever stops holding.

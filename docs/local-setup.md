@@ -9,7 +9,7 @@ Cloud project** for the path this guide describes.
 > **Just want to look at the app?** There is now a Google-free `dev`
 > environment: `scripts/dev-stack.sh start` boots the whole stack on
 > <http://localhost:8080> with no credentials at all, reading the roster from
-> `test_data/volunteers.csv` and logging you in as an admin without Google. It
+> `test_data/volunteers.csv` and logging you in as an Organiser without Google. It
 > needs only Docker, Go and Bun. The database starts empty, so the rota page
 > renders empty — everything else works. See
 > [`docs/agents/dev-stack.md`](agents/dev-stack.md). The rest of this guide is
@@ -55,7 +55,7 @@ different part of the system. Set up all three for the `test` environment.
    - The Google account you authorise **must have access to the sheets** in
      step 3.
 
-3. **Web OAuth client** — used by the **server** for admin login.
+3. **Web OAuth client** — used by the **server** for Organiser and Rota Editor login.
    - Create credentials → OAuth client ID → **Web application**.
    - Add `http://localhost:5173/auth/callback` as an authorised redirect URI.
      That is the **frontend** dev server, not the Go server on 8080: locally you
@@ -167,9 +167,11 @@ gmailSender: 'your-email@gmail.com'          # optional
 # HTTP server (required to run the web server)
 server:
   port: 8080
-  sessionSecret: 'change-me-min-16-chars'     # signs admin session cookies; ≥16 chars
-  adminEmails:                                 # Google accounts allowed to log in as admin
+  sessionSecret: 'change-me-min-16-chars'     # signs session cookies; ≥16 chars
+  organiserEmails:                             # Google accounts allowed to log in as an Organiser
     - 'your-email@gmail.com'
+  rotaEditorEmails:                            # optional: accounts that may only change who works a shift
+    - 'a-rota-editor@gmail.com'
 ```
 
 The `test` suffix in the filename matches the `-e test` / `-env test` flag you
@@ -184,7 +186,7 @@ run. The server says so at startup.
 
 The credential-free dev stack (`scripts/dev-stack.sh start`) seeds its own, so
 this only applies to a database you point a `test` or `prod` config at. Create
-them on **Admin → Settings**, which needs nothing but an admin login. The pair
+them on **Organiser → Settings**, which needs nothing but an Organiser login. The pair
 the app shipped with is:
 
 | Name | Most per shift | Priority | Colour |
@@ -233,7 +235,7 @@ refused rather than stored as one ending before it began.
 
 These are the times each *new* shift is minted with, not a live setting the
 shifts follow. A shift keeps the times it was minted with when they change
-later, and an admin who wants one evening to run differently edits that shift on
+later, and an Organiser who wants one evening to run differently edits that shift on
 the rota, under **Edit rota** → the date.
 
 ### Setting the default Shape
@@ -253,7 +255,7 @@ later ticket.
 
 ### Choosing the allocation rules
 
-**Admin → Settings → Allocation rules** is which of the optional allocator
+**Organiser → Settings → Allocation rules** is which of the optional allocator
 rules apply: a cap on how often one person works (a switch and a share of the
 rota), male cover, no back-to-back shifts, and at most one shift a month. Like
 the Roles and the shift times, nothing seeds them, and a rule nobody has
@@ -263,7 +265,7 @@ The rules that make a rota a rota — availability, seat capacity, grouping,
 closed shifts, preallocations — are not listed and cannot be switched off.
 
 `maxAllocationFrequency` and `requiresMale` used to be config keys. They are
-these settings now (ADR 0006): both were an admin's decision rather than an
+these settings now (ADR 0006): both were an Organiser's decision rather than an
 operator's, and male cover was two halves of one idea in two places. A config
 still carrying them is warned about and otherwise ignored.
 
@@ -305,8 +307,8 @@ go build -o cli ./cmd/cli
 ```
 
 The rota page reads shifts from the database, which starts empty. Filling it is
-a job for the app rather than the CLI: log in as an admin, fill in the Rota
-Defaults on Admin → Settings, and define the first rota on Admin → Allocation.
+a job for the app rather than the CLI: log in as an Organiser, fill in the Rota
+Defaults on Organiser → Settings, and define the first rota on Organiser → Allocation.
 
 The CLI authenticates with Google on **every** command, so the first run opens a
 browser for the OAuth flow (step 2's desktop client). After that the token is
@@ -330,9 +332,9 @@ scripts/dev.sh test
 - Frontend: <http://localhost:5173>
 - API/server: <http://localhost:8080>
 
-The rota page is public — no login needed to view it. Admin actions (creating
-alterations and preallocations) require logging in with a Google account listed
-in `adminEmails`, via the web OAuth client from step 2.
+The rota page is public — no login needed to view it. Changing it needs a Google account on one of
+the allowlists, via the web OAuth client from step 2: `rotaEditorEmails` to make
+alterations and preallocations, `organiserEmails` for those and everything else.
 
 To run the frontend alone (assuming the server is already up), see
 [`web/README.md`](../web/README.md).
@@ -373,10 +375,10 @@ building `pyallocator/.venv` first if it is not there yet.
 | `missing required field in header` | The volunteer sheet header row must contain the exact column names in [§3](#volunteer-sheet-format). |
 | `volunteer sheet names a Role no configured Role matches` (warning) | A value in a `Roles` cell isn't one of the roles in your config. The volunteer loads without it. |
 | Nobody gets allocated to a role | Check the `Roles` column actually names it — a role nobody holds has no one to fill its seats. |
-| Empty rota page | No rota has been defined yet — do it on Admin → Allocation, after filling in Admin → Settings. |
+| Empty rota page | No rota has been defined yet — do it on Organiser → Allocation, after filling in Organiser → Settings. |
 | Empty roster / `failed to fetch volunteers` | Share the volunteer sheet with the service account email; check `volunteerSheetID` and `serviceVolunteersTab`. |
 | OAuth loops or missing scopes | Delete `~/.ilford-drop-in/tokens/token-test.json` and re-run to re-authorise. |
-| `redirect_uri_mismatch` on admin login | The web OAuth client needs `http://localhost:5173/auth/callback` registered ([§2](#2-google-cloud-project)) — the frontend's port, not the server's. |
+| `redirect_uri_mismatch` on login | The web OAuth client needs `http://localhost:5173/auth/callback` registered ([§2](#2-google-cloud-project)) — the frontend's port, not the server's. |
 | Postgres unreachable | `scripts/test-db.sh start` (Docker must be running). |
 
 ## Credentials reference
@@ -384,8 +386,8 @@ building `pyallocator/.venv` first if it is not there yet.
 | File (git-ignored) | Loaded by | Purpose |
 | --- | --- | --- |
 | `oauthClient.test.json` | CLI (`internal/config/oauth.go`) | Desktop OAuth; Sheets/Forms/Gmail access for CLI commands. Token cached in `~/.ilford-drop-in/tokens/`. |
-| `oauthClientWeb.test.json` | Server (`internal/config/oauthweb.go`) | Web OAuth; admin login (OIDC). |
-| `serviceAccount.test.json` | Server (`internal/config/serviceaccount.go`) | Reads the volunteer sheet to sync the roster at startup and on admin sync. |
+| `oauthClientWeb.test.json` | Server (`internal/config/oauthweb.go`) | Web OAuth; Organiser and Rota Editor login (OIDC). |
+| `serviceAccount.test.json` | Server (`internal/config/serviceaccount.go`) | Reads the volunteer sheet to sync the roster at startup and on an Organiser's sync. |
 | `drop_in_config.test.yaml` | Both (`internal/config/config.go`) | Sheet IDs, DB URL, shift/allocation settings, server config. |
 
 `drop_in_config.dev.yaml` is the one exception: it **is** committed, holds no

@@ -43,16 +43,21 @@ current run.
 ## Log in
 
 ```bash
-curl -i -c cookies.txt localhost:8080/auth/login
+curl -i -c cookies.txt localhost:8080/auth/login                    # an Organiser
+curl -i -c cookies.txt 'localhost:8080/auth/login?level=rotaEditor' # a Rota Editor
 ```
 
-`GET /auth/login` mints a signed admin session for `devMode.adminEmail` and
-redirects to `/`. No Google, no consent screen, no browser interaction — a
-`curl` or a headless browser hitting that URL comes back logged in.
+`GET /auth/login` mints a signed Organiser session for `devMode.organiserEmail`
+and redirects to `/`; `?level=rotaEditor` mints a Rota Editor's for
+`devMode.rotaEditorEmail` instead, to check what that narrower level is shown.
+No Google, no consent screen, no browser interaction — a `curl` or a headless
+browser hitting that URL comes back logged in. Log out before switching levels
+in a browser, or just log in again: the new cookie replaces the old.
 
 Only the *identity provider* is stubbed. The cookie is signed, expired and
-re-checked exactly as in production, `requireAdmin` still refuses requests
-without it, and the address is still re-checked against `server.adminEmails` on
+re-checked exactly as in production, `requireLevel` still refuses requests
+without it (401) or at too junior a level (403), and the address is still
+re-checked against `server.organiserEmails` and `server.rotaEditorEmails` on
 every request. What you are looking at is the real gate, not an open door.
 `GET /auth/callback` 404s, since there is no OAuth exchange to complete.
 
@@ -78,12 +83,12 @@ hours, the shape — is a 400 rather than a setting quietly overridden.
 That mints six weekly shifts and returns them with their ids; `GET /api/shifts`
 then serves them. It also opens the rota's availability round — one link per
 active volunteer, none of them sent — so the draft has something to solve
-against from the first read. The Allocation tab in the admin area does the same
+against from the first read. The Allocation tab in the Organiser area does the same
 thing through the UI, with the proposed date already in the form.
 
 The shift times and the default Shape come from the settings, which a fresh dev
 database has none of, so defining is refused until they are stated. Set them on
-Admin → Settings — the same card sits under the define form on the Allocation
+Organiser → Settings — the same card sits under the define form on the Allocation
 tab — or over `PUT /api/rota-defaults/shift-times` and
 `PUT /api/rota-defaults/shape`.
 
@@ -110,7 +115,7 @@ without its shifts.
 Defining the rota already opened its round, so the links exist — read them back
 and answer as one of them. Minting again is a top-up for anybody who has joined
 the roster since, and is safe to repeat: it never re-tokens a link already
-handed out. Minting and the roster are admin-gated; the volunteer's link is not,
+handed out. Minting is Organiser-only and the roster needs a session; the volunteer's link is not,
 which is the point of it.
 
 ```bash
@@ -169,16 +174,16 @@ scripts/fake-availability.py --api-url https://<host> --session '<cookie>' --dry
 ```
 
 It checks the session against `/auth/me` before writing anything and prints the
-admin it is acting as. A rejected session is reported as such rather than
+person it is acting as. A rejected session is reported as such rather than
 surfacing later as a bare 401 — though the server cannot distinguish an expired
-cookie from an address missing off that environment's `server.adminEmails`, so
+cookie from an address missing off that environment's allowlists, so
 the message names both.
 
 ## Send the round
 
 Minting writes the links; sending emails them. In production that is an OAuth
 redirect out to Google for a short-lived `gmail.send` grant, and the mail goes
-out as the signed-in admin. Dev mode stubs the grant and the mailbox, so the
+out as the signed-in Organiser. Dev mode stubs the grant and the mailbox, so the
 whole flow works with no credentials — **the emails are written to the log
 instead of being sent**.
 
@@ -188,7 +193,7 @@ curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=reminder&deadline=Friday+
 curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=resend&volunteerId=<id>&deadline=Friday+28+August'
 ```
 
-Each redirects to `/admin/allocation?send=<job id>` and the emails go out
+Each redirects to `/organiser/allocation?send=<job id>` and the emails go out
 behind it — a send is a background job, not the body of the request, because
 thirty of them at Gmail's three-second throttle takes about ninety seconds.
 `GET /api/availability-sends/<job id>` reports how far it has got and, once it
@@ -264,25 +269,25 @@ one (#144). The whole journey is reachable here, end to end. So:
 | Works | |
 | --- | --- |
 | Login and logout | The header shows the signed-in address and a Log out button |
-| Header nav | Rota ↔ Admin |
-| `/admin` tab routing | Redirects to `/admin/volunteers`. Three tabs: Volunteers, Settings, Allocation |
-| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form on its own, prefilled from `GET /api/rotations/proposed` and editable — except the shift count, which starts empty. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireAdmin` |
+| Header nav | Rota ↔ Organiser, for an Organiser. A Rota Editor gets no link at all |
+| `/organiser` tab routing | Redirects to `/organiser/volunteers`. Three tabs: Volunteers, Settings, Allocation. A Rota Editor sees only "This page is for organisers" |
+| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form on its own, prefilled from `GET /api/rotations/proposed` and editable — except the shift count, which starts empty. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireLevel(LevelOrganiser)` |
 | The availability round | Part of the Allocation tab. Defining the rota opened the round; this shows it as a grid, and tops it up for anyone who has joined the roster since — groups down the side, shifts along the top, each Role's surplus or deficit above the answers. Rows open to their members' links. Desktop first: it scrolls sideways on a phone |
 | The volunteer's form | `/availability/<token>`, public — no session, no header, mobile first |
-| Admin sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
+| Volunteer sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
-| `GET /api/volunteers` | The full roster from `test_data/volunteers.csv`, behind `requireAdmin` |
+| `GET /api/volunteers` | The full roster from `test_data/volunteers.csv`, for either level |
 | `POST /api/rotations` | Mints a rota's shifts and opens its availability round, with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight, or when a start date lands on a day the drop-in already runs |
 | `DELETE /api/rotations/{id}` | Discards an unallocated rota and everything hanging off it — the way to start over |
 | `POST /api/draft-rota-allocation` | Runs the real CP-SAT solve over the rota in flight and stores it as the draft. Needs Roles, the settings, a Shape on every open shift and an availability round, which defining opened — it names whichever step is missing. It solves before any answer is in, and says every Seat is unfilled |
-| The rota in flight on the rota page | An admin sees its shifts flagged as unallocated, with whoever is pinned to them, and can pin, close, reshape and retime them from Edit rota. No draft: that is the Allocation tab's, and a line here points at it. Logged out, none of it |
+| The rota in flight on the rota page | Anyone signed in sees its shifts flagged as unallocated, with whoever is pinned to them. From Edit rota an Organiser can pin, close, reshape and retime them; a Rota Editor can only pin, and change who is on allocated shifts. No draft: that is the Allocation tab's, and for an Organiser a line here points at it. Logged out, none of it |
 | Allocating | The Allocation tab's Allocate button re-solves, compares the answer with the draft on screen and commits it on a match. On a mismatch nothing is written and the panel says what changed |
 | The 404 route | Any unmatched path renders "Page not found" |
 
 | Does not | |
 | --- | --- |
-| The rota page | Renders empty until you define a rota. After that an admin sees the minted shifts flagged as unallocated, and the public sees nothing until the rota is allocated, which the web server does not expose |
-| Deep-linking an admin tab | `http://localhost:8081/admin/volunteers` typed straight into the address bar renders blank: the build emits relative asset paths, so a nested route asks for `/admin/chunk-*.js` and the SPA fallback answers with `index.html`. Reach the tab by loading `/` and clicking through. |
+| The rota page | Renders empty until you define a rota. After that anyone signed in sees the minted shifts flagged as unallocated, and the public sees nothing until the rota is allocated, which the web server does not expose |
+| Deep-linking an Organiser tab | `http://localhost:8081/organiser/volunteers` typed straight into the address bar renders blank: the build emits relative asset paths, so a nested route asks for `/organiser/chunk-*.js` and the SPA fallback answers with `index.html`. Reach the tab by loading `/` and clicking through. |
 | Sync copy | The Volunteers tab's sync caption says "the Google Sheet" — in dev mode it is the CSV. |
 | Anything Sheets, Forms or Gmail | Never reached in dev mode |
 
@@ -293,8 +298,8 @@ Postgres will not clone a database with a connection open on it.
 ## Why this is safe
 
 `drop_in_config.dev.yaml` is the one config file committed to the repo. It holds
-no secrets: fake sheet IDs that are never read, an `agent@example.com` admin
-address, and a session secret that signs sessions for a server which already
+no secrets: fake sheet IDs that are never read, an `agent@example.com` Organiser
+and a `rota-editor@example.com` Rota Editor, and a session secret that signs sessions for a server which already
 mints them on request.
 
 The `devMode` block is what turns the stubs on, and
@@ -303,8 +308,8 @@ environment but `dev`. Gating on the name rather than on "not prod" means a new
 environment is credential-backed unless someone deliberately calls it `dev`;
 failing rather than ignoring means nobody is left believing a gate they set is
 off when it is on. `pkg/api.NewStubAuthenticator` is unreachable without that
-block, and refuses to build if `devMode.adminEmail` is missing from
-`server.adminEmails`.
+block, and refuses to build if `devMode.organiserEmail` is not an Organiser in
+`server.organiserEmails`, or `devMode.rotaEditorEmail` is not only a Rota Editor.
 
 The server also logs a `DEV MODE` warning at startup and again on every stub
 login, so a stack running with the stubs on says so in its own log.

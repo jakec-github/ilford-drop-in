@@ -128,7 +128,7 @@ purpose, so a database is in this state until somebody fills it, and the server
 warns at startup when it is. With no Roles nobody on the roster holds one and
 allocation refuses to run.
 
-They are created on **Admin → Settings**, which is reachable as soon as an admin
+They are created on **Organiser → Settings**, which is reachable as soon as an Organiser
 can log in — no SQL and no deploy. This is the pair the config used to carry:
 
 | Name | Most per shift | Priority | Colour |
