@@ -101,6 +101,38 @@ def test_infeasible_exit_zero(tmp_path):
     assert out["solver_status"] == "INFEASIBLE"
 
 
+def test_no_groups_solves_with_every_seat_unfilled(tmp_path):
+    # Nobody has answered yet: every rota's state until the first reply
+    # (issue #188). The solve is as ordinary as any other, and the rota it
+    # answers with is empty but for the pins, which need nobody to answer.
+    payload = json.loads(json.dumps(VALID_INPUT))
+    payload["enabled_constraints"] = [
+        "max_frequency",
+        "male_required",
+        "no_back_to_back",
+        "one_shift_per_month",
+    ]
+    payload["groups"] = []
+    payload["shifts"].append(
+        {
+            "index": 1,
+            "date": "2026-07-20",
+            "shape": shape(2),
+            "preallocations": [
+                {"volunteer_id": "", "custom": "St John's", "role": "Service volunteer"}
+            ],
+        }
+    )
+    code, out = run_cli(tmp_path, payload)
+    assert code == 0
+    assert out["success"] is True
+    assert out["solver_status"] == "OPTIMAL"
+    assert out["shifts"][0]["assignments"] == []
+    assert out["shifts"][1]["assignments"] == [
+        {"volunteer_id": "", "custom": "St John's", "role": "Service volunteer"}
+    ]
+
+
 def test_malformed_json_exit_one(tmp_path, capsys):
     code, out = run_cli(tmp_path, "{not json")
     assert code == 1
