@@ -134,7 +134,7 @@ export default function DefineRota({
 
   return (
     <>
-      <section className="admin-panel define-rota">
+      <section className="organiser-panel define-rota">
         <h2>Define the next rota</h2>
 
         {proposal === null && !error && (

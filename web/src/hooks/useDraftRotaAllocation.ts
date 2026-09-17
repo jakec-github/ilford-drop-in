@@ -89,7 +89,7 @@ const RE_READ_DEBOUNCE_MS = 2000;
 // "what the draft says", whether it arrived from a page load or a re-solve.
 //
 // It is mounted on the Allocation tab and nowhere else, which is why nothing
-// here is conditional on being an admin: a draft is admin-only, and the one
+// here is conditional on being an admin: a draft is organiser-only, and the one
 // screen that reads one is behind the admin area. The rota page used to read it
 // too, and needed an `enabled` flag so that a logged-out visitor did not fetch
 // a guaranteed 401 — it shows no draft at all now.

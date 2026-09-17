@@ -196,7 +196,7 @@ export default function AvailabilityPanel() {
     // to be able to leave the admin column. What that takes is a box wider than
     // the column to centre it in — see the CSS (issue #174).
     <div className="round-bleed">
-      <section className="admin-panel round">
+      <section className="organiser-panel round">
         <header className="round-head">
           <h2>Availability</h2>
           {round && !round.allocated && (

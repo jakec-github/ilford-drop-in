@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
+import type { AccessLevel } from "../auth-context";
 import type {
   Assignee,
   PersonRef,
@@ -37,16 +38,18 @@ import "./RotaViewer.css";
 
 interface RotaViewerProps {
   rotaShifts: RotaShift[];
-  // Admins additionally see shifts whose rota has not been allocated yet, and
-  // can turn on editing.
-  isAdmin: boolean;
+  // Who is looking, or null for the public. Anyone signed in additionally sees
+  // shifts whose rota has not been allocated yet, and can turn on editing: a
+  // Rota Editor to change who is on a shift or pinned to it, an Organiser to
+  // change the shift itself as well.
+  level: AccessLevel | null;
   // Records one change to the rota and reloads it. Rejects with the server's
   // own message when the change is refused. Only ever called by the editing
-  // affordances, which are unreachable unless isAdmin.
+  // affordances, which are unreachable unless signed in.
   onChange: (change: RotaChange) => Promise<void>;
   // Shuts or reopens one shift, on the same terms. Separate from onChange
   // because it is not an alteration: it changes what allocation will do rather
-  // than what an allocated rota says.
+  // than what an allocated rota says. Organiser only, like the two below.
   onSetClosed: (shiftId: string, closed: boolean) => Promise<void>;
   // Moves one shift's start and end, and with the start its date. Also not an
   // alteration, and unlike a closure not frozen at allocation: the times say
@@ -179,7 +182,7 @@ type EditDialog =
 
 export default function RotaViewer({
   rotaShifts,
-  isAdmin,
+  level,
   onChange,
   onSetClosed,
   onSetTimes,
@@ -193,7 +196,15 @@ export default function RotaViewer({
   const inputRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLDivElement>(null);
 
-  // Editing is off until an admin asks for it: the rota is read far more often
+  // Signed in at either level. Both may edit the rota — who is on a shift, who
+  // is pinned to one — and see the rota in flight to do it.
+  const signedIn = level !== null;
+  // Changing the shift itself — whether it runs, when, and what it asks for —
+  // is an Organiser's alone: Closed and the Shape are allocator inputs, and the
+  // times go with them.
+  const canEditShifts = level === "organiser";
+
+  // Editing is off until someone signed in asks for it: the rota is read far more often
   // than it is changed, and drag handles on every chip would be in the way of
   // the reading.
   const [editRequested, setEditRequested] = useState(false);
@@ -207,10 +218,11 @@ export default function RotaViewer({
   } | null>(null);
 
   // Derived rather than trusted: a session can end while the page is open, and
-  // an admin who logs out in another tab must not be left looking at drag
+  // someone who logs out in another tab must not be left looking at drag
   // handles and Add buttons the server would now refuse. Everything the editing
-  // mode renders hangs off this, so losing isAdmin takes all of it away at once.
-  const editing = isAdmin && editRequested;
+  // mode renders hangs off this, so losing the session takes all of it away at
+  // once.
+  const editing = signedIn && editRequested;
 
   // What each Role is drawn in. Public, and fetched whoever is looking: the
   // chips are the rota. A failure leaves every chip in the default colour,
@@ -219,14 +231,14 @@ export default function RotaViewer({
   // of each Role a shift wants, so it needs the list and each Role's ceiling.
   const { roles, colourOf, idOf } = useRoles();
 
-  // The roster is only needed to add someone, and it is admin-only, so it is
-  // not fetched until an admin turns editing on.
+  // The roster is only needed to add someone, and the public may not read it,
+  // so it is not fetched until someone signed in turns editing on.
   const { volunteers, error: volunteersError } = useVolunteers({
     enabled: editing,
   });
 
   // Pins only say anything about shifts the rota has not been run for, and only
-  // admins see those, so only admins fetch them. Not gated on editing: who is
+  // the signed in see those, so only they fetch them. Not gated on editing: who is
   // already promised to an unallocated shift is something to read, not a
   // change to make.
   const {
@@ -234,15 +246,16 @@ export default function RotaViewer({
     error: preallocationsError,
     addPin,
     removePin,
-  } = usePreallocations({ enabled: isAdmin });
+  } = usePreallocations({ enabled: signedIn });
 
   // No draft is read here, deliberately. The drafted names used to be drawn on
   // the unallocated rows of this page, which made the rota two things at once:
   // what has been decided, and what the solver currently guesses. A draft is
   // neither published nor stable — the next solve may say something else — so it
-  // belongs where it is worked on, on Admin → Allocation, and the notice below
-  // sends an admin there. What stays here is what an admin can decide about a
-  // shift the rota has not been run for: the pins, the closures and the Shape.
+  // belongs where it is worked on, on Organiser → Allocation, and the notice
+  // below sends an Organiser there. What stays here is what can be decided about
+  // a shift the rota has not been run for: the pins, and for an Organiser the
+  // closures and the Shape.
   //
   // Not reading it also takes the read's solve off this page: a draft read can
   // run a thirty-second CP-SAT solve (ADR 0008), which is a strange thing for
@@ -259,25 +272,26 @@ export default function RotaViewer({
   }, [preallocations]);
 
   // The public only sees shifts with something to show — allocated or closed.
-  // Admins also see unallocated shifts, flagged so they stand out.
+  // The signed in also see unallocated shifts, flagged so they stand out.
   const visibleShifts = useMemo(
-    () => (isAdmin ? rotaShifts : rotaShifts.filter((s) => !isUnallocated(s))),
-    [rotaShifts, isAdmin],
+    () => (signedIn ? rotaShifts : rotaShifts.filter((s) => !isUnallocated(s))),
+    [rotaShifts, signedIn],
   );
 
-  // Whether anything on screen can be pinned to at all — only ever true for an
-  // admin, since the public is not shown unallocated shifts in the first place.
+  // Whether anything on screen can be pinned to at all — only ever true when
+  // signed in, since the public is not shown unallocated shifts in the first place.
   const hasUnallocated = useMemo(
     () => visibleShifts.some(isUnallocated),
     [visibleShifts],
   );
 
-  // Whether any row can be shut or opened. A wider set than hasUnallocated: a
-  // shift that is already closed is not "not yet allocated", but reopening it
-  // is exactly what an admin might be here to do.
+  // Whether any row can be shut or opened by whoever is looking. A wider set
+  // than hasUnallocated: a shift that is already closed is not "not yet
+  // allocated", but reopening it is exactly what an Organiser might be here to
+  // do.
   const hasClosable = useMemo(
-    () => visibleShifts.some((s) => !s.allocated),
-    [visibleShifts],
+    () => canEditShifts && visibleShifts.some((s) => !s.allocated),
+    [visibleShifts, canEditShifts],
   );
 
   const allNames = useMemo(() => getAllNames(visibleShifts), [visibleShifts]);
@@ -554,19 +568,22 @@ export default function RotaViewer({
       },
       // An allocated rota was solved around which of its shifts run, so the
       // flag is frozen. Its times are not: they are descriptive, and onEditTimes
-      // below is offered whether or not the rota has been run.
-      canSetClosed: !shift.allocated,
+      // below is offered whether or not the rota has been run. All three of
+      // these are an Organiser's; a Rota Editor gets the pins and the people.
+      canSetClosed: canEditShifts && !shift.allocated,
       onSetClosed: () => {
         setChangeError(null);
         setOpenMenu(null);
         setDialog({ kind: "closure", shift });
       },
-      onEditTimes: () => {
-        setChangeError(null);
-        setOpenMenu(null);
-        setDialog({ kind: "times", shift });
-      },
-      canEditShape: roles !== null,
+      onEditTimes: canEditShifts
+        ? () => {
+            setChangeError(null);
+            setOpenMenu(null);
+            setDialog({ kind: "times", shift });
+          }
+        : null,
+      canEditShape: canEditShifts && roles !== null,
       onEditShape: () => {
         setChangeError(null);
         setOpenMenu(null);
@@ -641,7 +658,7 @@ export default function RotaViewer({
     <div className="rota-viewer">
       <div className="rota-heading">
         <h1>Ilford Drop-in Rota</h1>
-        {isAdmin && (
+        {signedIn && (
           <Button
             size="small"
             aria-pressed={editing}
@@ -756,17 +773,18 @@ export default function RotaViewer({
       {editing && !pending && (
         <p className="rota-edit-hint">
           Drag a name to another shift to move them, or onto another name to
-          swap. On a touchscreen, tap a name to choose an action: move or
-          swap, replace, or remove.
+          swap. On a touchscreen, tap a name to choose an action: move or swap,
+          replace, or remove.
           {/* Only where there is a shift it applies to. On a rota that has all
               been allocated there is nothing to pin to, and the sentence would
-              send an admin looking for a button that is not on any row. */}
+              send someone looking for a button that is not on any row. */}
           {hasUnallocated && (
             <>
               {" "}
               Shifts the rota has not been run for take pins instead: whoever
-              you pin there is guaranteed the shift when it is allocated, and
-              Shape changes how many places of each Role that shift has.
+              you pin there is guaranteed the shift when it is allocated.
+              {canEditShifts &&
+                " Shape changes how many places of each Role that shift has."}
             </>
           )}
           {hasClosable && (
@@ -776,10 +794,11 @@ export default function RotaViewer({
               is allocated.
             </>
           )}{" "}
-          {/* Unconditional, unlike the two above: the times only describe the
-              shift, so every row takes the edit whether or not it has been
-              allocated. */}
-          Select a row&rsquo;s date to change when the shift takes place.
+          {/* Not conditional on allocation, unlike the two above: the times
+              only describe the shift, so every row takes the edit whether or
+              not it has been allocated. Only on who may make it. */}
+          {canEditShifts &&
+            "Select a row\u2019s date to change when the shift takes place."}
         </p>
       )}
 
@@ -794,16 +813,24 @@ export default function RotaViewer({
       )}
 
       {/* Where the dashed rows are coming from and what is done about them.
-          isAdmin as well as there being any, for the reason `editing` above is
+          signedIn as well as there being any, for the reason `editing` above is
           derived rather than trusted: losing the session takes the sentence
-          away in the same render. */}
-      {isAdmin && hasUnallocated && (
+          away in the same render. A Rota Editor is told only what they can do
+          here: the Organiser area is not theirs, so it is not pointed at. */}
+      {canEditShifts && hasUnallocated && (
         <p className="rota-notice">
           The dashed shifts are the rota in flight — nobody has been placed on
           them yet. Pins, closures and what a shift asks for can be set here;
           the draft the solver makes of them, asking volunteers about it and
           allocating it all happen on{" "}
-          <Link href="/admin/allocation">Admin &rarr; Allocation</Link>.
+          <Link href="/organiser/allocation">Organiser &rarr; Allocation</Link>.
+        </p>
+      )}
+      {signedIn && !canEditShifts && hasUnallocated && (
+        <p className="rota-notice">
+          The dashed shifts are the rota in flight — nobody has been placed on
+          them yet. Pin someone to one to guarantee them that shift when the
+          rota is allocated.
         </p>
       )}
 

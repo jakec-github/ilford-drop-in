@@ -1,5 +1,5 @@
 /* One panel: the draft's report, and under it the shifts it is a report on.
-   It takes the admin area's own panel chrome (.admin-panel) rather than a box
+   It takes the admin area's own panel chrome (.organiser-panel) rather than a box
    of its own — there is nothing special about this section's edges, only about
    what is inside them. */
 .draft-panel-head {

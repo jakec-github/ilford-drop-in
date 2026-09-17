@@ -4,7 +4,7 @@ import type { RoleColourOf } from "../hooks/useRoles";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers, type SyncState } from "../hooks/useVolunteers";
 import type { Volunteer } from "../types";
-import "./AdminVolunteers.css";
+import "./OrganiserVolunteers.css";
 
 // The sync caption doubles as its own outcome message, so the line under the
 // button is always exactly one line and the layout never jumps.
@@ -134,10 +134,10 @@ function RosterRow({
   );
 }
 
-// AdminVolunteers is the volunteers tab: the synced roster, a summary of it, and
+// OrganiserVolunteers is the volunteers tab: the synced roster, a summary of it, and
 // the button that re-syncs it. The sync sits top right and stays small — it is
 // an occasional maintenance action, not the point of the page.
-export default function AdminVolunteers() {
+export default function OrganiserVolunteers() {
   const { volunteers, error, syncState, sync } = useVolunteers();
   // A Role wears its configured colour here as well as on the rota, so a lead
   // looks like a lead wherever they appear.
@@ -148,7 +148,7 @@ export default function AdminVolunteers() {
   );
 
   return (
-    <section className="admin-panel volunteers">
+    <section className="organiser-panel volunteers">
       <header className="volunteers-head">
         <h2>Volunteers</h2>
         <div className="volunteers-sync">

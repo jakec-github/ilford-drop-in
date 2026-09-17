@@ -164,8 +164,9 @@ export interface RowEdit {
   canSetClosed: boolean;
   onSetClosed: () => void;
   // Editing the hours is offered on every row, allocated or not: the times are
-  // descriptive, so nothing about them froze when the rota was solved.
-  onEditTimes: () => void;
+  // descriptive, so nothing about them froze when the rota was solved. Null
+  // when whoever is editing may not change them at all.
+  onEditTimes: (() => void) | null;
   // Whether the Shape can be edited from here at all. False while the Roles
   // have not loaded: the form asks how many of each Role the shift wants, and
   // there is nothing to ask about until the list arrives.
@@ -781,7 +782,7 @@ function ShiftRow({
           : undefined
       }
     >
-      {edit && !pending ? (
+      {edit?.onEditTimes && !pending ? (
         <button
           type="button"
           className="shift-when shift-when-editable"

@@ -1,3 +1,4 @@
+import type { Session } from "./auth-context";
 import type {
   AllocateOutcome,
   AllocationSettings,
@@ -136,19 +137,18 @@ function toRotaShift(shift: ApiShift): RotaShift {
   };
 }
 
-// fetchCurrentAdmin returns the logged-in admin's email, or null if there is no
-// active admin session.
-export async function fetchCurrentAdmin(): Promise<string | null> {
+// fetchSession returns who is logged in and at what level, or null if there is
+// no active session.
+export async function fetchSession(): Promise<Session | null> {
   const res = await fetch("/auth/me");
   if (res.status === 401) return null;
   if (!res.ok) {
     throw new Error(`Failed to check login state (${res.status})`);
   }
-  const data = (await res.json()) as { email: string };
-  return data.email;
+  return (await res.json()) as Session;
 }
 
-// logout clears the admin session cookie.
+// logout clears the session cookie.
 export async function logout(): Promise<void> {
   const res = await fetch("/auth/logout", { method: "POST" });
   if (!res.ok) {

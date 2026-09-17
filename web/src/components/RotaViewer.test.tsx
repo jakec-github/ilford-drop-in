@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ConfiguredRole, RotaShift, Volunteer } from "../types";
+import type { AccessLevel } from "../auth-context";
 import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
 
 // RotaViewer talks to the server through ../api exclusively (its hooks all
@@ -142,11 +143,14 @@ function shifts(): RotaShift[] {
 // flushing them here, before a test's own synchronous clicks, is what keeps
 // React from settling them mid-assertion with an unwrapped "not wrapped in
 // act(...)" warning.
-async function renderEditing() {
+async function renderEditing(
+  level: AccessLevel = "organiser",
+  rotaShifts: RotaShift[] = shifts(),
+) {
   render(
     <RotaViewer
-      rotaShifts={shifts()}
-      isAdmin
+      rotaShifts={rotaShifts}
+      level={level}
       onChange={mock(async () => {})}
       onSetClosed={mock(async () => {})}
       onSetTimes={mock(async () => {})}
@@ -293,5 +297,122 @@ describe("RotaViewer placement", () => {
     fireEvent.dragEnd(aliceOnShiftA);
 
     expect(rowFor("11 Jan").className).not.toContain("drop-target");
+  });
+});
+
+// One shift of the rota in flight, beside shifts()'s allocated ones: it is where
+// pins, closures and Shapes are offered, so it is where the two levels differ.
+function withUnallocated(): RotaShift[] {
+  return [
+    ...shifts(),
+    {
+      id: "shift-d",
+      date: "2026-01-25",
+      start: "2026-01-25T19:30:00",
+      end: "2026-01-25T21:30:00",
+      closed: false,
+      allocated: false,
+      shape: [],
+      assignees: [],
+    },
+  ];
+}
+
+describe("RotaViewer access levels", () => {
+  beforeEach(() => {
+    fetchRoles.mockClear();
+    fetchRoles.mockResolvedValue(ROLES);
+    fetchVolunteers.mockClear();
+    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchPreallocations.mockClear();
+    fetchPreallocations.mockResolvedValue([]);
+  });
+
+  test("an Organiser can pin, close, reshape and retime a shift of the rota in flight", async () => {
+    await renderEditing("organiser", withUnallocated());
+
+    const row = rowFor("25 Jan");
+    expect(
+      within(row).getByRole("button", { name: /^Pin someone to/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: /^Close/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: /^Change what .* asks for$/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: /^Change when .* runs$/ }),
+    ).toBeInTheDocument();
+  });
+
+  test("a Rota Editor can pin, but not close, reshape or retime", async () => {
+    await renderEditing("rotaEditor", withUnallocated());
+
+    const row = rowFor("25 Jan");
+    expect(
+      within(row).getByRole("button", { name: /^Pin someone to/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).queryByRole("button", { name: /^Close/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole("button", { name: /asks for$/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Change when .* runs$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("a Rota Editor can still change who is on an allocated shift", async () => {
+    await renderEditing("rotaEditor");
+
+    fireEvent.click(
+      within(rowFor("4 Jan")).getByRole("button", {
+        name: "Alice, change this shift",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Move or swap" }),
+    ).toBeInTheDocument();
+  });
+
+  test("a Rota Editor is not pointed at the Organiser area", async () => {
+    await renderEditing("rotaEditor", withUnallocated());
+
+    expect(screen.getByText(/rota in flight/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Organiser/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("an Organiser is pointed at the Allocation tab", async () => {
+    await renderEditing("organiser", withUnallocated());
+
+    expect(screen.getByRole("link", { name: /Organiser/ })).toHaveAttribute(
+      "href",
+      "/organiser/allocation",
+    );
+  });
+
+  test("logged out, there is nothing to edit and the rota in flight is hidden", async () => {
+    render(
+      <RotaViewer
+        rotaShifts={withUnallocated()}
+        level={null}
+        onChange={mock(async () => {})}
+        onSetClosed={mock(async () => {})}
+        onSetTimes={mock(async () => {})}
+        onSetShape={mock(async () => {})}
+      />,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Edit rota" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("25 Jan")).not.toBeInTheDocument();
   });
 });

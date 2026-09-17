@@ -1,4 +1,4 @@
-.admin-page {
+.organiser-page {
   max-width: 42rem;
   margin: 0 auto;
   padding: 2rem 1rem;
@@ -7,13 +7,13 @@
 /* A tab whose content is a grid gets the desk it needs. The default width
    stays for the rest: most admin tools are lists, and a list stretched across
    a wide screen reads worse, not better. */
-.admin-page--wide {
+.organiser-page--wide {
   max-width: 64rem;
 }
 
 /* The tab bar scrolls sideways rather than wrapping, so on a narrow phone the
    tabs stay on one line and keep reading as a single row of choices. */
-.admin-tabs {
+.organiser-tabs {
   display: flex;
   gap: 0.25rem;
   margin-top: 1.5rem;
@@ -22,11 +22,11 @@
   scrollbar-width: none;
 }
 
-.admin-tabs::-webkit-scrollbar {
+.organiser-tabs::-webkit-scrollbar {
   display: none;
 }
 
-.admin-tab {
+.organiser-tab {
   flex: none;
   padding: 0.5rem 0.75rem;
   border-bottom: 2px solid transparent;
@@ -36,18 +36,18 @@
   white-space: nowrap;
 }
 
-.admin-tab--current {
+.organiser-tab--current {
   border-bottom-color: var(--accent);
   color: var(--text-h);
 }
 
-.admin-panel {
+.organiser-panel {
   margin-top: 1.5rem;
   padding: 1.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
-.admin-panel h2 {
+.organiser-panel h2 {
   margin-top: 0;
 }

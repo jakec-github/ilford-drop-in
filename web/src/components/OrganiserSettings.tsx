@@ -18,7 +18,7 @@ import type {
   Volunteer,
 } from "../types";
 import { CUSTOM_CHOICE, DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
-import "./AdminSettings.css";
+import "./OrganiserSettings.css";
 
 // The colour a new Role starts on: the dullest token, so an admin who does not
 // care about colour does not accidentally claim a distinctive one.
@@ -719,7 +719,7 @@ function AllocationRulesSettings() {
   );
 }
 
-// AdminSettings is everything an admin decides about how the drop-in runs, as
+// OrganiserSettings is everything an admin decides about how the drop-in runs, as
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
 // of independent sections: the Rota Defaults the whole drop-in runs on, the
 // Roles volunteers hold, and the pins made every rota.
@@ -728,7 +728,7 @@ function AllocationRulesSettings() {
 // screen shows the same component, because defining a rota is spending it
 // (issue #176). This screen remains where it belongs: an admin looking for a
 // setting finds every one of them in one place.
-export default function AdminSettings() {
+export default function OrganiserSettings() {
   return (
     <>
       <RotaDefaultsCard />

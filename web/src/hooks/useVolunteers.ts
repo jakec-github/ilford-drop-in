@@ -14,7 +14,7 @@ interface UseVolunteers {
 }
 
 interface UseVolunteersOptions {
-  // The roster is admin-only, so a view that shows it conditionally must be
+  // The roster is organiser-only, so a view that shows it conditionally must be
   // able to say "not yet": fetching it for a logged-out visitor would be a
   // guaranteed 401 rendered as a load failure. Defaults to true.
   enabled?: boolean;

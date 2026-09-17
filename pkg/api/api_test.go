@@ -1280,7 +1280,7 @@ func TestUnknownAPIPathIsAJSONNotFound(t *testing.T) {
 func TestFrontendOwnsEverythingOutsideTheAPI(t *testing.T) {
 	handler := newFullStackHandler(&mockStore{})
 
-	for _, path := range []string{"/", "/admin", "/admin/volunteers", "/availability/some-token", "/volunteers"} {
+	for _, path := range []string{"/", "/organiser", "/organiser/volunteers", "/availability/some-token", "/volunteers"} {
 		rec := doRequest(t, handler, http.MethodGet, path, "")
 		require.Equal(t, http.StatusOK, rec.Code, path)
 		assert.Equal(t, "<html>app</html>", rec.Body.String(), path)

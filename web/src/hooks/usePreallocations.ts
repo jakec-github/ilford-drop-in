@@ -22,7 +22,7 @@ interface UsePreallocations {
 }
 
 interface UsePreallocationsOptions {
-  // Pins are admin-only, so a view that shows them conditionally must be able
+  // Pins are organiser-only, so a view that shows them conditionally must be able
   // to say "not yet": fetching them for a logged-out visitor would be a
   // guaranteed 401 rendered as a load failure. Defaults to true.
   enabled?: boolean;

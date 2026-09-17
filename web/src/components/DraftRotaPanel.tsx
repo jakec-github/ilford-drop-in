@@ -414,7 +414,7 @@ export default function DraftRotaPanel({
   }
 
   return (
-    <section className="admin-panel draft-panel">
+    <section className="organiser-panel draft-panel">
       <div className="draft-panel-head">
         <h2 className="draft-panel-title">Draft rota</h2>
         <div className="draft-panel-controls">

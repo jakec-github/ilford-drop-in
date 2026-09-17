@@ -34,7 +34,7 @@ const gmailStateMaxAge = 10 * time.Minute
 // Allocation tab, which is where the round is asked from (issue #145). The job
 // id goes in the query so the page can pick the send back up — the redirect
 // returns immediately and the emails go out behind it.
-const sendReturnPath = "/admin/allocation"
+const sendReturnPath = "/organiser/allocation"
 
 // gmailSendState is the pending send, carried through Google and back. It is
 // signed rather than stored: the round trip is the only thing that needs to

@@ -24,7 +24,7 @@ export default function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="admin-panel settings-section">
+    <section className="organiser-panel settings-section">
       <header className="settings-section-head">
         <div>
           <h2>{title}</h2>

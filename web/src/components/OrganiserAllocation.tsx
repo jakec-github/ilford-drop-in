@@ -9,7 +9,7 @@ import AvailabilityPanel from "./AvailabilityPanel";
 import DefineRota from "./DefineRota";
 import DraftRotaPanel from "./DraftRotaPanel";
 import type { RotaInFlight, RotaShift } from "../types";
-import "./AdminAllocation.css";
+import "./OrganiserAllocation.css";
 
 // "2 Aug – 6 Sep 2026", for naming a rota in a sentence.
 function formatSpan(rota: RotaInFlight): string {
@@ -129,7 +129,7 @@ function InFlightHead({
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <section className="admin-panel allocation-head">
+    <section className="organiser-panel allocation-head">
       <div className="allocation-head-row">
         <div>
           <h2>The rota in flight</h2>
@@ -281,7 +281,7 @@ function InFlightRota({
   );
 }
 
-// AdminAllocation is the Allocation tab, and it has two states because the rota
+// OrganiserAllocation is the Allocation tab, and it has two states because the rota
 // does. One rota is in flight at a time, so either there is one — and this is
 // everything about it, on one screen — or there is not, and this is the form
 // that defines the next.
@@ -290,7 +290,7 @@ function InFlightRota({
 // what shows one — so allocating leaves for it rather than describing it from
 // here. Landing on the finished rota is the confirmation the allocation worked,
 // and it is where every change from then on is made anyway.
-export default function AdminAllocation() {
+export default function OrganiserAllocation() {
   const [, navigate] = useLocation();
   const { inFlight, loading, error, reload, discard } = useRotaInFlight();
   const {
