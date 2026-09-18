@@ -29,6 +29,7 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslm
 
 server:
   port: 8080
+  basePath: '/org/dev-org'
   # Not a secret: it signs sessions for a server that has already decided to
   # mint a session for anyone who asks. Real environments use a real one.
   sessionSecret: 'dev-only-not-a-secret'
