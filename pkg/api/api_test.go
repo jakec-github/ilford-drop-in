@@ -1088,7 +1088,8 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 	// Proves ChangeRota persisted through the store, attributing the change to
 	// the verified Organiser session rather than any client-supplied field.
 	require.NotNil(t, store.insertedCover)
-	assert.Equal(t, "Holiday cover", store.insertedCover.Reason)
+	require.NotNil(t, store.insertedCover.Reason)
+	assert.Equal(t, "Holiday cover", *store.insertedCover.Reason)
 	assert.Equal(t, testOrganiserEmail, store.insertedCover.UserEmail)
 	assert.Len(t, store.insertedAlterations, 2)
 }
@@ -1119,8 +1120,33 @@ func TestCreateAlterationEndpoint_ReasonOptional(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.NotNil(t, store.insertedCover)
-	assert.Empty(t, store.insertedCover.Reason)
+	assert.Nil(t, store.insertedCover.Reason)
 	assert.Equal(t, testOrganiserEmail, store.insertedCover.UserEmail)
+}
+
+// The dialogs trim before they post, but the API is the contract: a reason of
+// nothing but spaces is no reason, so the one change that has to explain
+// itself is still refused (issue #148).
+func TestCreateAlterationEndpoint_WhitespaceReasonIsNoReason(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","out":"bob","reason":"   "}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	assert.Nil(t, store.insertedCover)
+}
+
+// A reason that was given reaches the cover as it reads, not as it was typed.
+func TestCreateAlterationEndpoint_StoresAReasonTrimmed(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","out":"bob","reason":"  Away that week  "}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	require.NotNil(t, store.insertedCover)
+	require.NotNil(t, store.insertedCover.Reason)
+	assert.Equal(t, "Away that week", *store.insertedCover.Reason)
 }
 
 // TestCreateAlterationEndpoint_RequiresASession proves the write endpoint is gated:

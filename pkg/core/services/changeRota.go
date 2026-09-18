@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,7 +33,10 @@ type ChangeRotaParams struct {
 	InCustom  string // Custom value to add
 	OutCustom string // Custom value to remove
 	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
-	Reason    string // Why the change was made. Required only of a simple removal — see isSimpleRemoval
+	// Why the change was made. Required only of a simple removal — see
+	// isSimpleRemoval. Trimmed on the way in, so whitespace is no reason at
+	// all, and an unstated one is stored as NULL rather than an empty string.
+	Reason    string
 	UserEmail string // Email of the user making the change
 	// Role the incoming volunteer takes. Required alongside In, and — on a
 	// swap, where Out is also set — refused, since each leg then has its own
@@ -66,6 +70,11 @@ func ChangeRota(
 	params ChangeRotaParams,
 	logger *zap.Logger,
 ) (*ChangeRotaResult, error) {
+	// Trimmed before anything reads it, so whitespace is an absent reason
+	// rather than a present one: the check below and the stored Cover then
+	// agree on what "no reason" is, whatever a client posts (issue #148).
+	params.Reason = strings.TrimSpace(params.Reason)
+
 	logger.Debug("Starting changeRota",
 		zap.String("date", params.Date),
 		zap.String("in", params.In),
@@ -174,11 +183,18 @@ func ChangeRota(
 			}
 		}
 
-		// Create cover record
+		// Create cover record. An unstated reason is NULL, not an empty
+		// string: the column is the audit trail's account of why a rota
+		// stopped matching its allocation, and it should say when there was
+		// no account rather than leaving a reader to decode '' (issue #148).
+		var reason *string
+		if params.Reason != "" {
+			reason = &params.Reason
+		}
 		cover := &db.Cover{
 			ID:        coverID,
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
-			Reason:    params.Reason,
+			Reason:    reason,
 			UserEmail: params.UserEmail,
 		}
 

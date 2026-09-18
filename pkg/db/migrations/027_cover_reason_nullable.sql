@@ -1,0 +1,11 @@
+-- A Cover need not have a reason (issue #148).
+--
+-- Every change to a published rota used to carry one, so NOT NULL was true.
+-- Only a simple removal is asked for a reason now, which left the column
+-- satisfied by an empty string meaning "there wasn't one" — a sentinel whoever
+-- first writes an audit view over this table would have to know about. NULL
+-- says it in the column instead.
+--
+-- No backfill: no empty strings exist. Every cover predating this migration
+-- carries a real reason, because one was required of it.
+ALTER TABLE cover ALTER COLUMN reason DROP NOT NULL;

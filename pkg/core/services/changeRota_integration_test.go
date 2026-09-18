@@ -159,3 +159,30 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 	alterations := alterationsForRota(t, database, rotaID)
 	assert.Empty(t, alterations, "the conflicting change must write nothing")
 }
+
+// TestChangeRotaWritesNullReason covers the column, not just the struct: an
+// unstated reason has to reach Postgres as NULL, which only holds once the
+// NOT NULL is dropped (migration 027, issue #148). Nothing SELECTs `cover`
+// yet, so the assertion is made in SQL.
+func TestChangeRotaWritesNullReason(t *testing.T) {
+	database, dbURL := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
+	ctx := context.Background()
+	seedAllocatedRota(t, database)
+
+	result, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2026-08-02",
+		In:        "dave",
+		Role:      "Service volunteer",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	conn, err := pgx.Connect(ctx, dbURL)
+	require.NoError(t, err)
+	defer conn.Close(ctx)
+
+	var reason *string
+	require.NoError(t, conn.QueryRow(ctx, `SELECT reason FROM cover WHERE id = $1`, result.CoverID).Scan(&reason))
+	assert.Nil(t, reason, "an unstated reason is NULL, not an empty string")
+}

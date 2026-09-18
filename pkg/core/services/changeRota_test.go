@@ -159,7 +159,8 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 
 	// Check cover was inserted
 	require.NotNil(t, store.insertedCover)
-	assert.Equal(t, "Holiday cover", store.insertedCover.Reason)
+	require.NotNil(t, store.insertedCover.Reason)
+	assert.Equal(t, "Holiday cover", *store.insertedCover.Reason)
 	assert.Equal(t, "test@example.com", store.insertedCover.UserEmail)
 
 	// Check alterations
@@ -519,10 +520,88 @@ func TestChangeRota_ReplacementNeedsNoReason(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Recorded with no reason rather than a stand-in one: an empty reason says
+	// Recorded with no reason rather than a stand-in one: a NULL reason says
 	// nobody was asked for one, where "n/a" would read as an answer.
 	require.NotNil(t, store.insertedCover)
-	assert.Empty(t, store.insertedCover.Reason)
+	assert.Nil(t, store.insertedCover.Reason)
+}
+
+// Whitespace is not an answer. The web dialogs trim before they post, but the
+// API is the contract, and without this a client could satisfy the one change
+// that has to explain itself with a space bar (issue #148).
+func TestChangeRota_WhitespaceIsNoReasonOnARemoval(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "bob",
+		Reason:    "   ",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "a reason is required")
+}
+
+// On a change that never needed one, whitespace lands where nothing would: as
+// NULL, not as a stored reason that reads as present and says nothing.
+func TestChangeRota_WhitespaceReasonIsStoredAsNone(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "bob",
+		In:        "dave",
+		Role:      "Service volunteer",
+		Reason:    " \t ",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+
+	require.NotNil(t, store.insertedCover)
+	assert.Nil(t, store.insertedCover.Reason)
+}
+
+// A reason that was given is stored as it reads, without the whitespace a
+// client happened to send around it.
+func TestChangeRota_ReasonIsStoredTrimmed(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "bob",
+		Reason:    "  Away that week\n",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+
+	require.NotNil(t, store.insertedCover)
+	require.NotNil(t, store.insertedCover.Reason)
+	assert.Equal(t, "Away that week", *store.insertedCover.Reason)
 }
 
 func TestChangeRota_AddNeedsNoReason(t *testing.T) {
