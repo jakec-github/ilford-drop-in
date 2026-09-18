@@ -11,7 +11,6 @@ import type {
   RotaShift,
   Volunteer,
 } from "../types";
-import { TEAM_LEAD_ROLE } from "../types";
 import { usePreallocations } from "../hooks/usePreallocations";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
@@ -28,6 +27,8 @@ import {
 import type { Pending, RowEdit } from "./ShiftList";
 import ShiftList from "./ShiftList";
 import ShapeForm from "./ShapeForm";
+import type { SeatCount } from "./shape";
+import { seatCounts } from "./shape";
 import {
   formatShiftDate,
   formatShiftDateLong,
@@ -268,6 +269,14 @@ export default function RotaViewer({
   // Not reading it also takes the read's solve off this page: a draft read can
   // run a thirty-second CP-SAT solve (ADR 0008), which is a strange thing for
   // opening the rota to trigger.
+
+  // The Roles a picker offers, as the API lists them: highest priority first.
+  // null while they are still loading, which every picker renders rather than
+  // guessing at.
+  const roleNames = useMemo(
+    () => roles?.map((role) => role.name) ?? null,
+    [roles],
+  );
 
   const pinsByDate = useMemo(() => {
     const byDate = new Map<string, Preallocation[]>();
@@ -627,13 +636,7 @@ export default function RotaViewer({
           setDialog({
             kind: "assignee",
             date: shift.date,
-            change: {
-              kind: "add",
-              // A shift has one team lead. Where it already has one, joining as
-              // one is not on offer — the way to change who leads is to replace
-              // them, which hands the role over rather than adding a second.
-              leadTaken: shift.assignees.some((a) => a.role === TEAM_LEAD_ROLE),
-            },
+            change: { kind: "add" },
           });
         },
       },
@@ -652,6 +655,18 @@ export default function RotaViewer({
         .filter(Boolean),
     );
     return volunteers.filter((v) => !onShift.has(v.id));
+  }
+
+  // What one shift still has to promise: its own Shape, less the pins already
+  // made against it. The pin dialog reads this to decide which Seats it may
+  // offer — a Shape's Seats bound what may be promised to a solve that has not
+  // run, though not what may be recorded against a rota that has (ADR 0009).
+  function seatsOn(date: string): SeatCount[] {
+    const shift = rotaShifts.find((s) => s.date === date);
+    return seatCounts(
+      shift?.shape ?? [],
+      (pinsByDate.get(date) ?? []).map((p) => p.roleId),
+    );
   }
 
   // Who can still be pinned to an unallocated shift: the active roster, less
@@ -861,7 +876,11 @@ export default function RotaViewer({
           title={dialog.title}
           summary={dialog.summary}
           confirmLabel={dialog.confirmLabel}
-          role={dialog.role}
+          // The Roles are read at render rather than stored with the dialog, so
+          // a list that arrives while it is open fills the picker in.
+          role={
+            dialog.role && { initial: dialog.role.initial, roles: roleNames }
+          }
           reasonRequired={dialog.reasonRequired}
           busy={saving}
           onCancel={() => {
@@ -880,6 +899,7 @@ export default function RotaViewer({
           change={dialog.change}
           volunteers={addableTo(dialog.date)}
           volunteersError={volunteersError}
+          roles={roleNames}
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={(person, reason, role) =>
@@ -902,12 +922,9 @@ export default function RotaViewer({
           dateLabel={formatShiftDateLong(dialog.date)}
           volunteers={pinnableTo(dialog.date)}
           volunteersError={volunteersError}
-          // A shift has one team-lead Seat, so a lead already pinned there
-          // rules out a second — and it can be given up from here, whichever
-          // way it came to be made.
-          leadPinned={(pinsByDate.get(dialog.date) ?? []).some(
-            (p) => p.role === TEAM_LEAD_ROLE,
-          )}
+          // What this shift still has room to promise: its own Shape, less the
+          // pins already made against it, whichever way each came to be made.
+          seats={seatsOn(dialog.date)}
           pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
           busy={saving}
           onCancel={() => setDialog(null)}

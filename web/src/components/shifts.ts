@@ -1,9 +1,23 @@
-import type { Assignee, PersonRef, RotaShift } from "../types";
+import type { Assignee, PersonRef, Role, RotaShift } from "../types";
 
 // The small facts about a shift and the people on it that both the shift rows
 // and the screens around them need. Their own module rather than exports from
 // ShiftList: a file that exports components exports only components, so that a
 // dev-server reload of one row does not tear down the page holding it.
+
+// How a Role reads in a sentence about somebody's place on a shift: " as hot
+// food". Every Role is named, because with Roles as configuration there is no
+// ordinary one to leave unsaid — a Shape of five says nothing about which of
+// them goes without saying, and suppressing one by name is what made the rota
+// page unusable on any deployment that did not use the shipped names
+// (issue #212).
+//
+// Empty only for a name the rota records no Role for at all: an allocation
+// predating the role column, which has nothing to say rather than something
+// suppressed.
+export function roleSuffix(role: Role): string {
+  return role ? ` as ${role.toLowerCase()}` : "";
+}
 
 // A shift that exists but has not been through allocation yet: no assignees,
 // and not deliberately closed. Hidden from the public; flagged for Organisers.

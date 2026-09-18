@@ -30,11 +30,7 @@ import type {
   StandingPreallocation,
   Volunteer,
 } from "./types";
-import {
-  DEFAULT_ROLE_COLOUR,
-  ROLE_COLOURS,
-  SERVICE_VOLUNTEER_ROLE,
-} from "./types";
+import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "./types";
 
 interface ApiAssignee {
   volunteerId?: string;
@@ -115,8 +111,12 @@ function toAssignee(a: ApiAssignee): Assignee {
   return {
     name: a.name,
     // An allocation predating the role column has none, and the server no
-    // longer backfills one; it reads as an ordinary Seat here.
-    role: a.role ?? SERVICE_VOLUNTEER_ROLE,
+    // longer backfills one. It stays Role-less here rather than being handed
+    // one: there is no ordinary Role to fall back on once Roles are
+    // configuration, and naming one the deployment may not even have is how a
+    // rota came to claim Seats nobody had (issue #212). Display decides what to
+    // show for a Role-less name.
+    role: a.role ?? "",
     custom: !a.volunteerId,
     group: a.group || null,
     volunteerId: a.volunteerId || null,
@@ -359,8 +359,7 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
 // Resolves with nothing: the created pin comes back, but a caller showing pins
 // is showing them sorted server-side, so it re-reads the listing rather than
 // splicing this one in. Throws the server's own message,
-// which names what it clashed with ("every Team lead seat for … is already
-// pinned").
+// which names what it clashed with ("every … seat for … is already pinned").
 export async function createPreallocation(
   pin: NewPreallocation,
 ): Promise<void> {

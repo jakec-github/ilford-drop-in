@@ -18,6 +18,12 @@ does not apply to you.
   consumer's PR — never speculatively.
 - Routing: hand-rolled pathname switch until routes outgrow it (third route or
   first parameterised route); then wouter, not react-router.
+- Domain rules: a screen mirrors what the endpoint behind it accepts and
+  invents nothing. In particular, Shapes and roster Roles bind the allocator
+  and a Preallocation, never a Rota Editor changing a published rota — see
+  [ADR 0009](docs/adr/0009-allocation-rules-bind-the-allocator.md). Never write
+  a Role name in `web/src`: `useRoles()` says which exist, and a shift's own
+  `shape` says how many Seats it has of one.
 - State: view-local by default; context only for app-global concerns (auth).
   Server data behind per-resource hooks — views never call `fetch` directly.
   No state library; if server caching ever earns a dependency, TanStack Query.
