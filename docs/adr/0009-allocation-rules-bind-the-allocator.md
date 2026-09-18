@@ -1,6 +1,6 @@
 # Allocation rules bind the allocator, not the Rota Editor
 
-Status: accepted, 2026-09-18 (#212).
+Status: accepted, 2026-09-18 (#212). Amended 2026-09-18 (#214).
 
 A Shape's Seats and the Roles a Volunteer holds on the roster are **allocator
 inputs**. They bound what the solver may produce, and what a Preallocation may
@@ -36,6 +36,15 @@ client: no server endpoint it called had it.
   refused — the one exception being that the pin *grants* the Role for that
   Shift once it is made (ADR 0005, #109). The Shape is editable at that point,
   so a refusal always has a way through.
+
+- **Which Roles a picker offers differs between the two; that a Seat has a
+  Role at all does not.** A Seat is a Seat *in a Role* — that is what a Shape
+  says — so whoever fills one states which. The rule holds whether they are on
+  the roster or not: a custom entry pinned before allocation names its Role, and
+  a custom entry added as cover afterwards names one too (#214). Being off the
+  roster narrows nothing, because there is no roster entry to narrow by; it is
+  not a licence to leave the Role unsaid. Only a removal states none, having
+  nobody arriving to state one for.
 
 - **A screen mirrors what the endpoint behind it will accept, and invents
   nothing.** A client-side gate the server does not have is indistinguishable

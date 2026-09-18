@@ -1108,6 +1108,31 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
 }
 
+// TestCreateAlterationEndpoint_CustomEntryRole proves a custom entry coming in
+// as cover states its Seat's Role like anybody else, and is refused without one
+// — the same rule, worded the same way, as for a volunteer (issue #214).
+func TestCreateAlterationEndpoint_CustomEntryRole(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","inCustom":"Redbridge youth group","role":"Team lead","reason":"Covering the lead"}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	require.Len(t, store.insertedAlterations, 1)
+	assert.Equal(t, "Redbridge youth group", store.insertedAlterations[0].CustomValue)
+	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
+}
+
+func TestCreateAlterationEndpoint_CustomEntryNeedsARole(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","inCustom":"Redbridge youth group","reason":"Covering"}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "a role is required")
+	assert.Empty(t, store.insertedAlterations)
+}
+
 // TestCreateAlterationEndpoint_ReasonOptional proves a change that fills the
 // place it empties needs no reason: charlie takes bob's shift, so the rota is
 // no worse off and there is nothing to explain (issue #148). The cover is still

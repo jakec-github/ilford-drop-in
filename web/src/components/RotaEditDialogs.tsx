@@ -215,6 +215,12 @@ export type AssigneeChange =
 // allocator, not somebody recording a change to a rota that has already gone
 // out (ADR 0009). The roster still decides the default, since somebody is
 // usually put in for the job they mostly do.
+//
+// Somebody off the roster states a Role like anybody else (issue #214). Which
+// Roles a picker offers differs between pinning and covering; that a Seat has a
+// Role at all does not, and never turns on whether the person filling it is on
+// the roster. There is no roster entry to narrow the list by, so they are
+// offered the lot.
 export function AssigneeDialog({
   dateLabel,
   change,
@@ -232,13 +238,12 @@ export function AssigneeDialog({
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
   // Every Role the drop-in offers, highest priority first, or null while they
-  // are still loading. A volunteer coming in must name one, so until this
-  // arrives there is nothing to send and the dialog says so.
+  // are still loading. Anybody coming in must name one, so until this arrives
+  // there is nothing to send and the dialog says so.
   roles: Role[] | null;
   busy: boolean;
   onCancel: () => void;
-  // role is omitted for a custom entry, which the API gives no role to.
-  onConfirm: (person: PersonRef, reason: string, role?: Role) => void;
+  onConfirm: (person: PersonRef, reason: string, role: Role) => void;
 }) {
   const [choice, setChoice] = useState("");
   const [customName, setCustomName] = useState("");
@@ -267,8 +272,10 @@ export function AssigneeDialog({
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
   // The carried Role wins where there is one; otherwise whatever this volunteer
-  // mostly does. An explicit pick outranks both — it is only dropped if it
-  // stops being an option, which nothing here does.
+  // mostly does, which for somebody off the roster is the first Role on offer —
+  // there is nothing recorded about them to do better with. An explicit pick
+  // outranks both — it is only dropped if it stops being an option, which
+  // nothing here does.
   const incomingRole: Role = options.includes(role)
     ? role
     : carried || defaultRoleFor(chosen, options);
@@ -285,12 +292,7 @@ export function AssigneeDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (person)
-            onConfirm(
-              person,
-              reason.trim(),
-              isCustom ? undefined : incomingRole,
-            );
+          if (person) onConfirm(person, reason.trim(), incomingRole);
         }}
       >
         {/* One request, not a removal and an add: the outgoing person leaves
@@ -347,13 +349,13 @@ export function AssigneeDialog({
           </label>
         )}
 
-        {/* Not offered for a custom entry: the alterations API carries a role
-            only for a real volunteer, so a choice here would be dropped
-            silently. Offered on a replacement as well as an add, because
-            handing a Seat to somebody who will do a different job on it is an
-            ordinary thing to record — and because the person leaving may have
-            no Role at all, which the API will not accept for the one arriving. */}
-        {!isCustom && choice !== "" && options.length > 0 && (
+        {/* Offered on a replacement as well as an add, because handing a Seat
+            to somebody who will do a different job on it is an ordinary thing
+            to record — and because the person leaving may have no Role at all,
+            which the API will not accept for the one arriving. Offered for
+            somebody off the roster too: their Seat is a Seat in a Role like
+            everybody else's (issue #214). */}
+        {choice !== "" && options.length > 0 && (
           <label className="rota-edit-field">
             Role
             <select
@@ -371,8 +373,8 @@ export function AssigneeDialog({
 
         {/* Only reachable before the Roles have arrived, or on a deployment
             where nobody has made any. Either way there is nothing to send: the
-            API refuses a volunteer coming in without a Role. */}
-        {!isCustom && choice !== "" && options.length === 0 && (
+            API refuses anybody coming in without a Role. */}
+        {choice !== "" && options.length === 0 && (
           <p className="rota-edit-note">
             {roles === null
               ? "Still loading the roles…"
@@ -387,9 +389,9 @@ export function AssigneeDialog({
         <DialogActions
           confirmLabel={change.kind === "add" ? "Add" : "Replace"}
           busy={busy}
-          // A volunteer arriving has to name a Role; a custom entry never
-          // carries one, so it is answerable on the name alone.
-          canConfirm={person !== null && (isCustom || incomingRole !== "")}
+          // Anybody arriving has to name a Role, so neither half of the form
+          // is answerable on its own.
+          canConfirm={person !== null && incomingRole !== ""}
           onCancel={onCancel}
         />
       </form>
