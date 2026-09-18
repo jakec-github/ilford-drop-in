@@ -16,9 +16,11 @@ type createAlterationRequest struct {
 	OutCustom string `json:"outCustom,omitempty"`
 	SwapDate  string `json:"swapDate,omitempty"`
 	Reason    string `json:"reason"`
-	// Role the volunteer named by In takes on Date. Required whenever In is
-	// set, except on a swap — there each leg inherits the Role of the person it
-	// replaces, so naming one is refused.
+	// Role whoever is named by In or InCustom takes on Date. Required whenever
+	// either is set — a Seat is a Seat in a Role whoever fills it, and being
+	// off the roster is no exception (issue #214) — except on a swap, where
+	// each leg inherits the Role of the person it replaces, so naming one is
+	// refused.
 	Role string `json:"role,omitempty"`
 }
 

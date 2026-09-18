@@ -380,11 +380,12 @@ describe("AssigneeDialog", () => {
     );
   });
 
-  // The alterations API carries a Role only for a real volunteer, so a choice
-  // here would be dropped silently.
-  test("someone off the roster is added without a role at all", () => {
+  // Every Seat is a Seat in a Role, and whether somebody is on the roster is no
+  // business of whether theirs has one (issue #214). There is no roster entry
+  // to narrow the list by, so the whole list is offered.
+  test("someone off the roster picks a role from the same list", () => {
     const onConfirm =
-      mock<(person: unknown, reason: string, role?: string) => void>();
+      mock<(person: unknown, reason: string, role: string) => void>();
     render(
       <AssigneeDialog
         {...assigneeProps()}
@@ -400,14 +401,70 @@ describe("AssigneeDialog", () => {
       target: { value: "Redbridge youth group" },
     });
 
-    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
+    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    expect(optionsOf(roleField)).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
 
+    fireEvent.change(roleField, { target: { value: HOT_FOOD } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(onConfirm).toHaveBeenCalledWith(
       { custom: "Redbridge youth group" },
       "",
-      undefined,
+      HOT_FOOD,
     );
+  });
+
+  // The same organisation pinned before allocation and covering after it must
+  // read the same way, which starts with the replacement carrying the Seat over.
+  test("someone off the roster replacing a volunteer carries their role over", () => {
+    const onConfirm =
+      mock<(person: unknown, reason: string, role: string) => void>();
+    render(
+      <AssigneeDialog
+        {...assigneeProps()}
+        change={{ kind: "replace", outgoing: assignee("Dan", DUTY_LEAD) }}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "custom" },
+    });
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Redbridge youth group" },
+    });
+
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
+      DUTY_LEAD,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+    expect(onConfirm).toHaveBeenCalledWith(
+      { custom: "Redbridge youth group" },
+      "",
+      DUTY_LEAD,
+    );
+  });
+
+  // The API refuses anybody coming in without a Role, off the roster included,
+  // so there is nothing to send until the Roles arrive.
+  test("someone off the roster cannot be added before the roles have loaded", () => {
+    render(
+      <AssigneeDialog
+        {...assigneeProps()}
+        roles={null}
+        change={{ kind: "add" }}
+        onConfirm={() => {}}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "custom" },
+    });
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Redbridge youth group" },
+    });
+
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
   });
 
   // Nothing can be sent until the Roles are known, because the API refuses a

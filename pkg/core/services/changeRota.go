@@ -208,8 +208,10 @@ func ChangeRota(
 			inCustom:  params.InCustom,
 			role:      params.Role,
 		}
-		if primary.in != "" && primary.role == "" {
-			primary.role = roleForIncoming(params.In, params.Out, effectiveState, swapEffectiveState, roles)
+		arriving := person{volunteerID: params.In, custom: params.InCustom}
+		leaving := person{volunteerID: params.Out, custom: params.OutCustom}
+		if (primary.in != "" || primary.inCustom != "") && primary.role == "" {
+			primary.role = roleForIncoming(arriving, leaving, effectiveState, swapEffectiveState)
 		}
 		alterations = append(alterations, buildAlterationsForShift(primary, coverID)...)
 		if params.SwapDate != "" {
@@ -223,8 +225,8 @@ func ChangeRota(
 				outCustom: params.InCustom,
 				inCustom:  params.OutCustom,
 			}
-			if swapLeg.in != "" {
-				swapLeg.role = roleForIncoming(params.Out, params.In, swapEffectiveState, effectiveState, roles)
+			if swapLeg.in != "" || swapLeg.inCustom != "" {
+				swapLeg.role = roleForIncoming(leaving, arriving, swapEffectiveState, effectiveState)
 			}
 			alterations = append(alterations, buildAlterationsForShift(swapLeg, coverID)...)
 		}
@@ -369,7 +371,7 @@ func volunteerLabel(id string, volunteersByID map[string]model.Volunteer) string
 }
 
 // shiftChange is one shift's half of a rota change: who leaves it, who joins
-// it, and the Role the joining volunteer takes when whoever made the change named one. A swap
+// it, and the Role whoever joins takes when whoever made the change named one. A swap
 // is two of these — the second with in and out exchanged.
 type shiftChange struct {
 	shiftID   string
@@ -377,12 +379,15 @@ type shiftChange struct {
 	in        string // Volunteer ID joining
 	outCustom string // Custom entry leaving
 	inCustom  string // Custom entry joining
-	role      string // Role for in, or empty to inherit it
+	role      string // Role for whoever joins, or empty to inherit it
 }
 
 // buildAlterationsForShift creates alteration records for a single shift. The
 // Role is settled by the caller, which is the only place both shifts of a swap
-// are in scope. Each alteration references the shift by id (ADR 0001).
+// are in scope. Whoever arrives takes it, volunteer or custom entry alike: a
+// Seat is a Seat in a Role, and being off the roster changes nothing about that
+// (issue #214). Only a remove states none, having nobody arriving to state one
+// for. Each alteration references the shift by id (ADR 0001).
 func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteration {
 	var alterations []db.Alteration
 
@@ -424,34 +429,41 @@ func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteratio
 			Direction:   "add",
 			CustomValue: change.inCustom,
 			CoverID:     coverID,
+			Role:        change.role,
 		})
 	}
 
 	return alterations
 }
 
-// validateRole checks the caller-supplied Role. It names the volunteer coming
-// in on Date, so a volunteer coming in must have one: the Role is what the
-// Shape has a Seat for, and guessing it from the roster is exactly what #89
-// takes away. A change with nobody coming in has none to set, and a swap has
-// two incoming volunteers — one on each date — so a single Role would land on
-// whichever the caller did not mean; there, each leg inherits the Role of the
-// person it replaces instead.
+// validateRole checks the caller-supplied Role. It names whoever is coming in
+// on Date, so anybody coming in must have one: the Role is what the Shape has a
+// Seat for, and guessing it from the roster is exactly what #89 takes away.
+// "Anybody" is the whole of the rule — a custom entry fills a Seat as much as a
+// volunteer does, and whether somebody is on the roster is no business of
+// whether their Seat has a Role (issue #214).
+//
+// A change with nobody coming in has none to set, and a swap has two incoming
+// people — one on each date — so a single Role would land on whichever the
+// caller did not mean; there, each leg inherits the Role of the person it
+// replaces instead.
 func validateRole(params ChangeRotaParams, roles model.Roles) error {
+	arriving := params.In != "" || params.InCustom != ""
+	leaving := params.Out != "" || params.OutCustom != ""
 	if params.Role != "" {
 		if _, ok := roles.ByName(params.Role); !ok {
 			return wrapf(ErrInvalidInput, "role %q is not a configured role", params.Role)
 		}
-		if params.In == "" {
-			return wrapf(ErrInvalidInput, "a role can only be set for a volunteer coming in")
+		if !arriving {
+			return wrapf(ErrInvalidInput, "a role can only be set for someone coming in")
 		}
-		if params.SwapDate != "" && params.Out != "" {
-			return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming volunteer")
+		if params.SwapDate != "" && leaving {
+			return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming person")
 		}
 		return nil
 	}
-	if params.In != "" && params.SwapDate == "" {
-		return wrapf(ErrInvalidInput, "a role is required for a volunteer coming in")
+	if arriving && params.SwapDate == "" {
+		return wrapf(ErrInvalidInput, "a role is required for someone coming in")
 	}
 	return nil
 }
@@ -483,7 +495,15 @@ func allocationLabel(a db.Allocation, volunteersByID map[string]model.Volunteer)
 	return volunteerLabel(a.VolunteerID, volunteersByID)
 }
 
-// roleForIncoming settles the Role a volunteer joining a shift takes where the
+// person names one side of a change: a volunteer by id, or somebody off the
+// roster by the text they are recorded under. At most one is set, and neither
+// is where a change only has the other side.
+type person struct {
+	volunteerID string
+	custom      string
+}
+
+// roleForIncoming settles the Role somebody joining a shift takes where the
 // caller named none — the swap path, which is the one path that cannot name
 // one. In order:
 //
@@ -501,8 +521,10 @@ func allocationLabel(a db.Allocation, volunteersByID map[string]model.Volunteer)
 //     through.
 //
 // All three are rules about the shifts, not guesses about the person, which is
-// what makes them survivable after inferRole's deletion.
-func roleForIncoming(in, out string, joining, leaving []db.Allocation, roles model.Roles) string {
+// what makes them survivable after inferRole's deletion — and what makes them
+// apply unchanged to somebody off the roster, who now holds a Role like anybody
+// else and would otherwise lose it to a swap (issue #214).
+func roleForIncoming(in, out person, joining, leaving []db.Allocation) string {
 	if role, ok := roleOnShift(out, joining); ok {
 		return role
 	}
@@ -512,15 +534,25 @@ func roleForIncoming(in, out string, joining, leaving []db.Allocation, roles mod
 	return ""
 }
 
-// roleOnShift is the Role a volunteer currently holds among these allocations.
-// An allocation with no Role — written before alterations had a column for one
-// — names nothing to inherit, so it reports none rather than an empty Role.
-func roleOnShift(volunteerID string, allocations []db.Allocation) (string, bool) {
-	if volunteerID == "" {
+// roleOnShift is the Role somebody currently holds among these allocations. An
+// allocation with no Role — written before alterations had a column for one —
+// names nothing to inherit, so it reports none rather than an empty Role.
+//
+// A custom entry is matched on its text, which is all there is to match on: the
+// same organisation may hold two Seats on one shift (#195), and either answers
+// what Role it is there in.
+func roleOnShift(p person, allocations []db.Allocation) (string, bool) {
+	if p.volunteerID == "" && p.custom == "" {
 		return "", false
 	}
 	for _, a := range allocations {
-		if a.VolunteerID == volunteerID && a.Role != "" {
+		if a.Role == "" {
+			continue
+		}
+		if p.volunteerID != "" && a.VolunteerID == p.volunteerID {
+			return a.Role, true
+		}
+		if p.custom != "" && a.CustomEntry == p.custom {
 			return a.Role, true
 		}
 	}

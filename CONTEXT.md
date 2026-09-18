@@ -83,7 +83,9 @@ The assignment of one volunteer (or custom entry) to one Role on one Shift,
 produced by the allocator.
 
 **Alteration**:
-A single post-allocation change to a Shift: adding or removing one person.
+A single post-allocation change to a Shift: adding or removing one person. One
+that adds somebody names the Role of the Seat they take, whether they are on the
+roster or not; one that removes somebody names none, having no Seat to fill.
 Alterations are never edited or deleted; the effective state of a Shift is its
 Allocations with Alterations applied in order. An Alteration records what
 happened on the day rather than instructing a solve, so the allocator's rules
