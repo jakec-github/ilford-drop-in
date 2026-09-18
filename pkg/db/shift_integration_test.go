@@ -75,9 +75,10 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 
 	// An alteration on shiftB only; its cover_id must reference the cover row.
 	coverID := uuid.New().String()
+	reason := "cover"
 	require.NoError(t, database.WithRotaLock(ctx, []string{rota.ID}, func(store db.RotaChangeStore) error {
 		return store.InsertCoverAndAlterations(ctx,
-			&db.Cover{ID: coverID, Reason: "cover", UserEmail: "jane@example.com"},
+			&db.Cover{ID: coverID, Reason: &reason, UserEmail: "jane@example.com"},
 			[]db.Alteration{{ID: uuid.New().String(), ShiftID: shiftB.ID, Direction: "remove", VolunteerID: "bob", CoverID: coverID}})
 	}))
 

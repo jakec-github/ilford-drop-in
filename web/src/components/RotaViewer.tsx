@@ -155,7 +155,9 @@ function CalendarCopyButton({ volunteerId }: { volunteerId: string }) {
 }
 
 // EditDialog is the one modal the editing flow ever shows. Both kinds end in a
-// reason, because the API takes no change without one.
+// reason, but only a remove insists on one: the API refuses a change that takes
+// someone off a shift with nobody in their place, and accepts every other one
+// with the field left blank (issue #148).
 type EditDialog =
   // Someone joining the shift on date, either alongside the people already on
   // it or in place of one of them.
@@ -170,6 +172,8 @@ type EditDialog =
       change: Omit<RotaChange, "reason" | "role">;
       // Offered only for a move — see askSwap and askRemove.
       role?: { initial: Role };
+      // Set only by askRemove: the one change the API will not take unstated.
+      reasonRequired: boolean;
     }
   // Someone being pinned to, or unpinned from, a shift the rota has not been
   // run for. Not alterations: nothing is on the rota yet to alter.
@@ -483,6 +487,9 @@ export default function RotaViewer({
       summary: `${assignee.name} comes off the shift on ${formatShiftDateLong(date)}.`,
       confirmLabel: "Remove",
       change: { date, out: personRef(assignee) },
+      // Nobody takes their place, so the shift is a pair of hands short and the
+      // cover record is the only account of why.
+      reasonRequired: true,
     });
   }
 
@@ -512,6 +519,7 @@ export default function RotaViewer({
       confirmLabel: "Move",
       change: { date: to, in: pending.person, swapDate: pending.date },
       role: { initial: pending.role },
+      reasonRequired: false,
     });
   }
 
@@ -530,6 +538,7 @@ export default function RotaViewer({
         in: personRef(assignee),
         swapDate: to,
       },
+      reasonRequired: false,
     });
   }
 
@@ -853,6 +862,7 @@ export default function RotaViewer({
           summary={dialog.summary}
           confirmLabel={dialog.confirmLabel}
           role={dialog.role}
+          reasonRequired={dialog.reasonRequired}
           busy={saving}
           onCancel={() => {
             setDialog(null);

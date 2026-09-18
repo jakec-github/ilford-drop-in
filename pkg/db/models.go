@@ -189,7 +189,10 @@ type StandingPreallocation struct {
 type Cover struct {
 	ID        string // UUID
 	CreatedAt string // TIMESTAMPTZ
-	Reason    string
+	// Why the change was made. Nullable: only a simple removal is asked for a
+	// reason (issue #148), and an unstated one is NULL rather than an empty
+	// string, so the column itself says whether there was one.
+	Reason    *string
 	UserEmail string
 }
 

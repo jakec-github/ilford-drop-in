@@ -321,8 +321,11 @@ export const CUSTOM_CHOICE = "custom";
 // it. On a swap it is refused — out is also set there, so each date has its
 // own incoming person and there is no unambiguous one to apply it to — but a
 // move accepts it, since only one person is arriving. Team lead is refused
-// where the shift already has one either way. reason is mandatory — the
-// change is recorded against it.
+// where the shift already has one either way.
+//
+// reason is what the change is recorded against, and is only insisted on for a
+// remove — the one shape that leaves the shift short of someone, with no
+// replacement naming why (issue #148). Send it empty anywhere else.
 export interface RotaChange {
   date: string;
   in?: PersonRef;

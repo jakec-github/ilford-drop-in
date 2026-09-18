@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,7 +33,10 @@ type ChangeRotaParams struct {
 	InCustom  string // Custom value to add
 	OutCustom string // Custom value to remove
 	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
-	Reason    string // Required reason for the change
+	// Why the change was made. Required only of a simple removal — see
+	// isSimpleRemoval. Trimmed on the way in, so whitespace is no reason at
+	// all, and an unstated one is stored as NULL rather than an empty string.
+	Reason    string
 	UserEmail string // Email of the user making the change
 	// Role the incoming volunteer takes. Required alongside In, and — on a
 	// swap, where Out is also set — refused, since each leg then has its own
@@ -66,6 +70,11 @@ func ChangeRota(
 	params ChangeRotaParams,
 	logger *zap.Logger,
 ) (*ChangeRotaResult, error) {
+	// Trimmed before anything reads it, so whitespace is an absent reason
+	// rather than a present one: the check below and the stored Cover then
+	// agree on what "no reason" is, whatever a client posts (issue #148).
+	params.Reason = strings.TrimSpace(params.Reason)
+
 	logger.Debug("Starting changeRota",
 		zap.String("date", params.Date),
 		zap.String("in", params.In),
@@ -80,8 +89,8 @@ func ChangeRota(
 		return nil, wrapf(ErrInvalidInput, "at least one of --in, --out, --in-custom, or --out-custom must be provided")
 	}
 
-	if params.Reason == "" {
-		return nil, wrapf(ErrInvalidInput, "--reason is required")
+	if params.Reason == "" && isSimpleRemoval(params) {
+		return nil, wrapf(ErrInvalidInput, "a reason is required to take someone off a shift with nobody in their place")
 	}
 
 	roles, err := RoleTable(ctx, database)
@@ -174,11 +183,18 @@ func ChangeRota(
 			}
 		}
 
-		// Create cover record
+		// Create cover record. An unstated reason is NULL, not an empty
+		// string: the column is the audit trail's account of why a rota
+		// stopped matching its allocation, and it should say when there was
+		// no account rather than leaving a reader to decode '' (issue #148).
+		var reason *string
+		if params.Reason != "" {
+			reason = &params.Reason
+		}
 		cover := &db.Cover{
 			ID:        coverID,
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
-			Reason:    params.Reason,
+			Reason:    reason,
 			UserEmail: params.UserEmail,
 		}
 
@@ -236,6 +252,22 @@ func ChangeRota(
 		Alterations:    alterations,
 		DatesByShiftID: datesByShiftID,
 	}, nil
+}
+
+// isSimpleRemoval reports whether the change only takes people off the rota:
+// nobody arrives on Date, and there is no swap date to put whoever leaves on
+// another shift. That one shape is the only one asked for a reason (issue
+// #148). Every other change accounts for itself — a replacement or a swap names
+// who fills the place, an add makes the shift better off — while a removal
+// leaves a gap that the cover record is the only place to explain.
+//
+// A swap date is enough to disqualify it even with nothing coming in, because
+// the swap leg reverses the change: whoever leaves Date joins the shift there.
+//
+// Only asked after the check that the change does something at all, so nobody
+// arriving does mean somebody leaving.
+func isSimpleRemoval(params ChangeRotaParams) bool {
+	return params.In == "" && params.InCustom == "" && params.SwapDate == ""
 }
 
 // buildEffectiveState computes the current effective allocations for a single

@@ -56,14 +56,6 @@ type Allocation struct {
 	Preallocated string // nullable
 }
 
-// Cover represents a cover/swap audit trail record
-type Cover struct {
-	ID        string
-	CreatedAt string
-	Reason    string
-	UserEmail string
-}
-
 // Alteration represents a single change to a shift
 type Alteration struct {
 	ID          string

@@ -29,16 +29,24 @@ function roleSuffix(role: Role): string {
 // dialogs below end in the same field. It is deliberately not pre-filled: a
 // placeholder reason would be worse than none, since the cover record is the
 // only account of why a rota stopped matching its allocation.
+//
+// Only a removal insists on one (issue #148). Every other change says what
+// happened for itself — a replacement or a swap names who fills the place, an
+// add makes the shift better off — where a removal leaves a gap nothing else
+// accounts for. So the label marks the field optional wherever it is, rather
+// than leaving the editor to infer that from the confirm button staying live.
 function ReasonField({
   value,
+  required,
   onChange,
 }: {
   value: string;
+  required: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="rota-edit-field">
-      Reason
+      {required ? "Reason" : "Reason (optional)"}
       <input
         type="text"
         value={value}
@@ -82,6 +90,7 @@ export function ConfirmChangeDialog({
   summary,
   confirmLabel,
   role,
+  reasonRequired,
   busy,
   onCancel,
   onConfirm,
@@ -91,6 +100,10 @@ export function ConfirmChangeDialog({
   confirmLabel: string;
   // Defaults the picker to what the person already held.
   role?: { initial: Role };
+  // True only for a remove, which leaves the shift short of someone — the
+  // server refuses that one without a reason. A move and a swap put whoever
+  // leaves on another shift, so both go through with none.
+  reasonRequired: boolean;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (reason: string, role?: Role) => void;
@@ -123,11 +136,15 @@ export function ConfirmChangeDialog({
           </label>
         )}
 
-        <ReasonField value={reason} onChange={setReason} />
+        <ReasonField
+          value={reason}
+          required={reasonRequired}
+          onChange={setReason}
+        />
         <DialogActions
           confirmLabel={confirmLabel}
           busy={busy}
-          canConfirm={reason.trim() !== ""}
+          canConfirm={!reasonRequired || reason.trim() !== ""}
           onCancel={onCancel}
         />
       </form>
@@ -302,11 +319,14 @@ export function AssigneeDialog({
             </label>
           ))}
 
-        <ReasonField value={reason} onChange={setReason} />
+        {/* Never required here: both an add and a replacement leave the shift
+            with at least as many people as it had, so there is no gap for a
+            reason to account for (issue #148). */}
+        <ReasonField value={reason} required={false} onChange={setReason} />
         <DialogActions
           confirmLabel={change.kind === "add" ? "Add" : "Replace"}
           busy={busy}
-          canConfirm={person !== null && reason.trim() !== ""}
+          canConfirm={person !== null}
           onCancel={onCancel}
         />
       </form>
