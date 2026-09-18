@@ -60,7 +60,9 @@ One place on a Shift: one Role, at most one person.
 Which Roles a Shift needs and how many Seats of each. Owned by the Shift and
 editable until its Rotation is allocated, fixed thereafter. Its counts are what
 the allocator fills up to, not minimums — Seats are routinely left empty — and
-the only ceiling on how many of a Role a Shift may hold.
+the only ceiling on how many of a Role a Shift may hold. A ceiling on the
+allocator and on Preallocations, that is: an Alteration made after the rota is
+published is not held to it (ADR 0009).
 _Avoid_: shift size, template, structure
 
 **Rota Defaults**:
@@ -83,7 +85,10 @@ produced by the allocator.
 **Alteration**:
 A single post-allocation change to a Shift: adding or removing one person.
 Alterations are never edited or deleted; the effective state of a Shift is its
-Allocations with Alterations applied in order.
+Allocations with Alterations applied in order. An Alteration records what
+happened on the day rather than instructing a solve, so the allocator's rules
+do not bind it: it may place someone in a Role the roster does not record them
+as holding, or take a Shift past the Seats its Shape asks for (ADR 0009).
 _Avoid_: change, edit
 
 **Cover**:
@@ -157,6 +162,10 @@ Alterations and Cover on an allocated Rotation, and Preallocations on the Rota
 in Flight. What a Shift is — when it runs, whether it is Closed, its Shape — is
 an Organiser's, because those are allocator inputs rather than who is on the
 rota; so is every Organiser screen, the Draft Rota Allocation included.
+Within the Alterations that are theirs they are deliberately unconstrained —
+one person on a Shift at most once is the whole rule, and the Shape and the
+roster are advice (ADR 0009). Their Preallocations are a different matter, and
+are held to every allocator rule.
 Identified and re-checked like an Organiser, against an allowlist of its own.
 All other visitors are anonymous; there are no other authenticated levels.
 _Avoid_: admin, editor (alone), user, staff
