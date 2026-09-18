@@ -368,10 +368,10 @@ export default function ResponseGrid({
 
   return (
     <>
-      {/* Filtering answers "who could lead this date", which is the question a
-          red Team lead delta raises. It narrows the rows only: the deltas above
-          are the whole shift's position and do not change because a reader is
-          looking at part of the roster. */}
+      {/* Filtering answers "who could do this job on this date", which is the
+          question a red delta raises. It narrows the rows only: the deltas
+          above are the whole shift's position and do not change because a
+          reader is looking at part of the roster. */}
       {roles.length > 1 && (
         <div className="grid-filter" role="group" aria-label="Filter by role">
           <button

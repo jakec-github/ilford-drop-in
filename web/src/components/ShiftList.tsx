@@ -6,7 +6,6 @@ import type {
   Role,
   RotaShift,
 } from "../types";
-import { SERVICE_VOLUNTEER_ROLE } from "../types";
 import type { RoleColourOf } from "../hooks/useRoles";
 import Button from "../ui/Button";
 import {
@@ -14,6 +13,7 @@ import {
   formatShiftDateLong,
   isUnallocated,
   personRef,
+  roleSuffix,
   samePerson,
 } from "./shifts";
 import { formatShiftTimes } from "./shiftTimes";
@@ -56,8 +56,8 @@ function shiftDeficit(
       role,
       // A Role nobody was drafted into is short its whole count, not absent
       // from the answer: without the fallback the subtraction is NaN, NaN > 0
-      // is false, and a shift the solver could find no team lead for was the
-      // one shift that said nothing about it.
+      // is false, and a shift the solver could fill no Seat of some Role on was
+      // the one shift that said nothing about it.
       deficit: count - (assigneeCountByRole[role] ?? 0),
     }))
     .filter(({ deficit }) => deficit > 0);
@@ -335,11 +335,7 @@ function swapBlockedReason(
 // Standing Preallocation seeded it when the rota was defined, so there is one
 // thing to say about it.
 function pinTitle(pin: Preallocation): string {
-  // Naming the ordinary Role would be noise — being pinned to a shift already
-  // means being pinned to one of its ordinary Seats.
-  const role =
-    pin.role === SERVICE_VOLUNTEER_ROLE ? "" : ` as ${pin.role.toLowerCase()}`;
-  return `${pin.name} is pinned${role} to this shift, and will be placed here when the rota is allocated.`;
+  return `${pin.name} is pinned${roleSuffix(pin.role)} to this shift, and will be placed here when the rota is allocated.`;
 }
 
 // What a drafted name means. Deliberately the same sentence shape as pinTitle,
@@ -347,11 +343,7 @@ function pinTitle(pin: Preallocation): string {
 // rota — and the difference between them is the whole point: a pin is a promise
 // somebody made, a draft Seat is a guess the solver made and will make again.
 function draftTitle(assignee: Assignee): string {
-  const role =
-    assignee.role === SERVICE_VOLUNTEER_ROLE
-      ? ""
-      : ` as ${assignee.role.toLowerCase()}`;
-  return `The last solve put ${assignee.name} here${role}. It is a draft, not a placement, and the next solve may put somebody else here.`;
+  return `The last solve put ${assignee.name} here${roleSuffix(assignee.role)}. It is a draft, not a placement, and the next solve may put somebody else here.`;
 }
 
 // One name expected on a shift the rota has not been run for, and on what

@@ -11,7 +11,6 @@ import type {
   Role,
   RotaShift,
 } from "../types";
-import { TEAM_LEAD_ROLE } from "../types";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { compareDrafts } from "./draftChanges";
@@ -21,6 +20,7 @@ import {
   ShiftTimesDialog,
   UnpinDialog,
 } from "./RotaEditDialogs";
+import { seatCounts } from "./shape";
 import ShapeForm from "./ShapeForm";
 import type { RowEdit } from "./ShiftList";
 import ShiftList from "./ShiftList";
@@ -549,11 +549,11 @@ export default function DraftRotaPanel({
           dateLabel={formatShiftDateLong(dialog.shift.date)}
           volunteers={pinnableTo(dialog.shift.date)}
           volunteersError={volunteersError}
-          // A shift has one team-lead Seat, so a lead already pinned there
-          // rules out a second — and it can be given up from here, whichever
-          // way it came to be made.
-          leadPinned={(pinsByDate.get(dialog.shift.date) ?? []).some(
-            (p) => p.role === TEAM_LEAD_ROLE,
+          // What this shift still has room to promise: its own Shape, less the
+          // pins already made against it, whichever way each came to be made.
+          seats={seatCounts(
+            dialog.shift.shape,
+            (pinsByDate.get(dialog.shift.date) ?? []).map((p) => p.roleId),
           )}
           pinnedNames={(pinsByDate.get(dialog.shift.date) ?? []).map(
             (p) => p.name,

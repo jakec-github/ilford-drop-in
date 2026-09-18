@@ -1,28 +1,52 @@
 import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
-import type {
-  Assignee,
-  PersonRef,
-  Role,
-  Volunteer,
-} from "../types";
-import { CUSTOM_CHOICE, SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
+import type { Assignee, PersonRef, Role, Volunteer } from "../types";
+import { CUSTOM_CHOICE } from "../types";
+import type { SeatCount } from "./shape";
+import { roleSuffix } from "./shifts";
 import "./RotaEditDialogs.css";
 
-// The Role to offer for a volunteer before whoever is editing says otherwise: the
-// highest-priority one they hold, which the API lists first. It is the right
-// answer far more often than not — pinning a team lead is nearly always pinning
-// them to lead — and whoever is editing can still choose the other.
-function defaultRoleFor(volunteer: Volunteer | null | undefined): Role {
-  return volunteer?.roles[0] ?? SERVICE_VOLUNTEER_ROLE;
+// No Role is named anywhere in this file, and none may be (ADR 0009). Which
+// Roles exist comes down from the server; how many of one a shift has comes
+// from that shift's own Shape. Both arrive as props, because a dialog reads no
+// hooks of its own.
+
+// The Role to offer before whoever is editing says otherwise: the
+// highest-priority one this volunteer holds that is actually on offer, which is
+// right far more often than not — somebody is usually being put in for the job
+// they mostly do. Falling back to the first option rather than to nothing keeps
+// a picker answerable for a custom entry, or for someone the roster records no
+// Role for at all.
+function defaultRoleFor(
+  volunteer: Volunteer | null | undefined,
+  offered: Role[],
+): Role {
+  return (
+    offered.find((role) => volunteer?.roles.includes(role)) ?? offered[0] ?? ""
+  );
 }
 
-// How a Role reads in a sentence about somebody's place on a shift. Being on
-// the shift already means an ordinary Seat, so naming that Role would be noise;
-// anything else is worth saying.
-function roleSuffix(role: Role): string {
-  return role === SERVICE_VOLUNTEER_ROLE ? "" : `, as ${role.toLowerCase()}`;
+// The Roles a picker lists: every one the drop-in offers, plus the one the
+// person already holds where that is no longer among them. A rota allocated
+// before a Role was retired still names it, and dropping it would quietly move
+// somebody into whatever came first.
+function withHeldRole(offered: Role[], held: Role): Role[] {
+  return held && !offered.includes(held) ? [held, ...offered] : offered;
+}
+
+// A Role as an option reads as its own name. The exception is the Role-less
+// assignee — an allocation predating the role column — which has no name to
+// read and says what it is instead.
+function roleLabel(role: Role): string {
+  return role || "No role";
+}
+
+// Sentences naming one or two Roles read better than a bare list, and a Shape
+// of five Roles can leave several full at once.
+function listRoles(roles: Role[]): string {
+  if (roles.length <= 1) return roles.join("");
+  return `${roles.slice(0, -1).join(", ")} and ${roles[roles.length - 1]}`;
 }
 
 // Every change to a published rota is recorded against a reason, so both
@@ -84,7 +108,9 @@ function DialogActions({
 // picking chips — a remove, a move or a swap.
 //
 // role is offered only for a move: defaults to what the person already
-// held, but can be changed.
+// held, but can be changed to any Role the drop-in has. What the destination
+// shift's Shape asks for does not narrow it — an alteration records what
+// happened on the day rather than instructing a solve (ADR 0009).
 export function ConfirmChangeDialog({
   title,
   summary,
@@ -98,8 +124,11 @@ export function ConfirmChangeDialog({
   title: string;
   summary: string;
   confirmLabel: string;
-  // Defaults the picker to what the person already held.
-  role?: { initial: Role };
+  // Defaults the picker to what the person already held, and offers every
+  // configured Role beside it. roles is null while they are still loading,
+  // which leaves the picker showing the one Role that matters — the one being
+  // carried — rather than blocking a move on a list it does not need.
+  role?: { initial: Role; roles: Role[] | null };
   // True only for a remove, which leaves the shift short of someone — the
   // server refuses that one without a reason. A move and a swap put whoever
   // leaves on another shift, so both go through with none.
@@ -109,9 +138,20 @@ export function ConfirmChangeDialog({
   onConfirm: (reason: string, role?: Role) => void;
 }) {
   const [reason, setReason] = useState("");
-  const [chosenRole, setChosenRole] = useState<Role>(
-    role?.initial ?? SERVICE_VOLUNTEER_ROLE,
-  );
+  const [chosenRole, setChosenRole] = useState<Role>(role?.initial ?? "");
+
+  // The initial Role is always listed, even where it is no longer one the
+  // drop-in offers and even where it is no Role at all: a move must be able to
+  // leave somebody's Role exactly as it found it, and to put it back after a
+  // look at the alternatives. The server accepts a move with no Role — it
+  // carries across whatever they held — so "No role" is a real answer here
+  // rather than an unfinished form.
+  const offered = role?.roles ?? [];
+  const options = role
+    ? offered.includes(role.initial)
+      ? offered
+      : [role.initial, ...offered]
+    : [];
 
   return (
     <Dialog title={title} onClose={onCancel}>
@@ -130,8 +170,11 @@ export function ConfirmChangeDialog({
               value={chosenRole}
               onChange={(e) => setChosenRole(e.target.value as Role)}
             >
-              <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
-              <option value={TEAM_LEAD_ROLE}>Team lead</option>
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {roleLabel(option)}
+                </option>
+              ))}
             </select>
           </label>
         )}
@@ -152,28 +195,32 @@ export function ConfirmChangeDialog({
   );
 }
 
-// What AssigneeDialog is being used for. Both cases pick a person and a reason;
-// they differ in where the incoming person's role comes from.
+// What AssigneeDialog is being used for. Both cases pick a person, a Role and a
+// reason; they differ only in where the Role starts.
 export type AssigneeChange =
-  // leadTaken says the shift already has a team lead. A shift has exactly one,
-  // so joining as one is then not offered — and the server refuses it anyway.
-  | { kind: "add"; leadTaken: boolean }
+  | { kind: "add" }
   // Whoever comes in takes the outgoing person's place, role included, which is
-  // what makes this a replacement rather than a removal followed by an add.
+  // what makes this a replacement rather than a removal followed by an add. It
+  // is where the picker starts, not where it has to end: handing a Seat over to
+  // somebody who will do a different job on it is an ordinary thing to record.
   | { kind: "replace"; outgoing: Assignee };
 
 // AssigneeDialog picks who joins a shift and why — either alongside the people
 // already on it, or in place of one of them.
 //
-// Role is stated rather than inferred: the service infers it from the shift and
-// the volunteer's own roster role, and those rules are invisible from here. On
-// an add to a leadless shift the editor chooses; everywhere else the answer is
-// forced and the dialog says what it is instead of asking.
+// Role is stated rather than inferred: the service would otherwise settle it
+// from the shift and the roster, and those rules are invisible from here. Every
+// Role the drop-in has is on offer, whoever else on the shift already holds one
+// and whatever the shift's Shape asks for — the Shape and the roster bind the
+// allocator, not somebody recording a change to a rota that has already gone
+// out (ADR 0009). The roster still decides the default, since somebody is
+// usually put in for the job they mostly do.
 export function AssigneeDialog({
   dateLabel,
   change,
   volunteers,
   volunteersError,
+  roles,
   busy,
   onCancel,
   onConfirm,
@@ -184,6 +231,10 @@ export function AssigneeDialog({
   // can join this shift.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
+  // Every Role the drop-in offers, highest priority first, or null while they
+  // are still loading. A volunteer coming in must name one, so until this
+  // arrives there is nothing to send and the dialog says so.
+  roles: Role[] | null;
   busy: boolean;
   onCancel: () => void;
   // role is omitted for a custom entry, which the API gives no role to.
@@ -191,7 +242,10 @@ export function AssigneeDialog({
 }) {
   const [choice, setChoice] = useState("");
   const [customName, setCustomName] = useState("");
-  const [role, setRole] = useState<Role>(SERVICE_VOLUNTEER_ROLE);
+  // Empty until somebody picks one; what is actually offered is derived below,
+  // so that changing who is coming in re-defaults the Role while an explicit
+  // choice survives it.
+  const [role, setRole] = useState<Role>("");
   const [reason, setReason] = useState("");
 
   const isCustom = choice === CUSTOM_CHOICE;
@@ -204,22 +258,20 @@ export function AssigneeDialog({
       ? { volunteerId: choice }
       : null;
 
-  // Only the add-to-a-leadless-shift case is the editor's to answer; the other
-  // two are settled by the shift itself.
-  const incomingRole: Role =
-    change.kind === "replace"
-      ? change.outgoing.role
-      : change.leadTaken
-        ? SERVICE_VOLUNTEER_ROLE
-        : role;
+  // A replacement carries the outgoing person's Role over, which is what makes
+  // it a replacement; an add has none to carry. Either way it is listed even if
+  // the drop-in has since retired it, so a rota allocated under the old name
+  // can still be covered under it.
+  const carried = change.kind === "replace" ? change.outgoing.role : "";
+  const options = withHeldRole(roles ?? [], carried);
 
-  function handleChoice(value: string) {
-    setChoice(value);
-    // Default to the role the volunteer holds on the roster: it is the right
-    // answer far more often than not, and the editor can still say otherwise.
-    const chosen = volunteers?.find((v) => v.id === value);
-    setRole(defaultRoleFor(chosen));
-  }
+  const chosen = volunteers?.find((v) => v.id === choice) ?? null;
+  // The carried Role wins where there is one; otherwise whatever this volunteer
+  // mostly does. An explicit pick outranks both — it is only dropped if it
+  // stops being an option, which nothing here does.
+  const incomingRole: Role = options.includes(role)
+    ? role
+    : carried || defaultRoleFor(chosen, options);
 
   return (
     <Dialog
@@ -256,7 +308,7 @@ export function AssigneeDialog({
           Who
           <select
             value={choice}
-            onChange={(e) => handleChoice(e.target.value)}
+            onChange={(e) => setChoice(e.target.value)}
             disabled={volunteers === null && volunteersError === null}
           >
             <option value="">
@@ -297,27 +349,36 @@ export function AssigneeDialog({
 
         {/* Not offered for a custom entry: the alterations API carries a role
             only for a real volunteer, so a choice here would be dropped
-            silently. A visiting group is never the team lead anyway. */}
-        {!isCustom &&
-          change.kind === "add" &&
-          (change.leadTaken ? (
-            <p className="rota-edit-note">
-              {dateLabel} already has a team lead, so whoever you add joins as a
-              service volunteer. To change who leads, replace the team lead
-              instead.
-            </p>
-          ) : (
-            <label className="rota-edit-field">
-              Role
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as Role)}
-              >
-                <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
-                <option value={TEAM_LEAD_ROLE}>Team lead</option>
-              </select>
-            </label>
-          ))}
+            silently. Offered on a replacement as well as an add, because
+            handing a Seat to somebody who will do a different job on it is an
+            ordinary thing to record — and because the person leaving may have
+            no Role at all, which the API will not accept for the one arriving. */}
+        {!isCustom && choice !== "" && options.length > 0 && (
+          <label className="rota-edit-field">
+            Role
+            <select
+              value={incomingRole}
+              onChange={(e) => setRole(e.target.value as Role)}
+            >
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {roleLabel(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/* Only reachable before the Roles have arrived, or on a deployment
+            where nobody has made any. Either way there is nothing to send: the
+            API refuses a volunteer coming in without a Role. */}
+        {!isCustom && choice !== "" && options.length === 0 && (
+          <p className="rota-edit-note">
+            {roles === null
+              ? "Still loading the roles…"
+              : "There are no roles to put anyone in yet. An organiser makes them on Admin → Settings."}
+          </p>
+        )}
 
         {/* Never required here: both an add and a replacement leave the shift
             with at least as many people as it had, so there is no gap for a
@@ -326,7 +387,9 @@ export function AssigneeDialog({
         <DialogActions
           confirmLabel={change.kind === "add" ? "Add" : "Replace"}
           busy={busy}
-          canConfirm={person !== null}
+          // A volunteer arriving has to name a Role; a custom entry never
+          // carries one, so it is answerable on the name alone.
+          canConfirm={person !== null && (isCustom || incomingRole !== "")}
           onCancel={onCancel}
         />
       </form>
@@ -341,15 +404,16 @@ export function AssigneeDialog({
 // told; a pin is an instruction to an allocation that has not happened, so
 // there is nothing to account for.
 //
-// Role is only ever a question for a volunteer the roster records as a team
-// lead: the API refuses to pin anyone else as one, and a custom entry carries
-// no role at all. Where the answer is forced the dialog says what it is rather
-// than offering a control with one value in it.
+// Unlike the dialogs above it, this one is held to every allocator rule, because
+// a pin is an instruction to a solve that has not run yet (ADR 0009). Two rules
+// settle which Roles it may offer: the roster says which a volunteer may be
+// promised, and the shift's own Shape says how many Seats of each are left. The
+// API enforces both, so offering anything else would be offering a refusal.
 export function PinDialog({
   dateLabel,
   volunteers,
   volunteersError,
-  leadPinned,
+  seats,
   pinnedNames,
   busy,
   onCancel,
@@ -360,10 +424,11 @@ export function PinDialog({
   // can be pinned to this shift.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
-  // Whether this shift's single team-lead slot is already spoken for. A second
-  // lead is a 409, and the way out is to remove the pin that holds it — which
-  // an Organiser or a Rota Editor can do for any of them (issue #131).
-  leadPinned: boolean;
+  // This shift's Shape with its pins counted against it, in the order the Seats
+  // are filled. Empty for a shift asking for nobody, where there is nothing to
+  // promise anyone — the way out of both that and a full Role is to edit the
+  // Shape or remove a pin, and an unallocated shift allows either (issue #131).
+  seats: SeatCount[];
   // Everyone already pinned here, by the name shown. Repeating a name is
   // allowed for a custom entry (issue #195) — an organisation sending two
   // people is two pins reading alike — so this is only ever a note.
@@ -374,7 +439,9 @@ export function PinDialog({
 }) {
   const [choice, setChoice] = useState("");
   const [customName, setCustomName] = useState("");
-  const [role, setRole] = useState<Role>(SERVICE_VOLUNTEER_ROLE);
+  // Empty until somebody picks one; what is actually on offer depends on who is
+  // being pinned, and is derived below.
+  const [role, setRole] = useState<Role>("");
 
   const isCustom = choice === CUSTOM_CHOICE;
   const trimmedName = customName.trim();
@@ -388,18 +455,46 @@ export function PinDialog({
       : null;
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
-  // The Seat is the editor's to fill only when the person holds the Role and it
-  // is not already at its ceiling. Team lead's ceiling is one in S1, so one pin
-  // is the whole of it; S3 reads real ceilings from the server.
-  const canChooseRole =
-    (chosen?.roles.includes(TEAM_LEAD_ROLE) ?? false) && !leadPinned;
+  // Which of this shift's Seats this person could be promised. A custom entry
+  // is an outside provider — nothing records what it can do and the API asks
+  // nothing either, so every Seat the shift has is open to it (issue #91). A
+  // volunteer is held to the roster, which is what the API checks.
+  const theirs = seats.filter(
+    (seat) => isCustom || (chosen?.roles.includes(seat.role) ?? false),
+  );
+  const offered = theirs.filter((seat) => seat.taken < seat.seats);
+  const full = theirs.filter((seat) => seat.taken >= seat.seats);
 
-  function handleChoice(value: string) {
-    setChoice(value);
-    // Default to the role the volunteer holds on the roster, as adding to a
-    // shift does: pinning a team lead is nearly always pinning them to lead.
-    const picked = volunteers?.find((v) => v.id === value);
-    setRole(defaultRoleFor(picked));
+  const options = offered.map((seat) => seat.role);
+  // An explicit pick stands while it is still on offer; otherwise the
+  // highest-priority Seat they could fill, the Shape's order being the order
+  // Seats are filled in. Changing who is being pinned therefore re-defaults the
+  // Role, and picking a Role that person cannot fill is not representable.
+  const pinnedRole = options.includes(role) ? role : (options[0] ?? "");
+
+  // Answering the Who field is what makes the Seats below mean anything — a
+  // custom entry's name can still be blank, since what may be promised to an
+  // outside group does not depend on what it is called.
+  const someone = choice !== "";
+  const them = isCustom ? "an outside group" : (chosen?.name ?? "they");
+
+  // Why a Seat this person might have expected is not on offer. Every case has
+  // a way through, because an unallocated shift's Shape can still be changed
+  // and any pin on it can still be removed (issue #131) — so each says which.
+  let note: string | null = null;
+  if (!someone) {
+    note = null;
+  } else if (options.length > 0 && full.length > 0) {
+    note = `${dateLabel} has every ${listRoles(full.map((seat) => seat.role))} seat pinned already.`;
+  } else if (full.length > 0) {
+    const gone = listRoles(full.map((seat) => seat.role));
+    note = isCustom
+      ? `${dateLabel} is pinned full: every seat it asks for is spoken for. Remove one of those pins, or give the shift another seat.`
+      : `${dateLabel} has every ${gone} seat pinned already, and that is all ${them} could fill here. Remove one of those pins, or give the shift another seat.`;
+  } else if (seats.length === 0) {
+    note = `${dateLabel} does not ask for anybody yet. Say what the shift asks for to make a seat.`;
+  } else if (options.length === 0) {
+    note = `${dateLabel} does not ask for anything ${them} does. Change what the shift asks for to make a seat.`;
   }
 
   return (
@@ -407,8 +502,7 @@ export function PinDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (person)
-            onConfirm(person, canChooseRole ? role : SERVICE_VOLUNTEER_ROLE);
+          if (person && pinnedRole) onConfirm(person, pinnedRole);
         }}
       >
         <p className="rota-edit-summary">
@@ -419,7 +513,7 @@ export function PinDialog({
           Who
           <select
             value={choice}
-            onChange={(e) => handleChoice(e.target.value)}
+            onChange={(e) => setChoice(e.target.value)}
             disabled={volunteers === null && volunteersError === null}
           >
             <option value="">
@@ -467,34 +561,30 @@ export function PinDialog({
           </p>
         )}
 
-        {canChooseRole && (
+        {options.length > 0 && (
           <label className="rota-edit-field">
             Role
             <select
-              value={role}
+              value={pinnedRole}
               onChange={(e) => setRole(e.target.value as Role)}
             >
-              <option value={TEAM_LEAD_ROLE}>Team lead</option>
-              <option value={SERVICE_VOLUNTEER_ROLE}>Volunteer</option>
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
             </select>
           </label>
         )}
 
-        {/* Says what happens instead as well as that the slot is gone, and how
-            to get it back: every pin can be removed, so there is always a way
-            through. */}
-        {chosen?.roles.includes(TEAM_LEAD_ROLE) && leadPinned && (
-          <p className="rota-edit-note">
-            {dateLabel} already has a team lead pinned, so {chosen.name} is
-            pinned as a service volunteer. To pin a different lead, remove that
-            pin first.
-          </p>
-        )}
+        {note && <p className="rota-edit-note">{note}</p>}
 
         <DialogActions
           confirmLabel="Pin"
           busy={busy}
-          canConfirm={person !== null}
+          // Every pin names the Seat it fills, so there is nothing to send
+          // until one is on offer.
+          canConfirm={person !== null && pinnedRole !== ""}
           onCancel={onCancel}
         />
       </form>

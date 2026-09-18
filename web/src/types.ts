@@ -1,15 +1,19 @@
-// Role is a job on a shift — "Team lead", "Service volunteer" — named exactly as
-// the server names it. The frontend matches on the name and never enumerates
-// the set: which Roles exist is the server's to say, and the API is the
-// authority on it.
+// Role is a job on a shift, named exactly as the server names it. The frontend
+// matches on the name and never enumerates the set: which Roles exist is the
+// server's to say, and the API is the authority on it.
+//
+// No Role name is written anywhere in this codebase (ADR 0009). A screen that
+// has to offer a choice of Role reads useRoles(); a screen that has to know how
+// many of one a shift has reads that shift's own Shape. The two names S1
+// shipped with used to be constants here, and every picker on the rota page
+// string-matched on them — so a deployment that named its Roles anything else
+// could not add, replace, move or pin anybody (issue #212).
+//
+// The empty string is a real value: an Allocation predating the role column
+// carries no Role, and nothing invents one for it. Display says what to show
+// for one; a picker offering to change it still lists it, so opening a dialog
+// never silently rewrites what the rota says.
 export type Role = string;
-
-// The two Role names S1 ships with. The pickers that offer a Role still name
-// them here; the styling no longer does — a Role's colour comes from the server
-// (see ConfiguredRole). S3 turns the pickers over to the same source and these
-// go.
-export const TEAM_LEAD_ROLE = "Team lead";
-export const SERVICE_VOLUNTEER_ROLE = "Service volunteer";
 
 // RoleColour is a palette token, not a colour value: the server says which
 // token a Role wears and index.css says what the token looks like in each
@@ -320,8 +324,10 @@ export const CUSTOM_CHOICE = "custom";
 // role sets the role the incoming volunteer takes; omitted, the server infers
 // it. On a swap it is refused — out is also set there, so each date has its
 // own incoming person and there is no unambiguous one to apply it to — but a
-// move accepts it, since only one person is arriving. Team lead is refused
-// where the shift already has one either way.
+// move accepts it, since only one person is arriving. Any configured Role is
+// accepted, whoever else on the shift already holds it and whatever the shift's
+// Shape asks for: an alteration records what happened on the day rather than
+// instructing a solve (ADR 0009).
 //
 // reason is what the change is recorded against, and is only insisted on for a
 // remove — the one shape that leaves the shift short of someone, with no

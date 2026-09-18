@@ -2,7 +2,14 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ConfiguredRole, RotaShift, Volunteer } from "../types";
 import type { AccessLevel } from "../auth-context";
-import { SERVICE_VOLUNTEER_ROLE, TEAM_LEAD_ROLE } from "../types";
+
+// Deliberately not the Role names any deployment ships with. The rota page used
+// to string-match on the two S1 came with, so nothing a deployment configured
+// was reachable (issue #212); fixtures named like this are what stops that
+// coming back.
+const DUTY_LEAD = "Duty lead";
+const HOT_FOOD = "Hot food";
+const GREETER = "Greeter";
 
 // RotaViewer talks to the server through ../api exclusively (its hooks all
 // funnel through it), so mounting it for real needs every function its
@@ -37,13 +44,9 @@ afterAll(() => {
 });
 
 const ROLES: ConfiguredRole[] = [
-  { id: "lead", name: TEAM_LEAD_ROLE, priority: 0, colour: "violet" },
-  {
-    id: "vol",
-    name: SERVICE_VOLUNTEER_ROLE,
-    priority: 1,
-    colour: "teal",
-  },
+  { id: "r-duty", name: DUTY_LEAD, priority: 0, colour: "violet" },
+  { id: "r-hot", name: HOT_FOOD, priority: 1, colour: "amber" },
+  { id: "r-greet", name: GREETER, priority: 2, colour: "teal" },
 ];
 
 const VOLUNTEERS: Volunteer[] = [
@@ -51,7 +54,7 @@ const VOLUNTEERS: Volunteer[] = [
     id: "alice",
     name: "Alice",
     fullName: "Alice",
-    roles: [TEAM_LEAD_ROLE, SERVICE_VOLUNTEER_ROLE],
+    roles: [DUTY_LEAD, GREETER],
     group: null,
     gender: null,
     active: true,
@@ -60,7 +63,7 @@ const VOLUNTEERS: Volunteer[] = [
     id: "carol",
     name: "Carol",
     fullName: "Carol",
-    roles: [SERVICE_VOLUNTEER_ROLE],
+    roles: [GREETER],
     group: null,
     gender: null,
     active: true,
@@ -85,14 +88,14 @@ function shifts(): RotaShift[] {
       assignees: [
         {
           name: "Alice",
-          role: TEAM_LEAD_ROLE,
+          role: DUTY_LEAD,
           custom: false,
           group: null,
           volunteerId: "alice",
         },
         {
           name: "Dan",
-          role: SERVICE_VOLUNTEER_ROLE,
+          role: GREETER,
           custom: false,
           group: null,
           volunteerId: "dan",
@@ -110,7 +113,7 @@ function shifts(): RotaShift[] {
       assignees: [
         {
           name: "Carol",
-          role: SERVICE_VOLUNTEER_ROLE,
+          role: GREETER,
           custom: false,
           group: null,
           volunteerId: "carol",
@@ -128,7 +131,7 @@ function shifts(): RotaShift[] {
       assignees: [
         {
           name: "Alice",
-          role: SERVICE_VOLUNTEER_ROLE,
+          role: GREETER,
           custom: false,
           group: null,
           volunteerId: "alice",
@@ -302,7 +305,8 @@ describe("RotaViewer placement", () => {
 
 // One shift of the rota in flight, beside shifts()'s allocated ones: it is where
 // pins, closures and Shapes are offered, so it is where the two levels differ.
-function withUnallocated(): RotaShift[] {
+// Its Shape is what a pin is held to.
+function withUnallocated(shape: RotaShift["shape"] = []): RotaShift[] {
   return [
     ...shifts(),
     {
@@ -312,11 +316,79 @@ function withUnallocated(): RotaShift[] {
       end: "2026-01-25T21:30:00",
       closed: false,
       allocated: false,
-      shape: [],
+      shape,
       assignees: [],
     },
   ];
 }
+
+// The two halves of ADR 0009, end to end through the page rather than through
+// the dialogs alone: which Roles each picker actually gets handed.
+describe("RotaViewer role pickers", () => {
+  beforeEach(() => {
+    fetchRoles.mockClear();
+    fetchRoles.mockResolvedValue(ROLES);
+    fetchVolunteers.mockClear();
+    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchDraftRotaAllocation.mockClear();
+    fetchDraftRotaAllocation.mockResolvedValue(null);
+    fetchPreallocations.mockClear();
+    fetchPreallocations.mockResolvedValue([]);
+  });
+
+  // Adding to a published rota records what happened on the day, so the roster
+  // and the Shape are advice: every configured Role is on offer.
+  test("adding to an allocated shift offers every configured role", async () => {
+    await renderEditing();
+
+    // Carol is on 11 Jan already, so 4 Jan is where she can still be added.
+    fireEvent.click(
+      within(rowFor("4 Jan")).getByRole("button", { name: /^Add someone to/ }),
+    );
+    fireEvent.change(await screen.findByLabelText("Who"), {
+      target: { value: "carol" },
+    });
+
+    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    expect(
+      within(roleField)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
+    // Carol only greets on the roster, so the default follows her — but Duty
+    // lead is hers to be given.
+    expect(roleField.value).toBe(GREETER);
+  });
+
+  // A pin instructs a solve that has not run, so it is held to both allocator
+  // rules: the roster, and the Seats this shift's own Shape gives each Role.
+  test("pinning offers only the seats the shift has and the volunteer holds", async () => {
+    await renderEditing(
+      "organiser",
+      withUnallocated([
+        { roleId: "r-duty", role: DUTY_LEAD, count: 1 },
+        { roleId: "r-hot", role: HOT_FOOD, count: 2 },
+      ]),
+    );
+
+    fireEvent.click(
+      within(rowFor("25 Jan")).getByRole("button", {
+        name: /^Pin someone to/,
+      }),
+    );
+    fireEvent.change(await screen.findByLabelText("Who"), {
+      target: { value: "alice" },
+    });
+
+    // Alice holds Duty lead and Greeter; this shift asks for no Greeter at all,
+    // so one Seat is hers.
+    expect(
+      within(screen.getByLabelText("Role"))
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual([DUTY_LEAD]);
+  });
+});
 
 describe("RotaViewer access levels", () => {
   beforeEach(() => {

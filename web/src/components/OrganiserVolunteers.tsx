@@ -89,9 +89,9 @@ function Count({
 }
 
 // One roster entry: the full name, then only the tags that mark someone out from
-// the default. A service volunteer, a female volunteer and an ungrouped volunteer
-// are each the common case, so tagging them would put a label on nearly every row
-// and leave nothing standing out. What remains is what an Organiser scans for.
+// the default. A female volunteer and an ungrouped volunteer are each the common
+// case, so tagging them would put a label on nearly every row and leave nothing
+// standing out. What remains is what an Organiser scans for.
 //
 // Not being active is one of those exceptions, so it is tagged as well as dimmed —
 // the tag is what carries the state to a screen reader, which cannot see dimming.

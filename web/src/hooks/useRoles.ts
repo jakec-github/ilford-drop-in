@@ -23,7 +23,7 @@ interface UseRoles {
   idOf: RoleIdOf;
   error: string | null;
   // Adds a Role, then reloads. Rejects with the server's own message when the
-  // write is refused — `a role called "Team lead" already exists` is the whole
+  // write is refused — `a role called "…" already exists` is the whole
   // explanation, and the caller shows it rather than inventing one.
   addRole: (role: RoleEdit) => Promise<void>;
   // Rewrites one Role by id, then reloads. There is no removeRole and there
