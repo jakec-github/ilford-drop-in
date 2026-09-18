@@ -455,7 +455,10 @@ func TestChangeRota_SwapDateValidation(t *testing.T) {
 	assert.Contains(t, err.Error(), "already on the shift")
 }
 
-func TestChangeRota_MissingReason(t *testing.T) {
+// A removal with nobody in the leaving person's place is the one change that
+// has to account for itself: the shift comes out of it a pair of hands short,
+// and the cover record is the only place that is ever explained (issue #148).
+func TestChangeRota_RemovalNeedsAReason(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -468,8 +471,156 @@ func TestChangeRota_MissingReason(t *testing.T) {
 	}
 
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "--reason is required")
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "a reason is required")
+}
+
+// Removing a custom entry leaves the same gap as removing a volunteer, so it
+// asks for the same account.
+func TestChangeRota_CustomRemovalNeedsAReason(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Redbridge youth group",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "a reason is required")
+}
+
+// Every other change describes itself: a replacement names who takes the place,
+// so the shift is no worse off and there is nothing a reason has to explain.
+func TestChangeRota_ReplacementNeedsNoReason(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "bob",
+		In:        "dave",
+		Role:      "Service volunteer",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Recorded with no reason rather than a stand-in one: an empty reason says
+	// nobody was asked for one, where "n/a" would read as an answer.
+	require.NotNil(t, store.insertedCover)
+	assert.Empty(t, store.insertedCover.Reason)
+}
+
+func TestChangeRota_AddNeedsNoReason(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts:      sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		In:        "alice",
+		Role:      "Service volunteer",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	require.Len(t, result.Alterations, 1)
+	assert.Equal(t, "add", result.Alterations[0].Direction)
+}
+
+func TestChangeRota_SwapNeedsNoReason(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		In:        "bob",
+		SwapDate:  "2025-01-12",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	assert.Len(t, result.Alterations, 4)
+}
+
+// A move takes someone off one shift, but the swap leg puts them on another, so
+// nothing is lost and no account is owed. This is the shape the UI sends: the
+// person arrives on Date and the swap date is where they came from.
+func TestChangeRota_MoveNeedsNoReason(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-12",
+		In:        "alice",
+		SwapDate:  "2025-01-05",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	assert.Len(t, result.Alterations, 2)
+}
+
+// The same move stated from the other end — the person named as leaving Date —
+// is still a move, because the swap leg is where they land.
+func TestChangeRota_MoveStatedAsAnOutNeedsNoReason(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		SwapDate:  "2025-01-12",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	assert.Len(t, result.Alterations, 2)
 }
 
 func TestChangeRota_OnlyOut(t *testing.T) {

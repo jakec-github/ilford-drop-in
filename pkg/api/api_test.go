@@ -1107,6 +1107,22 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
 }
 
+// TestCreateAlterationEndpoint_ReasonOptional proves a change that fills the
+// place it empties needs no reason: charlie takes bob's shift, so the rota is
+// no worse off and there is nothing to explain (issue #148). The cover is still
+// written, attributed to the Organiser who made it — with no reason on it.
+func TestCreateAlterationEndpoint_ReasonOptional(t *testing.T) {
+	store := alterationTestStore()
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer"}`
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	require.NotNil(t, store.insertedCover)
+	assert.Empty(t, store.insertedCover.Reason)
+	assert.Equal(t, testOrganiserEmail, store.insertedCover.UserEmail)
+}
+
 // TestCreateAlterationEndpoint_RequiresASession proves the write endpoint is gated:
 // no session cookie means no attribution to trust, so the request is rejected
 // before any change is attempted.
@@ -1150,7 +1166,9 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "missing reason",
+			// The one change that has to account for itself: bob comes off the
+			// shift and nobody takes his place (issue #148).
+			name:       "a removal with no reason",
 			body:       `{"date":"2026-01-11","out":"bob"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,

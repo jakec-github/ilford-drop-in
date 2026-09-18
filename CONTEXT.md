@@ -87,7 +87,10 @@ Allocations with Alterations applied in order.
 _Avoid_: change, edit
 
 **Cover**:
-The audited reason for a set of Alterations — who requested the change and why.
+The audit record for a set of Alterations — who made the change and, where they
+gave one, why. Only a removal that leaves nobody in the person's place has to
+give a reason; every other change names who fills the gap, so there is nothing
+left to explain.
 _Avoid_: swap
 
 **Availability Request**:

@@ -32,7 +32,7 @@ type ChangeRotaParams struct {
 	InCustom  string // Custom value to add
 	OutCustom string // Custom value to remove
 	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
-	Reason    string // Required reason for the change
+	Reason    string // Why the change was made. Required only of a simple removal — see isSimpleRemoval
 	UserEmail string // Email of the user making the change
 	// Role the incoming volunteer takes. Required alongside In, and — on a
 	// swap, where Out is also set — refused, since each leg then has its own
@@ -80,8 +80,8 @@ func ChangeRota(
 		return nil, wrapf(ErrInvalidInput, "at least one of --in, --out, --in-custom, or --out-custom must be provided")
 	}
 
-	if params.Reason == "" {
-		return nil, wrapf(ErrInvalidInput, "--reason is required")
+	if params.Reason == "" && isSimpleRemoval(params) {
+		return nil, wrapf(ErrInvalidInput, "a reason is required to take someone off a shift with nobody in their place")
 	}
 
 	roles, err := RoleTable(ctx, database)
@@ -236,6 +236,22 @@ func ChangeRota(
 		Alterations:    alterations,
 		DatesByShiftID: datesByShiftID,
 	}, nil
+}
+
+// isSimpleRemoval reports whether the change only takes people off the rota:
+// nobody arrives on Date, and there is no swap date to put whoever leaves on
+// another shift. That one shape is the only one asked for a reason (issue
+// #148). Every other change accounts for itself — a replacement or a swap names
+// who fills the place, an add makes the shift better off — while a removal
+// leaves a gap that the cover record is the only place to explain.
+//
+// A swap date is enough to disqualify it even with nothing coming in, because
+// the swap leg reverses the change: whoever leaves Date joins the shift there.
+//
+// Only asked after the check that the change does something at all, so nobody
+// arriving does mean somebody leaving.
+func isSimpleRemoval(params ChangeRotaParams) bool {
+	return params.In == "" && params.InCustom == "" && params.SwapDate == ""
 }
 
 // buildEffectiveState computes the current effective allocations for a single
