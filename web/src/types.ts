@@ -317,9 +317,14 @@ export const CUSTOM_CHOICE = "custom";
 //   replace { date, out: leaving, in: arriving }
 //   move    { date: destination, in: person, swapDate: where they were }
 //   swap    { date: A's shift, out: A, in: B, swapDate: B's shift }
+//   switch  { date, out: person, in: the same person, role: the new one }
 //
 // swapDate applies the same change reversed on a second date, which is what
 // makes move and swap a single atomic request rather than two.
+//
+// A switch is a replacement of somebody by themselves: they leave the shift and
+// rejoin it in another Role, staying on it throughout (issue #147). It is the
+// one shape that says nothing without role, so role is required there.
 //
 // role sets the role the incoming volunteer takes; omitted, the server infers
 // it. On a swap it is refused — out is also set there, so each date has its

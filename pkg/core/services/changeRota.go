@@ -42,7 +42,11 @@ type ChangeRotaParams struct {
 	// swap, where Out is also set — refused, since each leg then has its own
 	// incoming person and there is no unambiguous one to apply it to. A move
 	// (SwapDate set, Out empty) has exactly one incoming person, so it is
-	// offered there same as any other arrival — see validateRole. How many of
+	// offered there same as any other arrival — see validateRole. Naming the
+	// same person in In and Out is a Role switch: they come off the shift and
+	// go straight back onto it in this Role, which is the only thing such a
+	// change says, so it is the one shape that is nothing without it (issue
+	// #147). How many of
 	// a Role a shift ends up with is not checked: a change records what
 	// happened on the day, and the Shape it would be checked against is
 	// frozen the moment the rota is allocated, so refusing would leave an
@@ -91,6 +95,10 @@ func ChangeRota(
 
 	if params.Reason == "" && isSimpleRemoval(params) {
 		return nil, wrapf(ErrInvalidInput, "a reason is required to take someone off a shift with nobody in their place")
+	}
+
+	if err := validateSwitch(params); err != nil {
+		return nil, err
 	}
 
 	roles, err := RoleTable(ctx, database)
@@ -272,6 +280,35 @@ func isSimpleRemoval(params ChangeRotaParams) bool {
 	return params.In == "" && params.InCustom == "" && params.SwapDate == ""
 }
 
+// switchingRole reports whether this change names the same person on both
+// sides of one shift — the shape that moves somebody between Roles without
+// moving them anywhere else (issue #147). They come off the shift and go
+// straight back onto it in the Role the caller named, which is two alterations
+// like a replacement, and a replacement of somebody by themselves is exactly
+// what it is.
+func switchingRole(outVol, inVol, outCustom, inCustom string) bool {
+	if outVol != "" && outVol == inVol {
+		return true
+	}
+	return outCustom != "" && outCustom == inCustom
+}
+
+// validateSwitch refuses the one nonsense a Role switch can be asked for: the
+// same person on both sides of a *swap*. A swap reverses the change on the
+// second date, so naming one person means taking them off each shift and
+// putting them back on it — two no-ops, recorded as four alterations, and on a
+// reading of the result indistinguishable from a switch that went through.
+// Nothing offers it; saying so beats storing it.
+func validateSwitch(params ChangeRotaParams) error {
+	if params.SwapDate == "" {
+		return nil
+	}
+	if switchingRole(params.Out, params.In, params.OutCustom, params.InCustom) {
+		return wrapf(ErrInvalidInput, "the same person cannot be both sides of a swap")
+	}
+	return nil
+}
+
 // buildEffectiveState computes the current effective allocations for a single
 // shift by applying that shift's existing alterations to its base allocations.
 // It reads through the lock-holding transaction's store, so the state cannot
@@ -316,6 +353,13 @@ func resolveShift(ctx context.Context, database ChangeRotaStore, dateStr string)
 // the shift's current effective allocations. dateStr is used only for error
 // messages, and volunteersByID only to name people in them.
 func validateDateChanges(allocations []db.Allocation, volunteersByID map[string]model.Volunteer, dateStr, outVol, inVol, outCustom, inCustom string) error {
+	// A Role switch names the same person on both sides: they are meant to be
+	// on the shift already, and to stay there. The two checks below are about
+	// somebody arriving who was not there and somebody leaving who was, so
+	// neither says anything here — the "already on the shift" one would refuse
+	// the change outright.
+	switching := switchingRole(outVol, inVol, outCustom, inCustom)
+
 	// Validate outVol: must be currently on the shift
 	if outVol != "" {
 		found := false
@@ -331,7 +375,7 @@ func validateDateChanges(allocations []db.Allocation, volunteersByID map[string]
 	}
 
 	// Validate inVol: must NOT be currently on the shift
-	if inVol != "" {
+	if inVol != "" && !switching {
 		for _, a := range allocations {
 			if a.VolunteerID == inVol {
 				return wrapf(ErrConflict, "%s is already on the shift for %s", volunteerLabel(inVol, volunteersByID), dateStr)

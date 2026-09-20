@@ -180,3 +180,29 @@ func TestApplyAlterations_EmptyAlterations(t *testing.T) {
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
 }
+
+// A role switch is one cover carrying a remove and an add for the same person
+// on the same shift. Both rows are written by one transaction, so NOW() gives
+// them the same set_time and only the tie-break below keeps them in the order
+// that means anything: remove first, then the add that puts the person back in
+// their new Role. The other way round and they vanish from the shift.
+func TestApplyAlterations_RemoveBeforeAddAtTheSameInstant(t *testing.T) {
+	allocationsByShiftID := map[string][]db.Allocation{
+		"shift-1": {
+			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
+		},
+	}
+
+	// Listed add-first, which is the order the insert produced and the order a
+	// query ordering only by set_time may hand back.
+	alterations := []db.Alteration{
+		{ID: "alt2", ShiftID: "shift-1", Direction: "add", VolunteerID: "alice", Role: "Team lead", SetTime: "2025-01-01T00:00:00Z"},
+		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
+	}
+
+	result := ApplyAlterations(allocationsByShiftID, alterations)
+
+	assert.Len(t, result["shift-1"], 1)
+	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
+	assert.Equal(t, "Team lead", result["shift-1"][0].Role)
+}

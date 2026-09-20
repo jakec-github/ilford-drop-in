@@ -171,8 +171,11 @@ type EditDialog =
       // Fully specified bar the reason and, when role is set, the role —
       // both of which the dialog collects.
       change: Omit<RotaChange, "reason" | "role">;
-      // Offered only for a move — see askSwap and askRemove.
-      role?: { initial: Role };
+      // Offered for a move, which carries a Role across, and insisted on for
+      // a switch, which is nothing but a Role — see askMove and
+      // askChangeRole. Not offered for a remove or a swap, neither of which
+      // has one unambiguous person arriving.
+      role?: { initial: Role; required: boolean };
       // Set only by askRemove: the one change the API will not take unstated.
       reasonRequired: boolean;
     }
@@ -527,7 +530,25 @@ export default function RotaViewer({
       summary: `${pending.name} moves from ${formatShiftDateLong(pending.date)} to ${formatShiftDateLong(to)}.`,
       confirmLabel: "Move",
       change: { date: to, in: pending.person, swapDate: pending.date },
-      role: { initial: pending.role },
+      role: { initial: pending.role, required: false },
+      reasonRequired: false,
+    });
+  }
+
+  // A switch is a replacement of somebody by themselves: they come off the
+  // shift and go straight back onto it in another Role. One request, so the
+  // rota never briefly shows the shift a pair of hands short, and no reason —
+  // the shift is as well staffed after as before (issue #147).
+  function askChangeRole(date: string, assignee: Assignee) {
+    setOpenMenu(null);
+    setChangeError(null);
+    setDialog({
+      kind: "confirm",
+      title: `Change ${assignee.name}'s role?`,
+      summary: `${assignee.name} stays on the shift on ${formatShiftDateLong(date)} — only the job they are doing there changes.`,
+      confirmLabel: "Change role",
+      change: { date, out: personRef(assignee), in: personRef(assignee) },
+      role: { initial: assignee.role, required: true },
       reasonRequired: false,
     });
   }
@@ -624,6 +645,7 @@ export default function RotaViewer({
         onOpenMenu: setOpenMenu,
         onRemove: (a) => askRemove(shift.date, a),
         onReplace: (a) => askReplace(shift.date, a),
+        onChangeRole: (a) => askChangeRole(shift.date, a),
         onPickUp: (a) => pickUp(shift.date, a, false),
         onDragStart: (a) => pickUp(shift.date, a, true),
         // Only clears a drag; a pick made by tapping outlives the pointer.
@@ -801,8 +823,9 @@ export default function RotaViewer({
       {editing && !pending && (
         <p className="rota-edit-hint">
           Drag a name to another shift to move them, or onto another name to
-          swap. On a touchscreen, tap a name to choose an action: move or swap,
-          replace, or remove.
+          swap. Tap a name for everything else you can do to one person on one
+          shift: move or swap, change their role, replace them, or remove
+          them.
           {/* Only where there is a shift it applies to. On a rota that has all
               been allocated there is nothing to pin to, and the sentence would
               send someone looking for a button that is not on any row. */}
@@ -879,7 +902,11 @@ export default function RotaViewer({
           // The Roles are read at render rather than stored with the dialog, so
           // a list that arrives while it is open fills the picker in.
           role={
-            dialog.role && { initial: dialog.role.initial, roles: roleNames }
+            dialog.role && {
+              initial: dialog.role.initial,
+              required: dialog.role.required,
+              roles: roleNames,
+            }
           }
           reasonRequired={dialog.reasonRequired}
           busy={saving}

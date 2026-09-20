@@ -143,6 +143,8 @@ export interface PlacementEdit {
   onOpenMenu: (key: string | null) => void;
   onRemove: (assignee: Assignee) => void;
   onReplace: (assignee: Assignee) => void;
+  // Changes what job this person is doing on this shift, leaving them on it.
+  onChangeRole: (assignee: Assignee) => void;
   onPickUp: (assignee: Assignee) => void;
   onDragStart: (assignee: Assignee) => void;
   onDragEnd: () => void;
@@ -275,18 +277,21 @@ function Chip({
 // ChipMenu is what a chip offers when tapped in editing mode: everything that
 // can be done to one person on one shift. It is the touch and keyboard route to
 // everything drag and drop offers — "move or swap" picks the person up, and the
-// destination is then chosen from the rows themselves. Replace has no drag
-// equivalent: both people are on the same shift, so there is nowhere to drag to.
+// destination is then chosen from the rows themselves. Replace and change role
+// have no drag equivalent: neither takes the person anywhere, so there is
+// nowhere to drag to. This menu is the only route to either.
 function ChipMenu({
   name,
   onRemove,
   onReplace,
+  onChangeRole,
   onPickUp,
   onClose,
 }: {
   name: string;
   onRemove: () => void;
   onReplace: () => void;
+  onChangeRole: () => void;
   onPickUp: () => void;
   onClose: () => void;
 }) {
@@ -304,6 +309,9 @@ function ChipMenu({
       <span className="chip-menu-name">{name}</span>
       <Button ref={first} size="small" onClick={onPickUp}>
         Move or swap
+      </Button>
+      <Button size="small" onClick={onChangeRole}>
+        Change role
       </Button>
       <Button size="small" onClick={onReplace}>
         Replace
@@ -926,6 +934,7 @@ function ShiftRow({
           name={menuAssignee.name}
           onRemove={() => placement.onRemove(menuAssignee)}
           onReplace={() => placement.onReplace(menuAssignee)}
+          onChangeRole={() => placement.onChangeRole(menuAssignee)}
           onPickUp={() => placement.onPickUp(menuAssignee)}
           onClose={() => placement.onOpenMenu(null)}
         />

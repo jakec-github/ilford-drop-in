@@ -52,6 +52,20 @@ function removeProps() {
   };
 }
 
+// A switch: somebody stays exactly where they are and the job they are doing
+// there changes, so nothing is lost and no reason is asked for (issue #147).
+function switchProps() {
+  return {
+    title: "Change Grace's role?",
+    summary:
+      "Grace stays on the shift on Sun 23 Aug — only the job they are doing there changes.",
+    confirmLabel: "Change role",
+    busy: false,
+    reasonRequired: false,
+    onCancel: () => {},
+  };
+}
+
 describe("ConfirmChangeDialog", () => {
   test("offers no role field for a remove or swap, where no role prop is passed", () => {
     render(<ConfirmChangeDialog {...baseProps()} onConfirm={() => {}} />);
@@ -63,7 +77,7 @@ describe("ConfirmChangeDialog", () => {
     render(
       <ConfirmChangeDialog
         {...baseProps()}
-        role={{ initial: DUTY_LEAD, roles: ROLES }}
+        role={{ initial: DUTY_LEAD, roles: ROLES, required: false }}
         onConfirm={() => {}}
       />,
     );
@@ -78,7 +92,7 @@ describe("ConfirmChangeDialog", () => {
     render(
       <ConfirmChangeDialog
         {...baseProps()}
-        role={{ initial: GREETER, roles: ROLES }}
+        role={{ initial: GREETER, roles: ROLES, required: false }}
         onConfirm={() => {}}
       />,
     );
@@ -95,7 +109,7 @@ describe("ConfirmChangeDialog", () => {
     render(
       <ConfirmChangeDialog
         {...baseProps()}
-        role={{ initial: DUTY_LEAD, roles: ROLES }}
+        role={{ initial: DUTY_LEAD, roles: ROLES, required: false }}
         onConfirm={onConfirm}
       />,
     );
@@ -118,7 +132,7 @@ describe("ConfirmChangeDialog", () => {
     render(
       <ConfirmChangeDialog
         {...baseProps()}
-        role={{ initial: "Tea urn", roles: ROLES }}
+        role={{ initial: "Tea urn", roles: ROLES, required: false }}
         onConfirm={onConfirm}
       />,
     );
@@ -139,7 +153,7 @@ describe("ConfirmChangeDialog", () => {
     render(
       <ConfirmChangeDialog
         {...baseProps()}
-        role={{ initial: "", roles: ROLES }}
+        role={{ initial: "", roles: ROLES, required: false }}
         onConfirm={onConfirm}
       />,
     );
@@ -186,6 +200,68 @@ describe("ConfirmChangeDialog", () => {
 
     render(<ConfirmChangeDialog {...removeProps()} onConfirm={() => {}} />);
     expect(screen.getByLabelText("Reason")).toBeInTheDocument();
+  });
+
+  // A switch says one thing and one thing only, so the picker it carries is
+  // the whole form: the server takes no unstated Role for somebody arriving,
+  // and "No role" is not an answer to "which role?" (issue #147).
+  test("a switch offers a role choice, defaulted to the one being left behind", () => {
+    const onConfirm = mock<(reason: string, role?: string) => void>();
+    render(
+      <ConfirmChangeDialog
+        {...switchProps()}
+        role={{ initial: GREETER, roles: ROLES, required: true }}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    expect(roleField.value).toBe(GREETER);
+    expect(optionsOf(roleField)).toEqual(ROLES);
+
+    fireEvent.change(roleField, { target: { value: DUTY_LEAD } });
+    fireEvent.click(screen.getByRole("button", { name: "Change role" }));
+    expect(onConfirm).toHaveBeenCalledWith("", DUTY_LEAD);
+  });
+
+  // The move picker lists "No role" and means it. A switch cannot: it would
+  // send a change the API refuses, so the first real Role stands in and that
+  // is what confirming sends.
+  test("a switch never offers no role, even for someone the rota records none for", () => {
+    const onConfirm = mock<(reason: string, role?: string) => void>();
+    render(
+      <ConfirmChangeDialog
+        {...switchProps()}
+        role={{ initial: "", roles: ROLES, required: true }}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    expect(optionsOf(roleField)).toEqual(ROLES);
+    expect(roleField.value).toBe(DUTY_LEAD);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change role" }));
+    expect(onConfirm).toHaveBeenCalledWith("", DUTY_LEAD);
+  });
+
+  // Until the Roles arrive there is nothing to switch to and nothing to send,
+  // so the dialog says which of the two it is rather than showing an empty
+  // picker beside a live button.
+  test("a switch with no roles yet says so and cannot be confirmed", () => {
+    render(
+      <ConfirmChangeDialog
+        {...switchProps()}
+        role={{ initial: "", roles: null, required: true }}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
+    expect(screen.getByText("Still loading the roles…")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Change role" }),
+    ).toBeDisabled();
   });
 });
 

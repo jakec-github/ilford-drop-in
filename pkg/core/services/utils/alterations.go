@@ -22,11 +22,23 @@ func ApplyAlterations(
 	allocationsByShiftID map[string][]db.Allocation,
 	alterations []db.Alteration,
 ) map[string][]db.Allocation {
-	// Sort alterations by set_time to ensure deterministic ordering
+	// Sort alterations by set_time to ensure deterministic ordering, with a
+	// remove ahead of an add that shares its instant. One cover's rows all
+	// carry the transaction's NOW(), so a change that both takes someone off a
+	// shift and puts them back on it — switching their Role (issue #147) —
+	// gives the two rows the same set_time and nothing but this tie-break says
+	// which came first. Applied the other way round the person is added and
+	// then removed, and disappears from the shift altogether.
+	//
+	// Stable, so two rows the comparison cannot separate keep the order the
+	// query gave them rather than an arbitrary one.
 	sorted := make([]db.Alteration, len(alterations))
 	copy(sorted, alterations)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].SetTime < sorted[j].SetTime
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].SetTime != sorted[j].SetTime {
+			return sorted[i].SetTime < sorted[j].SetTime
+		}
+		return sorted[i].Direction == "remove" && sorted[j].Direction != "remove"
 	})
 
 	for _, alt := range sorted {

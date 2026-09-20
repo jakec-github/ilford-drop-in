@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
@@ -185,4 +186,43 @@ func TestChangeRotaWritesNullReason(t *testing.T) {
 	var reason *string
 	require.NoError(t, conn.QueryRow(ctx, `SELECT reason FROM cover WHERE id = $1`, result.CoverID).Scan(&reason))
 	assert.Nil(t, reason, "an unstated reason is NULL, not an empty string")
+}
+
+// TestChangeRotaSwitchRoleSurvivesReading records a Role switch through the
+// real database and reads the shift back the way every renderer does. Both
+// alterations are written by one transaction, so NOW() stamps them identically
+// — which is exactly the case a mock with hand-written set_times cannot
+// reproduce, and the one where applying the add before the remove would take
+// alice off the shift altogether (issue #147).
+func TestChangeRotaSwitchRoleSurvivesReading(t *testing.T) {
+	database, _ := dbtest.New(t)
+	dbtest.SeedRoles(t, database)
+	ctx := context.Background()
+	rotaID := seedAllocatedRota(t, database)
+
+	_, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2026-08-02",
+		Out:       "alice",
+		In:        "alice",
+		Role:      "Team lead",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	shifts, err := database.GetShiftsByRotaID(ctx, rotaID)
+	require.NoError(t, err)
+	require.Len(t, shifts, 1)
+	shiftID := shifts[0].ID
+
+	allocations, err := database.GetAllocationsByShiftIDs(ctx, []string{shiftID})
+	require.NoError(t, err)
+	alterations := alterationsForRota(t, database, rotaID)
+	require.Len(t, alterations, 2)
+	assert.Equal(t, alterations[0].SetTime, alterations[1].SetTime,
+		"one cover's alterations share an instant, which is what makes the tie-break matter")
+
+	effective := utils.ApplyAlterations(map[string][]db.Allocation{shiftID: allocations}, alterations)
+	require.Len(t, effective[shiftID], 1, "alice stays on the shift")
+	assert.Equal(t, "alice", effective[shiftID][0].VolunteerID)
+	assert.Equal(t, "Team lead", effective[shiftID][0].Role)
 }
