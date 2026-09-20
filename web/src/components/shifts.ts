@@ -1,4 +1,4 @@
-import type { Assignee, PersonRef, Role, RotaShift } from "../types";
+import type { Assignee, PersonRef, Role, RotaShift, ShapeSeat } from "../types";
 
 // The small facts about a shift and the people on it that both the shift rows
 // and the screens around them need. Their own module rather than exports from
@@ -56,4 +56,74 @@ export function formatShiftDateLong(dateStr: string): string {
     day: "numeric",
     month: "short",
   });
+}
+
+// RoleGroup is one Role's people on one shift: everybody doing the same job,
+// under the name of it.
+//
+// Generic over who is in it because the two things a shift row shows people for
+// are not the same shape — an allocated shift has Assignees, an unallocated one
+// has pins and drafted names — and grouping them is the same arithmetic either
+// way. All it asks of an entry is the Role it holds.
+export interface RoleGroup<T> {
+  role: Role;
+  people: T[];
+}
+
+// groupByRole gathers a shift's people under the Roles they hold, for the
+// expanded view of a row — where the Role is named in text rather than left to
+// chip colour, which a reader has to already know the convention to decode and
+// which says nothing at all to one who cannot see it (issue #66).
+//
+// The Shape's order first, because that is the order the Seats are filled and
+// so the order the shift itself puts its Roles in. Then anything held outside
+// it, in the order it appears: an Alteration records what happened on the day
+// and is not held to the Shape (ADR 0009), so somebody can genuinely hold a
+// Role this shift never asked for, and dropping them would take a name off the
+// rota. A Role nobody holds is left out entirely — the expanded view is about
+// who is on the shift, not how many Seats went unfilled.
+//
+// Matched by name rather than by id because that is all a person on a shift
+// carries: an Assignee holds the Role it was allocated under, as a name. A Role
+// renamed since would fall out of the Shape's order into the trailing group,
+// which is the honest answer — the rota records the name it was made with.
+export function groupByRole<T extends { role: Role }>(
+  shape: ShapeSeat[],
+  people: T[],
+): RoleGroup<T>[] {
+  const groups = new Map<Role, T[]>();
+
+  // Seeded from the Shape so its order wins, then pruned: a Role nobody holds
+  // leaves an empty list behind, and an empty list is not a group.
+  for (const seat of shape) {
+    if (!groups.has(seat.role)) groups.set(seat.role, []);
+  }
+  for (const person of people) {
+    const held = groups.get(person.role);
+    if (held) {
+      held.push(person);
+    } else {
+      groups.set(person.role, [person]);
+    }
+  }
+
+  const grouped = [...groups]
+    .filter(([, held]) => held.length > 0)
+    .map(([role, held]) => ({ role, people: held }));
+
+  // The unrecorded group last, whatever order it arrived in: it is the one
+  // group that is not a job, and it reads as a footnote rather than as the
+  // shift's first line.
+  return [
+    ...grouped.filter(({ role }) => role !== ""),
+    ...grouped.filter(({ role }) => role === ""),
+  ];
+}
+
+// What to head a RoleGroup with. Every Role is its own name; the group holding
+// people the rota records no Role for says that, rather than sitting under a
+// blank heading the reader has to guess at. Not a Role name invented for the
+// occasion — no Role is called this, and none may be (ADR 0009).
+export function roleGroupLabel(role: Role): string {
+  return role === "" ? "Role not recorded" : role;
 }
