@@ -1,6 +1,11 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ConfiguredRole, RotaShift, Volunteer } from "../types";
+import type {
+  ConfiguredRole,
+  Preallocation,
+  RotaShift,
+  Volunteer,
+} from "../types";
 import type { AccessLevel } from "../auth-context";
 
 // Deliberately not the Role names any deployment ships with. The rota page used
@@ -18,7 +23,7 @@ const GREETER = "Greeter";
 const fetchRoles = mock<() => Promise<ConfiguredRole[]>>();
 const fetchVolunteers = mock<() => Promise<Volunteer[]>>();
 const fetchDraftRotaAllocation = mock(async () => null);
-const fetchPreallocations = mock(async () => []);
+const fetchPreallocations = mock<() => Promise<Preallocation[]>>();
 
 mock.module("../api", () => ({
   fetchRoles,
@@ -168,6 +173,28 @@ async function renderEditing(
   });
 }
 
+// The rota as it is read rather than edited: no "Edit rota", so the chips are
+// plain names and the rows carry only what everybody sees. Level still matters —
+// the public is not shown the rota in flight at all.
+async function renderRota(
+  level: AccessLevel | null = null,
+  rotaShifts: RotaShift[] = shifts(),
+) {
+  render(
+    <RotaViewer
+      rotaShifts={rotaShifts}
+      level={level}
+      onChange={mock(async () => {})}
+      onSetClosed={mock(async () => {})}
+      onSetTimes={mock(async () => {})}
+      onSetShape={mock(async () => {})}
+    />,
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 // Alice is deliberately on two shifts (A and C, see shifts() above), so any
 // query for "her chip" has to say which row — a plain screen.getByRole would
 // find both and fail on ambiguity.
@@ -175,6 +202,16 @@ function rowFor(dateLabel: string): HTMLElement {
   const row = screen.getByText(dateLabel).closest(".shift-row");
   if (!row) throw new Error(`No .shift-row for ${dateLabel}`);
   return row as HTMLElement;
+}
+
+// One Role's block inside an expanded row, found by the name it is headed with —
+// which is the whole point of the expanded view, so finding it any other way
+// would test something else.
+function groupFor(row: HTMLElement, roleLabel: string): HTMLElement {
+  const heading = within(row).getByText(roleLabel);
+  const group = heading.closest(".shift-role-group");
+  if (!group) throw new Error(`No .shift-role-group for ${roleLabel}`);
+  return group as HTMLElement;
 }
 
 // Picks Alice up from shift A via the tap route — the keyboard/touch
@@ -320,6 +357,39 @@ function withUnallocated(shape: RotaShift["shape"] = []): RotaShift[] {
       assignees: [],
     },
   ];
+}
+
+// A shift the drop-in does not run on: nobody is on it and nobody ever will be.
+function withClosed(): RotaShift[] {
+  return [
+    ...shifts(),
+    {
+      id: "shift-e",
+      date: "2026-01-25",
+      start: "2026-01-25T19:30:00",
+      end: "2026-01-25T21:30:00",
+      closed: true,
+      allocated: false,
+      shape: [],
+      assignees: [],
+    },
+  ];
+}
+
+// An allocation from before the rota recorded which Role it was made under.
+function withUnrecordedRole(): RotaShift[] {
+  const rota = shifts();
+  rota[0].assignees = [
+    ...rota[0].assignees,
+    {
+      name: "Erin",
+      role: "",
+      custom: false,
+      group: null,
+      volunteerId: "erin",
+    },
+  ];
+  return rota;
 }
 
 // The two halves of ADR 0009, end to end through the page rather than through
@@ -486,5 +556,140 @@ describe("RotaViewer access levels", () => {
       screen.queryByRole("button", { name: "Edit rota" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("25 Jan")).not.toBeInTheDocument();
+  });
+});
+
+// A shift row's expanded view (issue #66). Role used to be encoded only as chip
+// colour, which a reader has to already know the convention to decode and which
+// says nothing at all to one who cannot see it. Expanding a row names each Role
+// in text and gathers its people under it.
+describe("RotaViewer expanded shift view", () => {
+  beforeEach(() => {
+    fetchRoles.mockClear();
+    fetchRoles.mockResolvedValue(ROLES);
+    fetchVolunteers.mockClear();
+    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchDraftRotaAllocation.mockClear();
+    fetchDraftRotaAllocation.mockResolvedValue(null);
+    fetchPreallocations.mockClear();
+    fetchPreallocations.mockResolvedValue([]);
+  });
+
+  test("a row expands to name each role, and collapses again", async () => {
+    await renderRota();
+
+    // 4 Jan has Alice on Duty lead and Dan greeting.
+    const row = rowFor("4 Jan");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+    );
+
+    const duty = groupFor(row, DUTY_LEAD);
+    expect(within(duty).getByText("Alice")).toBeInTheDocument();
+    const greeters = groupFor(row, GREETER);
+    expect(within(greeters).getByText("Dan")).toBeInTheDocument();
+
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Hide details for Sun 4 Jan" }),
+    );
+
+    expect(within(row).queryByText(DUTY_LEAD)).not.toBeInTheDocument();
+    // The names never went anywhere — collapsing puts them back in one strip.
+    expect(within(row).getByText("Alice")).toBeInTheDocument();
+  });
+
+  test("a row that is expanded says so, and one that is not says that", async () => {
+    await renderRota();
+
+    const row = rowFor("4 Jan");
+    const toggle = within(row).getByRole("button", {
+      name: "Show details for Sun 4 Jan",
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggle);
+
+    expect(
+      within(row).getByRole("button", { name: "Hide details for Sun 4 Jan" }),
+    ).toHaveAttribute("aria-expanded", "true");
+  });
+
+  test("only the row that was expanded expands", async () => {
+    await renderRota();
+
+    fireEvent.click(
+      within(rowFor("4 Jan")).getByRole("button", {
+        name: "Show details for Sun 4 Jan",
+      }),
+    );
+
+    expect(
+      within(rowFor("11 Jan")).queryByText(GREETER),
+    ).not.toBeInTheDocument();
+  });
+
+  // The chips in an expanded row are the same chips, regrouped — not copies of
+  // them — so everything a chip does still works.
+  test("picking a name out of an expanded row still selects it across the rota", async () => {
+    await renderRota();
+
+    const row = rowFor("4 Jan");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+    );
+    fireEvent.click(within(row).getByRole("button", { name: "Alice" }));
+
+    expect(screen.getByText(/Upcoming:/)).toBeInTheDocument();
+  });
+
+  test("a closed shift has nothing to expand", async () => {
+    await renderRota("organiser", withClosed());
+
+    expect(
+      within(rowFor("25 Jan")).queryByRole("button", {
+        name: /details for/,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  // A shift of the rota in flight has pins and drafted names rather than
+  // assignees, and they group under their Roles the same way.
+  test("a shift of the rota in flight groups who is expected on it by role", async () => {
+    fetchPreallocations.mockResolvedValue([
+      {
+        id: "pin-1",
+        date: "2026-01-25",
+        roleId: "r-duty",
+        role: DUTY_LEAD,
+        name: "Alice",
+        custom: false,
+        volunteerId: "alice",
+      },
+    ]);
+    await renderRota("organiser", withUnallocated());
+
+    const row = rowFor("25 Jan");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Show details for Sun 25 Jan" }),
+    );
+
+    expect(
+      within(groupFor(row, DUTY_LEAD)).getByText("Alice"),
+    ).toBeInTheDocument();
+  });
+
+  // An allocation predating the role column records no Role at all. It is named
+  // as such rather than left under a blank heading.
+  test("somebody the rota records no role for is said to have none", async () => {
+    await renderRota("organiser", withUnrecordedRole());
+
+    const row = rowFor("4 Jan");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+    );
+
+    expect(
+      within(groupFor(row, "Role not recorded")).getByText("Erin"),
+    ).toBeInTheDocument();
   });
 });

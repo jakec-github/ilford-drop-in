@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type {
   Assignee,
   PersonRef,
@@ -11,8 +12,10 @@ import Button from "../ui/Button";
 import {
   formatShiftDate,
   formatShiftDateLong,
+  groupByRole,
   isUnallocated,
   personRef,
+  roleGroupLabel,
   roleSuffix,
   samePerson,
 } from "./shifts";
@@ -348,8 +351,13 @@ function draftTitle(assignee: Assignee): string {
 
 // One name expected on a shift the rota has not been run for, and on what
 // footing: a pin, or a Seat the last solve filled.
+//
+// The Role is lifted out of whichever it is, so that an expanded row can gather
+// these under their Roles without caring which kind each one is — the two say
+// the same thing about which job is being done, and differ only in how firmly.
 type Planned =
-  { kind: "pin"; pin: Preallocation } | { kind: "draft"; assignee: Assignee };
+  | { kind: "pin"; role: Role; pin: Preallocation }
+  | { kind: "draft"; role: Role; assignee: Assignee };
 
 // How the alterations API would name the person a pin is for. The same shape
 // personRef gives an assignee, so the two can be compared.
@@ -375,11 +383,11 @@ function plannedFor(pins: Preallocation[], drafted: Assignee[]): Planned[] {
   const planned: Planned[] = pins.map((pin) => {
     const i = unmatched.findIndex((a) => samePerson(personRef(a), pinRef(pin)));
     if (i !== -1) unmatched.splice(i, 1);
-    return { kind: "pin", pin };
+    return { kind: "pin", role: pin.role, pin };
   });
 
   for (const assignee of unmatched) {
-    planned.push({ kind: "draft", assignee });
+    planned.push({ kind: "draft", role: assignee.role, assignee });
   }
   return planned;
 }
@@ -403,12 +411,17 @@ function plannedFor(pins: Preallocation[], drafted: Assignee[]): Planned[] {
 function PlannedList({
   date,
   planned,
+  label,
   colourOf,
   stale,
   onUnpin,
 }: {
   date: string;
   planned: Planned[];
+  // The list's name for anybody who cannot see where they are. Given by the
+  // caller because an expanded row draws one of these per Role, and "expected
+  // on Sun 4 Jan" said three times over would not say which was which.
+  label: string;
   colourOf: RoleColourOf;
   // True when an allocator input has moved under the drafted names and the
   // solve that answers for it has not come back yet. They are faded rather than
@@ -425,10 +438,7 @@ function PlannedList({
     // the only thing an unallocated shift's names can be, so it was a word
     // spent saying where the reader already is. The list keeps a name for
     // anybody who cannot see where they are.
-    <ul
-      className="planned-list"
-      aria-label={`Expected on ${formatShiftDateLong(date)}`}
-    >
+    <ul className="planned-list" aria-label={label}>
       {planned.map((entry, i) =>
         entry.kind === "pin" ? (
           <li
@@ -505,6 +515,39 @@ function ShiftNeeds({
   );
 }
 
+// RoleGroups is the expanded row: the shift's people gathered under the names
+// of the jobs they are doing.
+//
+// Role used to be said only in chip colour, which a reader has to already know
+// the convention to decode and which says nothing at all to a reader who cannot
+// see it (issue #66). Expanding a row says it in words instead.
+//
+// It renders no people itself — the caller does, because the two kinds of row
+// draw quite different things (chips that can be dragged and opened, versus
+// pins and drafted names that cannot), and copying either into a second
+// renderer is how the collapsed row and the expanded one would start to
+// disagree about the same shift.
+function RoleGroups<T extends { role: Role }>({
+  shape,
+  people,
+  children,
+}: {
+  shape: RotaShift["shape"];
+  people: T[];
+  children: (group: { role: Role; people: T[] }) => ReactNode;
+}) {
+  return (
+    <div className="shift-role-groups">
+      {groupByRole(shape, people).map((group) => (
+        <div className="shift-role-group" key={group.role}>
+          <span className="shift-role-name">{roleGroupLabel(group.role)}</span>
+          {children(group)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ShiftWhen is a row's first column: the day, and under it the hours. Both come
 // from the shift itself, which is what makes them worth showing per row — a
 // shift keeps the times it was minted with, so one evening running differently
@@ -546,6 +589,11 @@ function ShiftRow({
   onSelectName?: (name: string) => void;
   edit: RowEdit | null;
 }) {
+  // Whether this row is showing its fuller view. One row's own business: rows
+  // are opened to read one shift closely, and opening one is no reason to
+  // reshuffle the rest of the list.
+  const [expanded, setExpanded] = useState(false);
+
   function handleClick(name: string) {
     onSelectName?.(name === selectedName ? "" : name);
   }
@@ -612,6 +660,53 @@ function ShiftRow({
     </button>
   );
 
+  // Whether this row has a fuller view to show at all. Whoever is on the shift
+  // is the whole of what the expanded view says today, so a row with nobody on
+  // it has nothing behind the chevron — a closed shift most of all, which is a
+  // date the drop-in does not run rather than a shift short of people.
+  const expandable = shift.closed
+    ? false
+    : unallocated
+      ? planned.length > 0
+      : shift.assignees.length > 0;
+
+  // The disclosure lives in a cell of its own, drawn whether or not this row
+  // fills it, so that the dates below it do not step sideways as the rows
+  // change from one kind to another.
+  const expandCell = (
+    <div className="shift-expand-cell">
+      {expandable && (
+        <button
+          type="button"
+          className="shift-expand"
+          aria-expanded={expanded}
+          // The date is in the label because the button is a bare chevron:
+          // read out of the row's context, "Show details" does not say which
+          // shift's, and the rows all look alike. "Details" rather than
+          // "roles" because the roles are only what it opens onto today.
+          aria-label={`${expanded ? "Hide" : "Show"} details for ${formatShiftDateLong(shift.date)}`}
+          onClick={() => setExpanded(!expanded)}
+        >
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+            <path
+              d="M3.5 1L7.5 5L3.5 9"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+
+  // While someone is being carried the page narrows to placing them, the same
+  // way the Add buttons go away: an unallocated shift is not a destination, so
+  // its pins are only there to be read.
+  const unpin = edit && !pending ? edit.onUnpin : undefined;
+
   let body;
   if (shift.closed) {
     body = (
@@ -624,18 +719,30 @@ function ShiftRow({
     body = (
       <div className="shift-unallocated">
         <ShiftNeeds unfilledRoles={unfilledRoles} />
-        {planned.length > 0 && (
-          <PlannedList
-            date={shift.date}
-            planned={planned}
-            colourOf={colourOf}
-            stale={draftStale}
-            // While someone is being carried the page narrows to placing them,
-            // the same way the Add buttons go away: an unallocated shift is not
-            // a destination, so its pins are only there to be read.
-            onUnpin={edit && !pending ? edit.onUnpin : undefined}
-          />
-        )}
+        {planned.length > 0 &&
+          (expanded ? (
+            <RoleGroups shape={shift.shape} people={planned}>
+              {(group) => (
+                <PlannedList
+                  date={shift.date}
+                  planned={group.people}
+                  label={`${roleGroupLabel(group.role)} expected on ${formatShiftDateLong(shift.date)}`}
+                  colourOf={colourOf}
+                  stale={draftStale}
+                  onUnpin={unpin}
+                />
+              )}
+            </RoleGroups>
+          ) : (
+            <PlannedList
+              date={shift.date}
+              planned={planned}
+              label={`Expected on ${formatShiftDateLong(shift.date)}`}
+              colourOf={colourOf}
+              stale={draftStale}
+              onUnpin={unpin}
+            />
+          ))}
         {/* Editing an unallocated shift means changing who is promised it —
             there is nobody on it to move around. */}
         {edit && !pending && (
@@ -668,71 +775,94 @@ function ShiftRow({
       </div>
     );
   } else {
+    // A person on the shift, with where they sit in its list. The index is what
+    // keys their chip and addresses their menu, so it has to survive the
+    // regrouping an expanded row does — which is why it is carried rather than
+    // taken from whatever list the chip is being drawn out of.
+    const seated = shift.assignees.map((assignee, index) => ({
+      assignee,
+      index,
+      role: assignee.role,
+    }));
+
+    // One chip, wherever it is drawn. Collapsed, these come out in one strip;
+    // expanded, the same chips come out under the names of their Roles. The
+    // same function either way, so the two cannot drift.
+    const renderChip = ({ assignee: a, index: i }: (typeof seated)[number]) => {
+      const key = chipKey(shift.date, a, i);
+      if (!editable) {
+        return (
+          <Chip
+            key={key}
+            assignee={a}
+            colourOf={colourOf}
+            selected={a.name === selectedName}
+            onClick={() => handleClick(a.name)}
+          />
+        );
+      }
+      // One chip either way, not one per state: `draggable` has to survive
+      // the re-render that starting a drag causes. onDragStart sets the
+      // pending pick, which re-renders this very chip, and React removing
+      // the attribute mid-drag cancels the drag in Chromium — the pick
+      // registers, the name never moves. So the drag props are
+      // unconditional and only what the chip *does* on click or drop
+      // changes: its own menu when nothing is in flight, a swap target
+      // when someone is being carried.
+      const swappable =
+        pending !== null && isDestination && placement.canSwapWith(a);
+      const picked =
+        pending !== null &&
+        isSource &&
+        samePerson(pending.person, personRef(a));
+      return (
+        <Chip
+          key={key}
+          assignee={a}
+          colourOf={colourOf}
+          selected={a.name === selectedName}
+          className={picked ? "lifted" : ""}
+          draggable
+          disabled={pending !== null && !swappable}
+          label={
+            pending === null
+              ? `${a.name}, change this shift`
+              : swappable
+                ? `Swap ${pending.name} with ${a.name}`
+                : swapBlockedReason(
+                    a,
+                    pending,
+                    picked,
+                    isSource,
+                    placement.canReceive,
+                  )
+          }
+          onClick={
+            pending === null
+              ? () =>
+                  placement.onOpenMenu(placement.openMenu === key ? null : key)
+              : () => placement.onSwapWith(a)
+          }
+          onDragStart={() => placement.onDragStart(a)}
+          onDragEnd={placement.onDragEnd}
+          onDrop={swappable ? () => placement.onSwapWith(a) : undefined}
+        />
+      );
+    };
+
     body = (
       <div className="shift-people">
-        {shift.assignees.map((a, i) => {
-          const key = chipKey(shift.date, a, i);
-          if (!editable) {
-            return (
-              <Chip
-                key={key}
-                assignee={a}
-                colourOf={colourOf}
-                selected={a.name === selectedName}
-                onClick={() => handleClick(a.name)}
-              />
-            );
-          }
-          // One chip either way, not one per state: `draggable` has to survive
-          // the re-render that starting a drag causes. onDragStart sets the
-          // pending pick, which re-renders this very chip, and React removing
-          // the attribute mid-drag cancels the drag in Chromium — the pick
-          // registers, the name never moves. So the drag props are
-          // unconditional and only what the chip *does* on click or drop
-          // changes: its own menu when nothing is in flight, a swap target
-          // when someone is being carried.
-          const swappable =
-            pending !== null && isDestination && placement.canSwapWith(a);
-          const picked =
-            pending !== null &&
-            isSource &&
-            samePerson(pending.person, personRef(a));
-          return (
-            <Chip
-              key={key}
-              assignee={a}
-              colourOf={colourOf}
-              selected={a.name === selectedName}
-              className={picked ? "lifted" : ""}
-              draggable
-              disabled={pending !== null && !swappable}
-              label={
-                pending === null
-                  ? `${a.name}, change this shift`
-                  : swappable
-                    ? `Swap ${pending.name} with ${a.name}`
-                    : swapBlockedReason(
-                        a,
-                        pending,
-                        picked,
-                        isSource,
-                        placement.canReceive,
-                      )
-              }
-              onClick={
-                pending === null
-                  ? () =>
-                      placement.onOpenMenu(
-                        placement.openMenu === key ? null : key,
-                      )
-                  : () => placement.onSwapWith(a)
-              }
-              onDragStart={() => placement.onDragStart(a)}
-              onDragEnd={placement.onDragEnd}
-              onDrop={swappable ? () => placement.onSwapWith(a) : undefined}
-            />
-          );
-        })}
+        {expanded ? (
+          <RoleGroups shape={shift.shape} people={seated}>
+            {(group) => (
+              <div className="shift-role-people">
+                {group.people.map(renderChip)}
+              </div>
+            )}
+          </RoleGroups>
+        ) : (
+          seated.map(renderChip)
+        )}
 
         {editable && !pending && (
           <button
@@ -774,6 +904,7 @@ function ShiftRow({
           : undefined
       }
     >
+      {expandCell}
       {edit?.onEditTimes && !pending ? (
         <button
           type="button"

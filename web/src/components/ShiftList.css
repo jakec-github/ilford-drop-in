@@ -43,6 +43,102 @@
   opacity: 0.55;
 }
 
+/* The disclosure gutter, before the date. Drawn on every row whether or not it
+   has anything behind it, so a list of rows that are not all expandable — a
+   closed date among open ones — still reads down a straight left edge.
+
+   The negative margin eats most of the row's own column gap: this is a small
+   secondary control and it should not push the rota sideways on a phone. */
+.shift-expand-cell {
+  flex-shrink: 0;
+  width: 26px;
+  margin-right: -8px;
+  /* The row is baseline-aligned and this is a box, not text, so it would
+     otherwise hang below the date beside it. */
+  align-self: flex-start;
+}
+
+/* Bare until it is reached for, like the date cell beside it: a rota being read
+   should not look like a form. Sized for a thumb rather than for the chevron
+   inside it — the rota page is mobile first and this is the way in to the
+   fuller view. */
+.shift-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: -3px 0;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.shift-expand:hover,
+.shift-expand:focus-visible {
+  border-color: var(--border);
+  background: var(--bg);
+  opacity: 1;
+}
+
+.shift-expand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The chevron turns to point at what it opened, which is the one thing on the
+   row that says "this is the open one" once the reader has scrolled the
+   heading off. */
+.shift-expand svg {
+  transition: transform 0.15s;
+}
+
+.shift-expand[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+/* The expanded row: the shift's people under the names of the jobs they are
+   doing, rather than in one strip whose only word for the job is a colour.
+
+   A whole line of the row, so that whatever sits after it — the Add button on
+   an allocated shift, the pin and shape controls on one of the rota in flight —
+   wraps underneath rather than trailing off the last Role. */
+.shift-role-groups {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Name above people, at every width. The alternative — a column of Role names
+   beside their chips — reads well at a desk and badly on the phone the rota is
+   mostly read on, and these rows are one component on both screens. */
+.shift-role-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.shift-role-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.shift-role-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* The first column: the day, and under it the hours the shift runs. Wide enough
    for "19:30–21:30", which is what sets the width now rather than "2 Feb". */
 .shift-when {
