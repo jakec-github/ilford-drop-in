@@ -8,6 +8,23 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// setTimeLayout spells an alteration's set_time. It is RFC3339 with a
+// fixed-width fractional second, for two reasons.
+//
+// The fraction, because set_time is what orders one cover's alterations
+// against another's, and whole seconds make two covers recorded in the same
+// second indistinguishable — enough to interleave a Role switch's remove and
+// add with a later change's (issue #147).
+//
+// Fixed width, because the order is taken by comparing the strings.
+// time.RFC3339Nano drops trailing zeros, which makes "…:05.5Z" sort after
+// "…:05.5001Z" — the later instant first. Padded, every instant is the same
+// length and the comparison is the one it looks like.
+//
+// Everything that reads this parses with time.RFC3339, which accepts a
+// fractional second.
+const setTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
 // GetAlterationsByShiftIDs retrieves the alteration records belonging to the
 // given shifts. Like GetAllocationsByShiftIDs, it scopes by the shift set the
 // caller already holds rather than a second date-range scan (ADR 0001). Each
@@ -44,7 +61,7 @@ func scanAlterations(rows pgx.Rows) ([]Alteration, error) {
 		if err := rows.Scan(&a.ID, &a.ShiftID, &a.Direction, &volunteerID, &customValue, &a.CoverID, &setTime, &role); err != nil {
 			return nil, fmt.Errorf("failed to scan alteration: %w", err)
 		}
-		a.SetTime = setTime.UTC().Format(time.RFC3339)
+		a.SetTime = setTime.UTC().Format(setTimeLayout)
 		if volunteerID != nil {
 			a.VolunteerID = *volunteerID
 		}

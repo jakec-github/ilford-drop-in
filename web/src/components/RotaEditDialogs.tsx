@@ -27,14 +27,6 @@ function defaultRoleFor(
   );
 }
 
-// The Roles a picker lists: every one the drop-in offers, plus the one the
-// person already holds where that is no longer among them. A rota allocated
-// before a Role was retired still names it, and dropping it would quietly move
-// somebody into whatever came first.
-function withHeldRole(offered: Role[], held: Role): Role[] {
-  return held && !offered.includes(held) ? [held, ...offered] : offered;
-}
-
 // A Role as an option reads as its own name. The exception is the Role-less
 // assignee — an allocation predating the role column — which has no name to
 // read and says what it is instead.
@@ -104,12 +96,30 @@ function DialogActions({
   );
 }
 
-// ConfirmChangeDialog collects the reason for a change already described by
-// picking chips — a remove, a move or a swap.
+// The Roles a picker offers for a change that carries somebody's existing Role:
+// every one the drop-in has, plus that one where it is no longer among them, so
+// a rota allocated under a retired Role can still be edited under it.
 //
-// role is offered only for a move: defaults to what the person already
-// held, but can be changed to any Role the drop-in has. What the destination
-// shift's Shape asks for does not narrow it — an alteration records what
+// The exception is the Role-less assignee — an allocation from before
+// alterations carried a Role. Carrying "no Role" across is a real answer to a
+// move, which the API accepts, but not to a change whose whole content is the
+// Role, so a required picker leaves it out and asks for a real one.
+function withCarriedRole(
+  offered: Role[],
+  carried: Role,
+  required: boolean,
+): Role[] {
+  if (carried === "" && required) return offered;
+  return offered.includes(carried) ? offered : [carried, ...offered];
+}
+
+// ConfirmChangeDialog collects the reason for a change already described by
+// picking chips — a remove, a move, a swap, or a switch of somebody's Role on
+// the shift they are already on.
+//
+// role is offered for a move and insisted on for a switch: it defaults to what
+// the person already held, but can be changed to any Role the drop-in has. What
+// the shift's Shape asks for does not narrow it — an alteration records what
 // happened on the day rather than instructing a solve (ADR 0009).
 export function ConfirmChangeDialog({
   title,
@@ -128,7 +138,12 @@ export function ConfirmChangeDialog({
   // configured Role beside it. roles is null while they are still loading,
   // which leaves the picker showing the one Role that matters — the one being
   // carried — rather than blocking a move on a list it does not need.
-  role?: { initial: Role; roles: Role[] | null };
+  //
+  // required marks the change that is nothing but a statement of Role: a
+  // switch, where the server takes no unstated one and "No role" is therefore
+  // not an answer. A move leaves it false — it carries whatever the person held
+  // across, Role-less allocations included.
+  role?: { initial: Role; roles: Role[] | null; required: boolean };
   // True only for a remove, which leaves the shift short of someone — the
   // server refuses that one without a reason. A move and a swap put whoever
   // leaves on another shift, so both go through with none.
@@ -138,20 +153,28 @@ export function ConfirmChangeDialog({
   onConfirm: (reason: string, role?: Role) => void;
 }) {
   const [reason, setReason] = useState("");
-  const [chosenRole, setChosenRole] = useState<Role>(role?.initial ?? "");
+  // Null until somebody picks a Role; what is actually on offer grows as the
+  // Roles arrive, so the chosen one is derived below rather than stored.
+  const [picked, setPicked] = useState<Role | null>(null);
 
-  // The initial Role is always listed, even where it is no longer one the
-  // drop-in offers and even where it is no Role at all: a move must be able to
-  // leave somebody's Role exactly as it found it, and to put it back after a
-  // look at the alternatives. The server accepts a move with no Role — it
-  // carries across whatever they held — so "No role" is a real answer here
-  // rather than an unfinished form.
-  const offered = role?.roles ?? [];
+  // The initial Role is listed even where it is no longer one the drop-in
+  // offers, and — on a move — even where it is no Role at all: a move must be
+  // able to leave somebody's Role exactly as it found it, and to put it back
+  // after a look at the alternatives.
   const options = role
-    ? offered.includes(role.initial)
-      ? offered
-      : [role.initial, ...offered]
+    ? withCarriedRole(role.roles ?? [], role.initial, role.required)
     : [];
+
+  // An explicit pick stands while it is still on offer. Otherwise the Role
+  // being carried, or — where that is not among the options, which only a
+  // required picker with nothing to carry can be — the first one, so the
+  // picker always shows what confirming would actually send.
+  const chosenRole: Role =
+    picked !== null && options.includes(picked)
+      ? picked
+      : options.includes(role?.initial ?? "")
+        ? (role?.initial ?? "")
+        : (options[0] ?? "");
 
   return (
     <Dialog title={title} onClose={onCancel}>
@@ -163,12 +186,12 @@ export function ConfirmChangeDialog({
       >
         <p className="rota-edit-summary">{summary}</p>
 
-        {role && (
+        {role && options.length > 0 && (
           <label className="rota-edit-field">
             Role
             <select
               value={chosenRole}
-              onChange={(e) => setChosenRole(e.target.value as Role)}
+              onChange={(e) => setPicked(e.target.value as Role)}
             >
               {options.map((option) => (
                 <option key={option} value={option}>
@@ -179,6 +202,17 @@ export function ConfirmChangeDialog({
           </label>
         )}
 
+        {/* Only reachable on a required picker with nothing to carry: the
+            Roles have not arrived yet, or nobody has made any. Either way
+            there is nothing to send. */}
+        {role && options.length === 0 && (
+          <p className="rota-edit-note">
+            {role.roles === null
+              ? "Still loading the roles…"
+              : "There are no roles to choose from yet. An organiser makes them on Admin → Settings."}
+          </p>
+        )}
+
         <ReasonField
           value={reason}
           required={reasonRequired}
@@ -187,7 +221,10 @@ export function ConfirmChangeDialog({
         <DialogActions
           confirmLabel={confirmLabel}
           busy={busy}
-          canConfirm={!reasonRequired || reason.trim() !== ""}
+          canConfirm={
+            (!reasonRequired || reason.trim() !== "") &&
+            (!role?.required || chosenRole !== "")
+          }
           onCancel={onCancel}
         />
       </form>
@@ -268,7 +305,9 @@ export function AssigneeDialog({
   // the drop-in has since retired it, so a rota allocated under the old name
   // can still be covered under it.
   const carried = change.kind === "replace" ? change.outgoing.role : "";
-  const options = withHeldRole(roles ?? [], carried);
+  // Required: anybody arriving must name a Role, so an outgoing person who
+  // held none leaves nothing to carry rather than a "No role" option.
+  const options = withCarriedRole(roles ?? [], carried, true);
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
   // The carried Role wins where there is one; otherwise whatever this volunteer

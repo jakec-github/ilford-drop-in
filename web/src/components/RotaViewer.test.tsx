@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type {
   ConfiguredRole,
   Preallocation,
+  RotaChange,
   RotaShift,
   Volunteer,
 } from "../types";
@@ -154,12 +155,13 @@ function shifts(): RotaShift[] {
 async function renderEditing(
   level: AccessLevel = "organiser",
   rotaShifts: RotaShift[] = shifts(),
+  onChange: (change: RotaChange) => Promise<void> = mock(async () => {}),
 ) {
   render(
     <RotaViewer
       rotaShifts={rotaShifts}
       level={level}
-      onChange={mock(async () => {})}
+      onChange={onChange}
       onSetClosed={mock(async () => {})}
       onSetTimes={mock(async () => {})}
       onSetShape={mock(async () => {})}
@@ -237,6 +239,46 @@ describe("RotaViewer placement", () => {
     fetchDraftRotaAllocation.mockResolvedValue(null);
     fetchPreallocations.mockClear();
     fetchPreallocations.mockResolvedValue([]);
+  });
+
+  // A switch never takes anybody anywhere, so it has no drag equivalent and the
+  // chip menu is its only route. It posts one change naming the same person on
+  // both sides, which is what tells the server the Seat stays filled (#147).
+  test("changing a role sends the same person in and out on the shift they are on", async () => {
+    const onChange = mock(async () => {});
+    await renderEditing("organiser", shifts(), onChange);
+
+    fireEvent.click(
+      within(rowFor("4 Jan")).getByRole("button", {
+        name: "Alice, change this shift",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Change role" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Change Alice's role?" }),
+    ).toBeInTheDocument();
+    // Defaulted to the job she is doing there, not to the first Role going.
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
+      DUTY_LEAD,
+    );
+
+    fireEvent.change(screen.getByLabelText("Role"), {
+      target: { value: HOT_FOOD },
+    });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Change role" }),
+      );
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      date: "2026-01-04",
+      in: { volunteerId: "alice" },
+      out: { volunteerId: "alice" },
+      role: HOT_FOOD,
+      reason: "",
+    });
   });
 
   test("swapping onto another person never offers a role field — the role is inherited, not chosen", async () => {

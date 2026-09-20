@@ -1444,3 +1444,157 @@ func TestChangeRota_RemovalOfACustomEntryStoresNoRole(t *testing.T) {
 	assert.Equal(t, "remove", store.insertedAlterations[0].Direction)
 	assert.Empty(t, store.insertedAlterations[0].Role)
 }
+
+// A Role switch is the same person out and in on one shift: they stay where
+// they are and the job they are doing there changes (issue #147). It is one
+// cover like every other change, so the audit trail reads the same way.
+func TestChangeRota_SwitchRoleOnTheSameShift(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		In:        "alice",
+		Role:      "Team lead",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	require.Len(t, result.Alterations, 2)
+
+	assert.Equal(t, "remove", result.Alterations[0].Direction)
+	assert.Equal(t, "alice", result.Alterations[0].VolunteerID)
+	assert.Equal(t, "2025-01-05", result.Alterations[0].ShiftID)
+
+	assert.Equal(t, "add", result.Alterations[1].Direction)
+	assert.Equal(t, "alice", result.Alterations[1].VolunteerID)
+	assert.Equal(t, "Team lead", result.Alterations[1].Role)
+	assert.Equal(t, "2025-01-05", result.Alterations[1].ShiftID)
+
+	// Nobody leaves the shift, so no reason is insisted on.
+	require.NotNil(t, store.insertedCover)
+	assert.Nil(t, store.insertedCover.Reason)
+}
+
+// Somebody off the roster holds a Role like anybody else (issue #214), so they
+// can be moved between Roles like anybody else too.
+func TestChangeRota_SwitchRoleForACustomEntry(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", CustomEntry: "Redbridge youth group"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Redbridge youth group",
+		InCustom:  "Redbridge youth group",
+		Role:      "Team lead",
+		UserEmail: "test@example.com",
+	}
+
+	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.NoError(t, err)
+	require.Len(t, result.Alterations, 2)
+
+	assert.Equal(t, "remove", result.Alterations[0].Direction)
+	assert.Equal(t, "Redbridge youth group", result.Alterations[0].CustomValue)
+	assert.Equal(t, "add", result.Alterations[1].Direction)
+	assert.Equal(t, "Redbridge youth group", result.Alterations[1].CustomValue)
+	assert.Equal(t, "Team lead", result.Alterations[1].Role)
+}
+
+// The switch is against the shift as it currently stands, so somebody who is
+// not on it has no Role there to change.
+func TestChangeRota_SwitchRoleRejectsSomeoneNotOnTheShift(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "dave",
+		In:        "dave",
+		Role:      "Team lead",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "Dave is not on the shift")
+}
+
+// Naming the same person on both sides of a swap says nothing: they would come
+// off a shift and go back onto it, on two dates at once. Refused rather than
+// silently recorded as a pair of no-ops.
+func TestChangeRota_SwitchRoleRejectsASwapDate(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		In:        "alice",
+		SwapDate:  "2025-01-12",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+}
+
+// A Seat has a Role, and a switch is nothing but a statement of which — so the
+// one thing it cannot leave unsaid is the Role.
+func TestChangeRota_SwitchRoleRequiresARole(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 3),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "alice"},
+		},
+	}
+
+	params := ChangeRotaParams{
+		Date:      "2025-01-05",
+		Out:       "alice",
+		In:        "alice",
+		UserEmail: "test@example.com",
+	}
+
+	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "role is required")
+}
