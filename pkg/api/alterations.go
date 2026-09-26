@@ -67,6 +67,7 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	h.publisher.Trigger()
 	h.writeJSON(w, http.StatusCreated, createAlterationResponse{
 		CoverID:     result.CoverID,
 		Alterations: toAlterationResponses(result.Alterations, result.DatesByShiftID),

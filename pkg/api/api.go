@@ -65,14 +65,17 @@ type Handler struct {
 	// Organisers reading the rota at once do not start two solvers over the same
 	// inputs — see draftsolves.go.
 	drafts *draftSolves
+	// publisher keeps the rota sheet in step with every change that could show
+	// on it. Nil on a server that does not publish, and Trigger is safe on nil.
+	publisher *SheetPublisher
 }
 
 // NewHandler creates an API handler with its dependencies. frontend is the
 // embedded frontend build; pass nil (or a build-less placeholder) to serve the
 // API only. newMailer is how availability sends reach Gmail; nil disables
 // sending rather than failing at startup, because everything else works without
-// it.
-func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, logger *zap.Logger) *Handler {
+// it. publisher may be nil, which leaves the rota sheet alone.
+func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, publisher *SheetPublisher, logger *zap.Logger) *Handler {
 	if newMailer == nil {
 		newMailer = func(context.Context, *oauth2.Token) (services.GmailClient, error) {
 			return nil, errors.New("this server is not configured to send mail")
@@ -89,6 +92,7 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 		newMailer:  newMailer,
 		sends:      newSendJobs(),
 		drafts:     newDraftSolves(),
+		publisher:  publisher,
 	}
 
 	// The gmail.send grant comes back through the login callback, which the

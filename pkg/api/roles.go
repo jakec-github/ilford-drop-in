@@ -84,6 +84,9 @@ func (h *Handler) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A Role is a column group on the sheet: added, renamed or reordered.
+	h.publisher.Trigger()
+
 	h.writeJSON(w, http.StatusCreated, toRoleResponse(*role))
 }
 
@@ -105,6 +108,9 @@ func (h *Handler) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, err)
 		return
 	}
+
+	// A Role is a column group on the sheet: added, renamed or reordered.
+	h.publisher.Trigger()
 
 	h.writeJSON(w, http.StatusOK, toRoleResponse(*role))
 }
