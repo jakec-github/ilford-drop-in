@@ -17,9 +17,9 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// missingVolunteer stands in for an allocation whose volunteer is no longer on
-// the roster. They worked the shift, so the row still shows somebody there,
-// and one missing name must not stop the rest of the rota being published.
+// missingVolunteer stands in for somebody allocated who is no longer on the
+// roster. They worked the shift, so the row still shows somebody there, and one
+// missing name must not stop the rest of the rota being published.
 const missingVolunteer = "[unknown volunteer]"
 
 // PublishRotaStore defines the database operations needed for publishing a rota
@@ -42,12 +42,12 @@ type SheetsClient interface {
 // PublishRota brings the rota sheet's Latest tab up to date with the rota
 // allocated most recently (issue #191).
 //
-// It is the one way the sheet is written: the server runs it after every change
-// that could show on the sheet, and the publishRota CLI command runs it by hand.
-// It always publishes the latest allocated rota, whatever prompted it, so a
-// change to an older rota — one already archived — publishes nothing new.
+// It is the one way the sheet is written. The server runs it after every change
+// that could show there, and the publishRota CLI command runs it by hand. It
+// always publishes the latest allocated rota, whatever prompted it: a change to
+// an older rota, already archived, publishes nothing new.
 //
-// Returns the rota it published, or nil when nothing has been allocated yet.
+// Returns what it published, or nil when nothing has been allocated yet.
 func PublishRota(
 	ctx context.Context,
 	database PublishRotaStore,
@@ -62,17 +62,17 @@ func PublishRota(
 	}
 	target := latestAllocated(rotations)
 	if target == nil {
-		logger.Info("No allocated rota to publish")
+		logger.Info("No rota has been allocated, so there is nothing to publish")
 		return nil, nil
 	}
 
-	rota, err := buildSheetRota(ctx, database, volunteerClient, cfg, target)
+	rota, err := sheetRota(ctx, database, volunteerClient, cfg, target)
 	if err != nil {
 		return nil, err
 	}
 	sheet := rotasheet.Lay(rota)
 
-	last, err := lastPublished(ctx, database)
+	last, err := publishedLayout(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +85,9 @@ func PublishRota(
 
 	latestWasMissing, err := sheetsClient.ApplyRotaPlan(cfg.RotaSheetID, plan, archiveTitle)
 	if err != nil {
-		// Google may have applied the batch and lost the answer, so the record
-		// can no longer be trusted to describe Latest. Marking it makes the next
-		// publish rebuild rather than edit from a layout the sheet may not have.
+		// Google can apply a batch and lose the answer, so the record may no
+		// longer describe Latest. Marking it makes the next publish rebuild
+		// rather than edit from a layout the sheet may not have.
 		if markErr := database.MarkPublishedRotaSheetStale(ctx); markErr != nil {
 			logger.Error("Failed to mark the published rota sheet stale", zap.Error(markErr))
 		}
@@ -100,7 +100,7 @@ func PublishRota(
 
 	layout, err := json.Marshal(sheet.Layout)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode published layout: %w", err)
+		return nil, fmt.Errorf("failed to encode the published layout: %w", err)
 	}
 	if err := database.SavePublishedRotaSheet(ctx, target.ID, layout); err != nil {
 		return nil, err
@@ -132,7 +132,8 @@ func latestAllocated(rotations []db.Rotation) *db.Rotation {
 	return latest
 }
 
-func lastPublished(ctx context.Context, database PublishRotaStore) (*rotasheet.Layout, error) {
+// publishedLayout is the record of what Latest holds, nil when there is none.
+func publishedLayout(ctx context.Context, database PublishRotaStore) (*rotasheet.Layout, error) {
 	raw, stale, err := database.GetPublishedRotaSheet(ctx)
 	if err != nil {
 		return nil, err
@@ -142,22 +143,22 @@ func lastPublished(ctx context.Context, database PublishRotaStore) (*rotasheet.L
 	}
 	var layout rotasheet.Layout
 	if err := json.Unmarshal(raw, &layout); err != nil {
-		return nil, fmt.Errorf("failed to decode published layout: %w", err)
+		return nil, fmt.Errorf("failed to decode the published layout: %w", err)
 	}
 	layout.Stale = stale
 	return &layout, nil
 }
 
-// buildSheetRota reads the rota's shifts and who is on each, with alterations
-// applied, as rows for the sheet.
-func buildSheetRota(
+// sheetRota reads the rota's shifts and who is on each, alterations applied, as
+// the sheet shows them.
+func sheetRota(
 	ctx context.Context,
 	database PublishRotaStore,
 	volunteerClient VolunteerClient,
 	cfg *config.Config,
 	target *db.Rotation,
 ) (rotasheet.Rota, error) {
-	// A rota always has at least one shift; an empty result is a broken
+	// A rota always has at least one shift (ADR 0001); none is a broken
 	// invariant and fails loudly.
 	shifts, err := database.GetShiftsByRotaID(ctx, target.ID)
 	if err != nil {
@@ -179,11 +180,11 @@ func buildSheetRota(
 	if err != nil {
 		return rotasheet.Rota{}, fmt.Errorf("failed to fetch alterations: %w", err)
 	}
-	allocationsByShiftID := make(map[string][]db.Allocation)
+	byShift := make(map[string][]db.Allocation)
 	for _, a := range allocations {
-		allocationsByShiftID[a.ShiftID] = append(allocationsByShiftID[a.ShiftID], a)
+		byShift[a.ShiftID] = append(byShift[a.ShiftID], a)
 	}
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, alterations)
+	byShift = utils.ApplyAlterations(byShift, alterations)
 
 	roles, err := RoleTable(ctx, database)
 	if err != nil {
@@ -192,6 +193,12 @@ func buildSheetRota(
 	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
 		return rotasheet.Rota{}, fmt.Errorf("failed to fetch volunteers: %w", err)
+	}
+	// The server's roster is empty until its first sync lands, and stays
+	// empty if that sync failed. Publishing from it would name everybody on
+	// the sheet as unknown.
+	if len(volunteers) == 0 {
+		return rotasheet.Rota{}, fmt.Errorf("the volunteer roster is empty, so the rota cannot be published until it has synced")
 	}
 	volunteersByID := make(map[string]model.Volunteer, len(volunteers))
 	for _, v := range volunteers {
@@ -215,9 +222,9 @@ func buildSheetRota(
 			Names:  map[string][]string{},
 		}
 
-		for _, a := range allocationsByShiftID[shift.ID] {
-			// A custom entry is free text somebody pinned, bracketed so a
-			// reader can tell it from a volunteer the app knows.
+		for _, a := range byShift[shift.ID] {
+			// Pinned free text is bracketed, so a reader can tell it from a
+			// volunteer the app knows.
 			name := "[" + a.CustomEntry + "]"
 			if a.VolunteerID != "" {
 				name = missingVolunteer
@@ -225,9 +232,8 @@ func buildSheetRota(
 					name = v.DisplayName
 				}
 			}
-			// An allocation naming a Role the app does not know, or none, goes
-			// under Unknown rather than being dropped: somebody worked the
-			// shift.
+			// A Role the app does not know, or none, goes under Unknown role
+			// rather than being dropped: somebody worked the shift.
 			key := rotasheet.UnknownRoleKey
 			if role, ok := roles.ByName(a.Role); ok {
 				key = role.ID
@@ -245,9 +251,9 @@ func buildSheetRota(
 }
 
 // archiveTabTitle names the tab Latest is copied to: the dates of the rota it
-// was showing. With no record of that — the first publish since this was
-// deployed — it is the rota before the one being published, which is what
-// Latest held under the old command.
+// holds. With no record of which that is — the first publish since this was
+// deployed — it is the rota before the one being published, which is what the
+// command that used to publish left on Latest.
 func archiveTabTitle(rotations []db.Rotation, last *rotasheet.Layout, target *db.Rotation, logger *zap.Logger) string {
 	var archived *db.Rotation
 	if last != nil {
@@ -272,7 +278,7 @@ func archiveTabTitle(rotations []db.Rotation, last *rotasheet.Layout, target *db
 
 	title, err := sheetsclient.GenerateTabTitle(archived.Start, archived.End)
 	if err != nil {
-		logger.Warn("Failed to generate the archive tab title", zap.Error(err))
+		logger.Warn("Failed to name the archive tab", zap.Error(err))
 		return ""
 	}
 	return title

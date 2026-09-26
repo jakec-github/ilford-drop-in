@@ -142,7 +142,7 @@ func (h *Handler) handleUpdateShift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A new start can reorder the rows. On a rota not yet allocated this
+	// A new start can move a shift's row. On a rota not yet allocated this
 	// publishes nothing new, which is cheaper than asking first.
 	h.publisher.Trigger()
 	h.writeJSON(w, http.StatusOK, shiftUpdateResponse{

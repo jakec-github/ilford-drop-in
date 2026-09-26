@@ -65,17 +65,38 @@ type Handler struct {
 	// Organisers reading the rota at once do not start two solvers over the same
 	// inputs — see draftsolves.go.
 	drafts *draftSolves
+	// solverPython is the Python that runs pyallocator, "" for the usual
+	// resolution (allocator.ResolvePythonInterpreter). Only a test sets it, to stand a
+	// stub in for the solver.
+	solverPython string
 	// publisher keeps the rota sheet in step with every change that could show
-	// on it. Nil on a server that does not publish, and Trigger is safe on nil.
-	publisher *SheetPublisher
+	// on it. Never nil: NewHandler substitutes one that does nothing.
+	publisher RotaPublisher
 }
+
+// RotaPublisher is told whenever something that could show on the rota sheet has
+// changed. Telling it is all a handler does: the publish happens elsewhere, in
+// its own time, and whether it works is no concern of the request (issue #191).
+type RotaPublisher interface {
+	Trigger()
+}
+
+// noPublisher is a server that does not publish the rota — dev mode, and every
+// test that is not about publishing.
+type noPublisher struct{}
+
+func (noPublisher) Trigger() {}
 
 // NewHandler creates an API handler with its dependencies. frontend is the
 // embedded frontend build; pass nil (or a build-less placeholder) to serve the
 // API only. newMailer is how availability sends reach Gmail; nil disables
 // sending rather than failing at startup, because everything else works without
-// it. publisher may be nil, which leaves the rota sheet alone.
-func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, publisher *SheetPublisher, logger *zap.Logger) *Handler {
+// it. publisher is told of every change that could show on the rota sheet; nil
+// leaves the sheet alone.
+func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, publisher RotaPublisher, logger *zap.Logger) *Handler {
+	if publisher == nil {
+		publisher = noPublisher{}
+	}
 	if newMailer == nil {
 		newMailer = func(context.Context, *oauth2.Token) (services.GmailClient, error) {
 			return nil, errors.New("this server is not configured to send mail")

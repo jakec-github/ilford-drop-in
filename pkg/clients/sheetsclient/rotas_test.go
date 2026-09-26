@@ -5,6 +5,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/api/sheets/v4"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/rotasheet"
 )
 
 func TestGenerateTabTitle(t *testing.T) {
@@ -65,112 +68,143 @@ func TestGenerateTabTitle(t *testing.T) {
 	}
 }
 
-// The published sheet's layout rule, stated once here (issue #185): a column
-// group per configured Role in priority order, each as wide as the fullest
-// shift needs and never narrower than one, then unknown-Role columns only if
-// somebody is in one, then the two hand-typed columns.
-func TestRotaValuesGivesEveryRoleItsOwnColumns(t *testing.T) {
-	rota := &PublishedRota{
-		RoleNames: []string{"Team lead", "Service volunteer", "Food collector"},
-		Rows: []PublishedRotaRow{
-			{
-				Date:  "Mon Jul 13 2026",
-				Roles: map[string][]string{"Team lead": {"Alice"}, "Service volunteer": {"Bob", "Carla"}},
-			},
-			{
-				Date:  "Mon Jul 20 2026",
-				Roles: map[string][]string{"Service volunteer": {"Dev"}},
-			},
-		},
+// spreadsheetWith is a spreadsheet holding the named tabs, numbered from 0.
+func spreadsheetWith(titles ...string) *sheets.Spreadsheet {
+	spreadsheet := &sheets.Spreadsheet{}
+	for i, title := range titles {
+		spreadsheet.Sheets = append(spreadsheet.Sheets, &sheets.Sheet{
+			Properties: &sheets.SheetProperties{SheetId: int64(i), Title: title},
+		})
 	}
-
-	values := rotaValues(rota)
-
-	require.Len(t, values, 5, "two blank rows, a header, and one row per shift")
-	assert.Equal(t, []interface{}{}, values[0])
-	assert.Equal(t, []interface{}{}, values[1])
-	assert.Equal(t, []interface{}{
-		"Date",
-		"Team lead",
-		"Service volunteer 1", "Service volunteer 2",
-		"Food collector",
-		"Hot food", "Collection",
-	}, values[2], "a Role filled twice takes two numbered columns; one nobody filled still takes one")
-	assert.Equal(t, []interface{}{
-		"Mon Jul 13 2026", "Alice", "Bob", "Carla", "", "", "",
-	}, values[3])
-	assert.Equal(t, []interface{}{
-		"Mon Jul 20 2026", "", "Dev", "", "", "", "",
-	}, values[4], "one person per cell, so an unfilled Seat is an empty cell rather than a shuffle")
+	return spreadsheet
 }
 
-// Somebody whose Role the app cannot name still worked the shift, so they are
-// published — under a heading that says exactly that, and only when there is
-// somebody to put there.
-func TestRotaValuesPublishesUnknownRolesInColumnsOfTheirOwn(t *testing.T) {
-	rota := &PublishedRota{
-		RoleNames: []string{"Service volunteer"},
-		Rows: []PublishedRotaRow{
-			{
-				Date:        "Mon Jul 13 2026",
-				Roles:       map[string][]string{"Service volunteer": {"Bob"}},
-				UnknownRole: []string{"Erin", "[St John's team]"},
-			},
-			{Date: "Mon Jul 20 2026", Roles: map[string][]string{"Service volunteer": {"Dev"}}},
-		},
-	}
-
-	values := rotaValues(rota)
-
-	assert.Equal(t, []interface{}{
-		"Date", "Service volunteer",
-		"Unknown role 1", "Unknown role 2",
-		"Hot food", "Collection",
-	}, values[2])
-	assert.Equal(t, []interface{}{
-		"Mon Jul 13 2026", "Bob", "Erin", "[St John's team]", "", "",
-	}, values[3])
-
-	nobodyUnknown := &PublishedRota{
-		RoleNames: []string{"Service volunteer"},
-		Rows: []PublishedRotaRow{
-			{Date: "Mon Jul 13 2026", Roles: map[string][]string{"Service volunteer": {"Bob"}}},
-		},
-	}
-	assert.Equal(t,
-		[]interface{}{"Date", "Service volunteer", "Hot food", "Collection"},
-		rotaValues(nobodyUnknown)[2],
-		"a rota where every Role is known has no unknown-role columns at all")
+func onePersonRota() rotasheet.Sheet {
+	return rotasheet.Lay(rotasheet.Rota{
+		ID:     "rota",
+		Roles:  []rotasheet.Role{{ID: "lead", Name: "Team lead"}},
+		Shifts: []rotasheet.Shift{{ID: "s1", Date: "Sun Jan 04 2026", Names: map[string][]string{"lead": {"Alice"}}}},
+	})
 }
 
-// A closed shift says so in the first cell after the date, whatever column that
-// turns out to be, and says it once.
-func TestRotaValuesAnnouncesAClosedShiftOnce(t *testing.T) {
-	rota := &PublishedRota{
-		RoleNames: []string{"Team lead", "Service volunteer"},
-		Rows: []PublishedRotaRow{
-			{Date: "Mon Jul 13 2026", Closed: true},
-			{Date: "Mon Jul 20 2026", Roles: map[string][]string{"Service volunteer": {"Bob", "Carla"}}},
-		},
+// cells reads an UpdateCells request back as the strings it writes, "" for a
+// cell it clears.
+func cells(t *testing.T, request *sheets.Request) [][]string {
+	t.Helper()
+	require.NotNil(t, request.UpdateCells, "a cell write")
+	var out [][]string
+	for _, row := range request.UpdateCells.Rows {
+		values := []string{}
+		for _, cell := range row.Values {
+			value := ""
+			if cell.UserEnteredValue != nil {
+				value = *cell.UserEnteredValue.StringValue
+			}
+			values = append(values, value)
+		}
+		out = append(out, values)
 	}
-
-	values := rotaValues(rota)
-
-	assert.Equal(t, []interface{}{
-		"Mon Jul 13 2026", "CLOSED", "", "", "", "",
-	}, values[3])
+	return out
 }
 
-// A rota of nothing but closed shifts still has a column to say so in, which is
-// why a Role nobody filled keeps one.
-func TestRotaValuesLeavesAColumnForAnEntirelyClosedRota(t *testing.T) {
-	rota := &PublishedRota{
-		RoleNames: []string{"Service volunteer"},
-		Rows:      []PublishedRotaRow{{Date: "Mon Jul 13 2026", Closed: true}},
+// A new rota archives Latest under the old rota's dates, then clears it and
+// builds it again — one batch, so the archive is taken before anything is
+// cleared.
+func TestRotaPlanRequestsArchiveAndRebuild(t *testing.T) {
+	plan := rotasheet.Plan{Archive: true, Rebuild: true, Sheet: onePersonRota()}
+
+	requests, missing := rotaPlanRequests(spreadsheetWith("Responses", "Latest"), plan, "Oct 06 - Dec 29")
+
+	assert.False(t, missing)
+	require.Len(t, requests, 3)
+	assert.Equal(t, &sheets.DuplicateSheetRequest{SourceSheetId: 1, NewSheetName: "Oct 06 - Dec 29"}, requests[0].DuplicateSheet)
+	assert.Equal(t, &sheets.UpdateCellsRequest{Range: &sheets.GridRange{SheetId: 1}, Fields: "userEnteredValue"}, requests[1].UpdateCells,
+		"every value on the tab is cleared, not only the app's columns")
+	assert.Equal(t, int64(0), requests[2].UpdateCells.Start.RowIndex)
+	assert.Equal(t, onePersonRota().FullValues(), cells(t, requests[2]))
+}
+
+// An archive never overwrites a tab: a title already taken is numbered.
+func TestRotaPlanRequestsNumberAnArchiveTitleAlreadyTaken(t *testing.T) {
+	plan := rotasheet.Plan{Archive: true, Rebuild: true, Sheet: onePersonRota()}
+
+	requests, _ := rotaPlanRequests(spreadsheetWith("Latest", "Oct 06 - Dec 29"), plan, "Oct 06 - Dec 29")
+
+	assert.Equal(t, "Oct 06 - Dec 29 (2)", requests[0].DuplicateSheet.NewSheetName)
+}
+
+// With no rota to name it after — a deployment's first rota — Latest is still
+// archived before it is cleared. Whatever is on it was somebody's.
+func TestRotaPlanRequestsArchiveWithNoRotaToNameItAfter(t *testing.T) {
+	plan := rotasheet.Plan{Archive: true, Rebuild: true, Sheet: onePersonRota()}
+
+	requests, _ := rotaPlanRequests(spreadsheetWith("Latest"), plan, "")
+
+	require.NotNil(t, requests[0].DuplicateSheet)
+	assert.Equal(t, "Latest (archived)", requests[0].DuplicateSheet.NewSheetName)
+}
+
+// A rebuild that is not a new rota keeps no archive.
+func TestRotaPlanRequestsRebuildWithoutArchive(t *testing.T) {
+	plan := rotasheet.Plan{Rebuild: true, Sheet: onePersonRota()}
+
+	requests, _ := rotaPlanRequests(spreadsheetWith("Latest"), plan, "")
+
+	require.Len(t, requests, 2)
+	assert.Nil(t, requests[0].DuplicateSheet)
+}
+
+// A missing Latest is created and built from scratch whatever the plan said,
+// in the same batch — so its id is chosen here rather than by Google.
+func TestRotaPlanRequestsCreateAMissingLatest(t *testing.T) {
+	plan := rotasheet.Plan{Ops: []rotasheet.Op{{Kind: rotasheet.InsertColumns, Index: 2, Count: 1}}, Sheet: onePersonRota()}
+
+	requests, missing := rotaPlanRequests(spreadsheetWith("Responses", "Oct 06 - Dec 29"), plan, "")
+
+	assert.True(t, missing)
+	require.Len(t, requests, 2)
+	require.NotNil(t, requests[0].AddSheet)
+	created := requests[0].AddSheet.Properties
+	assert.Equal(t, "Latest", created.Title)
+	assert.NotContains(t, []int64{0, 1}, created.SheetId, "an id no tab already has")
+	assert.Equal(t, created.SheetId, requests[1].UpdateCells.Start.SheetId)
+	assert.Equal(t, onePersonRota().FullValues(), cells(t, requests[1]))
+}
+
+// An edit in place is the plan's ops in order, then the app's columns
+// rewritten from the header down — and nothing written to anybody else's.
+func TestRotaPlanRequestsEditInPlace(t *testing.T) {
+	plan := rotasheet.Plan{
+		Ops: []rotasheet.Op{
+			{Kind: rotasheet.DeleteColumns, Index: 3, Count: 1},
+			{Kind: rotasheet.MoveColumns, Index: 2, Count: 2, To: 1},
+			{Kind: rotasheet.InsertColumns, Index: 3, Count: 2},
+			{Kind: rotasheet.MoveRows, Index: 5, Count: 1, To: 3},
+		},
+		Sheet: onePersonRota(),
 	}
 
-	values := rotaValues(rota)
+	requests, missing := rotaPlanRequests(spreadsheetWith("Latest"), plan, "")
 
-	assert.Equal(t, []interface{}{"Date", "Service volunteer", "Hot food", "Collection"}, values[2])
-	assert.Equal(t, []interface{}{"Mon Jul 13 2026", "CLOSED", "", ""}, values[3])
+	assert.False(t, missing)
+	require.Len(t, requests, 5)
+	assert.Equal(t, &sheets.DeleteDimensionRequest{Range: &sheets.DimensionRange{SheetId: 0, Dimension: "COLUMNS", StartIndex: 3, EndIndex: 4}}, requests[0].DeleteDimension)
+	assert.Equal(t, &sheets.MoveDimensionRequest{Source: &sheets.DimensionRange{SheetId: 0, Dimension: "COLUMNS", StartIndex: 2, EndIndex: 4}, DestinationIndex: 1}, requests[1].MoveDimension)
+	assert.Equal(t, &sheets.InsertDimensionRequest{Range: &sheets.DimensionRange{SheetId: 0, Dimension: "COLUMNS", StartIndex: 3, EndIndex: 5}, InheritFromBefore: true}, requests[2].InsertDimension)
+	assert.Equal(t, &sheets.MoveDimensionRequest{Source: &sheets.DimensionRange{SheetId: 0, Dimension: "ROWS", StartIndex: 5, EndIndex: 6}, DestinationIndex: 3}, requests[3].MoveDimension)
+
+	assert.Equal(t, int64(rotasheet.HeaderRow), requests[4].UpdateCells.Start.RowIndex)
+	assert.Equal(t, onePersonRota().OwnedValues(), cells(t, requests[4]))
+}
+
+// An empty cell is written as a cleared one, which is how somebody who has left
+// a shift disappears from it.
+func TestRotaPlanRequestsClearEmptyCells(t *testing.T) {
+	plan := rotasheet.Plan{Sheet: rotasheet.Sheet{Header: []string{"Date", "Team lead"}, Rows: [][]string{{"Sun Jan 04 2026", ""}}}}
+
+	requests, _ := rotaPlanRequests(spreadsheetWith("Latest"), plan, "")
+
+	cleared := requests[0].UpdateCells.Rows[1].Values[1]
+	assert.Nil(t, cleared.UserEnteredValue)
+	assert.Equal(t, "userEnteredValue", requests[0].UpdateCells.Fields, "so the cell is cleared rather than skipped")
 }

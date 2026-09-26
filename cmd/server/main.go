@@ -183,8 +183,10 @@ func run(env string, portOverride int) error {
 			volunteers.Replace(fetched)
 			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
 			// The sheet shows display names, and the roster is where they
-			// come from. Nil on the startup sync, which runs before the
-			// publisher exists and has no change to publish.
+			// come from. On the startup sync this is the startup publish,
+			// which puts right a change made while the server was down or
+			// one whose publish failed — and it waits for the roster, since
+			// publishing needs one.
 			publisher.Trigger()
 			return nil
 		}
@@ -200,9 +202,6 @@ func run(env string, portOverride int) error {
 			_, err = services.PublishRota(ctx, database, client, volunteers, cfg, logger)
 			return err
 		}, logger)
-		// Once at startup: a change made while the server was down, or one
-		// whose publish failed, reaches the sheet without waiting for another.
-		publisher.Trigger()
 
 		// Populate the roster at startup so reads work before any Organiser syncs. A
 		// failure here (transient Sheets outage, say) is not fatal: the server boots

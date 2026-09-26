@@ -2,322 +2,26 @@ package services
 
 import (
 	"context"
-	"strings"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/rotasheet"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// leadOf is who the row puts in the Team lead columns, and ordinaryNames who it
-// puts in the Service volunteer ones. Every Role has columns of its own now
-// (issue #185), so these two just name the Roles these tests are about.
-func leadOf(row sheetsclient.PublishedRotaRow) string {
-	return strings.Join(row.Roles["Team lead"], ", ")
-}
-
-func ordinaryNames(row sheetsclient.PublishedRotaRow) []string {
-	return row.Roles["Service volunteer"]
-}
-
-func TestPublishRota_Success(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	// Setup mock store with rota and allocations
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{
-				ID:         "rota-1",
-				Start:      "2025-01-05", // Sunday, Jan 5, 2025
-				ShiftCount: 2,
-			},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 2),
-		allocations: []db.Allocation{
-			// Shift 1 - Jan 5
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
-			// Shift 2 - Jan 12
-			{ID: "alloc-4", ShiftID: "2025-01-12", Role: "Team lead", VolunteerID: "dave"},
-			{ID: "alloc-5", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "eve"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Brown"},
-			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
-			{ID: "eve", FirstName: "Eve", LastName: "Davis"},
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	// Call PublishRota
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Assertions
-	assert.Equal(t, "2025-01-05", result.StartDate)
-	assert.Equal(t, 2, result.ShiftCount)
-	require.Len(t, result.Rows, 2)
-
-	// Check first shift (all first names are unique, so DisplayName = FirstName only)
-	shift1 := result.Rows[0]
-	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
-	assert.Equal(t, "Alice", leadOf(shift1))
-	assert.Len(t, ordinaryNames(shift1), 2)
-	assert.Contains(t, ordinaryNames(shift1), "Bob")
-	assert.Contains(t, ordinaryNames(shift1), "Charlie")
-	assert.Equal(t, "", shift1.HotFood)
-	assert.Equal(t, "", shift1.Collection)
-
-	// Check second shift
-	shift2 := result.Rows[1]
-	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
-	assert.Equal(t, "Dave", leadOf(shift2))
-	assert.Len(t, ordinaryNames(shift2), 1)
-	assert.Contains(t, ordinaryNames(shift2), "Eve")
-}
-
-func TestPublishRota_WithCustomEntries(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			// Custom entry (external volunteer)
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "", CustomEntry: "External John"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	require.Len(t, result.Rows, 1)
-	shift := result.Rows[0]
-	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Len(t, ordinaryNames(shift), 2)
-	assert.Contains(t, ordinaryNames(shift), "Bob")
-	assert.Contains(t, ordinaryNames(shift), "[External John]",
-		"a custom entry fills a Seat in the Role it was pinned to")
-}
-
-func TestPublishRota_VolunteersSorted(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			// Volunteers in reverse alphabetical order
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "zebra"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "alloc-4", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "mike"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "zebra", FirstName: "Zebra", LastName: "Last"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-			{ID: "mike", FirstName: "Mike", LastName: "Anderson"},
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.Len(t, result.Rows, 1)
-
-	// Volunteers should be sorted alphabetically (first names are unique, so DisplayName = FirstName)
-	volunteers := ordinaryNames(result.Rows[0])
-	require.Len(t, volunteers, 3)
-	assert.Equal(t, "Bob", volunteers[0])
-	assert.Equal(t, "Mike", volunteers[1])
-	assert.Equal(t, "Zebra", volunteers[2])
-}
-
-func TestPublishRota_RotaNotFound(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-	}
-
-	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	// Try to publish non-existent rota
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-999")
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "rota not found")
-}
-
-func TestPublishRota_NoAllocations(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 2},
-		},
-		shifts:      sundayShifts("rota-1", "2025-01-05", 2),
-		allocations: []db.Allocation{}, // No allocations
-	}
-
-	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Should have rows but with empty data
-	require.Len(t, result.Rows, 2)
-	assert.Equal(t, "", leadOf(result.Rows[0]))
-	assert.Empty(t, ordinaryNames(result.Rows[0]))
-	assert.Equal(t, "", leadOf(result.Rows[1]))
-	assert.Empty(t, ordinaryNames(result.Rows[1]))
-}
-
-func TestPublishRota_MissingVolunteer(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			// Bob doesn't exist in volunteer list
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Brown"},
-			// Bob is missing
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "volunteer not found")
-	assert.Contains(t, err.Error(), "bob")
-}
-
-func TestPublishRota_DefaultsToLatestRota(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", End: "2025-01-05", ShiftCount: 1},
-			{ID: "rota-2", Start: "2025-01-19", End: "2025-01-19", ShiftCount: 1}, // Latest rota
-			{ID: "rota-3", Start: "2025-01-12", End: "2025-01-12", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-2", "2025-01-19", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-19", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-19", Role: "Service volunteer", VolunteerID: "bob"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	// Call with empty rotaID to trigger default behavior
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Should use rota-2 (the latest)
-	assert.Equal(t, "2025-01-19", result.StartDate)
-	assert.Equal(t, 1, result.ShiftCount)
-	require.Len(t, result.Rows, 1)
-	assert.Equal(t, "Sun Jan 19 2025", result.Rows[0].Date)
-	assert.Equal(t, "Alice", leadOf(result.Rows[0]))
-	assert.Contains(t, ordinaryNames(result.Rows[0]), "Bob")
-}
-
-func TestPublishRota_NoRotations(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations:   []db.Rotation{}, // No rotations
-		allocations: []db.Allocation{},
-	}
-
-	volunteerClient := &mockVolClient{volunteers: []model.Volunteer{}}
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "")
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "no rotations found")
-}
+const (
+	leadID    = "role-team-lead"
+	serviceID = "role-service-volunteer"
+)
 
 // mockPublishRotaStore implements PublishRotaStore for testing
 type mockPublishRotaStore struct {
@@ -327,6 +31,18 @@ type mockPublishRotaStore struct {
 	shifts      []db.Shift
 	allocations []db.Allocation
 	alterations []db.Alteration
+
+	// published is the record of what Latest holds, nil when there is none.
+	published *rotasheet.Layout
+	stale     bool
+
+	saved       []savedLayout
+	markedStale bool
+}
+
+type savedLayout struct {
+	rotaID string
+	layout rotasheet.Layout
 }
 
 func (m *mockPublishRotaStore) GetRotations(ctx context.Context) ([]db.Rotation, error) {
@@ -365,17 +81,278 @@ func (m *mockPublishRotaStore) GetAlterationsByShiftIDs(ctx context.Context, shi
 	return filtered, nil
 }
 
-// mockSheetsClient implements SheetsClient for testing
+func (m *mockPublishRotaStore) GetPublishedRotaSheet(ctx context.Context) ([]byte, bool, error) {
+	if m.published == nil {
+		return nil, false, nil
+	}
+	raw, err := json.Marshal(m.published)
+	return raw, m.stale, err
+}
+
+func (m *mockPublishRotaStore) SavePublishedRotaSheet(ctx context.Context, rotaID string, raw []byte) error {
+	var layout rotasheet.Layout
+	if err := json.Unmarshal(raw, &layout); err != nil {
+		return err
+	}
+	m.saved = append(m.saved, savedLayout{rotaID: rotaID, layout: layout})
+	return nil
+}
+
+func (m *mockPublishRotaStore) MarkPublishedRotaSheetStale(ctx context.Context) error {
+	m.markedStale = true
+	return nil
+}
+
+// mockSheetsClient records the publish it was asked to carry out.
 type mockSheetsClient struct {
-	publishRotaError error
+	err              error
+	latestWasMissing bool
+
+	applied      []rotasheet.Plan
+	archiveTitle string
 }
 
-func (m *mockSheetsClient) PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota, previousRotaTabTitle string) error {
-	return m.publishRotaError
+func (m *mockSheetsClient) ApplyRotaPlan(spreadsheetID string, plan rotasheet.Plan, archiveTitle string) (bool, error) {
+	m.applied = append(m.applied, plan)
+	m.archiveTitle = archiveTitle
+	return m.latestWasMissing, m.err
 }
 
-// closeShift marks one of a fixture's shifts closed by date, which is where
-// closure lives now — the config has nothing to say about it.
+func (m *mockSheetsClient) plan(t *testing.T) rotasheet.Plan {
+	t.Helper()
+	require.Len(t, m.applied, 1, "one publish")
+	return m.applied[0]
+}
+
+var publishVolunteers = &mockVolClient{volunteers: []model.Volunteer{
+	{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice"},
+	{ID: "bob", FirstName: "Bob", LastName: "Jones", DisplayName: "Bob"},
+	{ID: "charlie", FirstName: "Charlie", LastName: "Brown", DisplayName: "Charlie"},
+	{ID: "dave", FirstName: "Dave", LastName: "Wilson", DisplayName: "Dave"},
+}}
+
+// rotaOnTheSheet is one allocated rota of two Sundays: Alice leading the first
+// with Charlie and Bob, Dave leading the second.
+func rotaOnTheSheet() *mockPublishRotaStore {
+	return &mockPublishRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-1", Start: "2025-01-05", End: "2025-01-12", ShiftCount: 2, AllocatedDatetime: "2024-12-20T10:00:00Z"},
+		},
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
+			{ID: "a3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a4", ShiftID: "2025-01-12", Role: "Team lead", VolunteerID: "dave"},
+		},
+	}
+}
+
+func publish(t *testing.T, store *mockPublishRotaStore, sheets *mockSheetsClient) error {
+	t.Helper()
+	_, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Config{RotaSheetID: "sheet"}, zap.NewNop())
+	return err
+}
+
+// Latest shows who is on each shift: a column per person under their Role,
+// alphabetically within it.
+func TestPublishRota_LaysOutWhoIsOnEachShift(t *testing.T) {
+	sheets := &mockSheetsClient{}
+	require.NoError(t, publish(t, rotaOnTheSheet(), sheets))
+
+	sheet := sheets.plan(t).Sheet
+	assert.Equal(t, []string{"Date", "Team lead", "Service volunteer 1", "Service volunteer 2"}, sheet.Header)
+	assert.Equal(t, [][]string{
+		{"Sun Jan 05 2025", "Alice", "Bob", "Charlie"},
+		{"Sun Jan 12 2025", "Dave", "", ""},
+	}, sheet.Rows)
+}
+
+// The sheet shows the rota as it now is: alterations applied, pinned free text
+// bracketed, a closed shift saying so, and somebody whose Role the app cannot
+// name under Unknown role rather than left off.
+func TestPublishRota_ShowsTheRotaAsItNowIs(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.shifts = closeShift(sundayShifts("rota-1", "2025-01-05", 3), "2025-01-19")
+	store.allocations = append(store.allocations,
+		db.Allocation{ID: "a5", ShiftID: "2025-01-12", Role: "Service volunteer", CustomEntry: "Rotary Club"},
+		db.Allocation{ID: "a6", ShiftID: "2025-01-12", Role: "Retired role", VolunteerID: "bob"},
+	)
+	store.alterations = []db.Alteration{
+		{ID: "x1", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "charlie"},
+		{ID: "x2", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", Role: "Service volunteer"},
+	}
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	sheet := sheets.plan(t).Sheet
+	assert.Equal(t, []string{"Date", "Team lead", "Service volunteer 1", "Service volunteer 2", "Unknown role"}, sheet.Header)
+	assert.Equal(t, [][]string{
+		{"Sun Jan 05 2025", "Alice", "Bob", "Dave", ""},
+		{"Sun Jan 12 2025", "Dave", "[Rotary Club]", "", "Bob"},
+		{"Sun Jan 19 2025", "CLOSED", "", "", ""},
+	}, sheet.Rows)
+}
+
+// A volunteer since removed from the roster still worked the shift. The row
+// says somebody was there, and the rest of the rota is published.
+func TestPublishRota_ShowsAVolunteerMissingFromTheRosterAsAPlaceholder(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.allocations = append(store.allocations, db.Allocation{ID: "a9", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "long-gone"})
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	assert.Equal(t, []string{"Sun Jan 12 2025", "Dave", "[unknown volunteer]", ""}, sheets.plan(t).Sheet.Rows[1])
+}
+
+// Latest holds the rota allocated most recently, whatever prompted the publish
+// and whatever the rotas' dates: never one still being planned, and never an
+// older one somebody has just changed.
+func TestPublishRota_PublishesTheRotaAllocatedMostRecently(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.rotations = []db.Rotation{
+		{ID: "older", Start: "2024-10-06", End: "2024-12-29", AllocatedDatetime: "2024-09-20T10:00:00Z"},
+		{ID: "rota-1", Start: "2025-01-05", End: "2025-01-12", AllocatedDatetime: "2024-12-20T10:00:00Z"},
+		{ID: "in-flight", Start: "2025-03-30", End: "2025-06-22"},
+	}
+	store.shifts = append(store.shifts, sundayShifts("in-flight", "2025-03-30", 2)...)
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	assert.Equal(t, "rota-1", sheets.plan(t).Sheet.Layout.RotaID)
+}
+
+// Until something has been allocated there is nothing to publish, and the sheet
+// is left alone.
+func TestPublishRota_PublishesNothingBeforeAnythingIsAllocated(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.rotations[0].AllocatedDatetime = ""
+	sheets := &mockSheetsClient{}
+
+	sheet, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Config{}, zap.NewNop())
+
+	require.NoError(t, err)
+	assert.Nil(t, sheet)
+	assert.Empty(t, sheets.applied)
+	assert.Empty(t, store.saved)
+}
+
+// What was published is remembered, so the next publish can edit Latest rather
+// than rebuild it.
+func TestPublishRota_RemembersWhatItPublished(t *testing.T) {
+	store := rotaOnTheSheet()
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	require.Len(t, store.saved, 1)
+	assert.Equal(t, "rota-1", store.saved[0].rotaID)
+	assert.Equal(t, sheets.plan(t).Sheet.Layout, store.saved[0].layout)
+}
+
+// A change to the rota already on Latest edits it in place, from the record of
+// what it holds.
+func TestPublishRota_EditsTheRotaAlreadyOnLatest(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.published = &rotasheet.Layout{
+		RotaID:   "rota-1",
+		ShiftIDs: []string{"2025-01-05", "2025-01-12"},
+		Groups:   []rotasheet.Group{{Key: leadID, Width: 1}, {Key: serviceID, Width: 1}},
+	}
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	plan := sheets.plan(t)
+	assert.False(t, plan.Archive)
+	assert.False(t, plan.Rebuild)
+	assert.Equal(t, []rotasheet.Op{{Kind: rotasheet.InsertColumns, Index: 3, Count: 1}}, plan.Ops, "Service volunteer grew a column")
+}
+
+// A newly allocated rota archives the one Latest was showing, under that
+// rota's dates.
+func TestPublishRota_ArchivesTheRotaLatestWasShowing(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.rotations = append(store.rotations, db.Rotation{ID: "older", Start: "2024-10-06", End: "2024-12-29", AllocatedDatetime: "2024-09-20T10:00:00Z"})
+	store.published = &rotasheet.Layout{RotaID: "older"}
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	assert.True(t, sheets.plan(t).Archive)
+	assert.Equal(t, "Oct 06 - Dec 29", sheets.archiveTitle)
+}
+
+// The first publish after this was deployed has no record of what Latest holds.
+// It is treated as a new rota, and Latest is archived under the rota before
+// this one, which is what the command that used to publish left there.
+func TestPublishRota_FirstPublishArchivesUnderThePreviousRota(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.rotations = append(store.rotations,
+		db.Rotation{ID: "much-older", Start: "2024-07-07", End: "2024-09-29", AllocatedDatetime: "2024-06-20T10:00:00Z"},
+		db.Rotation{ID: "older", Start: "2024-10-06", End: "2024-12-29", AllocatedDatetime: "2024-09-20T10:00:00Z"},
+	)
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	plan := sheets.plan(t)
+	assert.True(t, plan.Archive)
+	assert.True(t, plan.Rebuild)
+	assert.Equal(t, "Oct 06 - Dec 29", sheets.archiveTitle)
+}
+
+// A failed publish may still have landed — Google can apply the edits and lose
+// the answer — so the record is no longer to be trusted. It is marked, and left
+// as it was rather than claiming the publish that failed.
+func TestPublishRota_AFailedPublishMarksTheRecordStale(t *testing.T) {
+	store := rotaOnTheSheet()
+	sheets := &mockSheetsClient{err: errors.New("deadline exceeded")}
+
+	err := publish(t, store, sheets)
+
+	require.Error(t, err)
+	assert.True(t, store.markedStale)
+	assert.Empty(t, store.saved)
+}
+
+// A record gone stale is not edited from: Latest is archived and rebuilt, which
+// keeps whatever people typed in the archive and cannot misalign it.
+func TestPublishRota_RebuildsFromAStaleRecord(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.published = &rotasheet.Layout{
+		RotaID:   "rota-1",
+		ShiftIDs: []string{"2025-01-05", "2025-01-12"},
+		Groups:   []rotasheet.Group{{Key: leadID, Width: 1}, {Key: serviceID, Width: 2}},
+	}
+	store.stale = true
+	sheets := &mockSheetsClient{}
+
+	require.NoError(t, publish(t, store, sheets))
+
+	plan := sheets.plan(t)
+	assert.True(t, plan.Archive)
+	assert.True(t, plan.Rebuild)
+	assert.Equal(t, "Jan 05 - Jan 12", sheets.archiveTitle, "archived under the rota the record says Latest holds")
+}
+
+// A Latest somebody deleted or renamed is rebuilt, and the warning says so.
+func TestPublishRota_WarnsWhenLatestWasMissing(t *testing.T) {
+	core, logs := observer.New(zapcore.WarnLevel)
+	store := rotaOnTheSheet()
+	sheets := &mockSheetsClient{latestWasMissing: true}
+
+	_, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Config{}, zap.New(core))
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, logs.FilterMessageSnippet("Latest tab was missing").Len())
+	assert.Len(t, store.saved, 1, "what was rebuilt is what Latest now holds")
+}
+
+// closeShift marks one of a fixture's shifts closed by date.
 func closeShift(shifts []db.Shift, date string) []db.Shift {
 	for i := range shifts {
 		if shifts[i].Date == date {
@@ -385,207 +362,16 @@ func closeShift(shifts []db.Shift, date string) []db.Shift {
 	return shifts
 }
 
-func TestPublishRota_ClosedShifts(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
+// An empty roster is a server whose roster has not synced yet, not a drop-in
+// with nobody in it. Publishing then would name everybody on the sheet as
+// unknown, so it refuses and leaves the sheet as it was.
+func TestPublishRota_RefusesBeforeTheRosterHasLoaded(t *testing.T) {
+	store := rotaOnTheSheet()
+	sheets := &mockSheetsClient{}
 
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{
-				ID:         "rota-1",
-				Start:      "2025-01-05", // Sunday, Jan 5, 2025
-				ShiftCount: 3,
-			},
-		},
-		shifts: closeShift(sundayShifts("rota-1", "2025-01-05", 3), "2025-01-12"),
-		allocations: []db.Allocation{
-			// Shift 1 - Jan 5 (open shift)
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			// Shift 2 - Jan 12 (closed - no allocations in DB)
-			// Shift 3 - Jan 19 (open shift)
-			{ID: "alloc-3", ShiftID: "2025-01-19", Role: "Team lead", VolunteerID: "charlie"},
-			{ID: "alloc-4", ShiftID: "2025-01-19", Role: "Service volunteer", VolunteerID: "dave"},
-		},
-	}
+	_, err := PublishRota(context.Background(), store, sheets, &mockVolClient{}, &config.Config{}, zap.NewNop())
 
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Brown"},
-			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
-		},
-	}
-
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, testCfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	require.Len(t, result.Rows, 3)
-
-	// Check first shift (open) - first names are unique, so DisplayName = FirstName
-	shift1 := result.Rows[0]
-	assert.Equal(t, "Sun Jan 05 2025", shift1.Date)
-	assert.Equal(t, "Alice", leadOf(shift1))
-	assert.Len(t, ordinaryNames(shift1), 1)
-	assert.Contains(t, ordinaryNames(shift1), "Bob")
-
-	// Check second shift (closed)
-	shift2 := result.Rows[1]
-	assert.Equal(t, "Sun Jan 12 2025", shift2.Date)
-	assert.True(t, shift2.Closed, "a closed shift is flagged, not spelled into a name column")
-	assert.Empty(t, leadOf(shift2), "a closed shift fills no Seats")
-	assert.Empty(t, ordinaryNames(shift2), "Closed shift should have no volunteers")
-	assert.Equal(t, "", shift2.HotFood)
-	assert.Equal(t, "", shift2.Collection)
-
-	// Check third shift (open)
-	shift3 := result.Rows[2]
-	assert.Equal(t, "Sun Jan 19 2025", shift3.Date)
-	assert.Equal(t, "Charlie", leadOf(shift3))
-	assert.Len(t, ordinaryNames(shift3), 1)
-	assert.Contains(t, ordinaryNames(shift3), "Dave")
-}
-
-func TestPublishRota_WithAlterations(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "alloc-3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
-		},
-		alterations: []db.Alteration{
-			// Remove bob and add dave
-			{ID: "alt-1", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T00:00:00Z"},
-			{ID: "alt-2", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", Role: "Service volunteer", SetTime: "2025-01-01T01:00:00Z"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-			{ID: "charlie", FirstName: "Charlie", LastName: "Brown"},
-			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	require.Len(t, result.Rows, 1)
-	shift := result.Rows[0]
-	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Len(t, ordinaryNames(shift), 2)
-	assert.Contains(t, ordinaryNames(shift), "Charlie")
-	assert.Contains(t, ordinaryNames(shift), "Dave")
-	assert.NotContains(t, ordinaryNames(shift), "Bob")
-}
-
-// An alteration written before alterations had a Role column names none, and
-// there is nothing left to guess one with (issue #185). Whoever it added still
-// worked the shift, so they are published — under Unknown role, which says
-// exactly what the app knows.
-func TestPublishRota_AlterationWithoutARoleIsPublishedAsUnknown(t *testing.T) {
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}},
-		shifts:    sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-		},
-		alterations: []db.Alteration{
-			{ID: "alt-1", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", SetTime: "2025-01-01T01:00:00Z"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "dave", FirstName: "Dave", LastName: "Wilson"},
-		},
-	}
-
-	result, err := PublishRota(context.Background(), store, &mockSheetsClient{}, volunteerClient,
-		&config.Config{}, zap.NewNop(), "rota-1")
-	require.NoError(t, err)
-
-	require.Len(t, result.Rows, 1)
-	shift := result.Rows[0]
-	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Empty(t, ordinaryNames(shift))
-	assert.Equal(t, []string{"Dave"}, shift.UnknownRole)
-}
-
-// Every configured Role gets columns, in the order Seats are filled, whether or
-// not anybody is in them — the sheet's shape follows the Roles rather than the
-// rota that happened.
-func TestPublishRota_NamesEveryConfiguredRole(t *testing.T) {
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1}},
-		shifts:    sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-		},
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{{ID: "bob", FirstName: "Bob", LastName: "Jones"}},
-	}
-
-	result, err := PublishRota(context.Background(), store, &mockSheetsClient{}, volunteerClient,
-		&config.Config{}, zap.NewNop(), "rota-1")
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"Team lead", "Service volunteer"}, result.RoleNames)
-}
-
-func TestPublishRota_WithNoAlterationsUnchanged(t *testing.T) {
-	ctx := context.Background()
-	logger := zap.NewNop()
-
-	store := &mockPublishRotaStore{
-		rotations: []db.Rotation{
-			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 1},
-		},
-		shifts: sundayShifts("rota-1", "2025-01-05", 1),
-		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "alloc-2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-		},
-		alterations: []db.Alteration{}, // No alterations
-	}
-
-	volunteerClient := &mockVolClient{
-		volunteers: []model.Volunteer{
-			{ID: "alice", FirstName: "Alice", LastName: "Smith"},
-			{ID: "bob", FirstName: "Bob", LastName: "Jones"},
-		},
-	}
-
-	cfg := &config.Config{}
-	sheetsClient := &mockSheetsClient{}
-
-	result, err := PublishRota(ctx, store, sheetsClient, volunteerClient, cfg, logger, "rota-1")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	require.Len(t, result.Rows, 1)
-	shift := result.Rows[0]
-	assert.Equal(t, "Alice", leadOf(shift))
-	assert.Len(t, ordinaryNames(shift), 1)
-	assert.Contains(t, ordinaryNames(shift), "Bob")
+	require.ErrorContains(t, err, "roster")
+	assert.Empty(t, sheets.applied)
+	assert.False(t, store.markedStale, "nothing was sent, so the record still describes Latest")
 }

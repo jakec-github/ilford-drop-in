@@ -13,32 +13,35 @@ type RotaPublishFunc func(ctx context.Context) error
 // SheetPublisher publishes the rota to its sheet in the background after every
 // change that could show there (issue #191).
 //
-// Publishes run one at a time on a single goroutine, so two quick changes cannot
-// interleave their edits on the sheet. Triggers fold together: a publish reads
-// the rota as it is when it starts, so any number of changes landing while one
-// runs need one more publish between them, not one each.
+// Publishes run one at a time on one goroutine, so two changes in quick
+// succession cannot interleave their edits on the sheet. Triggers fold together:
+// a publish writes the rota as it stands when it starts, so any number of
+// changes landing while one runs need one more publish between them, not one
+// each.
 //
-// Best effort: a failure is logged and not retried. It never reaches the
-// request that triggered it — the rota is the database, which has already
-// changed by then, and the sheet is a copy of it for the few who prefer one.
-// Every publish writes the whole rota as it stands, so the next change, or the
+// Best effort. The rota is the database, which has already changed by the time
+// anything is published; the sheet is a copy of it for the few who prefer one.
+// A failure is logged and not retried, and never reaches the request that
+// triggered it. Every publish writes the whole rota, so the next change, or the
 // next restart, puts right whatever a failed one missed.
 type SheetPublisher struct {
+	ctx     context.Context
 	publish RotaPublishFunc
 	logger  *zap.Logger
-	wake    chan struct{}
+	// wake holds at most one pending publish. A trigger finding it full has
+	// nothing to add: the publish already waiting will read its change too.
+	wake chan struct{}
 }
 
 // NewSheetPublisher starts the publisher, which runs until ctx is done.
 func NewSheetPublisher(ctx context.Context, publish RotaPublishFunc, logger *zap.Logger) *SheetPublisher {
-	p := &SheetPublisher{publish: publish, logger: logger, wake: make(chan struct{}, 1)}
-	go p.run(ctx)
+	p := &SheetPublisher{ctx: ctx, publish: publish, logger: logger, wake: make(chan struct{}, 1)}
+	go p.run()
 	return p
 }
 
-// Trigger asks for a publish and returns at once. Safe to call on a nil
-// publisher, which is a server that does not publish — dev mode, where there is
-// no sheet to write.
+// Trigger asks for a publish and returns at once. Safe on a nil publisher,
+// which is a server that does not publish.
 func (p *SheetPublisher) Trigger() {
 	if p == nil {
 		return
@@ -46,23 +49,23 @@ func (p *SheetPublisher) Trigger() {
 	select {
 	case p.wake <- struct{}{}:
 	default:
-		// A publish is already pending, and it will read this change too.
 	}
 }
 
-func (p *SheetPublisher) run(ctx context.Context) {
+func (p *SheetPublisher) run() {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-p.ctx.Done():
 			return
 		case <-p.wake:
-			p.publishOnce(ctx)
+			// A trigger and shutdown can both be ready at once, and select
+			// picks between them at random.
+			if p.ctx.Err() != nil {
+				return
+			}
+			if err := p.publish(p.ctx); err != nil {
+				p.logger.Warn("Publishing the rota to the sheet failed; the next change will try again", zap.Error(err))
+			}
 		}
-	}
-}
-
-func (p *SheetPublisher) publishOnce(ctx context.Context) {
-	if err := p.publish(ctx); err != nil {
-		p.logger.Warn("Publishing the rota to the sheet failed; it will be brought up to date by the next change", zap.Error(err))
 	}
 }

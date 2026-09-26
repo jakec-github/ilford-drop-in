@@ -12,30 +12,42 @@ import (
 const latestTabTitle = "Latest"
 
 // ApplyRotaPlan carries out a publish on the Latest tab. What to do was decided
-// by rotasheet.PlanEdits; this only says it in the Sheets API's words.
+// by rotasheet.PlanEdits; this says it in the Sheets API's words and sends it.
 //
 // Everything goes in one batchUpdate, which Sheets applies atomically: the
 // archive copy, the column and row edits and the cell writes all land or none
-// do. That matters because the app remembers the layout it published and diffs
-// the next publish against it — a half-applied publish would leave the sheet
-// and the record disagreeing, and every publish after it would edit the wrong
-// columns.
+// do, so the sheet is never left half-edited.
 //
-// archiveTitle names the tab Latest is copied to when the plan archives it; a
-// title already taken gets " (2)" and so on.
-//
-// If Latest is missing — deleted or renamed by hand — it is created and built
-// from scratch whatever the plan said, and latestWasMissing reports it so the
-// caller can say so.
+// latestWasMissing reports a Latest that had been deleted or renamed by hand,
+// which is created and built from scratch whatever the plan said.
 func (c *Client) ApplyRotaPlan(spreadsheetID string, plan rotasheet.Plan, archiveTitle string) (latestWasMissing bool, err error) {
 	spreadsheet, err := c.service.Spreadsheets.Get(spreadsheetID).Do()
 	if err != nil {
 		return false, fmt.Errorf("failed to get spreadsheet metadata: %w", err)
 	}
 
+	requests, latestWasMissing := rotaPlanRequests(spreadsheet, plan, archiveTitle)
+
+	_, err = c.service.Spreadsheets.BatchUpdate(spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
+	if err != nil {
+		return latestWasMissing, fmt.Errorf("failed to update the %s tab: %w", latestTabTitle, err)
+	}
+	return latestWasMissing, nil
+}
+
+// unnamedArchiveTitle is the archive's name when there is no rota to name it
+// after — a deployment publishing its first rota over a Latest left by hand.
+// It is archived all the same: whatever is on it was somebody's.
+const unnamedArchiveTitle = latestTabTitle + " (archived)"
+
+// rotaPlanRequests is a publish as the batch that carries it out, against the
+// spreadsheet as it stands. archiveTitle names the tab Latest is copied to when
+// the plan archives it; a title already taken is numbered.
+func rotaPlanRequests(spreadsheet *sheets.Spreadsheet, plan rotasheet.Plan, archiveTitle string) (requests []*sheets.Request, latestWasMissing bool) {
 	latestID, found := sheetIDByTitle(spreadsheet, latestTabTitle)
 
-	var requests []*sheets.Request
 	switch {
 	case !found:
 		latestID = unusedSheetID(spreadsheet)
@@ -45,7 +57,10 @@ func (c *Client) ApplyRotaPlan(spreadsheetID string, plan rotasheet.Plan, archiv
 		requests = append(requests, writeCells(latestID, 0, plan.Sheet.FullValues()))
 
 	case plan.Rebuild:
-		if plan.Archive && archiveTitle != "" {
+		if plan.Archive {
+			if archiveTitle == "" {
+				archiveTitle = unnamedArchiveTitle
+			}
 			requests = append(requests, &sheets.Request{DuplicateSheet: &sheets.DuplicateSheetRequest{
 				SourceSheetId: latestID,
 				NewSheetName:  resolveUniqueTitle(spreadsheet, archiveTitle),
@@ -66,13 +81,7 @@ func (c *Client) ApplyRotaPlan(spreadsheetID string, plan rotasheet.Plan, archiv
 		requests = append(requests, writeCells(latestID, rotasheet.HeaderRow, plan.Sheet.OwnedValues()))
 	}
 
-	_, err = c.service.Spreadsheets.BatchUpdate(spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
-		Requests: requests,
-	}).Do()
-	if err != nil {
-		return !found, fmt.Errorf("failed to update the %s tab: %w", latestTabTitle, err)
-	}
-	return !found, nil
+	return requests, !found
 }
 
 func structuralRequest(sheetID int64, op rotasheet.Op) *sheets.Request {

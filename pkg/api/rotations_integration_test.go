@@ -49,7 +49,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	rec := defineFromProposal(t, handler, 3)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -142,7 +142,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	// Nothing defined yet, so nothing is in flight — the state a rota may be
 	// defined in.
@@ -226,7 +226,7 @@ func TestDiscardRotaEndpointIntegration_RefusesAnAllocatedRota(t *testing.T) {
 	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	rec := defineFromProposal(t, handler, 2)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())

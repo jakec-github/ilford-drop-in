@@ -206,7 +206,7 @@ const solveCeiling = 60 * time.Second
 func (h *Handler) solveDraftRotaAllocation(r *http.Request) (*services.DraftRotaAllocationStatus, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
 	defer cancel()
-	return services.SolveDraftRotaAllocation(ctx, h.store, h.volunteers, h.cfg, h.logger, "")
+	return services.SolveDraftRotaAllocation(ctx, h.store, h.volunteers, h.cfg, h.logger, h.solverPython)
 }
 
 // draftStatus is the wire form of a draft's state, from either handler. One

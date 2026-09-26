@@ -35,7 +35,7 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	// An unallocated rota — the only kind that has a draft.
 	rota := db.Rotation{ID: uuid.New().String()}
@@ -133,7 +133,7 @@ func TestSolveDraftRotaAllocationSaysWhichStepIsMissing(t *testing.T) {
 	database, _ := dbtest.New(t)
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())
 
@@ -148,7 +148,7 @@ func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	rota := db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
@@ -179,7 +179,7 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	rota := db.Rotation{ID: uuid.New().String()}
 	first := dbtest.Shift(rota.ID, "2026-08-02")
@@ -258,7 +258,7 @@ func dirtyDraftedRota(t *testing.T, database *db.DB) (*Handler, db.Rotation) {
 		return err
 	}))
 
-	return NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()), rota
+	return NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()), rota
 }
 
 // readDraftWhileTheSlotIsHeld starts a draft read against a handler whose solve

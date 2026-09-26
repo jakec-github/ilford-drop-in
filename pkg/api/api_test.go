@@ -866,7 +866,7 @@ func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Hand
 // depends on the config — chiefly the rota overrides, which are where config
 // preallocations and closed dates come from.
 func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient, cfg *config.Config) http.Handler {
-	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 }
 
 // sessionCookie is a validly signed session cookie for email, signed with the
@@ -1322,7 +1322,7 @@ func TestMethodNotAllowed(t *testing.T) {
 // newFullStackHandler is the handler as it is deployed: API and frontend in one
 // process, which is the only configuration where the two namespaces can collide.
 func newFullStackHandler(store *mockStore) http.Handler {
-	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
+	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, nil, zap.NewNop()).Routes()
 }
 
 // TestUnknownAPIPathIsAJSONNotFound: an endpoint that does not exist has to fail

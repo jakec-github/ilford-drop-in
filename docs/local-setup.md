@@ -65,12 +65,13 @@ different part of the system. Set up all three for the `test` environment.
      app's own domain (see [`docs/deployment.md`](deployment.md)).
    - Download the JSON and save it as `oauthClientWeb.test.json`.
 
-4. **Service account** — used by the **server** to read the volunteer roster.
+4. **Service account** — used by the **server** to read the volunteer roster
+   and to publish the rota to the rota sheet.
    - IAM & Admin → Service Accounts → create one → add a JSON key → download.
    - Save it as `serviceAccount.test.json`.
    - Copy the service account's `client_email` (looks like
-     `name@project.iam.gserviceaccount.com`) — you'll share the volunteer sheet
-     with it in the next step.
+     `name@project.iam.gserviceaccount.com`) — you'll share both sheets with it
+     in the next step.
 
 All three files are git-ignored, so they never get committed. See the
 [credentials reference](#credentials-reference) at the bottom for which part of
@@ -81,9 +82,9 @@ the code loads each one.
 Create two spreadsheets in the same Google account:
 
 - **Volunteer sheet** — the roster the app reads.
-- **Rota sheet** — where a published rota is written (only needed for the
-  publish flow, which is out of scope here, but the ID is a required config
-  field).
+- **Rota sheet** — where the server publishes the rota it allocated most
+  recently, on a tab called `Latest`, after every change to it. Only needed if
+  you are working on publishing, but the ID is a required config field.
 
 Note each spreadsheet's ID from its URL
 (`https://docs.google.com/spreadsheets/d/`**`<THIS-PART>`**`/edit`).
@@ -92,6 +93,9 @@ Note each spreadsheet's ID from its URL
 
 - Share the **volunteer sheet** with the **service account** `client_email`
   (Viewer is enough) so the server can sync the roster.
+- Share the **rota sheet** with the same `client_email` as an **Editor** so the
+  server can publish to it. Without it the app works as normal and each
+  publish logs a warning.
 - Make sure the **Google account you authorise in the CLI** can also read both
   sheets.
 

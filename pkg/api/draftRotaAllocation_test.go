@@ -216,7 +216,7 @@ func TestGetDraftRotaAllocationWhenTheClientGivesUpWaiting(t *testing.T) {
 			SeatsFilled:  8,
 		}},
 	}
-	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 	require.NoError(t, handler.drafts.acquire(t.Context()), "a solve is now running in this process")
 
 	gone, disconnect := context.WithCancel(t.Context())
@@ -263,7 +263,7 @@ func TestSolveDraftRotaAllocationWaitsForTheRunningSolve(t *testing.T) {
 	store := &mockStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
 	}
-	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 	require.NoError(t, handler.drafts.acquire(t.Context()))
 
 	answered := make(chan *httptest.ResponseRecorder, 1)
@@ -311,7 +311,7 @@ func TestASolveRunsUnderACeiling(t *testing.T) {
 	store := &ceilingSpy{mockStore: &mockStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
 	}}
-	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 
 	rec := doRequest(t, handler.Routes(), http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())
 	require.NotEqual(t, http.StatusUnauthorized, rec.Code, rec.Body.String())

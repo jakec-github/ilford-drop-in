@@ -59,18 +59,20 @@ type Rota struct {
 	Shifts []Shift
 }
 
-// Group is one Role's run of columns, or the Unknown role's.
+// Group is one Role's run of columns, or the Unknown role's: known by the Role's
+// id, so a rename is a header rewrite and never a new group.
 type Group struct {
 	Key   string `json:"key"`
 	Width int    `json:"width"`
-	// Heading is the Role's name when the group was laid out. Not remembered
-	// between publishes: a rename is a header rewrite, never a new group.
-	Heading string `json:"-"`
 }
 
 // Layout is the structure of Latest as the app left it: which rota, which shift
 // is on which row, and how many columns each group took. It is what the app
 // remembers between publishes, and what the next publish is diffed against.
+//
+// It holds ids and widths and nothing else, and that is the point of it being
+// its own type: it is stored in the database, and the names on the rota must
+// never be (issue #191). What the sheet says — headers, names — is Sheet's.
 type Layout struct {
 	// Stale is a layout a failed publish may have left behind it: the sheet
 	// might hold this or might hold what that publish was writing. Kept beside
@@ -107,16 +109,15 @@ func (l Layout) OwnedWidth() int {
 // only when somebody is in it.
 func Lay(rota Rota) Sheet {
 	groups := make([]Group, 0, len(rota.Roles)+1)
+	header := []string{"Date"}
 	for _, role := range rota.Roles {
-		groups = append(groups, Group{Key: role.ID, Heading: role.Name, Width: max(1, widest(rota.Shifts, role.ID))})
+		g := Group{Key: role.ID, Width: max(1, widest(rota.Shifts, role.ID))}
+		groups = append(groups, g)
+		header = append(header, headings(role.Name, g.Width)...)
 	}
 	if w := widest(rota.Shifts, UnknownRoleKey); w > 0 {
-		groups = append(groups, Group{Key: UnknownRoleKey, Heading: unknownRoleHeading, Width: w})
-	}
-
-	header := []string{"Date"}
-	for _, g := range groups {
-		header = append(header, headings(g.Heading, g.Width)...)
+		groups = append(groups, Group{Key: UnknownRoleKey, Width: w})
+		header = append(header, headings(unknownRoleHeading, w)...)
 	}
 
 	shiftIDs := make([]string, 0, len(rota.Shifts))

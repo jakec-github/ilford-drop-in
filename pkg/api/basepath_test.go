@@ -34,7 +34,7 @@ func newHandlerAtBasePath(store *mockStore, base string) http.Handler {
 	cfg := &config.Config{Server: &config.ServerConfig{BasePath: base}}
 	auth := newTestAuthenticator()
 	auth.basePath = base
-	return NewHandler(store, testVolunteers(), cfg, auth, testFrontend, nil, zap.NewNop()).Routes()
+	return NewHandler(store, testVolunteers(), cfg, auth, testFrontend, nil, nil, zap.NewNop()).Routes()
 }
 
 func basePathStore() *mockStore {
@@ -172,13 +172,13 @@ func TestCalendarFeedCarriesTheBasePath(t *testing.T) {
 // is not under the base path, so the path can only come from config.
 func TestAvailabilityLinkCarriesTheBasePath(t *testing.T) {
 	cfg := &config.Config{Server: &config.ServerConfig{BasePath: testBasePath}}
-	h := NewHandler(basePathStore(), testVolunteers(), cfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	h := NewHandler(basePathStore(), testVolunteers(), cfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 	req := httptest.NewRequest(http.MethodGet, "/api/availability-rounds", nil)
 
 	assert.Equal(t, "http://example.com"+testBasePath+"/availability/a-token", h.availabilityLink(req, "a-token"))
 
 	// And with no base path it is the URL it has always been.
-	plain := NewHandler(basePathStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	plain := NewHandler(basePathStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 	assert.Equal(t, "http://example.com/availability/a-token", plain.availabilityLink(req, "a-token"))
 }
 
@@ -187,7 +187,7 @@ func TestAvailabilityLinkCarriesTheBasePath(t *testing.T) {
 // redirects to it is not.
 func TestSendReturnsToTheAllocationTabUnderTheBasePath(t *testing.T) {
 	cfg := &config.Config{Server: &config.ServerConfig{BasePath: testBasePath}}
-	h := NewHandler(basePathStore(), testVolunteers(), cfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	h := NewHandler(basePathStore(), testVolunteers(), cfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 
 	assert.Equal(t, testBasePath+sendReturnPath, h.sendReturnURL())
 }

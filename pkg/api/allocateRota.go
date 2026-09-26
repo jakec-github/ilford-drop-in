@@ -95,7 +95,7 @@ func (h *Handler) handleAllocateRotaInFlight(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
 	defer cancel()
 
-	outcome, err := services.AllocateRotaInFlight(ctx, h.store, h.volunteers, h.cfg, h.logger, req.DraftHash, "")
+	outcome, err := services.AllocateRotaInFlight(ctx, h.store, h.volunteers, h.cfg, h.logger, req.DraftHash, h.solverPython)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -110,7 +110,7 @@ func (h *Handler) handleAllocateRotaInFlight(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	response.AllocatedAt = outcome.AllocatedAt.Format(time.RFC3339)
-	// A newly allocated rota replaces the one on the sheet.
+	// The rota just allocated replaces the one on the sheet (issue #191).
 	h.publisher.Trigger()
 	h.writeJSON(w, http.StatusOK, response)
 }

@@ -69,7 +69,7 @@ func newSendTestHandler(store *mockStore, mailer services.GmailClient) http.Hand
 	}
 
 	newMailer := func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }
-	return NewHandler(store, volunteers, apiTestCfg, auth, nil, newMailer, zap.NewNop()).Routes()
+	return NewHandler(store, volunteers, apiTestCfg, auth, nil, newMailer, nil, zap.NewNop()).Routes()
 }
 
 // startSendRequest returns the job id a started send redirected to.
@@ -190,7 +190,7 @@ func TestSendResultIsReadableOnlyByTheOrganiserWhoStartedIt(t *testing.T) {
 	auth.organiserEmails["other@example.com"] = struct{}{}
 
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return &recordingMailer{}, nil },
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return &recordingMailer{}, nil }, nil,
 		zap.NewNop()).Routes()
 
 	jobID := startSendRequest(t, handler, "mode=round&deadline=Friday")
@@ -274,7 +274,7 @@ func TestGmailConsentAsksOnlyForTheSendScope(t *testing.T) {
 		Endpoint:    oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/auth"},
 		Scopes:      []string{"openid", "email", "profile"},
 	}
-	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil, nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code)
@@ -299,7 +299,7 @@ func TestSendCallbackRejectsAStateForAnotherOrganiser(t *testing.T) {
 	auth.organiserEmails["other@example.com"] = struct{}{}
 	mailer := &recordingMailer{}
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil },
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil,
 		zap.NewNop()).Routes()
 
 	signed, err := signGmailState(testSecret, gmailSendState{
@@ -321,7 +321,7 @@ func TestSendCallbackRejectsAStateForAnotherOrganiser(t *testing.T) {
 func TestSendCallbackRequiresASession(t *testing.T) {
 	mailer := &recordingMailer{}
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil },
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil,
 		zap.NewNop()).Routes()
 
 	signed, err := signGmailState(testSecret, gmailSendState{
@@ -357,7 +357,7 @@ func TestSendKeepsNoCredentialOnTheSession(t *testing.T) {
 func TestSendCallbackRequiresAnOrganiser(t *testing.T) {
 	mailer := &recordingMailer{}
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil },
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil,
 		zap.NewNop()).Routes()
 
 	signed, err := signGmailState(testSecret, gmailSendState{
