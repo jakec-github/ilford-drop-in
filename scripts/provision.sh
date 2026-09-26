@@ -17,6 +17,15 @@ if ! grep -q '^/swapfile' /etc/fstab; then
   echo '/swapfile none swap sw 0 0' >>/etc/fstab
 fi
 
+# Journal cap: journald's default is 10% of the disk, and it had reached 560 MB
+# when the 8.7 GB disk filled (#223). 100M holds weeks of this box's logs.
+if [ ! -f /etc/systemd/journald.conf.d/size.conf ]; then
+  echo "Capping the systemd journal at 100M"
+  mkdir -p /etc/systemd/journald.conf.d
+  printf '[Journal]\nSystemMaxUse=100M\n' >/etc/systemd/journald.conf.d/size.conf
+  systemctl restart systemd-journald
+fi
+
 # Docker (engine + compose plugin) from Docker's own repo.
 if ! command -v docker >/dev/null; then
   echo "Installing Docker"
