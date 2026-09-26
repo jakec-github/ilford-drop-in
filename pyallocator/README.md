@@ -15,6 +15,8 @@ pyallocator/.venv/bin/pytest pyallocator/tests
 
 The Go side looks for `pyallocator/.venv/bin/python` by default
 (overridable with `--python` or `ILFORD_CPSAT_PYTHON`).
+The server image sets `ILFORD_CPSAT_PYTHON` to a venv of its own at
+`/opt/pyallocator` (docs/deployment.md → The image).
 
 `scripts/check.sh` runs this suite too, and does the setup above itself when
 the venv is missing — so the solver is covered by the one pre-push command and

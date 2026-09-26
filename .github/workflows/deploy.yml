@@ -23,6 +23,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Built and smoke tested before anything is pushed, so an image that
+      # cannot run the solver never reaches ghcr (#227). The push below is the
+      # same build again, served from the cache.
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: ilford-drop-in:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: scripts/image-smoke.sh ilford-drop-in:smoke
+
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -31,7 +45,6 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy:
     needs: build

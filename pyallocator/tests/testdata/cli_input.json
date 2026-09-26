@@ -1,0 +1,54 @@
+{
+  "max_allocation_count": 1,
+  "roles": [
+    {
+      "name": "Team lead",
+      "priority": 1
+    },
+    {
+      "name": "Service volunteer",
+      "priority": 2
+    }
+  ],
+  "enabled_constraints": [
+    "male_required"
+  ],
+  "shifts": [
+    {
+      "index": 0,
+      "date": "2026-07-13",
+      "shape": [
+        {
+          "role": "Team lead",
+          "count": 1
+        },
+        {
+          "role": "Service volunteer",
+          "count": 2
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "group_key": "Solo Volunteer",
+      "members": [
+        {
+          "id": "v1",
+          "first_name": "Solo",
+          "last_name": "Volunteer",
+          "display_name": "Solo",
+          "gender": "Male",
+          "roles": [
+            "Service volunteer"
+          ]
+        }
+      ],
+      "available_shift_indices": [
+        0
+      ],
+      "historical_allocation_count": 0
+    }
+  ],
+  "historical_shifts": []
+}
