@@ -72,6 +72,11 @@ type Group struct {
 // is on which row, and how many columns each group took. It is what the app
 // remembers between publishes, and what the next publish is diffed against.
 type Layout struct {
+	// Stale is a layout a failed publish may have left behind it: the sheet
+	// might hold this or might hold what that publish was writing. Kept beside
+	// the record rather than in it.
+	Stale bool `json:"-"`
+
 	RotaID   string   `json:"rotaId"`
 	ShiftIDs []string `json:"shiftIds"`
 	Groups   []Group  `json:"groups"`

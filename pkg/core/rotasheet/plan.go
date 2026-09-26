@@ -38,8 +38,10 @@ type Plan struct {
 // PlanEdits works out what to do to Latest, given what the app last published
 // there (nil when it has no record) and the rota as it now is.
 //
-// A different rota, or no record at all, is a new rota: Latest is archived and
-// rebuilt. The same rota is edited in place, so that everything people typed
+// A different rota, no record at all, or a record a failed publish has made
+// untrustworthy, is treated as a new rota: Latest is archived and rebuilt. The
+// archive keeps whatever people typed; editing from a wrong record would
+// misalign it. The same rota is edited in place, so that everything people typed
 // into the columns the app does not own stays beside the shift it was typed
 // against:
 //
@@ -48,7 +50,7 @@ type Plan struct {
 //   - a group new, or wider, has columns inserted at its end
 //   - rows are moved to follow their shift
 func PlanEdits(last *Layout, next Sheet) Plan {
-	if last == nil || last.RotaID != next.Layout.RotaID {
+	if last == nil || last.Stale || last.RotaID != next.Layout.RotaID {
 		return Plan{Archive: true, Rebuild: true, Sheet: next}
 	}
 	if !sameMembers(last.ShiftIDs, next.Layout.ShiftIDs) {

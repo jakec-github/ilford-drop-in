@@ -200,6 +200,9 @@ func run(env string, portOverride int) error {
 			_, err = services.PublishRota(ctx, database, client, volunteers, cfg, logger)
 			return err
 		}, logger)
+		// Once at startup: a change made while the server was down, or one
+		// whose publish failed, reaches the sheet without waiting for another.
+		publisher.Trigger()
 
 		// Populate the roster at startup so reads work before any Organiser syncs. A
 		// failure here (transient Sheets outage, say) is not fatal: the server boots

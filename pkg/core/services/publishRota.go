@@ -29,8 +29,9 @@ type PublishRotaStore interface {
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
-	GetPublishedRotaSheet(ctx context.Context) ([]byte, error)
+	GetPublishedRotaSheet(ctx context.Context) (layout []byte, stale bool, err error)
 	SavePublishedRotaSheet(ctx context.Context, rotaID string, layout []byte) error
+	MarkPublishedRotaSheetStale(ctx context.Context) error
 }
 
 // SheetsClient defines the sheets operations needed for publishing a rota
@@ -84,6 +85,12 @@ func PublishRota(
 
 	latestWasMissing, err := sheetsClient.ApplyRotaPlan(cfg.RotaSheetID, plan, archiveTitle)
 	if err != nil {
+		// Google may have applied the batch and lost the answer, so the record
+		// can no longer be trusted to describe Latest. Marking it makes the next
+		// publish rebuild rather than edit from a layout the sheet may not have.
+		if markErr := database.MarkPublishedRotaSheetStale(ctx); markErr != nil {
+			logger.Error("Failed to mark the published rota sheet stale", zap.Error(markErr))
+		}
 		return nil, fmt.Errorf("failed to publish to Google Sheets: %w", err)
 	}
 	if latestWasMissing {
@@ -126,7 +133,7 @@ func latestAllocated(rotations []db.Rotation) *db.Rotation {
 }
 
 func lastPublished(ctx context.Context, database PublishRotaStore) (*rotasheet.Layout, error) {
-	raw, err := database.GetPublishedRotaSheet(ctx)
+	raw, stale, err := database.GetPublishedRotaSheet(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +144,7 @@ func lastPublished(ctx context.Context, database PublishRotaStore) (*rotasheet.L
 	if err := json.Unmarshal(raw, &layout); err != nil {
 		return nil, fmt.Errorf("failed to decode published layout: %w", err)
 	}
+	layout.Stale = stale
 	return &layout, nil
 }
 

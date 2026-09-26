@@ -16,5 +16,10 @@ CREATE TABLE published_rota_sheet (
     -- rotasheet.Layout, whole. JSON because nothing queries inside it: it is
     -- read back in one piece and diffed in Go.
     layout JSONB NOT NULL,
+    -- A publish failed after this was recorded, so the sheet may or may not
+    -- have taken it: Google can apply a batch and still lose the answer. The
+    -- layout can no longer be trusted to describe Latest, and the next publish
+    -- archives Latest and rebuilds it rather than editing it from here.
+    stale BOOLEAN NOT NULL DEFAULT FALSE,
     published_at TIMESTAMPTZ NOT NULL
 );

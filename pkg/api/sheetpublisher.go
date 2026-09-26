@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -10,11 +9,6 @@ import (
 // RotaPublishFunc brings the rota sheet up to date with the latest allocated
 // rota. Injected by the composition root, which owns the Google credentials.
 type RotaPublishFunc func(ctx context.Context) error
-
-// publishRetryDelays is how long to wait before each retry of a failed publish.
-// Sheets failures are usually quota or a blip, and a publish is always of the
-// rota as it stands, so a late one loses nothing.
-var publishRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
 
 // SheetPublisher publishes the rota to its sheet in the background after every
 // change that could show there (issue #191).
@@ -24,9 +18,11 @@ var publishRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 *
 // the rota as it is when it starts, so any number of changes landing while one
 // runs need one more publish between them, not one each.
 //
-// A failure is logged and retried, and never reaches the request that triggered
-// it — allocating or changing the rota has already succeeded by then, and the
-// sheet is a copy of it for people who prefer one.
+// Best effort: a failure is logged and not retried. It never reaches the
+// request that triggered it — the rota is the database, which has already
+// changed by then, and the sheet is a copy of it for the few who prefer one.
+// Every publish writes the whole rota as it stands, so the next change, or the
+// next restart, puts right whatever a failed one missed.
 type SheetPublisher struct {
 	publish RotaPublishFunc
 	logger  *zap.Logger
@@ -60,29 +56,13 @@ func (p *SheetPublisher) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-p.wake:
-			p.publishWithRetry(ctx)
+			p.publishOnce(ctx)
 		}
 	}
 }
 
-func (p *SheetPublisher) publishWithRetry(ctx context.Context) {
-	for attempt := 0; ; attempt++ {
-		err := p.publish(ctx)
-		if err == nil {
-			return
-		}
-		if attempt == len(publishRetryDelays) {
-			p.logger.Error("Publishing the rota to the sheet failed; giving up until the next change",
-				zap.Int("attempts", attempt+1), zap.Error(err))
-			return
-		}
-		p.logger.Warn("Publishing the rota to the sheet failed; retrying",
-			zap.Int("attempt", attempt+1), zap.Duration("retry_in", publishRetryDelays[attempt]), zap.Error(err))
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(publishRetryDelays[attempt]):
-		}
+func (p *SheetPublisher) publishOnce(ctx context.Context) {
+	if err := p.publish(ctx); err != nil {
+		p.logger.Warn("Publishing the rota to the sheet failed; it will be brought up to date by the next change", zap.Error(err))
 	}
 }
