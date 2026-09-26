@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Button from "../ui/Button";
 import type {
   AvailabilityEntry,
@@ -280,17 +280,27 @@ function GroupRow({
           >
             <span aria-hidden="true">{open ? "▾" : "▸"}</span>
           </button>
-          {alone !== null && !allocated ? (
-            <a
-              className="grid-name"
-              href={alone.link}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {group.name}
-            </a>
-          ) : (
+          {/* Each name is its own link, not one link for the group: answers are
+              per member, so the row cannot pick a form to open on the group's
+              behalf. Joined as the server joins the group's name. */}
+          {allocated ? (
             <span className="grid-name">{group.name}</span>
+          ) : (
+            <span className="grid-name">
+              {group.members.map((member, i) => (
+                <Fragment key={member.volunteerId}>
+                  {i > 0 && " & "}
+                  <a
+                    className="grid-name-link"
+                    href={member.link}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {member.volunteerName}
+                  </a>
+                </Fragment>
+              ))}
+            </span>
           )}
           {/* A real space, so the row header does not announce as
               "Abigail WhiteReplied" — the margin between them is only paint. */}{" "}

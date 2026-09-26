@@ -173,7 +173,12 @@ thead .grid-name-cell,
   text-decoration: none;
 }
 
-a.grid-name:hover {
+.grid-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.grid-name-link:hover {
   text-decoration: underline;
 }
 
