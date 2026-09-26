@@ -227,8 +227,10 @@ func DeleteStandingPreallocation(ctx context.Context, store StandingPreallocatio
 // added by hand, which is the point.
 //
 // A person fills at most one Seat on a Shift, so two rules naming the same
-// subject on one date collapse to one pin — in the Role whose Seats are filled
-// first, since that is the promise the more important of the two made.
+// volunteer on one date collapse to one pin — in the Role whose Seats are filled
+// first, since that is the promise the more important of the two made. A custom
+// entry never collapses: it is usually an organisation, and an organisation
+// routinely sends two people (issue #195), so each rule is its own pin.
 //
 // An unparseable rule fails the definition rather than being warned past. Every
 // other reader of an rrule in this package warns and skips because it is
@@ -255,7 +257,7 @@ func seedPreallocations(
 	}
 
 	// Highest-priority Role first, so the collapse below keeps the Seat that is
-	// filled first when one subject is named twice for a date. Id breaks the tie
+	// filled first when one volunteer is named twice for a date. Id breaks the tie
 	// so a rota defined twice from the same settings seeds the same pins.
 	ordered := make([]db.StandingPreallocation, len(standing))
 	copy(ordered, standing)
@@ -267,7 +269,7 @@ func seedPreallocations(
 		return ordered[i].ID < ordered[j].ID
 	})
 
-	// Keyed by shift id and subject: the one pin per person per Shift rule.
+	// Keyed by shift id and volunteer: the one pin per person per Shift rule.
 	seen := make(map[string]bool)
 	// Built shift by shift so the rows come back in rota order, which is the
 	// order everything downstream reads a rota in.
@@ -291,14 +293,16 @@ func seedPreallocations(
 			if !matcher(shift.Date) {
 				continue
 			}
-			key := shift.ID + "\x00" + subjectKey(s.VolunteerID, s.CustomValue)
-			if seen[key] {
-				logger.Debug("Standing preallocation already covered for this shift",
-					zap.String("standing_id", s.ID),
-					zap.String("shift_id", shift.ID))
-				continue
+			if s.VolunteerID != "" {
+				key := shift.ID + "\x00" + s.VolunteerID
+				if seen[key] {
+					logger.Debug("Standing preallocation already covered for this shift",
+						zap.String("standing_id", s.ID),
+						zap.String("shift_id", shift.ID))
+					continue
+				}
+				seen[key] = true
 			}
-			seen[key] = true
 			byShift[shift.ID] = append(byShift[shift.ID], db.Preallocation{
 				ID:          uuid.New().String(),
 				ShiftID:     shift.ID,
@@ -309,20 +313,11 @@ func seedPreallocations(
 		}
 	}
 
-	seeded := make([]db.Preallocation, 0, len(seen))
+	var seeded []db.Preallocation
 	for _, shift := range shifts {
 		seeded = append(seeded, byShift[shift.ID]...)
 	}
 	return seeded, nil
-}
-
-// subjectKey identifies who a pin is about, whichever kind of subject it names.
-// A custom entry's text is its identity, exactly as it is for an ordinary pin.
-func subjectKey(volunteerID, custom string) string {
-	if volunteerID != "" {
-		return "volunteer:" + volunteerID
-	}
-	return "custom:" + custom
 }
 
 // roleName reads a Role id as the name an Organiser knows it by, degrading to the

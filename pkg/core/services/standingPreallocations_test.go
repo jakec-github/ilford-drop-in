@@ -79,6 +79,26 @@ func TestSeedPreallocations_CollapsesOverlappingRules(t *testing.T) {
 	assert.Equal(t, "role-service-volunteer", byShift["shift-2"].RoleID)
 }
 
+// A custom entry is usually an organisation, and an organisation routinely
+// sends two people (issue #195): two promises of the same name are two pins,
+// not a slip to collapse.
+func TestSeedPreallocations_RepeatedCustomEntryKeepsBothPins(t *testing.T) {
+	standing := []db.StandingPreallocation{
+		{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
+		{ID: "standing-2", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
+	}
+
+	seeded, err := seedPreallocations(standing, seedShifts, testRoles, zap.NewNop())
+	require.NoError(t, err)
+
+	require.Len(t, seeded, 2, "both promises reach the first Sunday")
+	for _, p := range seeded {
+		assert.Equal(t, "shift-1", p.ShiftID)
+		assert.Equal(t, "St John's team", p.CustomValue)
+	}
+	assert.NotEqual(t, seeded[0].ID, seeded[1].ID)
+}
+
 // A rule nobody can parse would silently drop a promise an Organiser has made, so
 // definition refuses rather than minting a rota missing its pins.
 func TestSeedPreallocations_UnparseableRuleFails(t *testing.T) {
