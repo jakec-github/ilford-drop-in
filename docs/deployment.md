@@ -301,6 +301,28 @@ screen says as much at the point of rename.
   changed config; use the config rollout above for that.
 - The box holds no unregenerable state: rebuilding it is droplet + provision +
   scp + deploy, per the ADR.
+- **Disk**: `ssh root@<ip> 'df -h /'`. Each deploy removes the images no
+  container is using, and provisioning caps the journal at 100M, so the disk
+  should hold steady.
+
+### Recovering a full disk
+
+If a deploy fails with `no space left on device`, or the box's CPU is pinned
+(rsyslog spins retrying writes it cannot make), clear it by hand:
+
+```sh
+ssh root@<ip> '
+  docker image prune -af
+  journalctl --vacuum-size=100M
+  systemctl restart rsyslog   # only if it has been spinning on a full disk
+  df -h /
+'
+```
+
+The first line removes every image no running container uses — the running app
+keeps its own — and the second trims the journal. Then re-run the failed deploy.
+On a droplet provisioned before the journal cap existed, rerun
+`scripts/provision.sh` (it is idempotent) so the journal stays capped.
 
 ### One-time: moving config into `config/`
 

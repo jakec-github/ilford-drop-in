@@ -53,6 +53,10 @@ jobs:
       - name: Sync compose files to the droplet
         run: scp deploy/compose.yaml deploy/Caddyfile "root@${{ secrets.DEPLOY_HOST }}:/opt/dropin/"
 
+      # `prune -a`, not `prune`: every image here is tagged with its commit, so
+      # none is ever dangling, and plain prune left each deploy's image behind
+      # until the disk filled (#223). -a removes every image no container uses;
+      # rollback pulls its image back from ghcr.
       - name: Deploy
         run: |
           ssh "root@${{ secrets.DEPLOY_HOST }}" \
@@ -61,4 +65,4 @@ jobs:
             && cd /opt/dropin \
             && docker compose pull -q \
             && docker compose up -d \
-            && docker image prune -f"
+            && docker image prune -af"
