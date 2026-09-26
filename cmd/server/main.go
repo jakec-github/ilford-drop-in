@@ -87,6 +87,9 @@ func run(env string, portOverride int) error {
 	var syncVolunteers api.VolunteerSyncFunc
 	var authenticator *api.Authenticator
 	var newMailer api.MailerFunc
+	// Nil in dev mode: there is no sheet to publish to, and Trigger on a nil
+	// publisher does nothing.
+	var publisher *api.SheetPublisher
 	if cfg.DevMode != nil {
 		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues a session without verifying identity",
 			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
@@ -179,8 +182,26 @@ func run(env string, portOverride int) error {
 			}
 			volunteers.Replace(fetched)
 			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
+			// The sheet shows display names, and the roster is where they
+			// come from. On the startup sync this is the startup publish,
+			// which puts right a change made while the server was down or
+			// one whose publish failed — and it waits for the roster, since
+			// publishing needs one.
+			publisher.Trigger()
 			return nil
 		}
+
+		// The rota sheet is written with the same service account, which must
+		// be an editor of it. A publish is of the latest allocated rota as it
+		// stands, so each builds its own client rather than keeping one.
+		publisher = api.NewSheetPublisher(ctx, func(ctx context.Context) error {
+			client, err := sheetsclient.NewWriterFromServiceAccount(ctx, serviceAccount.JSON)
+			if err != nil {
+				return fmt.Errorf("failed to build sheets client for publishing: %w", err)
+			}
+			_, err = services.PublishRota(ctx, database, client, volunteers, cfg, logger)
+			return err
+		}, logger)
 
 		// Populate the roster at startup so reads work before any Organiser syncs. A
 		// failure here (transient Sheets outage, say) is not fatal: the server boots
@@ -214,7 +235,7 @@ func run(env string, portOverride int) error {
 		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the Organiser settings screen")
 	}
 
-	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, logger)
+	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, publisher, logger)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

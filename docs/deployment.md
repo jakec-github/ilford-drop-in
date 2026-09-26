@@ -71,6 +71,12 @@ Check that `oauthClientWeb.prod.json` lists the production redirect URI
 web client. It stays at the root of the domain even when the site itself sits
 under a path — see [Base path](#base-path).
 
+The service account reads the volunteer sheet and writes the rota sheet, so
+share both with its `client_email`: the volunteer sheet as a **Viewer**, the rota
+sheet as an **Editor**. Without the second, the app runs as normal and the rota
+sheet is left alone — every publish fails with a warning in the logs, which is
+the only place it shows (issue #191).
+
 `drop_in_config.prod.yaml` changes often, so it gets a script — see
 [Config rollout](#config-rollout) below. Run it once here too; it puts the file
 in place and brings the app up.

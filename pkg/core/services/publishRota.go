@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -11,9 +12,15 @@ import (
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/rotasheet"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
+
+// missingVolunteer stands in for somebody allocated who is no longer on the
+// roster. They worked the shift, so the row still shows somebody there, and one
+// missing name must not stop the rest of the rota being published.
+const missingVolunteer = "[unknown volunteer]"
 
 // PublishRotaStore defines the database operations needed for publishing a rota
 type PublishRotaStore interface {
@@ -22,17 +29,25 @@ type PublishRotaStore interface {
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
+	GetPublishedRotaSheet(ctx context.Context) (layout []byte, stale bool, err error)
+	SavePublishedRotaSheet(ctx context.Context, rotaID string, layout []byte) error
+	MarkPublishedRotaSheetStale(ctx context.Context) error
 }
 
 // SheetsClient defines the sheets operations needed for publishing a rota
 type SheetsClient interface {
-	PublishRota(spreadsheetID string, publishedRota *sheetsclient.PublishedRota, previousRotaTabTitle string) error
+	ApplyRotaPlan(spreadsheetID string, plan rotasheet.Plan, archiveTitle string) (latestWasMissing bool, err error)
 }
 
-// PublishRota publishes a rota to Google Sheets
-// It fetches the rota, allocations, and volunteer information, then constructs
-// the rows with formatted dates, team leads, and volunteers, and publishes to sheets
-// If rotaID is empty, it defaults to the latest rota
+// PublishRota brings the rota sheet's Latest tab up to date with the rota
+// allocated most recently (issue #191).
+//
+// It is the one way the sheet is written. The server runs it after every change
+// that could show there, and the publishRota CLI command runs it by hand. It
+// always publishes the latest allocated rota, whatever prompted it: a change to
+// an older rota, already archived, publishes nothing new.
+//
+// Returns what it published, or nil when nothing has been allocated yet.
 func PublishRota(
 	ctx context.Context,
 	database PublishRotaStore,
@@ -40,223 +55,231 @@ func PublishRota(
 	volunteerClient VolunteerClient,
 	cfg *config.Config,
 	logger *zap.Logger,
-	rotaID string,
-) (*sheetsclient.PublishedRota, error) {
-	logger.Debug("Starting publishRota", zap.String("rota_id", rotaID))
-
-	// Step 1: Fetch the target rota
-	logger.Debug("Fetching rotations")
+) (*rotasheet.Sheet, error) {
 	rotations, err := database.GetRotations(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch rotations: %w", err)
 	}
-
-	if len(rotations) == 0 {
-		return nil, fmt.Errorf("no rotations found")
+	target := latestAllocated(rotations)
+	if target == nil {
+		logger.Info("No rota has been allocated, so there is nothing to publish")
+		return nil, nil
 	}
 
-	// Find the target rota (or default to latest if rotaID is empty)
-	var targetRota *db.Rotation
-	if rotaID == "" {
-		// Default to latest rota
-		targetRota = utils.FindLatestRotation(rotations)
-		logger.Debug("No rota ID provided, using latest rota", zap.String("id", targetRota.ID))
-	} else {
-		// Find specific rota by ID
-		for i := range rotations {
-			if rotations[i].ID == rotaID {
-				targetRota = &rotations[i]
-				break
-			}
-		}
-
-		if targetRota == nil {
-			return nil, fmt.Errorf("rota not found: %s", rotaID)
-		}
-	}
-
-	logger.Debug("Found target rota",
-		zap.String("id", targetRota.ID),
-		zap.String("start", targetRota.Start),
-		zap.Int("shift_count", targetRota.ShiftCount))
-
-	// Step 2: Read the rota's shifts from the shift table (ADR 0001). They carry
-	// both the ids that scope allocations/alterations and the dates used for
-	// display, so the two can never disagree. A rota always has at least one
-	// shift; an empty result is a broken invariant and fails loudly.
-	shifts, err := database.GetShiftsByRotaID(ctx, targetRota.ID)
+	rota, err := sheetRota(ctx, database, volunteerClient, cfg, target)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
+		return nil, err
+	}
+	sheet := rotasheet.Lay(rota)
+
+	last, err := publishedLayout(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	plan := rotasheet.PlanEdits(last, sheet)
+
+	archiveTitle := ""
+	if plan.Archive {
+		archiveTitle = archiveTabTitle(rotations, last, target, logger)
+	}
+
+	latestWasMissing, err := sheetsClient.ApplyRotaPlan(cfg.RotaSheetID, plan, archiveTitle)
+	if err != nil {
+		// Google can apply a batch and lose the answer, so the record may no
+		// longer describe Latest. Marking it makes the next publish rebuild
+		// rather than edit from a layout the sheet may not have.
+		if markErr := database.MarkPublishedRotaSheetStale(ctx); markErr != nil {
+			logger.Error("Failed to mark the published rota sheet stale", zap.Error(markErr))
+		}
+		return nil, fmt.Errorf("failed to publish to Google Sheets: %w", err)
+	}
+	if latestWasMissing {
+		logger.Warn("The Latest tab was missing from the rota sheet, so it was rebuilt from scratch",
+			zap.String("rota_id", target.ID))
+	}
+
+	layout, err := json.Marshal(sheet.Layout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode the published layout: %w", err)
+	}
+	if err := database.SavePublishedRotaSheet(ctx, target.ID, layout); err != nil {
+		return nil, err
+	}
+
+	logger.Info("Rota published to Google Sheets",
+		zap.String("rota_id", target.ID),
+		zap.Bool("archived", plan.Archive),
+		zap.Bool("rebuilt", plan.Rebuild || latestWasMissing),
+		zap.Int("structural_edits", len(plan.Ops)))
+
+	return &sheet, nil
+}
+
+// latestAllocated is the rota Latest shows: the one allocated most recently,
+// whatever its dates. Nil when nothing has been allocated.
+func latestAllocated(rotations []db.Rotation) *db.Rotation {
+	var latest *db.Rotation
+	for i := range rotations {
+		r := &rotations[i]
+		if r.AllocatedDatetime == "" {
+			continue
+		}
+		// RFC 3339 in UTC, so the strings order as the instants do.
+		if latest == nil || r.AllocatedDatetime > latest.AllocatedDatetime {
+			latest = r
+		}
+	}
+	return latest
+}
+
+// publishedLayout is the record of what Latest holds, nil when there is none.
+func publishedLayout(ctx context.Context, database PublishRotaStore) (*rotasheet.Layout, error) {
+	raw, stale, err := database.GetPublishedRotaSheet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
+	}
+	var layout rotasheet.Layout
+	if err := json.Unmarshal(raw, &layout); err != nil {
+		return nil, fmt.Errorf("failed to decode the published layout: %w", err)
+	}
+	layout.Stale = stale
+	return &layout, nil
+}
+
+// sheetRota reads the rota's shifts and who is on each, alterations applied, as
+// the sheet shows them.
+func sheetRota(
+	ctx context.Context,
+	database PublishRotaStore,
+	volunteerClient VolunteerClient,
+	cfg *config.Config,
+	target *db.Rotation,
+) (rotasheet.Rota, error) {
+	// A rota always has at least one shift (ADR 0001); none is a broken
+	// invariant and fails loudly.
+	shifts, err := database.GetShiftsByRotaID(ctx, target.ID)
+	if err != nil {
+		return rotasheet.Rota{}, fmt.Errorf("failed to fetch shifts: %w", err)
 	}
 	if len(shifts) == 0 {
-		return nil, fmt.Errorf("rota %s has no shifts", targetRota.ID)
+		return rotasheet.Rota{}, fmt.Errorf("rota %s has no shifts", target.ID)
 	}
 	shiftIDs := make([]string, len(shifts))
 	for i, s := range shifts {
 		shiftIDs[i] = s.ID
 	}
 
-	// Step 3: Fetch this rota's allocations, scoped by its shift ids (ADR 0001)
-	logger.Debug("Fetching allocations")
-	rotaAllocations, err := database.GetAllocationsByShiftIDs(ctx, shiftIDs)
+	allocations, err := database.GetAllocationsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
+		return rotasheet.Rota{}, fmt.Errorf("failed to fetch allocations: %w", err)
 	}
-	logger.Debug("Fetched allocations for rota", zap.Int("count", len(rotaAllocations)))
+	alterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
+	if err != nil {
+		return rotasheet.Rota{}, fmt.Errorf("failed to fetch alterations: %w", err)
+	}
+	byShift := make(map[string][]db.Allocation)
+	for _, a := range allocations {
+		byShift[a.ShiftID] = append(byShift[a.ShiftID], a)
+	}
+	byShift = utils.ApplyAlterations(byShift, alterations)
 
-	// Step 4: Fetch volunteers
-	logger.Debug("Fetching volunteers")
 	roles, err := RoleTable(ctx, database)
 	if err != nil {
-		return nil, err
+		return rotasheet.Rota{}, err
 	}
 	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
+		return rotasheet.Rota{}, fmt.Errorf("failed to fetch volunteers: %w", err)
+	}
+	// The server's roster is empty until its first sync lands, and stays
+	// empty if that sync failed. Publishing from it would name everybody on
+	// the sheet as unknown.
+	if len(volunteers) == 0 {
+		return rotasheet.Rota{}, fmt.Errorf("the volunteer roster is empty, so the rota cannot be published until it has synced")
+	}
+	volunteersByID := make(map[string]model.Volunteer, len(volunteers))
+	for _, v := range volunteers {
+		volunteersByID[v.ID] = v
 	}
 
-	// Build volunteer lookup map
-	volunteersByID := make(map[string]model.Volunteer)
-	for _, vol := range volunteers {
-		volunteersByID[vol.ID] = vol
-	}
-
-	// Step 5: Group allocations by shift id
-	allocationsByShiftID := make(map[string][]db.Allocation)
-	for _, allocation := range rotaAllocations {
-		allocationsByShiftID[allocation.ShiftID] = append(allocationsByShiftID[allocation.ShiftID], allocation)
-	}
-
-	// Step 5b: Apply alterations
-	logger.Debug("Fetching alterations")
-	rotaAlterations, err := database.GetAlterationsByShiftIDs(ctx, shiftIDs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch alterations: %w", err)
-	}
-	logger.Debug("Applying alterations", zap.Int("count", len(rotaAlterations)))
-	allocationsByShiftID = utils.ApplyAlterations(allocationsByShiftID, rotaAlterations)
-
-	// Step 6: Build the published rota rows, iterating the rota's shifts in date
-	// order and looking up each shift's effective allocations by id.
-	//
-	// Every configured Role gets columns of its own, in priority order, as many
-	// as the rota's fullest shift needs — one person per cell, so a reader
-	// scanning a column reads a list of names rather than a cell to unpack
-	// (issue #185). The layout was "a column per capped Role, then the uncapped
-	// Role's holders spread across the rest": the old "Team lead + volunteers"
-	// sheet expressed in terms of `max`, which no longer exists.
-	//
-	// An allocation naming a Role the app does not know goes under Unknown
-	// rather than being dropped: it is somebody who worked the shift. So does
-	// one naming no Role at all — an alteration written before alterations had
-	// a Role column, or a swap with nobody's Role to inherit.
-	roleNames := make([]string, 0, len(roles.ByPriority()))
+	rota := rotasheet.Rota{ID: target.ID}
 	for _, role := range roles.ByPriority() {
-		roleNames = append(roleNames, role.Name)
+		rota.Roles = append(rota.Roles, rotasheet.Role{ID: role.ID, Name: role.Name})
 	}
-
-	rows := make([]sheetsclient.PublishedRotaRow, 0, len(shifts))
 
 	for _, shift := range shifts {
-		shiftDate, err := time.Parse("2006-01-02", shift.Date)
+		date, err := time.Parse("2006-01-02", shift.Date)
 		if err != nil {
-			return nil, fmt.Errorf("invalid shift date %q: %w", shift.Date, err)
+			return rotasheet.Rota{}, fmt.Errorf("invalid shift date %q: %w", shift.Date, err)
 		}
-		allocations := allocationsByShiftID[shift.ID]
-
-		row := sheetsclient.PublishedRotaRow{
-			Date:        shiftDate.Format("Mon Jan 02 2006"),
-			Roles:       map[string][]string{},
-			UnknownRole: []string{},
-			HotFood:     "",
-			Collection:  "",
+		row := rotasheet.Shift{
+			ID:     shift.ID,
+			Date:   date.Format("Mon Jan 02 2006"),
+			Closed: shift.Closed,
+			Names:  map[string][]string{},
 		}
 
-		// A closed shift says so instead of carrying allocations
-		if shift.Closed {
-			row.Closed = true
-			rows = append(rows, row)
-			continue
-		}
-
-		// Process allocations for this shift
-		for _, allocation := range allocations {
-			// A custom entry is free text somebody pinned, not a volunteer the
-			// app knows — bracketed so a reader can tell the two apart. It
-			// still fills a Seat in a Role, so it sits in that Role's column.
-			name := "[" + allocation.CustomEntry + "]"
-			if allocation.VolunteerID != "" {
-				volunteer, exists := volunteersByID[allocation.VolunteerID]
-				if !exists {
-					return nil, fmt.Errorf("volunteer not found: %s (allocation %s, shift %s)",
-						allocation.VolunteerID, allocation.ID, shift.Date)
+		for _, a := range byShift[shift.ID] {
+			// Pinned free text is bracketed, so a reader can tell it from a
+			// volunteer the app knows.
+			name := "[" + a.CustomEntry + "]"
+			if a.VolunteerID != "" {
+				name = missingVolunteer
+				if v, ok := volunteersByID[a.VolunteerID]; ok {
+					name = v.DisplayName
 				}
-				name = volunteer.DisplayName
 			}
-
-			if role, ok := roles.ByName(allocation.Role); ok {
-				row.Roles[role.Name] = append(row.Roles[role.Name], name)
-			} else {
-				row.UnknownRole = append(row.UnknownRole, name)
+			// A Role the app does not know, or none, goes under Unknown role
+			// rather than being dropped: somebody worked the shift.
+			key := rotasheet.UnknownRoleKey
+			if role, ok := roles.ByName(a.Role); ok {
+				key = role.ID
 			}
+			row.Names[key] = append(row.Names[key], name)
+		}
+		for key := range row.Names {
+			sort.Strings(row.Names[key])
 		}
 
-		// Sort alphabetically for consistency
-		sort.Strings(row.UnknownRole)
-		for name := range row.Roles {
-			sort.Strings(row.Roles[name])
-		}
-
-		rows = append(rows, row)
+		rota.Shifts = append(rota.Shifts, row)
 	}
 
-	publishedRota := &sheetsclient.PublishedRota{
-		StartDate:  targetRota.Start,
-		ShiftCount: targetRota.ShiftCount,
-		RoleNames:  roleNames,
-		Rows:       rows,
-	}
-
-	logger.Info("Published rota built successfully",
-		zap.String("rota_id", targetRota.ID),
-		zap.Int("shift_count", len(rows)))
-
-	// Step 7: Find the previous rotation to name the previous rota tab
-	previousRotaTabTitle := findPreviousRotaTabTitle(rotations, targetRota, logger)
-
-	// Step 8: Publish to Google Sheets
-	logger.Debug("Publishing to Google Sheets", zap.String("spreadsheet_id", cfg.RotaSheetID))
-	err = sheetsClient.PublishRota(cfg.RotaSheetID, publishedRota, previousRotaTabTitle)
-	if err != nil {
-		return nil, fmt.Errorf("failed to publish to Google Sheets: %w", err)
-	}
-
-	logger.Info("Rota published successfully to Google Sheets",
-		zap.String("rota_id", targetRota.ID))
-
-	return publishedRota, nil
+	return rota, nil
 }
 
-// findPreviousRotaTabTitle finds the rotation immediately before targetRota by start date
-// and returns the tab title for it, to be used when archiving the current "Latest" tab.
-// Returns an empty string if there is no previous rotation.
-func findPreviousRotaTabTitle(rotations []db.Rotation, targetRota *db.Rotation, logger *zap.Logger) string {
-	sorted := make([]db.Rotation, len(rotations))
-	copy(sorted, rotations)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Start < sorted[j].Start
-	})
-
-	for i, r := range sorted {
-		if r.ID == targetRota.ID && i > 0 {
-			prev := sorted[i-1]
-			title, err := sheetsclient.GenerateTabTitle(prev.Start, prev.End)
-			if err != nil {
-				logger.Warn("Failed to generate previous rota tab title", zap.Error(err))
-				return ""
+// archiveTabTitle names the tab Latest is copied to: the dates of the rota it
+// holds. With no record of which that is — the first publish since this was
+// deployed — it is the rota before the one being published, which is what the
+// command that used to publish left on Latest.
+func archiveTabTitle(rotations []db.Rotation, last *rotasheet.Layout, target *db.Rotation, logger *zap.Logger) string {
+	var archived *db.Rotation
+	if last != nil {
+		for i := range rotations {
+			if rotations[i].ID == last.RotaID {
+				archived = &rotations[i]
 			}
-			return title
+		}
+	} else {
+		sorted := make([]db.Rotation, len(rotations))
+		copy(sorted, rotations)
+		sort.Slice(sorted, func(i, j int) bool { return sorted[i].Start < sorted[j].Start })
+		for i := range sorted {
+			if sorted[i].ID == target.ID && i > 0 {
+				archived = &sorted[i-1]
+			}
 		}
 	}
-	return ""
+	if archived == nil {
+		return ""
+	}
+
+	title, err := sheetsclient.GenerateTabTitle(archived.Start, archived.End)
+	if err != nil {
+		logger.Warn("Failed to name the archive tab", zap.Error(err))
+		return ""
+	}
+	return title
 }

@@ -63,7 +63,7 @@ All commands take `-e`/`--env` to pick the config environment
 | Command | Description |
 | --- | --- |
 | `listVolunteers` | List volunteers from the volunteer sheet. |
-| `publishRota` | Publish the latest rota to the rota sheet. |
+| `publishRota` | Bring the rota sheet's `Latest` tab up to date with the rota allocated most recently. The server does this itself after every change; this is the same publish, run by hand. |
 | `viewHistoricalResponses ...` | Inspect past availability responses. |
 
 The whole life of a rota is in the app now — defining it, preparing its shifts,

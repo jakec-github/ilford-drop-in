@@ -26,7 +26,7 @@ func TestAvailabilityLoopIntegration(t *testing.T) {
 	// What a Shift asks for is a copy of the default Shape taken when the rota
 	// was defined (#137), so it has to be stated before the rota is.
 	dbtest.SeedDefaultShape(t, database)
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
 
 	rec := defineFromProposal(t, handler, 3)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -175,7 +175,7 @@ func TestAvailabilityLinkOpensThePage(t *testing.T) {
 	dbtest.SeedRoles(t, database)
 	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
-	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, zap.NewNop()).Routes()
+	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, nil, zap.NewNop()).Routes()
 
 	rec := defineFromProposal(t, handler, 1)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())

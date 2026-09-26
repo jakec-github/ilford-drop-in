@@ -72,6 +72,26 @@ func NewClientFromServiceAccount(ctx context.Context, keyJSON []byte) (*Client, 
 	}, nil
 }
 
+// NewWriterFromServiceAccount is NewClientFromServiceAccount with the scope to
+// write, for publishing the rota to its sheet (issue #191). A separate
+// constructor so the roster sync keeps asking for read-only: only the publish
+// needs more, and it needs the rota sheet shared with the service account as an
+// editor.
+func NewWriterFromServiceAccount(ctx context.Context, keyJSON []byte) (*Client, error) {
+	service, err := sheets.NewService(ctx,
+		option.WithCredentialsJSON(keyJSON),
+		option.WithScopes(sheets.SpreadsheetsScope),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sheets service: %w", err)
+	}
+
+	return &Client{
+		service: service,
+		ctx:     ctx,
+	}, nil
+}
+
 // Service returns the underlying sheets service for direct API access
 func (c *Client) Service() *sheets.Service {
 	return c.service

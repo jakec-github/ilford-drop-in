@@ -93,7 +93,7 @@ func TestAllocateRotaInFlightRefusesAnAllocatedRota(t *testing.T) {
 // than answered.
 func TestAllocateRotaInFlightWaitsForTheRunningSolve(t *testing.T) {
 	store := draftedRotaStore()
-	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, zap.NewNop())
+	handler := NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop())
 	require.NoError(t, handler.drafts.acquire(t.Context()), "the slot starts free")
 
 	answered := make(chan *httptest.ResponseRecorder, 1)
