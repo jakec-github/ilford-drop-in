@@ -15,10 +15,17 @@ web/dist/
 /cmd/cli/cli
 /cmd/server/server
 
+# The solver's source goes into the image (the Dockerfile's pybuild stage);
+# its local venv, tests and build leftovers do not.
+pyallocator/.venv/
+pyallocator/tests/
+pyallocator/build/
+pyallocator/src/*.egg-info/
+**/__pycache__/
+
 # Not part of the server image
 .git/
 .github/
-pyallocator/
 test_data/
 docs/
 deploy/

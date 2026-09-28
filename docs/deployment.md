@@ -22,6 +22,33 @@ deploy was green, the app crash-looped, and no check anywhere failed. Whenever a
 change makes a config key required, removed or renamed, run the config rollout
 alongside the merge.
 
+## The image
+
+One image carries everything the server runs: the Go binary (with the frontend
+embedded) and the CP-SAT solver it drafts rotas with, which is Python. The
+runtime base is `gcr.io/distroless/python3-debian12:nonroot` — no shell, no
+package manager, not root.
+
+- The solver lives in a venv at `/opt/pyallocator`, and
+  `ILFORD_CPSAT_PYTHON=/opt/pyallocator/bin/python` is how the server finds it.
+- The venv is built in a `debian:12` stage with Debian's own `python3.11`: the
+  same interpreter, at the same path, as the distroless runtime's. A venv only
+  runs under the interpreter that made it, so changing either base means
+  changing both — see the `Dockerfile`.
+- `scripts/image-smoke.sh <image>` runs the solver inside a built image on a
+  small input, and checks the image runs as nonroot with no shell. CI runs it on
+  every PR, and the deploy runs it before pushing, so an image that cannot draft
+  a rota fails the build rather than the first draft in prod. Run it locally
+  after touching the `Dockerfile`:
+
+  ```sh
+  docker build -t ilford-drop-in:local . && scripts/image-smoke.sh ilford-drop-in:local
+  ```
+
+ortools makes the image a little under 500 MB, against the droplet's 8.7 GB
+disk. Each deploy removes the images no container uses (see
+[Operations](#operations)), so only one or two are ever on the box.
+
 ## One-time setup
 
 ### 1. Droplet and DNS

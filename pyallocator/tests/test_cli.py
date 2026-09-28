@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -23,32 +24,13 @@ def shape(size: int) -> list[dict]:
     ]
 
 
-VALID_INPUT = {
-    "max_allocation_count": 1,
-    "roles": ROLES,
-    "enabled_constraints": ["male_required"],
-    "shifts": [{"index": 0, "date": "2026-07-13", "shape": shape(2)}],
-    "groups": [
-        {
-            "group_key": "Solo Volunteer",
-            "members": [
-                {
-                    "id": "v1",
-                    "first_name": "Solo",
-                    "last_name": "Volunteer",
-                    "display_name": "Solo",
-                    # Male so the default male_required constraint lets a
-                    # one-volunteer shift fill in this contract test.
-                    "gender": "Male",
-                    "roles": ["Service volunteer"],
-                }
-            ],
-            "available_shift_indices": [0],
-            "historical_allocation_count": 0,
-        }
-    ],
-    "historical_shifts": [],
-}
+# One shift, one volunteer. The volunteer is Male so the default
+# male_required constraint lets a one-volunteer shift fill. It lives in a file
+# because scripts/image-smoke.sh feeds the same input to the solver inside the
+# built server image: this test keeps it a valid, solvable input.
+VALID_INPUT = json.loads(
+    (Path(__file__).parent / "testdata" / "cli_input.json").read_text()
+)
 
 
 def run_cli(tmp_path, payload) -> tuple[int, dict]:
