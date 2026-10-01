@@ -58,6 +58,38 @@ function holdsRole(group: AvailabilityGroup, role: Role): boolean {
   return group.members.some((member) => member.roles.includes(role));
 }
 
+// A group nobody has emailed is not a group that has failed to reply. On a
+// freshly minted round that is every row, and calling them all "no reply"
+// would report a problem that is really just the send not having happened.
+function isUnsent(group: AvailabilityGroup): boolean {
+  return group.members.every((m) => m.sentAt === null);
+}
+
+// Replied, then chased but silent, then never emailed: the order an Organiser
+// can do something about them in.
+function statusRank(group: AvailabilityGroup): number {
+  if (group.replied) return 0;
+  return isUnsent(group) ? 2 : 1;
+}
+
+// The rows in the order they are worth reading: whoever can cover the most
+// shifts first, since they are who the rota will be built from. Only open
+// shifts on this rota count — a tick nobody can see should not lift a row.
+function sortGroups(
+  groups: AvailabilityGroup[],
+  shifts: ShiftCoverage[],
+): AvailabilityGroup[] {
+  const open = new Set(shifts.filter((s) => !s.closed).map((s) => s.id));
+  const offered = (group: AvailabilityGroup) =>
+    group.availableShiftIds.filter((id) => open.has(id)).length;
+  return [...groups].sort(
+    (a, b) =>
+      offered(b) - offered(a) ||
+      statusRank(a) - statusRank(b) ||
+      a.name.localeCompare(b.name, "en-GB"),
+  );
+}
+
 // Where one person has got to, in the order the states matter. An answer settles
 // it. Failing that, a partner's answer covers them — the group has an answer, so
 // chasing them would be chasing one we already hold. Only then is silence worth
@@ -262,10 +294,7 @@ function GroupRow({
   onResend: (member: AvailabilityEntry) => void;
 }) {
   const alone = group.members.length === 1 ? group.members[0] : null;
-  // A group nobody has emailed is not a group that has failed to reply. On a
-  // freshly minted round that is every row, and calling them all "no reply"
-  // would report a problem that is really just the send not having happened.
-  const unsent = group.members.every((m) => m.sentAt === null);
+  const unsent = isUnsent(group);
 
   return (
     <>
@@ -356,10 +385,11 @@ export default function ResponseGrid({
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
 
   const roles = roleNames(round.shifts);
+  const sorted = sortGroups(round.groups, round.shifts);
   const groups =
     filter === null
-      ? round.groups
-      : round.groups.filter((group) => holdsRole(group, filter));
+      ? sorted
+      : sorted.filter((group) => holdsRole(group, filter));
 
   // Pins are why a date can want fewer people than the config says, so they are
   // worth a row — but only on a round that has any, where the row explains
