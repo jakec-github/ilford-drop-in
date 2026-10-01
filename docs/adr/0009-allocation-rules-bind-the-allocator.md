@@ -1,6 +1,9 @@
 # Allocation rules bind the allocator, not the Rota Editor
 
 Status: accepted, 2026-09-18 (#212). Amended 2026-09-18 (#214).
+Partly superseded by [ADR 0010](0010-config-allows-the-allocator-obeys-people-decide.md)
+(proposed): a Preallocation is no longer held to the allocator's rules, and the
+Shape no longer bounds pins. What this ADR says about Alterations still holds.
 
 A Shape's Seats and the Roles a Volunteer holds on the roster are **allocator
 inputs**. They bound what the solver may produce, and what a Preallocation may

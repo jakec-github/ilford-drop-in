@@ -41,8 +41,8 @@ _Avoid_: delete rota, cancel rota
 
 **Role**:
 A job on a Shift — Team lead, Service volunteer, Food collector. A volunteer
-holds the Roles they will do, and only a holder may be allocated to one, bar a
-Preallocation, which grants the Role it names for the one Shift it names. The
+holds the Roles they will do, and the allocator places only holders in one. A
+Preallocation or an Alteration may name any Role, held or not (ADR 0010). The
 job and the holding of it share one name; there is no separate notion of being
 qualified for a job you do not hold. A person fills at most one Role on a
 Shift, however many they hold. A Role has an identity of its own: its name is
@@ -60,9 +60,10 @@ One place on a Shift: one Role, at most one person.
 Which Roles a Shift needs and how many Seats of each. Owned by the Shift and
 editable until its Rotation is allocated, fixed thereafter. Its counts are what
 the allocator fills up to, not minimums — Seats are routinely left empty — and
-the only ceiling on how many of a Role a Shift may hold. A ceiling on the
-allocator and on Preallocations, that is: an Alteration made after the rota is
-published is not held to it (ADR 0009).
+the only ceiling on how many of a Role a Shift may hold. It is a ceiling on the
+allocator alone. Preallocations may go past it, a Shape may be shrunk below the
+pins already on its Shift, and an Alteration made after the rota is published
+is not held to it (ADR 0010).
 _Avoid_: shift size, template, structure
 
 **Rota Defaults**:
@@ -132,10 +133,12 @@ editable only while the Rotation is unallocated.
 
 **Preallocation**:
 A person pinned to a specific Shift before Allocation runs, naming the Role
-they will fill and forcing the allocator to place them (their group included).
-It records a decision already taken, so it settles both questions the allocator
-would otherwise ask of the roster: the pinned person is available for that
-Shift whatever they answered, and holds the Role it names for that Shift alone.
+they will fill and forcing the allocator to place them. It pins that one
+person: their group joins them only where the allocator could have placed them
+anyway. It records a decision already taken, so it is not held to the
+allocator's rules. The pinned person may be unavailable, inactive, not a holder
+of the Role, or past the Shape's Seats, and the solve works around them
+(ADR 0010). A Closed Shift cannot be pinned to.
 It references the Role rather than naming it, so renaming one leaves every
 promise made in it intact. Every Preallocation is the same kind of thing however
 it came to exist, and an Organiser or a Rota Editor may remove any of them. A Volunteer is pinned to
@@ -166,8 +169,8 @@ an Organiser's, because those are allocator inputs rather than who is on the
 rota; so is every Organiser screen, the Draft Rota Allocation included.
 Within the Alterations that are theirs they are deliberately unconstrained —
 one person on a Shift at most once is the whole rule, and the Shape and the
-roster are advice (ADR 0009). Their Preallocations are a different matter, and
-are held to every allocator rule.
+roster are advice. Their Preallocations are the same: a pin is not held to the
+allocator's rules either (ADR 0010).
 Identified and re-checked like an Organiser, against an allowlist of its own.
 All other visitors are anonymous; there are no other authenticated levels.
 _Avoid_: admin, editor (alone), user, staff
