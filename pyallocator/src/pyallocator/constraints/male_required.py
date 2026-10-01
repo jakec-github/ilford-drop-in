@@ -17,6 +17,12 @@ comes from now.
 Custom (free-text) preallocations have unknown gender: they occupy Seats
 but never satisfy the male requirement, so they narrow the escape.
 
+A shift whose pins take every Seat is exempt. Its people were all decided
+before the solve, so there is no choice for the rule to steer, only a rota
+to refuse — and a pin is a decision an Organiser has already made, so the
+pin wins. That is the one case the rule could make infeasible: with any
+Seat not pinned, the solver can always leave it open.
+
 The rule is optional: it applies when an Organiser has switched male cover on
 in the Allocation Settings, which is said by this constraint being in the
 run's list at all. It used to be said twice — a `requiresMale` config key
@@ -41,7 +47,7 @@ class MaleRequiredConstraint:
 
     def apply(self, model: cp_model.CpModel, x: Vars, problem: Problem) -> None:
         for shift in problem.shifts:
-            if shift.closed:
+            if shift.closed or problem.pins_fill_every_seat(shift):
                 continue
 
             male_sum = cp_model.LinearExpr.Sum(

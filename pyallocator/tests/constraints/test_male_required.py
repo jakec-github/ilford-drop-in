@@ -15,7 +15,7 @@ from conftest import (
     make_shift,
     solve_with,
 )
-from pyallocator.constraints import male_required, preallocations
+from pyallocator.constraints import male_required, preallocations, seat_capacity
 from pyallocator.domain import Seat
 
 ONLY = [male_required.CONSTRAINT]
@@ -116,12 +116,77 @@ def test_closed_shift_exempt():
     assert out.success
 
 
-def test_preallocations_filling_every_seat_with_females_is_infeasible():
+def test_preallocations_filling_every_seat_win_over_male_cover():
     # A female team lead AND a female volunteer preallocated onto a
-    # size-1 shift: no male and no Seat to add one to -> INFEASIBLE.
+    # size-1 shift: no male and no Seat to add one to. The pins were
+    # decided before the solve, so they win rather than the rota being
+    # INFEASIBLE.
     out = solve_with(_every_seat_female(), ONLY + [preallocations.CONSTRAINT])
-    assert not out.success
-    assert out.solver_status == "INFEASIBLE"
+    assert out.success
+    assert set(allocations_by_shift(out)[0]) == {"leads", "f1"}
+
+
+def test_custom_pins_filling_every_seat_win_over_male_cover():
+    # A shift covered by somebody not on the rota: their custom pin takes
+    # its only Seat, and the shift needs nothing else. Seat capacity is what
+    # makes the shift full, so it runs too.
+    inp = make_input(
+        groups=[make_group("f1", available=[0])],
+        shifts=[
+            dataclasses.replace(
+                make_shift(0, custom_preallocations=["Outside cover"]),
+                shape=(Seat(role=SERVICE_VOLUNTEER, count=1),),
+            )
+        ],
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT, seat_capacity.CONSTRAINT])
+    assert out.success
+    assert allocations_by_shift(out)[0] == ()
+
+
+def test_a_pinned_group_mate_counts_toward_filling_every_seat():
+    # Only one person is pinned, but their partner comes with them, and
+    # the two of them take both Seats.
+    pair = make_group(
+        "pair",
+        members=[make_member("ann"), make_member("bea")],
+        available=[0],
+    )
+    inp = make_input(
+        groups=[pair],
+        shifts=[
+            dataclasses.replace(
+                make_shift(0, preallocated_volunteer_ids=["ann"]),
+                shape=(Seat(role=SERVICE_VOLUNTEER, count=2),),
+            )
+        ],
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert allocations_by_shift(out)[0] == ("pair",)
+
+
+def test_one_seat_left_unpinned_still_needs_male_cover():
+    # The same pins with one Seat more: the solver has a choice again, so
+    # the rule applies and keeps that Seat open rather than giving it to f2.
+    inp = make_input(
+        groups=[
+            make_group("leads", available=[0], team_lead=True),
+            make_group("f1", available=[0]),
+            make_group("f2", available=[0]),
+        ],
+        shifts=[
+            make_shift(
+                0,
+                size=2,
+                preallocated_team_lead_id="leads",
+                preallocated_volunteer_ids=["f1"],
+            )
+        ],
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert set(allocations_by_shift(out)[0]) == {"leads", "f1"}
 
 
 def test_rule_off_allows_a_shift_with_no_male_and_no_open_seat():

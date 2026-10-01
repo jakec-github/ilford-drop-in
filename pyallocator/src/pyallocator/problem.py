@@ -164,6 +164,28 @@ class Problem:
             p.custom for p in shift.preallocations if p.custom and p.role == role
         )
 
+    def pins_fill_every_seat(self, shift: ShiftSpec) -> bool:
+        """Whether this shift's pins alone take every Seat its Shape offers.
+
+        Counts everyone a pin forces onto the shift: each custom entry, and
+        every member of each pinned volunteer's group, since a pin brings the
+        whole group. A person fills one Seat, so a headcount that reaches the
+        total Seats leaves the solver nobody to choose — the shift is decided
+        before it starts.
+
+        Totalled across Roles rather than per Role: which Seat a pinned
+        person's group-mate takes is the solver's choice, so only the total is
+        known in advance.
+        """
+        seats = sum(seat.count for seat in shift.shape)
+        customs = sum(1 for p in shift.preallocations if p.custom)
+        members = sum(
+            len(self.group_by_key[group_key].members)
+            for group_key, index in self.preallocated_pairs
+            if index == shift.index
+        )
+        return customs + members >= seats
+
     def _resolve_preallocations(self) -> None:
         for shift in self.shifts:
             # Go strips preallocations from closed shifts before sending;
