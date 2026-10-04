@@ -127,3 +127,38 @@ export function groupByRole<T extends { role: Role }>(
 export function roleGroupLabel(role: Role): string {
   return role === "" ? "Role not recorded" : role;
 }
+
+// Returns the draft deficit for each role in a shifts shape. Only roles with
+// a deficit are returned.
+//
+// Counted per Role, so pins past the Shape (ADR 0010) cannot hide a gap: two
+// people in a Role with one Seat leave that Role at no deficit, never a
+// negative one that offsets another Role's shortfall, and somebody in a Role
+// the Shape asks for none of is not counted against anything.
+export function shiftDeficit(
+  shape: ShapeSeat[],
+  assignees: { role: Role }[],
+): { role: string; deficit: number }[] {
+  const assigneeCountByRole = assignees.reduce(
+    (acc: Record<string, number>, { role }) => {
+      if (acc[role]) {
+        acc[role] += 1;
+      } else {
+        acc[role] = 1;
+      }
+      return acc;
+    },
+    {},
+  );
+
+  return shape
+    .map(({ role, count }) => ({
+      role,
+      // A Role nobody was drafted into is short its whole count, not absent
+      // from the answer: without the fallback the subtraction is NaN, NaN > 0
+      // is false, and a shift the solver could fill no Seat of some Role on was
+      // the one shift that said nothing about it.
+      deficit: count - (assigneeCountByRole[role] ?? 0),
+    }))
+    .filter(({ deficit }) => deficit > 0);
+}

@@ -62,9 +62,8 @@ export default function ShapeForm({
       await onSave(seats);
       onClose();
     } catch (err: unknown) {
-      // The server's own message names the Role whose ceiling was exceeded, or
-      // whose Seat somebody is already pinned to, so it is shown as-is and the
-      // form stays open on what was typed.
+      // The server's own message says what it refused, so it is shown as-is
+      // and the form stays open on what was typed.
       setError(err instanceof Error ? err.message : "Failed to save the shape");
       setSaving(false);
     }

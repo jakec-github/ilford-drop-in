@@ -18,6 +18,7 @@ import {
   roleGroupLabel,
   roleSuffix,
   samePerson,
+  shiftDeficit,
 } from "./shifts";
 import { formatShiftTimes } from "./shiftTimes";
 import "./ShiftList.css";
@@ -34,36 +35,6 @@ function isEditable(shift: RotaShift): boolean {
 // twice on a shift — two people from the same visiting group.
 function chipKey(shiftDate: string, assignee: Assignee, index: number): string {
   return `${shiftDate}/${assignee.volunteerId ?? assignee.name}/${index}`;
-}
-
-// Returns the draft deficit for each role in a shifts shape. Only roles with
-// a deficit are returned.
-function shiftDeficit(
-  shape: RotaShift["shape"],
-  assignees: Assignee[],
-): { role: string; deficit: number }[] {
-  const assigneeCountByRole = assignees.reduce(
-    (acc: Record<string, number>, { role }) => {
-      if (acc[role]) {
-        acc[role] += 1;
-      } else {
-        acc[role] = 1;
-      }
-      return acc;
-    },
-    {},
-  );
-
-  return shape
-    .map(({ role, count }) => ({
-      role,
-      // A Role nobody was drafted into is short its whole count, not absent
-      // from the answer: without the fallback the subtraction is NaN, NaN > 0
-      // is false, and a shift the solver could fill no Seat of some Role on was
-      // the one shift that said nothing about it.
-      deficit: count - (assigneeCountByRole[role] ?? 0),
-    }))
-    .filter(({ deficit }) => deficit > 0);
 }
 
 // Group membership is shown by a corner dot; the colour just needs to be stable

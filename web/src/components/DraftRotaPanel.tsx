@@ -549,8 +549,9 @@ export default function DraftRotaPanel({
           dateLabel={formatShiftDateLong(dialog.shift.date)}
           volunteers={pinnableTo(dialog.shift.date)}
           volunteersError={volunteersError}
-          // What this shift still has room to promise: its own Shape, less the
-          // pins already made against it, whichever way each came to be made.
+          roles={roles?.map((role) => role.name) ?? null}
+          // This shift's own Shape, with the pins already made against it
+          // counted, whichever way each came to be made.
           seats={seatCounts(
             dialog.shift.shape,
             (pinsByDate.get(dialog.shift.date) ?? []).map((p) => p.roleId),
@@ -612,10 +613,10 @@ export default function DraftRotaPanel({
         />
       )}
 
-      {/* Its own errors rather than the row's: a refusal here names the Role
-          whose ceiling was hit or the person pinned to a Seat that would go, and
-          the form stays open on what was typed so the number can be corrected
-          rather than retyped. */}
+      {/* Its own errors rather than the row's: a refusal here (an allocated
+          rota, a count it cannot take) is shown in the form, which stays open
+          on what was typed so the number can be corrected rather than
+          retyped. */}
       {dialog?.kind === "shape" && roles && (
         <ShapeForm
           title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
