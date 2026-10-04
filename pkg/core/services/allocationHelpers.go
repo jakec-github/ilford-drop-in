@@ -420,10 +420,13 @@ func buildPreallocationOverrides(
 }
 
 // checkPreallocationsResolve verifies, before the solver runs, that every
-// preallocated volunteer still resolves to an active volunteer. A pin whose
-// volunteer has gone inactive or been deleted would otherwise surface as the
-// solver's opaque ProblemError; here it fails loudly, naming the offending
-// pin(s). Custom (non-volunteer) pins carry no id and are not checked.
+// preallocated volunteer is still on the roster. A pin whose volunteer has
+// been deleted would otherwise surface as the solver's opaque ProblemError;
+// here it fails loudly, naming the offending pin(s). Custom (non-volunteer)
+// pins carry no id and are not checked.
+//
+// Having gone inactive is not a failure: solverVolunteers sends anybody a pin
+// names, active or not (ADR 0010).
 //
 // It matters most for the pins nobody typed recently: a Standing Preallocation
 // seeds one at definition and an Organiser may not look at it again before
@@ -435,7 +438,7 @@ func buildPreallocationOverrides(
 func checkPreallocationsResolve(
 	pins []db.Preallocation,
 	shifts []db.Shift,
-	activeIDs map[string]bool,
+	rosterIDs map[string]bool,
 ) error {
 	var offenders []string
 
@@ -454,15 +457,55 @@ func checkPreallocationsResolve(
 		if !open {
 			continue
 		}
-		if !activeIDs[pin.VolunteerID] {
-			offenders = append(offenders, fmt.Sprintf("pin for %s: volunteer %s is not active", date, pin.VolunteerID))
+		if !rosterIDs[pin.VolunteerID] {
+			offenders = append(offenders, fmt.Sprintf("pin for %s: volunteer %s is not on the roster", date, pin.VolunteerID))
 		}
 	}
 
 	if len(offenders) > 0 {
-		return wrapf(ErrInvalidInput, "preallocated volunteers are no longer active: %s", strings.Join(offenders, "; "))
+		return wrapf(ErrInvalidInput, "preallocated volunteers are no longer on the roster: %s", strings.Join(offenders, "; "))
 	}
 	return nil
+}
+
+// solverVolunteers is who the solver is sent: every active volunteer, plus
+// every inactive one a pin on an open shift names. Being inactive is roster
+// data, so it stops the allocator choosing somebody but never undoes a
+// decision a person took (ADR 0010).
+//
+// An inactive volunteer goes as a group of one, with their group key cleared.
+// Their group-mates are not sent for them, and their own old answers are not
+// read (fetchGroupAvailability is given the active alone), so the only shifts
+// they are available on are the ones their pins grant — the pin places them
+// there and the solver can choose them nowhere else.
+//
+// Pins on closed shifts are ignored: InitShifts strips them, so they place
+// nobody.
+func solverVolunteers(all []model.Volunteer, pins []db.Preallocation, shifts []db.Shift) []allocator.Volunteer {
+	open := make(map[string]bool, len(shifts))
+	for _, s := range shifts {
+		if !s.Closed {
+			open[s.ID] = true
+		}
+	}
+	pinned := make(map[string]bool, len(pins))
+	for _, pin := range pins {
+		if pin.VolunteerID != "" && open[pin.ShiftID] {
+			pinned[pin.VolunteerID] = true
+		}
+	}
+
+	var sent []model.Volunteer
+	for _, v := range all {
+		switch {
+		case utils.IsActive(v):
+			sent = append(sent, v)
+		case pinned[v.ID]:
+			v.GroupKey = ""
+			sent = append(sent, v)
+		}
+	}
+	return convertToAllocatorVolunteers(sent)
 }
 
 // findPreviousRotation finds the rotation immediately before the target rotation

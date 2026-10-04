@@ -481,3 +481,28 @@ def test_pin_to_a_role_nobody_holds_solves():
     assert out.success, out.error or out.solver_status
     seats = {(a.volunteer_id, a.role) for a in out.shifts[0].assignments}
     assert ("alice", food.name) in seats
+
+
+def test_inactive_pinned_volunteer_is_placed_on_their_pin_only():
+    # Go sends an inactive volunteer only when a pin names them, as a group of
+    # one with no answers read (#235). The pin is their only availability, so
+    # the solver places them there and, however much room is left and however
+    # the objective rewards placing people, nowhere else.
+    inp = AllocationInput(
+        max_allocation_count=4,
+        shifts=tuple(
+            make_shift(i, size=3, preallocated_volunteer_ids=["inactive"] if i == 1 else [])
+            for i in range(4)
+        ),
+        groups=(
+            _individual("inactive", available=[1]),
+            _individual("charlie", available=[0, 1, 2, 3], gender="Male"),
+        ),
+        roles=DEFAULT_ROLES,
+        enabled_constraints=E2E_ENABLED,
+        historical_shifts=(),
+    )
+    out = solve(inp)
+    assert out.success, out.error or out.solver_status
+    placed = [s.index for s in out.shifts if "inactive" in volunteer_ids(s)]
+    assert placed == [1]

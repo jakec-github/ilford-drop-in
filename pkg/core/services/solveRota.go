@@ -139,7 +139,16 @@ func solveRotaInFlight(
 	activeVolunteers := utils.FilterActiveVolunteers(allVolunteers)
 	logger.Debug("Active volunteers", zap.Int("count", len(activeVolunteers)))
 
-	allocatorVolunteers := convertToAllocatorVolunteers(activeVolunteers)
+	// Read before anything is sent to the solver, because a pin decides who is:
+	// an inactive volunteer it names goes too (ADR 0010). The `preallocation`
+	// table is the whole set — pins an Organiser made by hand and pins a
+	// Standing Preallocation seeded when the rota was defined are the same rows
+	// (issue #131).
+	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
+	}
+	allocatorVolunteers := solverVolunteers(allVolunteers, pins, shifts)
 
 	// What each Shift asks for, read from the Shift itself rather than
 	// recomputed from the settings (#137): a rota is allocated against the Shape
@@ -172,7 +181,9 @@ func solveRotaInFlight(
 		ctx,
 		database,
 		targetRota.ID,
-		allocatorVolunteers,
+		// The active alone: an inactive volunteer's answers, given while they
+		// were active, must not make them choosable beyond their pins.
+		convertToAllocatorVolunteers(activeVolunteers),
 		orderedShiftIDs,
 		logger,
 	)
@@ -181,7 +192,7 @@ func solveRotaInFlight(
 	}
 
 	// History gets ALL volunteers (inactive included) so past shifts
-	// keep their groups; allocation itself only sees active volunteers.
+	// keep their groups; allocation itself sees the active and the pinned.
 	historicalShifts, err := buildHistoricalShifts(
 		ctx,
 		database,
@@ -195,22 +206,15 @@ func solveRotaInFlight(
 	}
 
 	// Preallocations (issue #39): each pin becomes a synthetic exact-date
-	// override, so InitShifts applies them with no new merge logic. The
-	// `preallocation` table is the whole set — pins an Organiser made by hand and
-	// pins a Standing Preallocation seeded when the rota was defined are the
-	// same rows (issue #131).
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
-	}
-	activeIDs := make(map[string]bool, len(activeVolunteers))
-	for _, v := range activeVolunteers {
-		activeIDs[v.ID] = true
+	// override, so InitShifts applies them with no new merge logic.
+	rosterIDs := make(map[string]bool, len(allVolunteers))
+	for _, v := range allVolunteers {
+		rosterIDs[v.ID] = true
 	}
 	// Pre-solve stale-pin check: fail loudly, naming the pin, rather than letting
-	// an inactive/deleted preallocated volunteer surface as the solver's opaque
-	// ProblemError.
-	if err := checkPreallocationsResolve(pins, shifts, activeIDs); err != nil {
+	// a preallocated volunteer who has left the roster surface as the solver's
+	// opaque ProblemError.
+	if err := checkPreallocationsResolve(pins, shifts, rosterIDs); err != nil {
 		return nil, err
 	}
 	allocatorOverrides, err := buildPreallocationOverrides(pins, dateByShiftID, roles)

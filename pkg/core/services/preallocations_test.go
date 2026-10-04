@@ -250,12 +250,16 @@ func TestAddPreallocation_UnknownVolunteer(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
+// Being inactive is roster data, not a representation limit, so it never
+// refuses a pin (ADR 0010).
 func TestAddPreallocation_InactiveVolunteer(t *testing.T) {
 	store := oneShiftStore()
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
+	view, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "carol", RoleID: "role-service-volunteer"}, zap.NewNop())
-	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "not active")
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "carol", store.inserted[0].VolunteerID)
+	assert.Equal(t, "Carol", view.Name)
 }
 
 // Not holding a Role is a rule, and rules bind the allocator rather than the
