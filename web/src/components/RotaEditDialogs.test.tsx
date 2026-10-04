@@ -298,8 +298,17 @@ function assigneeProps() {
   };
 }
 
+// The dialogs read a Role by name only, so the id is any stand-in that stays
+// distinct per Role.
 function assignee(name: string, role: Role) {
-  return { name, role, custom: false, group: null, volunteerId: name };
+  return {
+    name,
+    roleId: `id-${role}`,
+    role,
+    custom: false,
+    group: null,
+    volunteerId: name,
+  };
 }
 
 describe("AssigneeDialog", () => {

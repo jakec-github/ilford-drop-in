@@ -1,6 +1,8 @@
-// Role is a job on a shift, named exactly as the server names it. The frontend
-// matches on the name and never enumerates the set: which Roles exist is the
-// server's to say, and the API is the authority on it.
+// Role is a job on a shift, named exactly as the server names it. It is what a
+// screen shows; what anything matches on is the Role's id, which survives a
+// rename where the name does not (issue #222). The frontend never enumerates
+// the set: which Roles exist is the server's to say, and the API is the
+// authority on it.
 //
 // No Role name is written anywhere in this codebase (ADR 0009). A screen that
 // has to offer a choice of Role reads useRoles(); a screen that has to know how
@@ -143,12 +145,15 @@ export interface RotaDefaults extends ShiftTimes {
 }
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
-// entry. Role is the role held on this shift, not the volunteer's intrinsic
-// role. Group is the volunteer's group key, or null for custom/ungrouped.
+// entry. roleId is the Role of the Seat they are in on this shift, not the
+// volunteer's intrinsic role, and role is its name as it reads today; both are
+// empty for somebody the rota records no Role for. Group is the volunteer's
+// group key, or null for custom/ungrouped.
 // volunteerId is the real volunteer's id, or null for custom entries; it keys
 // their ICS calendar feed.
 export interface Assignee {
   name: string;
+  roleId: string;
   role: Role;
   custom: boolean;
   group: string | null;
@@ -317,16 +322,17 @@ export const CUSTOM_CHOICE = "custom";
 //   replace { date, out: leaving, in: arriving }
 //   move    { date: destination, in: person, swapDate: where they were }
 //   swap    { date: A's shift, out: A, in: B, swapDate: B's shift }
-//   switch  { date, out: person, in: the same person, role: the new one }
+//   switch  { date, out: person, in: the same person, roleId: the new one }
 //
 // swapDate applies the same change reversed on a second date, which is what
 // makes move and swap a single atomic request rather than two.
 //
 // A switch is a replacement of somebody by themselves: they leave the shift and
 // rejoin it in another Role, staying on it throughout (issue #147). It is the
-// one shape that says nothing without role, so role is required there.
+// one shape that says nothing without a Role, so roleId is required there.
 //
-// role sets the role the incoming volunteer takes; omitted, the server infers
+// roleId sets the Role the incoming volunteer takes, by id as a pin names one
+// (issue #222); omitted, the server infers
 // it. On a swap it is refused — out is also set there, so each date has its
 // own incoming person and there is no unambiguous one to apply it to — but a
 // move accepts it, since only one person is arriving. Any configured Role is
@@ -342,7 +348,7 @@ export interface RotaChange {
   in?: PersonRef;
   out?: PersonRef;
   swapDate?: string;
-  role?: Role;
+  roleId?: string;
   reason: string;
 }
 

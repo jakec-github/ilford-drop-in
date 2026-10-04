@@ -61,7 +61,7 @@ func (d *DB) GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []strin
 		return nil, nil
 	}
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, shift_id, role, volunteer_id, custom_entry
+		SELECT id, shift_id, role_id, volunteer_id, custom_entry
 		FROM draft_allocation
 		WHERE shift_id = ANY($1)
 	`, shiftIDs)
@@ -74,7 +74,7 @@ func (d *DB) GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []strin
 	for rows.Next() {
 		var a DraftAllocation
 		var volunteerID, customEntry *string
-		if err := rows.Scan(&a.ID, &a.ShiftID, &a.Role, &volunteerID, &customEntry); err != nil {
+		if err := rows.Scan(&a.ID, &a.ShiftID, &a.RoleID, &volunteerID, &customEntry); err != nil {
 			return nil, fmt.Errorf("failed to scan draft allocation: %w", err)
 		}
 		if volunteerID != nil {
@@ -167,9 +167,9 @@ func (d *DB) ReplaceDraftRotaAllocation(ctx context.Context, draft DraftRotaAllo
 		// the shift_id FK only says the shift exists. It cannot happen: the
 		// solve reads the rota's own shifts and writes back against them.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO draft_allocation (id, shift_id, role, volunteer_id, custom_entry)
+			INSERT INTO draft_allocation (id, shift_id, role_id, volunteer_id, custom_entry)
 			VALUES ($1, $2, $3, $4, $5)
-		`, seat.ID, seat.ShiftID, seat.Role, volunteerID, customEntry); err != nil {
+		`, seat.ID, seat.ShiftID, seat.RoleID, volunteerID, customEntry); err != nil {
 			return fmt.Errorf("failed to write a draft seat: %w", err)
 		}
 	}

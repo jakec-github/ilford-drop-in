@@ -902,9 +902,9 @@ func doRequest(t *testing.T, handler http.Handler, method, target, body string, 
 func TestListShiftsEndpoint(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2026-01-18", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-team-lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2026-01-11", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2026-01-18", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{
 			{ID: "alt1", ShiftID: "2026-01-18", Direction: "remove", VolunteerID: "bob", SetTime: "2026-01-02T10:00:00Z"},
@@ -945,6 +945,39 @@ func TestListShiftsEndpoint(t *testing.T) {
 	second := resp.Shifts[1]
 	require.Len(t, second.Assignees, 1)
 	assert.Equal(t, "charlie", second.Assignees[0].VolunteerID)
+}
+
+// A Role renamed after the rota was allocated is the same job under a better
+// label: the people allocated to it read under the new name, carrying the id a
+// client matches them to the Shape's Seats by (issue #222).
+func TestListShiftsEndpoint_ARenamedRoleReadsUnderItsNewName(t *testing.T) {
+	store := &mockStore{
+		roles: []db.Role{
+			{ID: "role-team-lead", Name: "Shift lead", Priority: 1, Colour: "violet"},
+			{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+		},
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-team-lead", VolunteerID: "alice"},
+		},
+	}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/shifts", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Shifts []struct {
+			Assignees []struct {
+				VolunteerID string `json:"volunteerId"`
+				RoleID      string `json:"roleId"`
+				Role        string `json:"role"`
+			} `json:"assignees"`
+		} `json:"shifts"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Shifts)
+	require.Len(t, resp.Shifts[0].Assignees, 1)
+	assert.Equal(t, "role-team-lead", resp.Shifts[0].Assignees[0].RoleID)
+	assert.Equal(t, "Shift lead", resp.Shifts[0].Assignees[0].Role)
 }
 
 // A Shift carries its own start and end, and the listing renders those rather
@@ -993,7 +1026,7 @@ func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {
 			{Shift: db.Shift{Date: "2026-01-18", RotaID: "rota-2"}, Allocated: false},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -1024,8 +1057,8 @@ func TestListShiftsEndpoint_UnallocatedShift(t *testing.T) {
 func TestListShiftsEndpoint_DateFilters(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a2", ShiftID: "2026-01-18", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2026-01-18", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 	handler := newTestHandler(store, testVolunteers())
@@ -1061,14 +1094,14 @@ func alterationTestStore() *mockStore {
 			{ID: "s2", RotaID: "rota-1", Date: "2026-01-18"},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "s1", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 }
 
 func TestCreateAlterationEndpoint(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1099,13 +1132,13 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 // service volunteer. The roster is advice, not a gate.
 func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"Leading tonight"}`
+	body := `{"date":"2026-01-11","in":"charlie","roleId":"role-team-lead","reason":"Leading tonight"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedAlterations, 1)
-	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
+	assert.Equal(t, "role-team-lead", store.insertedAlterations[0].RoleID)
 }
 
 // TestCreateAlterationEndpoint_CustomEntryRole proves a custom entry coming in
@@ -1113,14 +1146,14 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 // — the same rule, worded the same way, as for a volunteer (issue #214).
 func TestCreateAlterationEndpoint_CustomEntryRole(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","inCustom":"Redbridge youth group","role":"Team lead","reason":"Covering the lead"}`
+	body := `{"date":"2026-01-11","inCustom":"Redbridge youth group","roleId":"role-team-lead","reason":"Covering the lead"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.Len(t, store.insertedAlterations, 1)
 	assert.Equal(t, "Redbridge youth group", store.insertedAlterations[0].CustomValue)
-	assert.Equal(t, "Team lead", store.insertedAlterations[0].Role)
+	assert.Equal(t, "role-team-lead", store.insertedAlterations[0].RoleID)
 }
 
 func TestCreateAlterationEndpoint_CustomEntryNeedsARole(t *testing.T) {
@@ -1139,7 +1172,7 @@ func TestCreateAlterationEndpoint_CustomEntryNeedsARole(t *testing.T) {
 // written, attributed to the Organiser who made it — with no reason on it.
 func TestCreateAlterationEndpoint_ReasonOptional(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer"}`
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1179,7 +1212,7 @@ func TestCreateAlterationEndpoint_StoresAReasonTrimmed(t *testing.T) {
 // before any change is attempted.
 func TestCreateAlterationEndpoint_RequiresASession(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`
+	body := `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -1226,7 +1259,7 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","in":"nobody","role":"Service volunteer","reason":"x"}`,
+			body:       `{"date":"2026-01-11","in":"nobody","roleId":"role-service-volunteer","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
@@ -1237,8 +1270,16 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 			wantStatus: http.StatusConflict,
 		},
 		{
+			// The wire named a Role by name until #222. A body still doing so
+			// is refused rather than quietly bringing somebody in as nothing.
+			name:       "a role named the old way",
+			body:       `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"x"}`,
+			store:      alterationTestStore(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:       "unknown role",
-			body:       `{"date":"2026-01-11","in":"charlie","role":"Supervisor","reason":"x"}`,
+			body:       `{"date":"2026-01-11","in":"charlie","roleId":"role-supervisor","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
@@ -1271,9 +1312,9 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 func TestCalendarEndpoint(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2026-01-11", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2026-01-18", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-team-lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2026-01-11", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2026-01-18", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -1363,7 +1404,7 @@ func TestFrontendOwnsEverythingOutsideTheAPI(t *testing.T) {
 func TestUnprefixedRoutesStayPutBehindTheFrontend(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 	}
 	handler := newFullStackHandler(store)

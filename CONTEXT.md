@@ -45,11 +45,12 @@ holds the Roles they will do, and the allocator places only holders in one. A
 Preallocation or an Alteration may name any Role, held or not (ADR 0010). The
 job and the holding of it share one name; there is no separate notion of being
 qualified for a job you do not hold. A person fills at most one Role on a
-Shift, however many they hold. A Role has an identity of its own: its name is
-what the roster and past rotas record, but what a Shape asks for is the Role
-itself, so renaming one leaves both readable. A Role is permanent — once
-created it always exists, so no reference to one can ever dangle and a past
-rota always reads as it was made. A Role carries no count and no ceiling of its
+Shift, however many they hold. A Role has an identity of its own: everything
+the app stores — a Shape, a pin, an allocation, an alteration — references the
+Role itself, so renaming one is a better label for the same job and every rota,
+past ones included, reads under the new name. Only the roster spells a Role by
+name. A Role is permanent — once created it always exists, so no reference to
+one can ever dangle. A Role carries no count and no ceiling of its
 own: how many of it a Shift asks for is that Shift's Shape.
 _Avoid_: position, qualification, badge
 

@@ -11,8 +11,19 @@ const SHAPE: ShapeSeat[] = [
   { roleId: "r-greet", role: "Greeter", count: 4 },
 ];
 
+// Each fixture Role's id. A person carries both, like an Assignee: the id is
+// what they are matched to a Seat by, the name what their group is headed with.
+const ROLE_IDS: Record<string, string> = {
+  "Duty lead": "r-duty",
+  "Hot food": "r-hot",
+  Greeter: "r-greet",
+  "Washer up": "r-wash",
+  "Litter picker": "r-litter",
+  "": "",
+};
+
 function person(name: string, role: string) {
-  return { name, role };
+  return { name, roleId: ROLE_IDS[role], role };
 }
 
 describe("groupByRole", () => {
@@ -24,8 +35,13 @@ describe("groupByRole", () => {
     ]);
 
     expect(grouped).toEqual([
-      { role: "Duty lead", people: [person("Bob", "Duty lead")] },
       {
+        roleId: "r-duty",
+        role: "Duty lead",
+        people: [person("Bob", "Duty lead")],
+      },
+      {
+        roleId: "r-greet",
         role: "Greeter",
         people: [person("Alice", "Greeter"), person("Carol", "Greeter")],
       },
@@ -76,8 +92,16 @@ describe("groupByRole", () => {
     ]);
 
     expect(grouped).toEqual([
-      { role: "Greeter", people: [person("Bob", "Greeter")] },
-      { role: "Washer up", people: [person("Alice", "Washer up")] },
+      {
+        roleId: "r-greet",
+        role: "Greeter",
+        people: [person("Bob", "Greeter")],
+      },
+      {
+        roleId: "r-wash",
+        role: "Washer up",
+        people: [person("Alice", "Washer up")],
+      },
     ]);
   });
 
@@ -104,8 +128,12 @@ describe("groupByRole", () => {
     ]);
 
     expect(grouped).toEqual([
-      { role: "Greeter", people: [person("Bob", "Greeter")] },
-      { role: "", people: [person("Alice", "")] },
+      {
+        roleId: "r-greet",
+        role: "Greeter",
+        people: [person("Bob", "Greeter")],
+      },
+      { roleId: "", role: "", people: [person("Alice", "")] },
     ]);
   });
 
@@ -119,8 +147,27 @@ describe("groupByRole", () => {
 
     expect(grouped).toEqual([
       {
+        roleId: "r-duty",
         role: "Duty lead",
         people: [person("Alice", "Duty lead"), person("Bob", "Duty lead")],
+      },
+    ]);
+  });
+
+  // The Shape and the people on a shift are matched by the Role's id, never
+  // its name (issue #222). A person whose Role arrives under another name —
+  // read before a rename the Shape has already caught up with — is still in
+  // that Role's Seat, and the group is headed as the Shape names it.
+  test("people are matched to the shape by role id, not by name", () => {
+    const grouped = groupByRole(SHAPE, [
+      { name: "Alice", roleId: "r-duty", role: "Shift lead" },
+    ]);
+
+    expect(grouped).toEqual([
+      {
+        roleId: "r-duty",
+        role: "Duty lead",
+        people: [{ name: "Alice", roleId: "r-duty", role: "Shift lead" }],
       },
     ]);
   });
@@ -153,6 +200,19 @@ describe("shiftDeficit", () => {
       { role: "Hot food", deficit: 1 },
       { role: "Greeter", deficit: 4 },
     ]);
+  });
+
+  // A Seat is filled by whoever is in its Role, matched by id (issue #222):
+  // somebody arriving under a name the Shape no longer uses still fills it.
+  test("people fill the seats of their role by id, not by name", () => {
+    const renamed = { roleId: "r-duty", role: "Shift lead" };
+    expect(
+      shiftDeficit(SHAPE, [
+        renamed,
+        person("Bob", "Hot food"),
+        person("Carol", "Hot food"),
+      ]),
+    ).toEqual([{ role: "Greeter", deficit: 4 }]);
   });
 
   // Pins past the Shape (ADR 0010) fill their own Role and no other: one

@@ -36,6 +36,7 @@ interface ApiAssignee {
   volunteerId?: string;
   customEntry?: string;
   name: string;
+  roleId?: string;
   role?: string;
   group?: string;
 }
@@ -116,6 +117,7 @@ function toAssignee(a: ApiAssignee): Assignee {
     // configuration, and naming one the deployment may not even have is how a
     // rota came to claim Seats nobody had (issue #212). Display decides what to
     // show for a Role-less name.
+    roleId: a.roleId ?? "",
     role: a.role ?? "",
     custom: !a.volunteerId,
     group: a.group || null,
@@ -719,7 +721,7 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   if (change.in) Object.assign(body, personFields("in", change.in));
   if (change.out) Object.assign(body, personFields("out", change.out));
   if (change.swapDate) body.swapDate = change.swapDate;
-  if (change.role) body.role = change.role;
+  if (change.roleId) body.roleId = change.roleId;
 
   const res = await fetch("/api/alterations", {
     method: "POST",

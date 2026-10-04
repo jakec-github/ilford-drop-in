@@ -16,12 +16,12 @@ type createAlterationRequest struct {
 	OutCustom string `json:"outCustom,omitempty"`
 	SwapDate  string `json:"swapDate,omitempty"`
 	Reason    string `json:"reason"`
-	// Role whoever is named by In or InCustom takes on Date. Required whenever
-	// either is set — a Seat is a Seat in a Role whoever fills it, and being
-	// off the roster is no exception (issue #214) — except on a swap, where
-	// each leg inherits the Role of the person it replaces, so naming one is
-	// refused.
-	Role string `json:"role,omitempty"`
+	// RoleID is the Role whoever is named by In or InCustom takes on Date, by
+	// id as a pin names one (issue #222). Required whenever either is set — a
+	// Seat is a Seat in a Role whoever fills it, and being off the roster is no
+	// exception (issue #214) — except on a swap, where each leg inherits the
+	// Role of the person it replaces, so naming one is refused.
+	RoleID string `json:"roleId,omitempty"`
 }
 
 type alterationResponse struct {
@@ -30,7 +30,7 @@ type alterationResponse struct {
 	Direction   string `json:"direction"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	CustomValue string `json:"customValue,omitempty"`
-	Role        string `json:"role,omitempty"`
+	RoleID      string `json:"roleId,omitempty"`
 }
 
 type createAlterationResponse struct {
@@ -55,7 +55,7 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		OutCustom: req.OutCustom,
 		SwapDate:  req.SwapDate,
 		Reason:    req.Reason,
-		Role:      req.Role,
+		RoleID:    req.RoleID,
 		// The actor is the verified person from the session, not a trusted
 		// client field. requireLevel gates this route, so it is always set.
 		UserEmail: sessionEmail(r.Context()),
@@ -86,7 +86,7 @@ func toAlterationResponses(alterations []db.Alteration, datesByShiftID map[strin
 			Direction:   a.Direction,
 			VolunteerID: a.VolunteerID,
 			CustomValue: a.CustomValue,
-			Role:        a.Role,
+			RoleID:      a.RoleID,
 		})
 	}
 	return responses

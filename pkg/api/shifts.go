@@ -45,8 +45,12 @@ type assigneeResponse struct {
 	VolunteerID string `json:"volunteerId,omitempty"`
 	CustomEntry string `json:"customEntry,omitempty"`
 	Name        string `json:"name"`
-	Role        string `json:"role,omitempty"`
-	Group       string `json:"group,omitempty"`
+	// RoleID is the Role of their Seat, which is what a client matches on; Role
+	// is its name as it reads today, which is what a client shows. Both absent
+	// for an add recorded before alterations had a Role.
+	RoleID string `json:"roleId,omitempty"`
+	Role   string `json:"role,omitempty"`
+	Group  string `json:"group,omitempty"`
 }
 
 type listShiftsResponse struct {
@@ -73,6 +77,7 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 				VolunteerID: a.VolunteerID,
 				CustomEntry: a.CustomEntry,
 				Name:        a.Name,
+				RoleID:      a.RoleID,
 				Role:        a.Role,
 				Group:       a.Group,
 			})

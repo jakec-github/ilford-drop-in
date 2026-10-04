@@ -45,7 +45,7 @@ func defineFromProposal(t *testing.T, handler http.Handler, shiftCount int) *htt
 // (issue #75).
 func TestDefineRotaEndpointIntegration(t *testing.T) {
 	database, _ := dbtest.New(t)
-	dbtest.SeedRoles(t, database)
+	roleIDs := dbtest.SeedRoles(t, database)
 	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
@@ -94,7 +94,7 @@ func TestDefineRotaEndpointIntegration(t *testing.T) {
 	// Once the first rota has been allocated it defines the following rota
 	// rather than replacing this one.
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: resp.Shifts[0].ID, Role: "Service volunteer", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: resp.Shifts[0].ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"}},
 		resp.Rotation.ID, time.Now()))
 
 	rec = defineFromProposal(t, handler, 1)
@@ -222,7 +222,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 // cannot be overtaken by an allocation landing a moment later.
 func TestDiscardRotaEndpointIntegration_RefusesAnAllocatedRota(t *testing.T) {
 	database, _ := dbtest.New(t)
-	dbtest.SeedRoles(t, database)
+	roleIDs := dbtest.SeedRoles(t, database)
 	dbtest.SeedDefaultShape(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
@@ -234,7 +234,7 @@ func TestDiscardRotaEndpointIntegration_RefusesAnAllocatedRota(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &defined))
 
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: defined.Shifts[0].ID, Role: "Service volunteer", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: defined.Shifts[0].ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"}},
 		defined.Rotation.ID, time.Now()))
 
 	rec = doRequest(t, handler, http.MethodDelete, "/api/rotations/"+defined.Rotation.ID, "", organiserCookie())

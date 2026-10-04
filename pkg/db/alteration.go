@@ -39,7 +39,7 @@ func getAlterationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string)
 		return nil, nil
 	}
 	rows, err := q.Query(ctx, `
-		SELECT id, shift_id, direction, volunteer_id, custom_value, cover_id, set_time, role
+		SELECT id, shift_id, direction, volunteer_id, custom_value, cover_id, set_time, role_id
 		FROM alteration
 		WHERE shift_id = ANY($1)
 		ORDER BY set_time ASC
@@ -69,7 +69,7 @@ func scanAlterations(rows pgx.Rows) ([]Alteration, error) {
 			a.CustomValue = *customValue
 		}
 		if role != nil {
-			a.Role = *role
+			a.RoleID = *role
 		}
 		alterations = append(alterations, a)
 	}

@@ -20,7 +20,11 @@ import (
 // It seeds Roles and nothing else. What a Shift asks for is the default Shape,
 // which is a separate decision and has its own helper — a test about Roles
 // should not silently acquire one.
-func SeedRoles(t *testing.T, database *db.DB) {
+//
+// It returns each Role's id by name, which is what a test writing a row that
+// references one needs: every reference to a Role is by id (issue #222), and
+// the ids are minted fresh per database.
+func SeedRoles(t *testing.T, database *db.DB) map[string]string {
 	t.Helper()
 	ctx := context.Background()
 
@@ -28,11 +32,14 @@ func SeedRoles(t *testing.T, database *db.DB) {
 		{ID: uuid.New().String(), Name: "Team lead", Priority: 1, Colour: "violet"},
 		{ID: uuid.New().String(), Name: "Service volunteer", Priority: 2, Colour: "teal"},
 	}
+	ids := make(map[string]string, len(roles))
 	for _, role := range roles {
 		if err := database.InsertRole(ctx, role); err != nil {
 			t.Fatalf("failed to seed role %s: %v", role.Name, err)
 		}
+		ids[role.Name] = role.ID
 	}
+	return ids
 }
 
 // SeedDefaultShape gives a test database the Shape the app ships with — one

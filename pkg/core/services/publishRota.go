@@ -232,10 +232,10 @@ func sheetRota(
 					name = v.DisplayName
 				}
 			}
-			// A Role the app does not know, or none, goes under Unknown role
-			// rather than being dropped: somebody worked the shift.
+			// An add recorded before alterations had a Role goes under Unknown
+			// role rather than being dropped: somebody worked the shift.
 			key := rotasheet.UnknownRoleKey
-			if role, ok := roles.ByName(a.Role); ok {
+			if role, ok := roles.ByID(a.RoleID); ok {
 				key = role.ID
 			}
 			row.Names[key] = append(row.Names[key], name)

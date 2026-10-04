@@ -23,7 +23,7 @@ func getAllocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string)
 		return nil, nil
 	}
 	rows, err := q.Query(ctx, `
-		SELECT id, shift_id, role, volunteer_id, custom_entry
+		SELECT id, shift_id, role_id, volunteer_id, custom_entry
 		FROM allocation
 		WHERE shift_id = ANY($1)
 	`, shiftIDs)
@@ -40,7 +40,7 @@ func scanAllocations(rows pgx.Rows) ([]Allocation, error) {
 	for rows.Next() {
 		var a Allocation
 		var volunteerID, customEntry *string
-		if err := rows.Scan(&a.ID, &a.ShiftID, &a.Role, &volunteerID, &customEntry); err != nil {
+		if err := rows.Scan(&a.ID, &a.ShiftID, &a.RoleID, &volunteerID, &customEntry); err != nil {
 			return nil, fmt.Errorf("failed to scan allocation: %w", err)
 		}
 		if volunteerID != nil {
@@ -102,9 +102,9 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 		// authority on rota and date (ADR 0001). An unknown ShiftID trips the
 		// shift_id FK constraint and fails loudly.
 		_, err := tx.Exec(ctx, `
-			INSERT INTO allocation (id, role, volunteer_id, custom_entry, shift_id)
+			INSERT INTO allocation (id, role_id, volunteer_id, custom_entry, shift_id)
 			VALUES ($1, $2, $3, $4, $5)
-		`, a.ID, a.Role, volunteerID, customEntry, a.ShiftID)
+		`, a.ID, a.RoleID, volunteerID, customEntry, a.ShiftID)
 		if err != nil {
 			return fmt.Errorf("failed to insert allocation: %w", err)
 		}
