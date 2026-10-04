@@ -49,3 +49,30 @@ def test_preallocations_count_toward_cap():
     assert by_shift[0] == ("g1",)
     assert by_shift[1] == ()
     assert by_shift[2] == ()
+
+
+def test_pins_past_the_cap_are_honoured_and_nothing_more_is_added():
+    inp = make_input(
+        groups=[make_group("g1", available=[0, 1, 2, 3])],
+        shifts=[
+            make_shift(0, preallocated_volunteer_ids=["g1"]),
+            make_shift(1),
+            make_shift(2, preallocated_volunteer_ids=["g1"]),
+            make_shift(3),
+        ],
+        max_allocation_count=1,
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert allocations_by_shift(out) == {0: ("g1",), 1: (), 2: ("g1",), 3: ()}
+
+
+def test_pins_past_a_zero_cap_are_honoured():
+    inp = make_input(
+        groups=[make_group("g1", available=[0, 1])],
+        shifts=[make_shift(0, preallocated_volunteer_ids=["g1"]), make_shift(1)],
+        max_allocation_count=0,
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert allocations_by_shift(out) == {0: ("g1",), 1: ()}

@@ -506,3 +506,39 @@ def test_inactive_pinned_volunteer_is_placed_on_their_pin_only():
     assert out.success, out.error or out.solver_status
     placed = [s.index for s in out.shifts if "inactive" in volunteer_ids(s)]
     assert placed == [1]
+
+
+def test_pins_breaking_every_spacing_and_frequency_rule_at_once_solve():
+    # Pins are decisions people have taken, so no rule refuses one and none
+    # makes the solve infeasible (ADR 0010). One couple is pinned through
+    # Alice alone onto three consecutive July shifts, straight after working
+    # the previous rota's last shift, also in July, with a cap of one. That
+    # breaks no_back_to_back (twice, and across the history boundary),
+    # one_shift_per_month and max_frequency all at once, for both of them.
+    alice = Member("alice", "Alice", "Green", "Alice", "Female", (SERVICE_VOLUNTEER,))
+    charlie = Member("charlie", "Charlie", "Green", "Charlie", "Male", (SERVICE_VOLUNTEER,))
+    couple = Group("couple", (alice, charlie), (0, 1, 2, 3), 0)
+    shifts = tuple(
+        make_shift(i, preallocated_volunteer_ids=["alice"] if i < 3 else [])
+        for i in range(4)
+    )
+    inp = AllocationInput(
+        max_allocation_count=1,
+        shifts=shifts,
+        groups=(couple, _individual("diana", available=[0, 1, 2, 3])),
+        roles=DEFAULT_ROLES,
+        enabled_constraints=(
+            "max_frequency",
+            "male_required",
+            "no_back_to_back",
+            "one_shift_per_month",
+        ),
+        historical_shifts=(HistoricalShift(date="2026-07-06", group_keys=("couple",)),),
+    )
+    out = solve(inp)
+    assert out.success, out.error or out.solver_status
+    worked = {s.index: set(volunteer_ids(s)) for s in out.shifts}
+    for i in range(3):
+        assert {"alice", "charlie"} <= worked[i]
+    # The allocator itself still keeps every rule around the pins.
+    assert not {"alice", "charlie"} & worked[3]

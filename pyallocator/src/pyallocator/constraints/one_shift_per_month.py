@@ -6,6 +6,11 @@ counts: a group present on a historical shift in month M is barred from
 every current shift in month M, so a volunteer who already worked earlier
 this month in the previous rota is not scheduled again. Matching is by
 group key, mirroring no_back_to_back.
+
+The cap binds the allocator, not people's decisions (ADR 0010). Any number
+of pins in one month are honoured, history or not, but they use up the
+month: the allocator adds a shift there only while pins and history leave
+room under the cap.
 """
 
 from __future__ import annotations
@@ -22,7 +27,8 @@ class OneShiftPerMonthConstraint:
     name = "one_shift_per_month"
     description = (
         "no volunteer works more than one shift per calendar month, "
-        "counting shifts already worked in the previous rota"
+        "counting shifts already worked in the previous rota, unless pins "
+        "put them there"
     )
 
     def apply(
@@ -37,7 +43,10 @@ class OneShiftPerMonthConstraint:
             for month, indices in months_to_indices.items():
                 # A month already worked in history leaves no room for another.
                 cap = 0 if month in worked else 1
-                model.Add(sum(x.attend[(v.id, i)] for i in indices) <= cap)
+                pinned = [i for i in indices if problem.forced_by_pin(v, i)]
+                chosen = [i for i in indices if not problem.forced_by_pin(v, i)]
+                room = max(0, cap - len(pinned))
+                model.Add(sum(x.attend[(v.id, i)] for i in chosen) <= room)
 
 
 CONSTRAINT = OneShiftPerMonthConstraint()

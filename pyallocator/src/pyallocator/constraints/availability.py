@@ -27,7 +27,7 @@ class AvailabilityConstraint:
             for shift in problem.shifts:
                 if shift.index in v.available_shift_indices:
                     continue
-                if (v.group_key, shift.index) in problem.preallocated_pairs:
+                if problem.forced_by_pin(v, shift.index):
                     continue
                 model.Add(x.attend[(v.id, shift.index)] == 0)
 
