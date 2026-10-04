@@ -360,12 +360,15 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 	}
 }
 
-// A pin is a decision already taken, so it settles the availability question
-// for the shift it names rather than waiting on an answer that may never come.
-// Without this a pinned volunteer who had not replied was discarded with the
-// rest of the unanswered groups, and the solver then failed on a pin naming
-// somebody who was not in the problem at all.
-func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
+// A pin is a decision already taken, so it keeps its group in the problem
+// whatever the group answered. Without this a pinned volunteer who had not
+// replied was discarded with the rest of the unanswered groups, and the solver
+// then failed on a pin naming somebody who was not in the problem at all.
+//
+// It settles nothing about availability, though: the solver exempts the pinned
+// person, and the pin pins only them (ADR 0010, #234). Their group-mates are
+// the allocator's choice, held to what the group actually answered.
+func TestBuildCpsatInput_PreallocationKeepsItsGroup(t *testing.T) {
 	volunteers := []allocator.Volunteer{
 		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},
 		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", GroupKey: "couple_ab"},
@@ -425,19 +428,19 @@ func TestBuildCpsatInput_PreallocationImpliesAvailability(t *testing.T) {
 		byKey[g.GroupKey] = g
 	}
 
-	// Two groups that would have been discarded now survive, each available for
-	// the pinned shift and nothing else — the pin says where they are needed,
-	// not that they are free all rota. Silent Jones is pinned to shift 2 as
-	// well, which is closed: its pins are stripped, so it grants nothing.
+	// Two groups that would have been discarded now survive, available for
+	// nothing: the pin puts its person on, and the allocator has no answer to
+	// place them anywhere else. An empty list rather than a null one, which is
+	// what the contract says a group with no availability looks like.
 	require.Contains(t, byKey, "Silent Jones")
-	assert.Equal(t, []int{0}, byKey["Silent Jones"].AvailableShiftIndices)
+	assert.Equal(t, []int{}, byKey["Silent Jones"].AvailableShiftIndices)
 	require.Contains(t, byKey, "Ruth Grey")
-	assert.Equal(t, []int{0}, byKey["Ruth Grey"].AvailableShiftIndices)
+	assert.Equal(t, []int{}, byKey["Ruth Grey"].AvailableShiftIndices)
 
-	// A group that did answer keeps its answer, with the pinned shift added in
-	// order. The pin is group-atomic, so Bob comes with Alice.
+	// A group that did answer keeps exactly its answer. Alice's pin is not an
+	// answer for Bob, who said he could only do shift 3.
 	require.Contains(t, byKey, "couple_ab")
-	assert.Equal(t, []int{0, 3}, byKey["couple_ab"].AvailableShiftIndices)
+	assert.Equal(t, []int{3}, byKey["couple_ab"].AvailableShiftIndices)
 
 	// A pin naming nobody on the roster stays the solver's error to report; it
 	// must not invent a group here.

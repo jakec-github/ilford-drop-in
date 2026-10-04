@@ -1,7 +1,6 @@
 package allocator
 
 import (
-	"slices"
 	"sort"
 )
 
@@ -33,13 +32,17 @@ type InitVolunteerGroupsInput struct {
 
 	// HistoricalShifts for calculating historical frequency per group
 	HistoricalShifts []*Shift
+
+	// Pinned is the groups a pin names a member of. They are kept whatever
+	// they answered, with exactly the availability they answered.
+	Pinned map[string]bool
 }
 
 // InitVolunteerGroups creates and initialises volunteer groups from raw
 // volunteer data. Groups volunteers by GroupKey, calculates metadata, and
 // discards the groups the solver has no use for.
 //
-// Discarded:
+// Discarded, unless a pin names one of their members:
 //   - Groups nobody answered for
 //   - Groups with no availability
 //
@@ -69,8 +72,12 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) *VolunteerState {
 		// is a group that answered and can work nothing. Both are discarded, but
 		// only the first is "no reply".
 		availableShiftIndices, answered := input.GroupAvailability[groupKey]
-		if !answered || len(availableShiftIndices) == 0 {
+		if (!answered || len(availableShiftIndices) == 0) && !input.Pinned[groupKey] {
 			continue
+		}
+		if availableShiftIndices == nil {
+			// Available for nothing is an empty list on the contract, not null.
+			availableShiftIndices = []int{}
 		}
 
 		// Create the volunteer group using the shared builder
@@ -93,62 +100,39 @@ func InitVolunteerGroups(input InitVolunteerGroupsInput) *VolunteerState {
 	return &VolunteerState{VolunteerGroups: groups}
 }
 
-// withPreallocatedAvailability returns groupAvailability with every pinned
-// group marked available for the shift it is pinned to, leaving the caller's
-// map untouched.
+// pinnedGroupKeys returns the key of every group a pin names a member of.
 //
 // A pin is a decision already taken: someone has been asked to work that shift,
-// so the availability question for it is settled and an answer that never
-// arrived cannot unsettle it. Without this, InitVolunteerGroups discards the
-// group of anyone who did not reply — including the person who was pinned —
-// and the solver then fails on a pin naming somebody who is not in the problem.
+// so whether their group answered cannot keep them off it. Without this,
+// InitVolunteerGroups discards the group of anyone who did not reply —
+// including the person who was pinned — and the solver then fails on a pin
+// naming somebody who is not in the problem.
 //
-// The grant is per shift, so a pinned group is available where it is pinned and
-// nowhere else it did not claim. It is group-atomic to match the solver, which
-// forces every member of a pinned group onto the shift. Pins are read from
-// resolved shift specs rather than raw overrides so that a closed shift, whose
-// pins InitShifts strips, implies nothing.
-func withPreallocatedAvailability(groupAvailability map[string][]int, shifts []*Shift, volunteers []Volunteer) map[string][]int {
+// It keeps the group in the problem and says nothing about its availability.
+// The solver exempts the pinned person from availability on their shift, and a
+// pin pins only them (ADR 0010, #234): their group-mates are the allocator's
+// choice, held to what the group actually answered. Pins are read from resolved
+// shift specs rather than raw overrides so that a closed shift, whose pins
+// InitShifts strips, implies nothing.
+func pinnedGroupKeys(shifts []*Shift, volunteers []Volunteer) map[string]bool {
 	groupKeyByVolunteerID := make(map[string]string, len(volunteers))
 	for _, volunteer := range volunteers {
 		groupKeyByVolunteerID[volunteer.ID] = GroupKeyFor(volunteer)
 	}
 
-	augmented := make(map[string][]int, len(groupAvailability))
-	for key, indices := range groupAvailability {
-		augmented[key] = append([]int(nil), indices...)
-	}
-
-	granted := make(map[string]bool)
+	pinned := make(map[string]bool)
 	for _, shift := range shifts {
 		for _, pin := range shift.Preallocations {
-			if pin.VolunteerID == "" {
-				// A custom entry is not a person, so there is nobody whose
-				// availability it could settle.
-				continue
+			// A custom entry is not a person, and a pin naming nobody on the
+			// roster is reported by the pre-solve check and by the solver, each
+			// of which can name it. Inventing a group for it here would only
+			// hide that.
+			if key, known := groupKeyByVolunteerID[pin.VolunteerID]; known {
+				pinned[key] = true
 			}
-			key, known := groupKeyByVolunteerID[pin.VolunteerID]
-			if !known {
-				// A pin naming nobody on the roster is reported by the
-				// pre-solve check and by the solver, each of which can name it.
-				// Inventing a group for it here would only hide that.
-				continue
-			}
-			if slices.Contains(augmented[key], shift.Index) {
-				continue
-			}
-			augmented[key] = append(augmented[key], shift.Index)
-			granted[key] = true
 		}
 	}
-
-	// Shift indices are read as a set everywhere, but sorted is what an answer
-	// from the store looks like, and a stable input is worth the sort.
-	for key := range granted {
-		slices.Sort(augmented[key])
-	}
-
-	return augmented
+	return pinned
 }
 
 // BuildVolunteerGroup creates a VolunteerGroup from a list of volunteers.

@@ -28,11 +28,12 @@ and issue #34.
      0004), and the allocator keeping its own copy of it is what this replaced.
    - `InitShifts` applies date-matched overrides (size, closed, preallocations)
      and populates each shift's available groups.
-   - `withPreallocatedAvailability` marks each pinned group available for the
-     shift it is pinned to, before `InitVolunteerGroups` runs. A pin is a
-     decision already taken, so it settles the availability question for that
-     shift; without it, a pinned volunteer who never replied was discarded and
-     the solver failed on a pin naming somebody absent from the problem.
+   - `pinnedGroupKeys` names each group a pin names a member of, and
+     `InitVolunteerGroups` keeps those whatever they answered. A pin is a
+     decision already taken; without it, a pinned volunteer who never replied
+     was discarded and the solver failed on a pin naming somebody absent from
+     the problem. It grants no availability: the solver exempts the pinned
+     person, and their group-mates are held to the group's real answer (#234).
    - `BuildVolunteerGroup` builds a single group with its derived metadata
      (`MaleCount`). Its key comes from `GroupKeyFor(members[0])` rather than
      from the caller, so no caller can hold a second opinion about what a group

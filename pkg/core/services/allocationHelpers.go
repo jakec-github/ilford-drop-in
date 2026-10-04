@@ -475,9 +475,9 @@ func checkPreallocationsResolve(
 //
 // An inactive volunteer goes as a group of one, with their group key cleared.
 // Their group-mates are not sent for them, and their own old answers are not
-// read (fetchGroupAvailability is given the active alone), so the only shifts
-// they are available on are the ones their pins grant — the pin places them
-// there and the solver can choose them nowhere else.
+// read (fetchGroupAvailability is given the active alone), so they are
+// available for nothing — the pin places them, and the solver can choose them
+// nowhere else.
 //
 // Pins on closed shifts are ignored: InitShifts strips them, so they place
 // nobody.
