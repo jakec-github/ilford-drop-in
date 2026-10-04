@@ -7,17 +7,16 @@ import { useStandingPreallocations } from "../hooks/useStandingPreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
 import RotaDefaultsCard from "./RotaDefaultsCard";
 import SettingsSection from "./SettingsSection";
+import StandingPreallocationForm from "./StandingPreallocationForm";
+import { describeRule } from "./standingRules";
 import type {
   AllocationSettings,
   ConfiguredRole,
-  NewStandingPreallocation,
-  PersonRef,
   RoleColour,
   RoleEdit,
   SwitchableConstraint,
-  Volunteer,
 } from "../types";
-import { CUSTOM_CHOICE, DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
+import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./OrganiserSettings.css";
 
 // The colour a new Role starts on: the dullest token, so an Organiser who does not
@@ -245,198 +244,6 @@ function RolesSettings() {
         />
       )}
     </SettingsSection>
-  );
-}
-
-// Which Shifts of a rota a Standing Preallocation lands on, offered as the
-// handful of answers anybody actually gives. Each is a recurrence rule, which is
-// what the server stores and what the seeding matches shift dates against; an
-// Organiser picks the sentence and never sees the rule.
-//
-// Sundays because that is the day a rota is minted on — definition walks weekly
-// from a Sunday. A cadence that is not weekly is out of scope until rota
-// definition offers one.
-const STANDING_RULES: { rrule: string; label: string }[] = [
-  { rrule: "FREQ=WEEKLY;BYDAY=SU", label: "Every shift" },
-  { rrule: "FREQ=MONTHLY;BYDAY=1SU", label: "The first Sunday of the month" },
-  { rrule: "FREQ=MONTHLY;BYDAY=2SU", label: "The second Sunday of the month" },
-  { rrule: "FREQ=MONTHLY;BYDAY=3SU", label: "The third Sunday of the month" },
-  { rrule: "FREQ=MONTHLY;BYDAY=4SU", label: "The fourth Sunday of the month" },
-  { rrule: "FREQ=MONTHLY;BYDAY=-1SU", label: "The last Sunday of the month" },
-];
-
-// How a stored rule reads in the list. A rule this app did not offer — written
-// against the API, or offered by an older build — falls back to itself rather
-// than to nothing: it is still doing something, and an Organiser deciding whether to
-// remove it needs to see what.
-function describeRule(rrule: string): string {
-  return STANDING_RULES.find((r) => r.rrule === rrule)?.label ?? rrule;
-}
-
-// StandingPreallocationForm is the whole of making one: who, in which Role, on
-// which shifts. There is no edit — a promise is made or it is not, and changing
-// one is removing it and making the one that was meant — so this only ever
-// creates.
-function StandingPreallocationForm({
-  roles,
-  volunteers,
-  volunteersError,
-  onSave,
-  onClose,
-}: {
-  roles: ConfiguredRole[];
-  // null while the roster is still loading.
-  volunteers: Volunteer[] | null;
-  volunteersError: string | null;
-  onSave: (standing: NewStandingPreallocation) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [choice, setChoice] = useState("");
-  const [customName, setCustomName] = useState("");
-  const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
-  const [rrule, setRRule] = useState(STANDING_RULES[0].rrule);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isCustom = choice === CUSTOM_CHOICE;
-  const trimmedName = customName.trim();
-  const person: PersonRef | null = isCustom
-    ? trimmedName
-      ? { custom: trimmedName }
-      : null
-    : choice
-      ? { volunteerId: choice }
-      : null;
-
-  // Only the Roles the chosen volunteer holds: the server refuses a pin for a
-  // Role they do not, and offering it here would be offering a refusal. A custom
-  // entry holds nothing on the roster and may be pinned to anything.
-  const chosen = volunteers?.find((v) => v.id === choice) ?? null;
-  const offeredRoles = isCustom
-    ? roles
-    : chosen
-      ? roles.filter((r) => chosen.roles.includes(r.name))
-      : roles;
-
-  function handleChoice(value: string) {
-    setChoice(value);
-    // Keep the Role only if the new subject can hold it, so the form never
-    // sits on a combination the server would turn down.
-    const picked = volunteers?.find((v) => v.id === value);
-    if (value !== CUSTOM_CHOICE && picked) {
-      const held = roles.filter((r) => picked.roles.includes(r.name));
-      if (!held.some((r) => r.id === roleId)) setRoleId(held[0]?.id ?? "");
-    }
-  }
-
-  async function save() {
-    if (!person) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave({ rrule, roleId, person });
-      onClose();
-    } catch (err: unknown) {
-      // The server's own message names who was already promised those shifts,
-      // so it is shown as-is and the form stays open on what was chosen.
-      setError(err instanceof Error ? err.message : "Failed to add the pin");
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog title="New standing preallocation" onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <p className="settings-hint">
-          Whoever you pin here is pinned to the matching shifts of every rota
-          from now on, as it is defined. Rotas that already exist are not
-          touched.
-        </p>
-
-        <label className="settings-field">
-          Who
-          <select
-            value={choice}
-            onChange={(e) => handleChoice(e.target.value)}
-            disabled={volunteers === null && volunteersError === null}
-          >
-            <option value="">
-              {volunteers === null && volunteersError === null
-                ? "Loading the roster…"
-                : "Choose someone…"}
-            </option>
-            {volunteers?.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.fullName}
-              </option>
-            ))}
-            <option value={CUSTOM_CHOICE}>Someone not on the roster…</option>
-          </select>
-        </label>
-
-        {/* The roster failing is not a dead end: a custom entry needs nothing
-            from it, so the picker degrades to that rather than to nothing. */}
-        {volunteersError && (
-          <p className="settings-hint">
-            Could not load the roster ({volunteersError}). You can still pin
-            someone by name.
-          </p>
-        )}
-
-        {isCustom && (
-          <label className="settings-field">
-            Name
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder="e.g. Redbridge youth group"
-            />
-          </label>
-        )}
-
-        <label className="settings-field">
-          Role
-          <select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
-            {offeredRoles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="settings-field">
-          Which shifts
-          <select value={rrule} onChange={(e) => setRRule(e.target.value)}>
-            {STANDING_RULES.map((rule) => (
-              <option key={rule.rrule} value={rule.rrule}>
-                {rule.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {error && <p className="settings-error">{error}</p>}
-
-        <div className="settings-actions">
-          <Button onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={person === null || roleId === "" || saving}
-          >
-            {saving ? "Saving…" : "Add pin"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
   );
 }
 
