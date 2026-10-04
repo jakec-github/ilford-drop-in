@@ -9,9 +9,10 @@ one — so the solver reaches for under-used volunteers first. This
 replaces the fairness that "emerged from the mechanism" in the greedy
 allocator with an explicit, tunable weight (see allocator_issues.md).
 
-History is recorded per group, so counting stays group-level: the
-group's first member stands in for the whole group (members always
-work together under the grouping constraint).
+History is recorded per group, so counting stays group-level: one
+member stands in for the whole group on each shift (Problem.stand_in).
+Members work together under the grouping constraint, except where a pin
+splits them, and there the pinned member stands in.
 """
 
 from __future__ import annotations
@@ -37,9 +38,9 @@ class FairnessPreference:
     ) -> list[ObjectiveTerm]:
         terms: list[ObjectiveTerm] = []
         for group in problem.groups:
-            rep = group.members[0]
             allocations = sum(
-                x.attend[(rep.id, shift.index)] for shift in problem.shifts
+                x.attend[(problem.stand_in(group, shift.index).id, shift.index)]
+                for shift in problem.shifts
             )
             history = group.historical_allocation_count
             levels = []

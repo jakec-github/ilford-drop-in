@@ -102,7 +102,10 @@ a BoolVar per (volunteer, shift, Role) the volunteer could fill, plus an
 attendance BoolVar per (volunteer, shift) equal to their sum. That equality
 is what holds a person to one Seat per shift — there is no separate
 exclusion constraint. Group atomicity (couples/families move as one) is the
-`grouping` constraint rather than the variable structure. Constraints about
+`grouping` constraint rather than the variable structure. A pin pins one
+person and lets their group split on that shift; where it does, the solve
+runs twice so their group-mates join them whenever the rules allow
+(`solver.py`, ADR 0010). Constraints about
 *whether* someone works read `x.attend`; constraints about *what they do*
 read `x.role`. Modularity is the point of this package:
 

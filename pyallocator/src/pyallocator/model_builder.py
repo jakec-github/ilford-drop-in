@@ -4,6 +4,11 @@ BoolVar per (volunteer, shift) equal to their sum. It then applies the
 constraint list and sums the preference terms into a single Maximize
 objective.
 
+Where a pin splits a group it also states how many of the pinned
+volunteers' group-mates are on alongside them (mates_joined), which the
+solver keeps as high as the rules allow before it weighs any preference
+(solver.py).
+
 Equating the role vars with attendance is the model's one structural rule:
 a person fills at most one Seat per shift. Group atomicity is not
 structural — the grouping constraint ties members of a group together.
@@ -29,6 +34,12 @@ class BuiltModel:
     model: cp_model.CpModel
     x: Vars
     constraints_applied: tuple[str, ...]
+    # The preferences' weighted sum, also set as the model's objective; None
+    # when there are no preferences.
+    objective: cp_model.LinearExpr | None
+    # How many group-mates of pinned volunteers are on alongside them; None
+    # when no pinned volunteer has a group-mate to keep.
+    mates_joined: cp_model.LinearExpr | None
 
 
 def build(
@@ -67,11 +78,19 @@ def build(
     terms = []
     for preference in preferences:
         terms.extend(preference.objective_terms(model, x, problem))
+    objective = None
     if terms:
-        model.Maximize(sum(expr * weight for expr, weight in terms))
+        objective = sum(expr * weight for expr, weight in terms)
+        model.Maximize(objective)
+
+    mates_joined = None
+    if problem.pinned_mates:
+        mates_joined = sum(x.attend[key] for key in problem.pinned_mates)
 
     return BuiltModel(
         model=model,
         x=x,
         constraints_applied=tuple(c.name for c in constraints),
+        objective=objective,
+        mates_joined=mates_joined,
     )

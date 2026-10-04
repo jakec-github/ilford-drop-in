@@ -32,7 +32,10 @@ def test_preallocated_volunteer_always_on_shift():
     assert allocations_by_shift(out)[0] == ("g1",)
 
 
-def test_partner_comes_along():
+def test_partner_joins_when_nothing_stops_them():
+    # Not forced: a pin pins one person (#234). With no preference at all, the
+    # solve's first pass is what puts Bob beside Alice — see
+    # test_pinned_group_mates.py for when the rules keep him away.
     couple = make_group(
         "couple", members=[make_member("a"), make_member("b")], available=[0]
     )

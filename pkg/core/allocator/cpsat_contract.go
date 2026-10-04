@@ -144,8 +144,9 @@ func BuildCpsatInput(
 	// the contract (Python derives availability from groups), so an empty state
 	// suffices.
 	//
-	// It runs first because the pins it resolves settle availability for the
-	// shifts they name, and InitVolunteerGroups discards a group with none.
+	// It runs first because the pins it resolves keep their groups in the
+	// problem, which InitVolunteerGroups would otherwise discard for having no
+	// answer.
 	initialised, err := InitShifts(InitShiftsInput{
 		Shifts:         shiftSpecs,
 		Overrides:      overrides,
@@ -157,8 +158,9 @@ func BuildCpsatInput(
 
 	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
 		Volunteers:        volunteers,
-		GroupAvailability: withPreallocatedAvailability(groupAvailability, initialised, volunteers),
+		GroupAvailability: groupAvailability,
 		HistoricalShifts:  historicalShifts,
+		Pinned:            pinnedGroupKeys(initialised, volunteers),
 	})
 
 	input := &CpsatInput{

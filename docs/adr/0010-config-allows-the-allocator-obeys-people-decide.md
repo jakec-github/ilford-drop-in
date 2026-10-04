@@ -61,7 +61,11 @@ They are trusted differently, on purpose:
   - `grouping`: a pin forces only the person it names. Their group-mates
     are allocator choices, held to every rule. Where the rules allow it they
     join the pinned person; where they don't, the group splits for that Shift.
-    The pin wins over keeping the group together.
+    The pin wins over keeping the group together. Keeping it together wins
+    over every preference: a group-mate joins whenever the rules allow, even
+    taking a Seat that fairness or even fill would have given somebody else,
+    and each mate counts on their own, so one of three can join without the
+    other two.
   - Demanding rules (`male_required`): a shift whose pins decide it entirely
     is exempt (already the case).
 - **Infeasible is a bug, not a result.** If a solve comes back infeasible,
@@ -131,10 +135,14 @@ decisions, and the rota keeps them whatever later happens to the default.
 - pyallocator: `no_back_to_back`, `one_shift_per_month`, `max_frequency` and
   `seat_capacity` exempt pinned pairs. `preallocations` forces the pinned
   person only, no longer their group. `grouping` exempts a pinned person's
-  Shift. A group-mate is never forced there; the objective rewards placing
-  them heavily enough that they join whenever the rules allow. A hard
-  "if possible" is not something CP-SAT can say, and a soft term gets the
-  same result without risking an infeasible solve. `problem.py` stops rejecting a pin to a
+  Shift. A group-mate is never forced there, since forcing one would let a
+  pin make the solve infeasible. A hard "if possible" is not something CP-SAT
+  can say, so where a pinned volunteer has a group-mate the solve runs twice:
+  the first pass maximises only the mates placed alongside their pinned
+  member, and the second floors that count and solves the ordinary objective.
+  A single heavily weighted term would do the same only while it outweighed
+  every other term put together. Without a pinned group-mate there is one
+  pass. (Revised 2026-10-04, #234.) `problem.py` stops rejecting a pin to a
   Role the Shape has no Seat for. Each change gets a test where the pin breaks
   the rule and the solve still succeeds.
 - The pin picker offers every configured Role, as the Alteration picker already

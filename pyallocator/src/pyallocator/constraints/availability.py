@@ -1,8 +1,8 @@
 """Ensures volunteers are only allocated to shifts they said they are
 available for. Availability is resolved per group in Go, so every
-member inherits its group's shifts. Volunteers whose group is
-preallocated onto a shift are exempt: a preallocation applies
-regardless of availability, matching the Go allocator's behaviour.
+member inherits its group's shifts. A volunteer pinned onto a shift is
+exempt there: a pin applies regardless of availability. Only the pinned
+person — their group-mates are allocator choices (ADR 0010).
 """
 
 from __future__ import annotations

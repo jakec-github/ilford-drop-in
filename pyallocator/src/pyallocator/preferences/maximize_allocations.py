@@ -2,7 +2,7 @@
 shifts fill where they can and ties between otherwise-equal solutions
 break toward more volunteers on the rota.
 
-Counting is per group (first member as its stand-in), not per
+Counting is per group (one member as its stand-in, Problem.stand_in), not per
 volunteer, so a couple earns the same base reward as an individual —
 preserving the original group-level objective exactly.
 
@@ -32,7 +32,7 @@ class MaximizeAllocationsPreference:
         self, model: cp_model.CpModel, x: Vars, problem: Problem
     ) -> list[ObjectiveTerm]:
         total = sum(
-            x.attend[(group.members[0].id, shift.index)]
+            x.attend[(problem.stand_in(group, shift.index).id, shift.index)]
             for group in problem.groups
             for shift in problem.shifts
         )
