@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from conftest import allocations_by_shift, make_group, make_input, make_shift, solve_with
+from conftest import (
+    allocations_by_shift,
+    make_group,
+    make_input,
+    make_member,
+    make_shift,
+    solve_with,
+)
 from pyallocator.domain import HistoricalShift
-from pyallocator.constraints import no_back_to_back
+from pyallocator.constraints import no_back_to_back, preallocations
 
 ONLY = [no_back_to_back.CONSTRAINT]
 
@@ -59,3 +66,83 @@ def test_only_last_historical_shift_matters():
     out = solve_with(inp, ONLY)
     assert out.success
     assert allocations_by_shift(out)[0] == ("g1",)
+
+
+# Pins are people's decisions, not the allocator's choices (ADR 0010): a
+# pinned pair is exempt from the rule, but still counts against the shifts
+# either side of it.
+WITH_PINS = ONLY + [preallocations.CONSTRAINT]
+
+
+def test_pins_on_consecutive_shifts_are_honoured():
+    inp = make_input(
+        groups=[make_group("g1", available=[0, 1, 2, 3])],
+        shifts=[
+            make_shift(0),
+            make_shift(1, preallocated_volunteer_ids=["g1"]),
+            make_shift(2, preallocated_volunteer_ids=["g1"]),
+            make_shift(3),
+        ],
+    )
+    out = solve_with(inp, WITH_PINS)
+    assert out.success
+    by_shift = allocations_by_shift(out)
+    assert by_shift[1] == ("g1",)
+    assert by_shift[2] == ("g1",)
+    # The allocator adds nothing next to the pins.
+    assert by_shift[0] == ()
+    assert by_shift[3] == ()
+
+
+def test_allocator_stays_off_the_shifts_beside_a_pin():
+    inp = make_input(
+        groups=[make_group("g1", available=[0, 1, 2, 3, 4])],
+        shifts=[
+            make_shift(0),
+            make_shift(1),
+            make_shift(2, preallocated_volunteer_ids=["g1"]),
+            make_shift(3),
+            make_shift(4),
+        ],
+    )
+    out = solve_with(inp, WITH_PINS)
+    assert out.success
+    by_shift = allocations_by_shift(out)
+    assert by_shift[1] == ()
+    assert by_shift[3] == ()
+    assert by_shift[0] == ("g1",)
+    assert by_shift[4] == ("g1",)
+
+
+def test_pin_on_shift_zero_is_exempt_from_the_history_boundary():
+    inp = make_input(
+        groups=[make_group("g1", available=[0, 1, 2])],
+        shifts=[
+            make_shift(0, preallocated_volunteer_ids=["g1"]),
+            make_shift(1),
+            make_shift(2),
+        ],
+        historical_shifts=[HistoricalShift(date="2026-07-06", group_keys=("g1",))],
+    )
+    out = solve_with(inp, WITH_PINS)
+    assert out.success
+    by_shift = allocations_by_shift(out)
+    assert by_shift[0] == ("g1",)
+    assert by_shift[1] == ()
+    assert by_shift[2] == ("g1",)
+
+
+def test_exemption_covers_every_group_member_the_pin_forces():
+    pair = make_group(
+        "pair", members=[make_member("a"), make_member("b")], available=[0, 1]
+    )
+    inp = make_input(
+        groups=[pair],
+        shifts=[
+            make_shift(0, preallocated_volunteer_ids=["a"]),
+            make_shift(1, preallocated_volunteer_ids=["a"]),
+        ],
+    )
+    out = solve_with(inp, WITH_PINS)
+    assert out.success
+    assert allocations_by_shift(out) == {0: ("pair",), 1: ("pair",)}

@@ -150,6 +150,17 @@ class Problem:
             or self.preallocated_roles.get((volunteer.id, shift_index)) == role
         )
 
+    def forced_by_pin(self, volunteer: VolunteerView, shift_index: int) -> bool:
+        """Whether a pin puts this volunteer on this shift.
+
+        The one definition every rule exemption reads (ADR 0010): a pinned
+        person is somebody's decision, not the allocator's choice, so the
+        rules that govern its choices — availability, spacing, frequency —
+        do not apply to them there. A pin forces its whole group today, so a
+        pinned volunteer's group-mates are forced too.
+        """
+        return (volunteer.group_key, shift_index) in self.preallocated_pairs
+
     def seats_for(self, shift: ShiftSpec, role: str) -> int:
         """How many Seats this shift's Shape asks for in the named Role."""
         return sum(seat.count for seat in shift.shape if seat.role == role)
