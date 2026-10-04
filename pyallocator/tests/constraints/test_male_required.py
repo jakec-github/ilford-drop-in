@@ -8,6 +8,7 @@ import dataclasses
 
 from conftest import (
     SERVICE_VOLUNTEER,
+    TEAM_LEAD,
     allocations_by_shift,
     make_group,
     make_input,
@@ -16,7 +17,7 @@ from conftest import (
     solve_with,
 )
 from pyallocator.constraints import male_required, preallocations, seat_capacity
-from pyallocator.domain import Seat
+from pyallocator.domain import Preallocation, Seat
 
 ONLY = [male_required.CONSTRAINT]
 
@@ -211,3 +212,50 @@ def _every_seat_female():
             )
         ],
     )
+
+
+def test_pins_past_every_seat_win_over_male_cover():
+    # Three women pinned onto a shift with two Seats: past the Shape, so the
+    # shift is decided before the solve and the rule has nothing to steer.
+    inp = make_input(
+        groups=[make_group(k, available=[0]) for k in ("f1", "f2", "f3")],
+        shifts=[
+            dataclasses.replace(
+                make_shift(0, preallocated_volunteer_ids=["f1", "f2", "f3"]),
+                shape=(Seat(role=SERVICE_VOLUNTEER, count=2),),
+            )
+        ],
+    )
+    out = solve_with(
+        inp, ONLY + [preallocations.CONSTRAINT, seat_capacity.CONSTRAINT]
+    )
+    assert out.success
+    assert sorted(allocations_by_shift(out)[0]) == ["f1", "f2", "f3"]
+
+
+def test_one_role_overfilled_does_not_hide_another_roles_open_seat():
+    # Two women pinned to the one Team lead Seat overfill it, but the
+    # Service volunteer Seat is still the allocator's. Counting heads
+    # against total Seats would call the shift full and drop the rule; it is
+    # not, so the rule keeps that Seat open rather than giving it to f1.
+    inp = make_input(
+        groups=[
+            make_group("la", available=[0], team_lead=True),
+            make_group("lb", available=[0], team_lead=True),
+            make_group("f1", available=[0]),
+        ],
+        shifts=[
+            dataclasses.replace(
+                make_shift(0, size=1),
+                preallocations=(
+                    Preallocation(volunteer_id="la", custom="", role=TEAM_LEAD),
+                    Preallocation(volunteer_id="lb", custom="", role=TEAM_LEAD),
+                ),
+            )
+        ],
+    )
+    out = solve_with(
+        inp, ONLY + [preallocations.CONSTRAINT, seat_capacity.CONSTRAINT]
+    )
+    assert out.success
+    assert sorted(allocations_by_shift(out)[0]) == ["la", "lb"]

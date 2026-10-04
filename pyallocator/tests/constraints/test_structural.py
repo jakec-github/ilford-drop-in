@@ -128,3 +128,15 @@ def test_role_var_for_a_seat_the_shift_does_not_have_detected():
     )
     with pytest.raises(AssertionError, match="Shape does not ask for"):
         no_duplicate_allocation.CONSTRAINT.apply(model, x, problem)
+
+
+def test_role_var_for_a_pin_past_the_shape_is_allowed():
+    # A pin may name a Role the Shape asks for none of (ADR 0010), so the
+    # pinned person, and only they, get a role var for it there.
+    inp = make_input(
+        groups=[make_group("g1", available=[0]), make_group("g2", available=[0])],
+        shifts=[make_shift(0, size=0, preallocated_volunteer_ids=["g1"])],
+    )
+    built = build(Problem(inp), [no_duplicate_allocation.CONSTRAINT], [])
+    assert ("g1", 0, SERVICE_VOLUNTEER) in built.x.role
+    assert ("g2", 0, SERVICE_VOLUNTEER) not in built.x.role

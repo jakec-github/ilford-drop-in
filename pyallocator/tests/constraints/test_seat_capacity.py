@@ -96,7 +96,9 @@ def test_second_team_lead_takes_an_ordinary_seat():
     # this rule says is that both of them fit.
 
 
-def test_two_volunteers_pinned_to_one_team_lead_seat_is_infeasible():
+# A Shape bounds the allocator, not people's decisions (ADR 0010). Pins past
+# it overfill the Role, and the allocator places nobody else there.
+def test_two_volunteers_pinned_to_one_team_lead_seat_are_both_honoured():
     inp = make_input(
         groups=[
             make_group("tl_a", available=[0], team_lead=True),
@@ -105,8 +107,63 @@ def test_two_volunteers_pinned_to_one_team_lead_seat_is_infeasible():
         shifts=[pin_team_lead(make_shift(0), "tl_a", "tl_b")],
     )
     out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
-    assert not out.success
-    assert out.solver_status == "INFEASIBLE"
+    assert out.success
+    assert sorted(allocations_by_shift(out)[0]) == ["tl_a", "tl_b"]
+
+
+def test_allocator_adds_nobody_to_a_role_its_pins_have_filled():
+    one_seat = dataclasses.replace(
+        make_shift(0, preallocated_volunteer_ids=["p1", "p2"]),
+        shape=(Seat(role=SERVICE_VOLUNTEER, count=1),),
+    )
+    inp = make_input(
+        groups=[make_group(k, available=[0]) for k in ("p1", "p2", "free")],
+        shifts=[one_seat],
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert sorted(allocations_by_shift(out)[0]) == ["p1", "p2"]
+
+
+def test_custom_and_volunteer_pins_both_take_seats():
+    two_seats = dataclasses.replace(
+        make_shift(0, custom_preallocations=["ext"], preallocated_volunteer_ids=["p1"]),
+        shape=(Seat(role=SERVICE_VOLUNTEER, count=2),),
+    )
+    inp = make_input(
+        groups=[make_group(k, available=[0]) for k in ("p1", "free")],
+        shifts=[two_seats],
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert allocations_by_shift(out)[0] == ("p1",)
+
+
+def test_volunteer_pin_past_a_role_custom_pins_already_fill():
+    full = dataclasses.replace(
+        make_shift(0, custom_preallocations=["e1", "e2"], preallocated_volunteer_ids=["p1"]),
+        shape=(Seat(role=SERVICE_VOLUNTEER, count=1),),
+    )
+    inp = make_input(groups=[make_group("p1", available=[0])], shifts=[full])
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert allocations_by_shift(out)[0] == ("p1",)
+
+
+def test_a_role_with_free_seats_still_fills_beside_an_overfilled_one():
+    # Two people pinned to the one Team lead Seat leave the Service
+    # volunteer Seats untouched: the allocator still fills those.
+    inp = make_input(
+        groups=[
+            make_group("tl_a", available=[0], team_lead=True),
+            make_group("tl_b", available=[0], team_lead=True),
+            make_group("free", available=[0]),
+        ],
+        shifts=[pin_team_lead(make_shift(0, size=1), "tl_a", "tl_b")],
+    )
+    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    assert out.success
+    assert sorted(allocations_by_shift(out)[0]) == ["free", "tl_a", "tl_b"]
 
 
 def test_a_shape_asking_for_more_of_a_role_gets_more():

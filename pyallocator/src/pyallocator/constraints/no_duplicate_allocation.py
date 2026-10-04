@@ -38,7 +38,9 @@ class NoDuplicateAllocationConstraint:
         # A role var may only exist where the volunteer may fill the Role on
         # that shift (Problem.may_fill: they hold it, or a pin grants it there)
         # and the shift asks for it; anything else is a Seat that could be
-        # filled by someone ineligible.
+        # filled by someone ineligible. The one exception is a pin past the
+        # Shape (ADR 0010): the pinned person, and nobody else, sits in a Role
+        # the Shape asks for none of.
         volunteers_by_id = {v.id: v for v in problem.volunteers}
         shapes = {
             shift.index: {seat.role for seat in shift.shape if seat.count > 0}
@@ -51,6 +53,8 @@ class NoDuplicateAllocationConstraint:
                     f"role variable ({vol_id}, {shift_index}, {role}) exists for "
                     "a volunteer who may not fill that Role on that shift"
                 )
+            if problem.is_pinned_to(vol_id, shift_index, role):
+                continue
             if role not in shapes.get(shift_index, set()):
                 raise AssertionError(
                     f"role variable ({vol_id}, {shift_index}, {role}) exists for "

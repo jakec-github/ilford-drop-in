@@ -54,27 +54,21 @@ def test_valid_input_exit_zero(tmp_path):
 
 def test_infeasible_exit_zero(tmp_path):
     payload = json.loads(json.dumps(VALID_INPUT))
-    # Two singles preallocated onto a size-1 shift -> INFEASIBLE.
-    payload["shifts"][0]["shape"] = shape(1)
+    # v1 pinned into the only Seat brings their partner v2, who has nowhere
+    # to sit -> INFEASIBLE. (A pin forcing the whole group is the last way a
+    # pin can do this; "a pin pins one person", #234, removes it.)
+    payload["shifts"][0]["shape"] = [{"role": "Service volunteer", "count": 1}]
     payload["shifts"][0]["preallocations"] = [
         {"volunteer_id": "v1", "custom": "", "role": "Service volunteer"},
-        {"volunteer_id": "v2", "custom": "", "role": "Service volunteer"},
     ]
-    payload["groups"].append(
+    payload["groups"][0]["members"].append(
         {
-            "group_key": "Other Volunteer",
-            "members": [
-                {
-                    "id": "v2",
-                    "first_name": "Other",
-                    "last_name": "Volunteer",
-                    "display_name": "Other",
-                    "gender": "Male",
-                    "roles": ["Service volunteer"],
-                }
-            ],
-            "available_shift_indices": [0],
-            "historical_allocation_count": 0,
+            "id": "v2",
+            "first_name": "Other",
+            "last_name": "Volunteer",
+            "display_name": "Other",
+            "gender": "Male",
+            "roles": ["Service volunteer"],
         }
     )
     code, out = run_cli(tmp_path, payload)

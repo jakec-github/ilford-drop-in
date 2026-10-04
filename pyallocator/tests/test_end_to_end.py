@@ -422,15 +422,18 @@ def test_end_to_end_is_deterministic():
 
 
 def test_infeasible_reported_not_crashed():
-    # Two individuals preallocated onto a size-1 shift: capacity cannot
-    # hold, so the model is INFEASIBLE — a well-formed result.
+    # Alice pinned into a shift's only Seat brings her partner, who has
+    # nowhere to sit, so the model is INFEASIBLE — a well-formed result. (A
+    # pin forcing the whole group is the last way a pin can do this; "a pin
+    # pins one person", #234, removes it.)
     inp = AllocationInput(
         max_allocation_count=2,
-        shifts=(make_shift(0, size=1, preallocated_volunteer_ids=["a", "b"]),),
-        groups=(
-            _individual("a", available=[0]),
-            _individual("b", available=[0]),
+        shifts=(
+            make_shift(
+                0, size=1, roles=(DEFAULT_ROLES[1],), preallocated_volunteer_ids=["alice"]
+            ),
         ),
+        groups=(_plain_couple("couple", "alice", "bob", available=[0]),),
         roles=DEFAULT_ROLES,
         enabled_constraints=E2E_ENABLED,
         historical_shifts=(),
@@ -542,3 +545,52 @@ def test_pins_breaking_every_spacing_and_frequency_rule_at_once_solve():
         assert {"alice", "charlie"} <= worked[i]
     # The allocator itself still keeps every rule around the pins.
     assert not {"alice", "charlie"} & worked[3]
+
+
+def test_pins_past_the_shape_solve_with_every_rule_on():
+    # A Shape bounds the allocator, not people's decisions (ADR 0010). Two
+    # women are pinned to a shift's one Team lead Seat, and a third to a Role
+    # its Shape asks for none of. Every pin is honoured, and the allocator
+    # still fills the Seat that is left, keeping male cover by giving it to
+    # Charlie rather than to Diana.
+    food = Role(name="Food collector", priority=3)
+    lead = (TEAM_LEAD, SERVICE_VOLUNTEER)
+    shift = ShiftSpec(
+        index=0,
+        date="2026-07-13",
+        closed=False,
+        shape=(Seat(role=TEAM_LEAD, count=1), Seat(role=SERVICE_VOLUNTEER, count=1)),
+        preallocations=(
+            Preallocation(volunteer_id="ann", custom="", role=TEAM_LEAD),
+            Preallocation(volunteer_id="bea", custom="", role=TEAM_LEAD),
+            Preallocation(volunteer_id="cat", custom="", role=food.name),
+        ),
+    )
+    inp = AllocationInput(
+        max_allocation_count=2,
+        shifts=(shift,),
+        groups=(
+            Group("Ann", (Member("ann", "Ann", "G", "Ann", "Female", lead),), (0,), 0),
+            Group("Bea", (Member("bea", "Bea", "G", "Bea", "Female", lead),), (0,), 0),
+            _individual("cat", available=[0]),
+            _individual("diana", available=[0]),
+            _individual("charlie", available=[0], gender="Male"),
+        ),
+        roles=DEFAULT_ROLES + (food,),
+        enabled_constraints=(
+            "max_frequency",
+            "male_required",
+            "no_back_to_back",
+            "one_shift_per_month",
+        ),
+        historical_shifts=(),
+    )
+    out = solve(inp)
+    assert out.success, out.error or out.solver_status
+    seats = sorted((a.volunteer_id, a.role) for a in out.shifts[0].assignments)
+    assert seats == [
+        ("ann", TEAM_LEAD),
+        ("bea", TEAM_LEAD),
+        ("cat", food.name),
+        ("charlie", SERVICE_VOLUNTEER),
+    ]

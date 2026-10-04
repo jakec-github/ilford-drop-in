@@ -1,9 +1,15 @@
 """Ensures a shift never oversubscribes any Role's Seats.
 
 A shift's Shape says how many Seats it offers in each Role, and this caps
-how many volunteers the solver may place in each. Custom (free-text)
-preallocations name a Role too and are not solver decisions, so they take
-their Role's Seats before the solver sees them.
+how many volunteers the solver may place in each. Pins — custom (free-text)
+entries and volunteers pinned by name — are not solver decisions, so they
+take their Role's Seats before the solver sees them.
+
+The Shape bounds the allocator, not people's decisions (ADR 0010). Pins
+may take more Seats than a Role has, or a Role the Shape asks for none of;
+they are all honoured, and the solver places nobody else in that Role. Only
+its own choices are capped, by what the pins leave, so pins never make
+this rule unsatisfiable.
 
 The Shape is the only ceiling. A Role used to carry a max of its own and
 this applied that as a second, unconditional one; since a Shift's Shape
@@ -30,8 +36,8 @@ from .base import Vars
 class SeatCapacityConstraint:
     name = "seat_capacity"
     description = (
-        "a shift never has more volunteers in a Role than its Shape offers "
-        "Seats for, less any custom preallocations on that Role"
+        "the solver never places more volunteers in a Role than its Shape "
+        "offers Seats for, less the pins on that Role"
     )
 
     def apply(self, model: cp_model.CpModel, x: Vars, problem: Problem) -> None:
@@ -39,17 +45,15 @@ class SeatCapacityConstraint:
             if shift.closed:
                 continue
             for role in problem.roles:
-                occupants = [
+                chosen = [
                     x.role[(v.id, shift.index, role.name)]
                     for v in problem.volunteers
                     if (v.id, shift.index, role.name) in x.role
+                    and not problem.is_pinned_to(v.id, shift.index, role.name)
                 ]
-                if not occupants:
+                if not chosen:
                     continue
-
-                seats = problem.seats_for(shift, role.name)
-                customs = len(problem.customs_for(shift, role.name))
-                model.Add(sum(occupants) <= max(0, seats - customs))
+                model.Add(sum(chosen) <= problem.room_for(shift, role.name))
 
 
 CONSTRAINT = SeatCapacityConstraint()
