@@ -225,47 +225,15 @@ func TestSaveShiftShapeRefusedOnAnAllocatedRota(t *testing.T) {
 	assert.Empty(t, store.saved)
 }
 
-// A pin is a promise to do a named job on this Shift, and the solver rejects a
-// pin naming a Role the Shift has no Seat for. So the Seat cannot be taken away
-// underneath one: the refusal names the Role and says how many are promised it,
-// and removing the pin is the way through.
-func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
+// A Shape is for the allocator, so pins do not hold it up (ADR 0010). Taking
+// away a pinned Role's Seat, or shrinking one below its pins, is an ordinary
+// edit: the pins sit past the new Shape and the solver honours them.
+func TestSaveShiftShapeShrinksBelowItsPins(t *testing.T) {
 	store := shapeEditStore()
 	store.pins = []db.Preallocation{
 		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
-	}
-
-	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
-		{RoleID: ordinaryRole, Count: 4},
-	}, zap.NewNop())
-	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "Team lead")
-	assert.Empty(t, store.saved)
-}
-
-// The same rule short of nought: two people promised a Role and one Seat left
-// for them is a Shift the solver cannot fill either, so the count has to hold
-// every pin rather than merely one.
-func TestSaveShiftShapeRefusedWhenSeatsFallBelowThePins(t *testing.T) {
-	store := shapeEditStore()
-	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", RoleID: ordinaryRole, VolunteerID: "vol-1"},
-		{ID: "pin-2", ShiftID: "shift-1", RoleID: ordinaryRole, CustomValue: "Redbridge youth group"},
-	}
-
-	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
-		{RoleID: ordinaryRole, Count: 1},
-	}, zap.NewNop())
-	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "2 people are pinned as Service volunteer")
-	assert.Empty(t, store.saved)
-}
-
-// Seats enough for everyone promised them is an ordinary edit, pins or no pins.
-func TestSaveShiftShapeAllowsSeatsForEveryPin(t *testing.T) {
-	store := shapeEditStore()
-	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", RoleID: ordinaryRole, VolunteerID: "vol-1"},
+		{ID: "pin-2", ShiftID: "shift-1", RoleID: ordinaryRole, VolunteerID: "vol-2"},
+		{ID: "pin-3", ShiftID: "shift-1", RoleID: ordinaryRole, CustomValue: "Redbridge youth group"},
 	}
 
 	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
@@ -273,43 +241,6 @@ func TestSaveShiftShapeAllowsSeatsForEveryPin(t *testing.T) {
 	}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.saved, 1)
-}
-
-// Nobody works a day the drop-in is shut, and allocation strips a closed
-// Shift's pins before the solver sees them — so a pin there promises nothing
-// and cannot stand in the way of an edit.
-func TestSaveShiftShapeIgnoresThePinsOfAClosedShift(t *testing.T) {
-	store := shapeEditStore()
-	store.shift.Closed = true
-	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
-	}
-
-	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
-		{RoleID: ordinaryRole, Count: 4},
-	}, zap.NewNop())
-	require.NoError(t, err)
-	require.Len(t, store.saved, 1)
-}
-
-// A pin holds its Seat under a rename, because both sides name the Role by id
-// (issue #195). The Role reads differently and the promise is the same one.
-func TestSaveShiftShapeHoldsAPinThroughARename(t *testing.T) {
-	store := shapeEditStore()
-	store.roles = []db.Role{
-		{ID: leadRoleID, Name: "Shift lead", Priority: 1, Colour: "violet"},
-		{ID: ordinaryRole, Name: "Service volunteer", Priority: 2, Colour: "teal"},
-	}
-	store.pins = []db.Preallocation{
-		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
-	}
-
-	_, err := SaveShiftShape(context.Background(), store, "shift-1", []SeatParams{
-		{RoleID: ordinaryRole, Count: 4},
-	}, zap.NewNop())
-	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "Shift lead", "the refusal names the Role as it reads today")
-	assert.Empty(t, store.saved)
 }
 
 // Losing the race with something that removed the Shift under the lock reads as

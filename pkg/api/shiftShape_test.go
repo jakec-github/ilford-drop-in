@@ -95,10 +95,9 @@ func TestSaveShiftShapeTakesAnyCountOfAnyRole(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
 
-// A pin promises somebody a named job on this shift, and the solver refuses a
-// pin naming a Role the shift has no Seat for — so the Seat cannot be taken
-// away underneath one, and the refusal says whose pin to remove.
-func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
+// A Shape is for the allocator, so taking away the Seat a pin names is an
+// ordinary edit (ADR 0010): the pin sits past the Shape and the solver keeps it.
+func TestSaveShiftShapeDropsARoleSomebodyIsPinnedTo(t *testing.T) {
 	store := shiftEditTestStore()
 	store.manualPreallocations = []db.Preallocation{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-team-lead", VolunteerID: "vol-alice"},
@@ -107,8 +106,7 @@ func TestSaveShiftShapeRefusedWhenAPinWouldLoseItsSeat(t *testing.T) {
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
 		"/api/shifts/s1/shape",
 		`{"seats":[{"roleId":"role-service-volunteer","count":4}]}`, organiserCookie())
-	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
-	assert.Contains(t, rec.Body.String(), "Team lead")
+	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
 
 func TestSaveShiftShapeUnknownShift(t *testing.T) {

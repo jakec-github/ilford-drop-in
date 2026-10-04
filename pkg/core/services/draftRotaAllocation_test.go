@@ -277,10 +277,11 @@ func TestASolveCarriesTheRotasInputsStamp(t *testing.T) {
 			// A closed Shift asks for nobody however it is shaped.
 			"shift-2": {{Role: model.Role{Name: "Team lead"}, Count: 1}},
 		},
-		output: &allocator.CpsatOutput{Success: true, SolverStatus: "FEASIBLE", ObjectiveValue: 12},
+		output:        &allocator.CpsatOutput{Success: true, SolverStatus: "FEASIBLE", ObjectiveValue: 12},
+		shiftIDByDate: map[string]string{"2026-08-02": "shift-1", "2026-08-09": "shift-2"},
 		solvedShifts: []*allocator.Shift{
-			{Assignments: []allocator.Assignment{{}, {}}},
-			{Assignments: []allocator.Assignment{{}}},
+			{Date: "2026-08-02", Assignments: []allocator.Assignment{{Role: "Team lead"}, {Role: "Service volunteer"}, {Role: "Service volunteer"}}},
+			{Date: "2026-08-09"},
 		},
 	}
 
@@ -292,4 +293,33 @@ func TestASolveCarriesTheRotasInputsStamp(t *testing.T) {
 	assert.Equal(t, "FEASIBLE", draft.SolverStatus)
 	assert.Equal(t, 4, draft.SeatsAsked, "the open Shift's four Seats; the closed one asks for nobody")
 	assert.Equal(t, 3, draft.SeatsFilled)
+}
+
+// Pins may go past a Shape (ADR 0010), but they fill no more Seats than it
+// has: two people pinned to one Team lead Seat fill that Seat, and a pin to a
+// Role the Shape asks for none of fills nothing. Counting heads instead would
+// say a shift short of people was more than full.
+func TestSeatsFilledStopsAtTheShape(t *testing.T) {
+	solve := &rotaSolve{
+		rota:   &db.Rotation{ID: "rota-1", Start: "2026-08-02"},
+		shifts: []db.Shift{{ID: "shift-1", RotaID: "rota-1", Date: "2026-08-02"}},
+		shapes: map[string]model.Shape{
+			"shift-1": {{Role: model.Role{Name: "Team lead"}, Count: 1}, {Role: model.Role{Name: "Service volunteer"}, Count: 2}},
+		},
+		shiftIDByDate: map[string]string{"2026-08-02": "shift-1"},
+		output:        &allocator.CpsatOutput{Success: true, SolverStatus: "OPTIMAL"},
+		solvedShifts: []*allocator.Shift{{
+			Date: "2026-08-02",
+			Assignments: []allocator.Assignment{
+				{Role: "Team lead"}, {Role: "Team lead"},
+				{Role: "Service volunteer"},
+				{Role: "Food collector"},
+			},
+		}},
+	}
+
+	draft := solve.draft(time.Now(), []byte(`{}`))
+
+	assert.Equal(t, 3, draft.SeatsAsked)
+	assert.Equal(t, 2, draft.SeatsFilled, "the Team lead Seat and one Service volunteer Seat")
 }

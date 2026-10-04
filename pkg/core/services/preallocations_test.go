@@ -322,8 +322,9 @@ func TestAddPreallocation_TheSameCustomEntryTwice(t *testing.T) {
 	assert.NotEqual(t, "p1", store.inserted[0].ID, "the second pin is a row of its own")
 }
 
-// The Seats are what bound a repeated custom entry: four of them fit a Shape
-// asking for four, and the fifth is refused as any fifth pin would be.
+// A Shape bounds the allocator, not people's decisions (ADR 0010), so an
+// organisation may be promised more Seats than the Shape has: the fifth pin
+// on a Shape asking for four is kept, and the allocator adds nobody else.
 func TestAddPreallocation_TheSameCustomEntryPastItsSeats(t *testing.T) {
 	store := oneShiftStore()
 	store.preallocs = []db.Preallocation{
@@ -334,45 +335,14 @@ func TestAddPreallocation_TheSameCustomEntryPastItsSeats(t *testing.T) {
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
 		AddPreallocationParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
-	assert.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "every Service volunteer seat")
-	assert.Empty(t, store.inserted)
-}
-
-// A Role has only the Seats the shift's Shape gives it, and pinning past them
-// would hand the solver a shift it cannot fill legally (issue #185). It used to
-// be the Role's own ceiling that said so.
-func TestAddPreallocation_RoleSeatsAlreadyFull(t *testing.T) {
-	store := oneShiftStore()
-	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
-	}
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", RoleID: "role-team-lead"}, zap.NewNop())
-	assert.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "every Team lead seat for 2026-08-02 is already pinned")
-}
-
-// A Role with Seats to spare takes another pin, however many it already holds.
-func TestAddPreallocation_RoleWithSeatsLeftTakesAnother(t *testing.T) {
-	store := oneShiftStore()
-	store.preallocs = []db.Preallocation{
-		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "alice"},
-		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "Scouts"},
-	}
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
-		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 }
 
-// A Shape the shift's own Organiser widened seats more of a Role, and the pins
-// follow it: the Shape is the ceiling, so raising it raises what may be pinned.
-func TestAddPreallocation_FollowsTheShiftsOwnShape(t *testing.T) {
+// A Role whose Seats are all pinned still takes another pin (ADR 0010): the
+// Shape bounds the allocator, and people decide past it.
+func TestAddPreallocation_PastTheRolesSeats(t *testing.T) {
 	store := oneShiftStore()
-	store.shapes["shift-1"] = []db.ShiftRequirement{
-		{ShiftID: "shift-1", RoleID: "role-team-lead", Seats: 2},
-	}
 	store.preallocs = []db.Preallocation{
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}
@@ -380,19 +350,20 @@ func TestAddPreallocation_FollowsTheShiftsOwnShape(t *testing.T) {
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "dan", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
 }
 
-// A Role the Shape does not name has no Seat to promise anybody, so a pin
-// naming it is refused here rather than failing the solve.
-func TestAddPreallocation_RefusesARoleTheShapeDoesNotAskFor(t *testing.T) {
+// A Role the Shape does not name is no reason to refuse either: the pinned
+// person sits past the Shape, and the solver honours it (ADR 0010).
+func TestAddPreallocation_ARoleTheShapeDoesNotAskFor(t *testing.T) {
 	store := oneShiftStore()
 	store.shapes["shift-1"] = []db.ShiftRequirement{
 		{ShiftID: "shift-1", RoleID: "role-service-volunteer", Seats: 4},
 	}
 	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
-	assert.ErrorIs(t, err, ErrConflict)
-	assert.Empty(t, store.inserted)
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
 }
 
 func TestAddPreallocation_AlreadyAllocated(t *testing.T) {

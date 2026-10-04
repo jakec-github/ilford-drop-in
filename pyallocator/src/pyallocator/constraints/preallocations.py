@@ -12,12 +12,13 @@ Seat.
 A pin to a Role the volunteer does not hold is honoured rather than
 rejected: it grants them that Seat on that shift alone (Problem.may_fill),
 because a pin records a decision already taken and the roster not yet
-saying so is the roster lagging. What it cannot do is invent a Seat — a
-Role the shift's Shape has none of is still an error.
+saying so is the roster lagging. A pin past the Shape — more people in a
+Role than its Seats, or a Role the Shape has none of — is honoured too
+(Problem.seat_roles, ADR 0010): the Shape bounds the allocator only.
 
-Resolution of volunteer ids to groups — and the error cases (unknown id, or
-a Role the shift has no Seat for) — happens in problem.py, because other
-constraints (availability) also need the resolved pairs.
+Resolution of volunteer ids to groups — and the error case, an unknown
+id — happens in problem.py, because other constraints (availability) also
+need the resolved pairs.
 """
 
 from __future__ import annotations

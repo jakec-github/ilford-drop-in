@@ -82,27 +82,22 @@ type ShiftShapeWriteStore interface {
 // there is no way to say that one Seat at a time. Sending nothing leaves it
 // asking for nobody, which allocation refuses over and nothing else minds.
 //
-// Two things can stop an edit, and both are about the rota rather than the
-// Shape:
-//
-// The Rotation being allocated freezes it. The solver filled Seats against this
+// One thing can stop an edit, and it is about the rota rather than the Shape:
+// the Rotation being allocated freezes it. The solver filled Seats against this
 // Shape, so afterwards it is not a request but the record of what the rota was
 // made from — changing it would leave the rota describing a Shift that never
 // asked for those people.
 //
-// A Preallocation promising a Role more Seats than the new Shape offers is
-// refused, naming them (the alternative — letting the edit through and
-// surfacing the pin — was the other half of the ticket's choice). A pin says
-// somebody will do a named job on this Shift; the solver treats a pin naming a
-// Role the Shift has no Seat for as an error rather than a rota it can produce,
-// and fewer Seats than pins is a Shift it cannot fill legally. Refusing here
-// means the Organiser reads the pin's name now, rather than an infeasible solve
-// later; removing the pin is the way through, and every pin can be removed.
+// The pins on the Shift are not consulted. A Shape bounds the allocator, not
+// people's decisions (ADR 0010), so shrinking it below its pins, or dropping a
+// Role somebody is pinned to, is an ordinary edit: the pins sit past the new
+// Shape, the solver honours them, and it places nobody else in that Role. It
+// used to refuse such an edit (seatsHoldThePins, #138), back when the solver
+// could not.
 //
-// Being closed does not freeze anything. A closed Shift's Shape is what it will
-// ask for when it reopens, and an Organiser fixing one should not have to reopen it
-// first. Its pins are ignored for the same reason allocation strips them:
-// nobody works a day the drop-in is shut, so a pin there promises nothing.
+// Being closed does not freeze anything either. A closed Shift's Shape is what
+// it will ask for when it reopens, and an Organiser fixing one should not have
+// to reopen it first.
 func SaveShiftShape(
 	ctx context.Context,
 	store ShiftShapeWriteStore,
@@ -146,16 +141,6 @@ func SaveShiftShape(
 				readableDate(shift.Date))
 		}
 
-		if !shift.Closed {
-			pins, err := tx.GetPreallocationsByShiftIDs(ctx, []string{shiftID})
-			if err != nil {
-				return err
-			}
-			if err := seatsHoldThePins(stated, pins, roles, shift.Date); err != nil {
-				return err
-			}
-		}
-
 		written, err := tx.SetShiftShape(ctx, shiftID, rows)
 		if err != nil {
 			return err
@@ -176,74 +161,6 @@ func SaveShiftShape(
 		zap.Int("roles", len(rows)))
 
 	return resolveShape(stated, roles, fmt.Sprintf("the shape of shift %s", shiftID))
-}
-
-// seatsHoldThePins refuses a Shape offering a Role fewer Seats than the people
-// already promised it, saying how many are promised.
-//
-// Both sides name a Role by id — the stated Seats because a live question has
-// to survive a rename, the pins because a promise does too (issue #195) — so
-// they meet on the id and the Roles table is only consulted to word the
-// message.
-func seatsHoldThePins(stated []storedSeat, pins []db.Preallocation, roles model.Roles, date string) error {
-	seatsByRole := make(map[string]int, len(stated))
-	for _, seat := range stated {
-		seatsByRole[seat.RoleID] = seat.Seats
-	}
-
-	pinnedByRole := make(map[string]int)
-	for _, pin := range pins {
-		pinnedByRole[pin.RoleID]++
-	}
-
-	// In the order the Seats are filled, so a Shift short of two Roles names the
-	// more senior first and the message does not shuffle between reads.
-	for _, role := range roles.ByPriority() {
-		pinned, ok := pinnedByRole[role.ID]
-		if !ok {
-			continue
-		}
-		if pinned > seatsByRole[role.ID] {
-			return pinsWithoutSeats(role.Name, pinned, seatsByRole[role.ID], date)
-		}
-	}
-	return nil
-}
-
-// seatsForRole is how many Seats a stored Shape gives one Role. A Shape that
-// does not name the Role gives it none, which is what a Shift asking for
-// nobody in that job means — and is why pinning to it is refused (issue #185).
-func seatsForRole(shape []db.ShiftRequirement, role model.Role) int {
-	for _, seat := range shape {
-		if seat.RoleID == role.ID {
-			return seat.Seats
-		}
-	}
-	return 0
-}
-
-// pinsWithoutSeats says which promises the new Shape would break, and what to
-// do about it. Losing the Role altogether and merely running short of it are
-// worth saying differently: one is a Seat that would stop existing, the other a
-// count that does not go round.
-//
-// It counts the pins rather than naming who holds them. A pin stores a
-// volunteer id, so naming one would mean fetching the whole roster to word a
-// refusal — and the screen this refusal lands on is already listing every pin
-// on that shift by name, directly under the row being edited.
-func pinsWithoutSeats(role string, pinned, seats int, date string) error {
-	who := fmt.Sprintf("%d people are", pinned)
-	if pinned == 1 {
-		who = "somebody is"
-	}
-	if seats == 0 {
-		return wrapf(ErrConflict,
-			"%s pinned as %s on %s, so the shift cannot stop asking for a %s: remove the %s first",
-			who, role, readableDate(date), role, plural(pinned, "pin", "pins"))
-	}
-	return wrapf(ErrConflict,
-		"%s pinned as %s on %s, so the shift needs at least %d of them: remove a pin first",
-		who, role, readableDate(date), pinned)
 }
 
 // shapesForAllocation reads the rota's Shapes and refuses when an open Shift

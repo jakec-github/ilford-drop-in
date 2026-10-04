@@ -297,10 +297,31 @@ func (s *rotaSolve) seatsAsked() int {
 }
 
 // seatsFilled is how many of those Seats the solve actually put somebody in.
+//
+// Counted per Role and stopped at the Shape, not as heads. Pins may go past a
+// Shape (ADR 0010) — two people in its one Team lead Seat, or somebody in a
+// Role it asks for none of — and filling a Seat twice fills it once. Heads
+// would let one overfilled Role hide another's gap, and the draft would say a
+// shift that is short of people was more than full.
 func (s *rotaSolve) seatsFilled() int {
+	open := make(map[string]bool, len(s.shifts))
+	for _, shift := range s.shifts {
+		open[shift.ID] = !shift.Closed
+	}
+
 	filled := 0
-	for _, shift := range s.solvedShifts {
-		filled += len(shift.Assignments)
+	for _, solved := range s.solvedShifts {
+		shiftID := s.shiftIDByDate[solved.Date]
+		if !open[shiftID] {
+			continue
+		}
+		inRole := make(map[string]int)
+		for _, a := range solved.Assignments {
+			inRole[a.Role]++
+		}
+		for _, seat := range s.shapes[shiftID] {
+			filled += min(inRole[seat.Role.Name], seat.Count)
+		}
 	}
 	return filled
 }
