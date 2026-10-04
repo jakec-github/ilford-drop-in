@@ -717,6 +717,31 @@ describe("PinDialog", () => {
     expect(screen.getByRole("button", { name: "Pin" })).toBeDisabled();
   });
 
+  test("an inactive volunteer may be pinned, and is marked as such", () => {
+    const onConfirm = mock<(person: unknown, role: string) => void>();
+    render(
+      <PinDialog
+        {...pinProps()}
+        volunteers={[grace, { ...ada, active: false }]}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    expect(
+      screen.getByRole("option", { name: "Ada Lovelace (not active)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Grace Hopper" }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "ada" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+
+    expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "ada" }, HOT_FOOD);
+  });
+
   // A note, not a refusal: pinning a name twice is how an organisation sending
   // two people is said (issue #195).
   test("pinning a custom name that is already pinned says so, and is allowed", () => {

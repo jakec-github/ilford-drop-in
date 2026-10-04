@@ -462,7 +462,9 @@ export function PinDialog({
 }: {
   dateLabel: string;
   // null while the roster is still loading. Already filtered to the people who
-  // can be pinned to this shift.
+  // can be pinned to this shift, which includes the inactive: being inactive
+  // stops the allocator choosing somebody, not a person pinning them (ADR
+  // 0010). They are marked, as in the Alteration dialog.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
   // This shift's Shape with its pins counted against it, in the order the Seats
@@ -557,6 +559,7 @@ export function PinDialog({
             {volunteers?.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.fullName}
+                {v.active ? "" : " (not active)"}
               </option>
             ))}
             <option value={CUSTOM_CHOICE}>Someone not on the roster…</option>

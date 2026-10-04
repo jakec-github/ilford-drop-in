@@ -691,17 +691,16 @@ export default function RotaViewer({
     );
   }
 
-  // Who can still be pinned to an unallocated shift: the active roster, less
-  // anyone already pinned there from either source. Both exclusions matter and
-  // for different reasons — the server refuses a pin for an inactive volunteer
-  // or a repeat of a manual one, and silently drops a manual pin that repeats a
-  // config one, which would look like it had worked.
+  // Who can still be pinned to an unallocated shift: the whole roster, inactive
+  // included (ADR 0010), less anyone already pinned there from either source —
+  // the server refuses a repeat of a manual pin, and silently drops a manual pin
+  // that repeats a config one, which would look like it had worked.
   function pinnableTo(date: string): Volunteer[] | null {
     if (volunteers === null) return null;
     const pinned = new Set(
       (pinsByDate.get(date) ?? []).map((p) => p.volunteerId).filter(Boolean),
     );
-    return volunteers.filter((v) => v.active && !pinned.has(v.id));
+    return volunteers.filter((v) => !pinned.has(v.id));
   }
 
   return (

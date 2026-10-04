@@ -11,7 +11,6 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -122,12 +121,10 @@ func AddPreallocation(
 		if vol == nil {
 			return nil, wrapf(ErrNotFound, "volunteer %s not found", params.VolunteerID)
 		}
-		if len(utils.FilterActiveVolunteers([]model.Volunteer{*vol})) == 0 {
-			return nil, wrapf(ErrInvalidInput, "volunteer %s is not active", params.VolunteerID)
-		}
-		// Whether they hold the Role on the roster is not checked: that is a
-		// rule, and rules bind the allocator, not the Organiser (ADR 0010).
-		// The pin grants the Role for this Shift alone.
+		// Neither whether they are active nor whether they hold the Role is
+		// checked: both are roster data, and the roster binds the allocator,
+		// not the Organiser (ADR 0010). The pin grants the Role for this Shift
+		// alone, and solveRota sends an inactive volunteer it names.
 		name = vol.DisplayName
 	}
 

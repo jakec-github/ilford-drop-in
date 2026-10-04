@@ -109,6 +109,7 @@ export default function StandingPreallocationForm({
             {volunteers?.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.fullName}
+                {v.active ? "" : " (not active)"}
               </option>
             ))}
             <option value={CUSTOM_CHOICE}>Someone not on the roster…</option>

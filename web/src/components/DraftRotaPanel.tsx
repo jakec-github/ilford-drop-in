@@ -327,15 +327,15 @@ export default function DraftRotaPanel({
   const allocatable = state !== null && state.solved && state.success && !stale;
   const busy = solving || allocating;
 
-  // Who can still be pinned to a shift: the active roster, less anyone already
-  // pinned there. Both halves matter — the server refuses a pin for an inactive
-  // volunteer, and a repeat of one that already exists.
+  // Who can still be pinned to a shift: the whole roster, inactive included
+  // (ADR 0010), less anyone already pinned there — the server refuses a repeat
+  // of a pin that already exists.
   function pinnableTo(date: string) {
     if (volunteers === null) return null;
     const pinned = new Set(
       (pinsByDate.get(date) ?? []).map((p) => p.volunteerId).filter(Boolean),
     );
-    return volunteers.filter((v) => v.active && !pinned.has(v.id));
+    return volunteers.filter((v) => !pinned.has(v.id));
   }
 
   // Fires one change against one shift and leaves the screen showing whatever

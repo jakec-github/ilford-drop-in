@@ -498,6 +498,35 @@ describe("RotaViewer role pickers", () => {
         .map((o) => o.textContent),
     ).toEqual([DUTY_LEAD, HOT_FOOD]);
   });
+
+  // Being inactive stops the allocator choosing somebody, not a person
+  // deciding to pin them (ADR 0010).
+  test("pinning offers inactive volunteers, marked as such", async () => {
+    fetchVolunteers.mockResolvedValue([
+      ...VOLUNTEERS,
+      {
+        id: "dora",
+        name: "Dora",
+        fullName: "Dora",
+        roles: [GREETER],
+        group: null,
+        gender: null,
+        active: false,
+      },
+    ]);
+    await renderEditing("organiser", withUnallocated());
+
+    fireEvent.click(
+      within(rowFor("25 Jan")).getByRole("button", {
+        name: /^Pin someone to/,
+      }),
+    );
+    const who = await screen.findByLabelText("Who");
+
+    expect(
+      within(who).getByRole("option", { name: "Dora (not active)" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("RotaViewer access levels", () => {

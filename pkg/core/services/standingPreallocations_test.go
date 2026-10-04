@@ -197,6 +197,18 @@ func TestAddStandingPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	assert.Equal(t, "Team lead", view.Role)
 }
 
+// Being inactive is roster data, not a representation limit (ADR 0010).
+func TestAddStandingPreallocation_InactiveVolunteer(t *testing.T) {
+	store := &mockStandingStore{}
+	view, err := addStanding(t, store, AddStandingPreallocationParams{
+		RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-service-volunteer", VolunteerID: "carol",
+	})
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "carol", store.inserted[0].VolunteerID)
+	assert.Equal(t, "Carol", view.Name)
+}
+
 func TestAddStandingPreallocation_Refusals(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -227,11 +239,6 @@ func TestAddStandingPreallocation_Refusals(t *testing.T) {
 			name:    "unknown role",
 			params:  AddStandingPreallocationParams{RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-imaginary", VolunteerID: "alice"},
 			wantErr: "not a known role",
-		},
-		{
-			name:    "inactive volunteer",
-			params:  AddStandingPreallocationParams{RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-service-volunteer", VolunteerID: "carol"},
-			wantErr: "is not active",
 		},
 		{
 			name:    "unknown volunteer",
