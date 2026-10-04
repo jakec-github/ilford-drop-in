@@ -106,15 +106,9 @@ func (d *DB) withRotaLockTx(ctx context.Context, rotaIDs []string, fn func(tx pg
 // transaction, so the frozen-after-allocation guard and the duplicate-assignee
 // checks validate against a snapshot that cannot change before the write lands
 // (issue #39, mirroring the changeRota locking discipline).
-//
-// The Shift's Shape is read here for the same reason ShapeTxStore reads the
-// pins: the Seats a Role has on that Shift are what say whether there is one
-// left to promise (issue #185), and a Shape edit landing between the count and
-// the insert is exactly what the lock exists to rule out.
 type PreallocationTxStore interface {
 	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
 	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error)
-	GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]ShiftRequirement, error)
 	InsertPreallocation(ctx context.Context, mp Preallocation) error
 	DeletePreallocationByID(ctx context.Context, id string) (bool, error)
 }
@@ -158,15 +152,12 @@ func (d *DB) WithRotaShiftLock(ctx context.Context, rotaIDs []string, fn func(st
 // #138).
 //
 // A Shape is an allocator input, so it is frozen once the Rotation is
-// allocated — the solver filled Seats against it. The pins are here because
-// they are the other thing a Shape has to agree with: a Role a Shift has no
-// Seat for is an error the solver reports rather than a rota it can produce, so
-// a Shape that would leave a pin without one is refused. Reading both and
-// writing under one rota-row lock is what stops either check being overtaken by
-// an allocation or a pin landing a moment later.
+// allocated — the solver filled Seats against it. Reading that state and
+// writing under one rota-row lock is what stops the check being overtaken by
+// an allocation landing a moment later. Pins are not read: a Shape bounds the
+// allocator, not them (ADR 0010).
 type ShapeTxStore interface {
 	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
-	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error)
 	SetShiftShape(ctx context.Context, shiftID string, seats []ShiftRequirement) (bool, error)
 }
 
@@ -217,10 +208,6 @@ func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool
 
 func (r *rotaTx) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
 	return setShiftTimes(ctx, r.tx, shiftID, startAt, endAt)
-}
-
-func (r *rotaTx) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]ShiftRequirement, error) {
-	return getShiftShapes(ctx, r.tx, shiftIDs)
 }
 
 func (r *rotaTx) SetShiftShape(ctx context.Context, shiftID string, seats []ShiftRequirement) (bool, error) {

@@ -21,23 +21,22 @@ export interface SeatCount {
 }
 
 // seatCounts pairs a shift's Shape with what is already promised on it, so a
-// picker can offer the Seats that are left and name the Roles that are full.
+// picker can say which Roles have a Seat free and which a pin would go past.
 //
-// Only pinning asks this. A Shape's Seats bound the allocator and the promises
-// made to it, not somebody recording a change to a published rota (ADR 0009) —
-// so this answers "what may still be pinned here", and nothing on the
-// alterations path consults it.
+// Only pinning asks this, and only to word a note. A Shape's Seats bound the
+// allocator and nothing else (ADR 0010): a pin past them is honoured, and the
+// allocator adds nobody else to that Role. Nothing on the alterations path
+// consults it either.
 //
 // Roles are matched by id rather than by name, as a pin references one: the
 // Shape and the pins on a shift both carry the id, and a Role renamed between
 // the two would otherwise read as a Seat nobody had taken.
 //
-// The Shape's order is kept, because it is the order the Seats are filled, and
-// so the order a picker should offer them in. Anything taken in a Role the
-// Shape does not ask for is left out entirely rather than counted against
-// something: a pin can outlive its Role leaving a Shape, and when it does the
-// answer is that this Shape has no Seats of it — not that some other Role is
-// fuller than it is.
+// The Shape's order is kept, because it is the order the Seats are filled.
+// Anything taken in a Role the Shape does not ask for is left out entirely
+// rather than counted against something: a pin may name a Role the Shape has
+// none of, and when it does the answer is that this Shape has no Seats of it —
+// not that some other Role is fuller than it is.
 export function seatCounts(
   shape: ShapeSeat[],
   takenRoleIds: string[],

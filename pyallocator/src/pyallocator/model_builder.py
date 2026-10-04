@@ -1,5 +1,5 @@
 """Builds the CP-SAT model: a BoolVar per (volunteer, shift, Role) the
-volunteer could actually fill there (Problem.may_fill), plus an attendance
+volunteer could actually sit in there (Problem.seat_roles), plus an attendance
 BoolVar per (volunteer, shift) equal to their sum. It then applies the
 constraint list and sums the preference terms into a single Maximize
 objective.
@@ -46,13 +46,12 @@ def build(
             attend[(v.id, shift.index)] = attendance
 
             # Only Roles this volunteer may fill on this shift and the Shape
-            # asks for: any other variable would be a Seat nobody could fill.
+            # asks for, plus the one a pin names: any other variable would be
+            # a Seat nobody could fill.
             role_vars = []
-            for seat in shift.shape:
-                if seat.count <= 0 or not problem.may_fill(v, shift.index, seat.role):
-                    continue
-                role_var = model.NewBoolVar(f"role[{v.id},{shift.index},{seat.role}]")
-                role[(v.id, shift.index, seat.role)] = role_var
+            for role_name in problem.seat_roles(v, shift):
+                role_var = model.NewBoolVar(f"role[{v.id},{shift.index},{role_name}]")
+                role[(v.id, shift.index, role_name)] = role_var
                 role_vars.append(role_var)
 
             # One Seat per person per shift, stated once. With no eligible

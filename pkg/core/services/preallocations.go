@@ -172,29 +172,17 @@ func AddPreallocation(
 		}
 		// A volunteer may be promised a Shift once: a person fills at most one
 		// Seat on it, so a second pin is a slip. A custom entry may be promised
-		// it twice, because it is usually an organisation and an organisation
-		// routinely sends two people (issue #195) — the Seats below are what
-		// bounds how many.
-		filled := 0
+		// it any number of times, because it is usually an organisation and an
+		// organisation routinely sends two people (issue #195).
+		//
+		// The Seats are not counted. A Shape bounds the allocator, not people's
+		// decisions (ADR 0010): a pin past a Role's Seats, or into a Role the
+		// Shape asks for none of, is honoured, and the solver places nobody
+		// else in that Role.
 		for _, p := range existing {
 			if params.VolunteerID != "" && p.VolunteerID == params.VolunteerID {
 				return wrapf(ErrConflict, "volunteer %s is already pinned to %s", params.VolunteerID, params.Date)
 			}
-			if p.RoleID == role.ID {
-				filled++
-			}
-		}
-		// A Role has only the Seats this Shift's Shape gives it, and pinning
-		// past them would hand the solver a shift it cannot fill legally. It
-		// used to be the Role's own ceiling that said so; the Shape is what
-		// says it now, which is the same rule a Shape edit is held to from the
-		// other side (seatsHoldThePins, issue #185).
-		shapes, err := tx.GetShiftShapes(ctx, []string{shift.ID})
-		if err != nil {
-			return err
-		}
-		if filled >= seatsForRole(shapes[shift.ID], role) {
-			return wrapf(ErrConflict, "every %s seat for %s is already pinned", role.Name, params.Date)
 		}
 
 		return tx.InsertPreallocation(ctx, created)

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ShapeSeat } from "../types";
-import { groupByRole, roleGroupLabel } from "./shifts";
+import { groupByRole, roleGroupLabel, shiftDeficit } from "./shifts";
 
 // Deliberately not the Role names any deployment ships with: nothing here may
 // match on a name, and a fixture named like this is what catches it if it
@@ -109,6 +109,22 @@ describe("groupByRole", () => {
     ]);
   });
 
+  // Pins may go past a Shape (ADR 0010), so a Role can hold more people than
+  // it has Seats. Every one of them is still on the rota.
+  test("a role holding more people than its seats keeps them all", () => {
+    const grouped = groupByRole(SHAPE, [
+      person("Alice", "Duty lead"),
+      person("Bob", "Duty lead"),
+    ]);
+
+    expect(grouped).toEqual([
+      {
+        role: "Duty lead",
+        people: [person("Alice", "Duty lead"), person("Bob", "Duty lead")],
+      },
+    ]);
+  });
+
   test("nobody on the shift is no groups at all", () => {
     expect(groupByRole(SHAPE, [])).toEqual([]);
   });
@@ -123,5 +139,36 @@ describe("roleGroupLabel", () => {
   // group of people the rota records no Role for at all.
   test("a group with no role says so rather than going unlabelled", () => {
     expect(roleGroupLabel("")).toBe("Role not recorded");
+  });
+});
+
+describe("shiftDeficit", () => {
+  test("a role short of its seats says by how many", () => {
+    expect(
+      shiftDeficit(SHAPE, [
+        person("Alice", "Duty lead"),
+        person("Bob", "Hot food"),
+      ]),
+    ).toEqual([
+      { role: "Hot food", deficit: 1 },
+      { role: "Greeter", deficit: 4 },
+    ]);
+  });
+
+  // Pins past the Shape (ADR 0010) fill their own Role and no other: one
+  // Role overfilled is not a gap filled somewhere else.
+  test("a role past its seats does not hide another role's gap", () => {
+    const people = [
+      person("Alice", "Duty lead"),
+      person("Bob", "Duty lead"),
+      person("Carol", "Hot food"),
+      person("Dan", "Hot food"),
+      person("Eve", "Litter picker"),
+      ...["F", "G", "H"].map((n) => person(n, "Greeter")),
+    ];
+
+    expect(shiftDeficit(SHAPE, people)).toEqual([
+      { role: "Greeter", deficit: 1 },
+    ]);
   });
 });

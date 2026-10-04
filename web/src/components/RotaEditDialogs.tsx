@@ -34,13 +34,6 @@ function roleLabel(role: Role): string {
   return role || "No role";
 }
 
-// Sentences naming one or two Roles read better than a bare list, and a Shape
-// of five Roles can leave several full at once.
-function listRoles(roles: Role[]): string {
-  if (roles.length <= 1) return roles.join("");
-  return `${roles.slice(0, -1).join(", ")} and ${roles[roles.length - 1]}`;
-}
-
 // Every change to a published rota is recorded against a reason, so both
 // dialogs below end in the same field. It is deliberately not pre-filled: a
 // placeholder reason would be worse than none, since the cover record is the
@@ -447,13 +440,14 @@ export function AssigneeDialog({
 //
 // A pin is a decision somebody has already taken, so the rules that bind the
 // allocator do not bind it (ADR 0010). Anybody may be pinned into any Role the
-// shift has a Seat left in, whether or not the roster says they hold it — not
-// holding it earns a note, never a block. The Seats still bound it, because the
-// API still counts them (#233 lifts that).
+// drop-in has, whether or not the roster says they hold it and whether or not
+// the shift's Shape has a Seat of it left. Either earns a note, never a block:
+// a pin past the Shape is honoured, and the allocator adds nobody else there.
 export function PinDialog({
   dateLabel,
   volunteers,
   volunteersError,
+  roles,
   seats,
   pinnedNames,
   busy,
@@ -467,10 +461,12 @@ export function PinDialog({
   // 0010). They are marked, as in the Alteration dialog.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
+  // Every Role the drop-in has, highest priority first: what may be pinned.
+  // null while they load, when the Shape's own Roles stand in.
+  roles: Role[] | null;
   // This shift's Shape with its pins counted against it, in the order the Seats
-  // are filled. Empty for a shift asking for nobody, where there is nothing to
-  // promise anyone — the way out of both that and a full Role is to edit the
-  // Shape or remove a pin, and an unallocated shift allows either (issue #131).
+  // are filled. It no longer limits what is offered, only what is said: which
+  // Roles have a Seat free, and which a pin would go past.
   seats: SeatCount[];
   // Everyone already pinned here, by the name shown. Repeating a name is
   // allowed for a custom entry (issue #195) — an organisation sending two
@@ -499,37 +495,34 @@ export function PinDialog({
       : null;
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
-  const offered = seats.filter((seat) => seat.taken < seat.seats);
-  const full = seats.filter((seat) => seat.taken >= seat.seats);
-
-  const options = offered.map((seat) => seat.role);
-  // An explicit pick stands while it is still on offer; otherwise the first
-  // Seat this volunteer holds the Role for, the Shape's order being the order
-  // Seats are filled in.
+  const options = roles ?? seats.map((seat) => seat.role);
+  const seatOf = (option: Role) => seats.find((seat) => seat.role === option);
+  const free = options.filter((option) => {
+    const seat = seatOf(option);
+    return seat !== undefined && seat.taken < seat.seats;
+  });
+  // An explicit pick stands while it is still on offer. Otherwise a Role this
+  // volunteer holds with a Seat free, then any they hold, then any Seat free:
+  // somebody is usually pinned for the job they mostly do, and a free Seat of
+  // it beats going past the Shape.
+  const held = (option: Role) => chosen?.roles.includes(option) ?? false;
   const pinnedRole = options.includes(role)
     ? role
-    : defaultRoleFor(chosen, options);
+    : (free.find(held) ?? options.find(held) ?? free[0] ?? options[0] ?? "");
   // Said, not refused: the pin grants the Role for this shift alone.
   const notHeld =
     chosen !== null && pinnedRole !== "" && !chosen.roles.includes(pinnedRole);
 
-  // Answering the Who field is what makes the Seats below mean anything — a
-  // custom entry's name can still be blank, since what may be promised to an
-  // outside group does not depend on what it is called.
-  const someone = choice !== "";
-
-  // Why a Seat is not on offer. Every case has a way through, because an
-  // unallocated shift's Shape can still be changed and any pin on it can still
-  // be removed (issue #131) — so each says which.
+  // Said, not refused either: a pin past the Shape is honoured, and the
+  // allocator places nobody else in that Role (ADR 0010).
+  const pinnedSeat = pinnedRole === "" ? undefined : seatOf(pinnedRole);
   let note: string | null = null;
-  if (!someone) {
+  if (choice === "" || pinnedRole === "") {
     note = null;
-  } else if (options.length > 0 && full.length > 0) {
-    note = `${dateLabel} has every ${listRoles(full.map((seat) => seat.role))} seat pinned already.`;
-  } else if (full.length > 0) {
-    note = `${dateLabel} is pinned full: every seat it asks for is spoken for. Remove one of those pins, or give the shift another seat.`;
-  } else if (seats.length === 0) {
-    note = `${dateLabel} does not ask for anybody yet. Say what the shift asks for to make a seat.`;
+  } else if (pinnedSeat === undefined || pinnedSeat.seats === 0) {
+    note = `${dateLabel} does not ask for any ${pinnedRole}. This pin goes past the shift's shape, and allocation adds nobody else as ${pinnedRole}.`;
+  } else if (pinnedSeat.taken >= pinnedSeat.seats) {
+    note = `${dateLabel} has every ${pinnedRole} seat pinned already. This pin goes past the shift's shape, and allocation adds nobody else as ${pinnedRole}.`;
   }
 
   return (

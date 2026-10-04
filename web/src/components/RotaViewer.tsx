@@ -679,10 +679,10 @@ export default function RotaViewer({
     return volunteers.filter((v) => !onShift.has(v.id));
   }
 
-  // What one shift still has to promise: its own Shape, less the pins already
-  // made against it. The pin dialog reads this to decide which Seats it may
-  // offer — a Shape's Seats bound what may be promised to a solve that has not
-  // run, though not what may be recorded against a rota that has (ADR 0009).
+  // One shift's own Shape, with the pins already made against it counted. The
+  // pin dialog reads this to say which Roles have a Seat free and which a pin
+  // would go past — never to refuse one, since a Shape bounds the allocator and
+  // not people's decisions (ADR 0010).
   function seatsOn(date: string): SeatCount[] {
     const shift = rotaShifts.find((s) => s.date === date);
     return seatCounts(
@@ -823,8 +823,7 @@ export default function RotaViewer({
         <p className="rota-edit-hint">
           Drag a name to another shift to move them, or onto another name to
           swap. Tap a name for everything else you can do to one person on one
-          shift: move or swap, change their role, replace them, or remove
-          them.
+          shift: move or swap, change their role, replace them, or remove them.
           {/* Only where there is a shift it applies to. On a rota that has all
               been allocated there is nothing to pin to, and the sentence would
               send someone looking for a button that is not on any row. */}
@@ -948,8 +947,9 @@ export default function RotaViewer({
           dateLabel={formatShiftDateLong(dialog.date)}
           volunteers={pinnableTo(dialog.date)}
           volunteersError={volunteersError}
-          // What this shift still has room to promise: its own Shape, less the
-          // pins already made against it, whichever way each came to be made.
+          roles={roleNames}
+          // This shift's own Shape, with the pins already made against it
+          // counted, whichever way each came to be made.
           seats={seatsOn(dialog.date)}
           pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
           busy={saving}
@@ -983,9 +983,9 @@ export default function RotaViewer({
       )}
 
       {/* Its own dialog rather than one of the confirm ones, and its errors are
-          its own too: a refusal here names the Role whose ceiling was hit or
-          the person pinned to a Seat that would go, and the form stays open on
-          what was typed so the number can be corrected rather than retyped. */}
+          its own too: a refusal here (an allocated rota, a count it cannot
+          take) is shown in the form, which stays open on what was typed so
+          the number can be corrected rather than retyped. */}
       {editing && dialog?.kind === "shape" && roles && (
         <ShapeForm
           title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}

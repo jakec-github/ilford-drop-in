@@ -161,9 +161,50 @@ class Problem:
         """
         return (volunteer.group_key, shift_index) in self.preallocated_pairs
 
+    def seat_roles(self, volunteer: VolunteerView, shift: ShiftSpec) -> tuple[str, ...]:
+        """The Roles this volunteer could sit in on this shift, Shape order.
+
+        Ordinarily a Role the Shape offers a Seat of and they may fill. A pin
+        adds the Role it names even where the Shape offers none of it: a
+        Shape bounds the allocator, not people's decisions (ADR 0010), so the
+        pinned person sits past it. Nobody else gains a Seat that way.
+        """
+        roles = [
+            seat.role
+            for seat in shift.shape
+            if seat.count > 0 and self.may_fill(volunteer, shift.index, seat.role)
+        ]
+        pinned = self.preallocated_roles.get((volunteer.id, shift.index))
+        if pinned is not None and pinned not in roles:
+            roles.append(pinned)
+        return tuple(roles)
+
     def seats_for(self, shift: ShiftSpec, role: str) -> int:
         """How many Seats this shift's Shape asks for in the named Role."""
         return sum(seat.count for seat in shift.shape if seat.role == role)
+
+    def pinned_in(self, shift: ShiftSpec, role: str) -> int:
+        """How many people pins put in this shift's Role: custom entries and
+        volunteers pinned to it by name. Group-mates a pin brings along are
+        not counted — which Seat they take is the solver's choice."""
+        volunteers = sum(
+            1
+            for (_, index), pinned in self.preallocated_roles.items()
+            if index == shift.index and pinned == role
+        )
+        return len(self.customs_for(shift, role)) + volunteers
+
+    def room_for(self, shift: ShiftSpec, role: str) -> int:
+        """How many of this Role's Seats are left for the solver to fill.
+
+        Pins take Seats first, and may take more than there are; the solver
+        then has none, never a negative number to satisfy.
+        """
+        return max(0, self.seats_for(shift, role) - self.pinned_in(shift, role))
+
+    def is_pinned_to(self, volunteer_id: str, shift_index: int, role: str) -> bool:
+        """Whether a pin names this volunteer for this Role on this shift."""
+        return self.preallocated_roles.get((volunteer_id, shift_index)) == role
 
     def customs_for(self, shift: ShiftSpec, role: str) -> tuple[str, ...]:
         """The shift's custom (non-volunteer) pins on the named Role.
@@ -178,24 +219,32 @@ class Problem:
     def pins_fill_every_seat(self, shift: ShiftSpec) -> bool:
         """Whether this shift's pins alone take every Seat its Shape offers.
 
-        Counts everyone a pin forces onto the shift: each custom entry, and
-        every member of each pinned volunteer's group, since a pin brings the
-        whole group. A person fills one Seat, so a headcount that reaches the
-        total Seats leaves the solver nobody to choose — the shift is decided
-        before it starts.
-
-        Totalled across Roles rather than per Role: which Seat a pinned
-        person's group-mate takes is the solver's choice, so only the total is
-        known in advance.
+        A pin names its Role, so it takes a Seat of that Role, and pins past a
+        Role's Seats free none anywhere else (ADR 0010). What is left is each
+        Role's room, totalled. A pin also brings the pinned volunteer's
+        group-mates, who must sit somewhere; which Seat is the solver's
+        choice, so only their number is known. When they are enough to take
+        every Seat left, the solver has nobody to choose — the shift is
+        decided before it starts.
         """
-        seats = sum(seat.count for seat in shift.shape)
-        customs = sum(1 for p in shift.preallocations if p.custom)
-        members = sum(
-            len(self.group_by_key[group_key].members)
+        left = sum(self.room_for(shift, role) for role in self._shape_roles(shift))
+        named = {
+            vol_id
+            for (vol_id, index) in self.preallocated_roles
+            if index == shift.index
+        }
+        brought = sum(
+            1
             for group_key, index in self.preallocated_pairs
             if index == shift.index
+            for m in self.group_by_key[group_key].members
+            if m.id not in named
         )
-        return customs + members >= seats
+        return brought >= left
+
+    @staticmethod
+    def _shape_roles(shift: ShiftSpec) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(seat.role for seat in shift.shape))
 
     def _resolve_preallocations(self) -> None:
         for shift in self.shifts:
@@ -218,12 +267,9 @@ class Problem:
                         f"preallocated volunteer '{pin.volunteer_id}' on shift "
                         f"{shift.index} does not match any volunteer"
                     )
-                if self.seats_for(shift, pin.role) < 1:
-                    raise ProblemError(
-                        f"preallocated volunteer '{pin.volunteer_id}' on shift "
-                        f"{shift.index} is pinned to role '{pin.role}', which "
-                        "that shift has no Seat for"
-                    )
+                # A Role the Shape has no Seat of is no reason to refuse: a
+                # Shape bounds the allocator, not people's decisions (ADR
+                # 0010), so the pin sits past it (seat_roles).
                 self.preallocated_roles[(pin.volunteer_id, shift.index)] = pin.role
 
                 # Multiple ids from the same group dedupe to one pair —

@@ -15,7 +15,9 @@ the open ones — that is where the old "no team lead allocated" escape
 comes from now.
 
 Custom (free-text) preallocations have unknown gender: they occupy Seats
-but never satisfy the male requirement, so they narrow the escape.
+but never satisfy the male requirement, so they narrow the escape. Pinned
+volunteers narrow it too, and a Role its pins have overfilled offers no
+escape — but frees none in another Role either (ADR 0010).
 
 A shift whose pins take every Seat is exempt. Its people were all decided
 before the solve, so there is no choice for the rule to steer, only a rota
@@ -62,28 +64,29 @@ class MaleRequiredConstraint:
             escapes = [has_male]
 
             for role in problem.roles:
-                seats = problem.seats_for(shift, role.name)
-                customs = len(problem.customs_for(shift, role.name))
-                if seats - customs < 1:
+                room = problem.room_for(shift, role.name)
+                if room < 1:
                     continue  # no Seat here that a male could be added to
                 seat_open = model.NewBoolVar(f"seat_open_{shift.index}_{role.name}")
                 model.Add(
-                    _occupants(x, problem, shift, role.name) <= seats - customs - 1
+                    _chosen(x, problem, shift, role.name) <= room - 1
                 ).OnlyEnforceIf(seat_open)
                 escapes.append(seat_open)
 
             model.AddBoolOr(escapes)
 
 
-def _occupants(
+def _chosen(
     x: Vars, problem: Problem, shift: ShiftSpec, role: str
 ) -> cp_model.LinearExpr:
-    """How many volunteers the solver put in this shift's Seats of a Role."""
+    """How many volunteers the solver itself put in this shift's Seats of a
+    Role — the pinned are already counted out of its room."""
     return cp_model.LinearExpr.Sum(
         [
             x.role[(v.id, shift.index, role)]
             for v in problem.volunteers
             if (v.id, shift.index, role) in x.role
+            and not problem.is_pinned_to(v.id, shift.index, role)
         ]
     )
 

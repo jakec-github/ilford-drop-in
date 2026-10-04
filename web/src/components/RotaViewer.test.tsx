@@ -470,9 +470,9 @@ describe("RotaViewer role pickers", () => {
     expect(roleField.value).toBe(GREETER);
   });
 
-  // The roster does not narrow a pin (ADR 0010); this shift's own Shape still
-  // says which Seats there are (#233).
-  test("pinning offers every seat the shift has, held or not", async () => {
+  // Neither the roster nor this shift's Shape narrows a pin (ADR 0010): every
+  // Role the drop-in has is on offer.
+  test("pinning offers every role, held or not, in the shape or not", async () => {
     await renderEditing(
       "organiser",
       withUnallocated([
@@ -490,13 +490,13 @@ describe("RotaViewer role pickers", () => {
       target: { value: "alice" },
     });
 
-    // Alice holds Duty lead and Greeter; this shift asks for no Greeter at all,
-    // and Hot food is offered though she does not hold it.
+    // Alice holds Duty lead and Greeter. Hot food is offered though she does
+    // not hold it, and Greeter though this shift asks for none.
     expect(
       within(screen.getByLabelText("Role"))
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual([DUTY_LEAD, HOT_FOOD]);
+    ).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
   });
 
   // Being inactive stops the allocator choosing somebody, not a person

@@ -34,10 +34,7 @@ func (d *DB) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string]
 	return getShiftShapes(ctx, d.pool, shiftIDs)
 }
 
-// getShiftShapes is GetShiftShapes against any querier, so a caller holding the
-// rota lock reads the Shapes inside its transaction. Pinning somebody to a Role
-// checks the Seats that Role has, and a Shape edit checks the pins (issue #138)
-// — the two have to see each other or the pair of them could cross.
+// getShiftShapes is GetShiftShapes against any querier.
 func getShiftShapes(ctx context.Context, q querier, shiftIDs []string) (map[string][]ShiftRequirement, error) {
 	if len(shiftIDs) == 0 {
 		return map[string][]ShiftRequirement{}, nil

@@ -16,6 +16,8 @@ import { seatCounts } from "./shape";
 const DUTY_LEAD = "Duty lead";
 const HOT_FOOD = "Hot food";
 const GREETER = "Greeter";
+// A Role the drop-in has that the pin dialog's Shape below asks for none of.
+const LITTER = "Litter picker";
 
 // As the API lists them: highest priority first.
 const ROLES: Role[] = [DUTY_LEAD, HOT_FOOD, GREETER];
@@ -585,6 +587,7 @@ function pinProps(takenRoleIds: string[] = []) {
     dateLabel: "Sun 23 Aug",
     volunteers: [grace, ada],
     volunteersError: null,
+    roles: [...ROLES, LITTER],
     seats: seatCounts(SHAPE, takenRoleIds),
     pinnedNames: [],
     busy: false,
@@ -593,9 +596,9 @@ function pinProps(takenRoleIds: string[] = []) {
 }
 
 describe("PinDialog", () => {
-  // Not holding a Role is a rule, and rules bind the allocator, not whoever is
-  // pinning (ADR 0010). The Shape still says how many Seats are left (#233).
-  test("offers every role the shift has a free seat for, not only the ones the volunteer holds", () => {
+  // Neither holding a Role nor the Shape having a Seat of it binds whoever is
+  // pinning: those bind the allocator (ADR 0010).
+  test("offers every role the drop-in has, whatever the volunteer holds or the shape asks for", () => {
     render(<PinDialog {...pinProps()} onConfirm={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("Who"), {
@@ -606,6 +609,7 @@ describe("PinDialog", () => {
       DUTY_LEAD,
       HOT_FOOD,
       GREETER,
+      LITTER,
     ]);
   });
 
@@ -657,21 +661,61 @@ describe("PinDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "ada" }, GREETER);
   });
 
-  test("a role whose seats are all pinned is not offered, and is named as full", () => {
+  // A Shape bounds the allocator, not people's decisions (ADR 0010): a note,
+  // never a block.
+  test("a role whose seats are all pinned is still offered, and pinning past it says so", () => {
+    const onConfirm = mock<(person: unknown, role: string) => void>();
+    render(<PinDialog {...pinProps(["r-hot"])} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "ada" },
+    });
+    expect(optionsOf(screen.getByLabelText("Role"))).toContain(HOT_FOOD);
+    fireEvent.change(screen.getByLabelText("Role"), {
+      target: { value: HOT_FOOD },
+    });
+
+    expect(
+      screen.getByText(/every Hot food seat pinned already/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+    expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "ada" }, HOT_FOOD);
+  });
+
+  test("a role the shape asks for none of may be pinned, and says so", () => {
+    const onConfirm = mock<(person: unknown, role: string) => void>();
+    render(<PinDialog {...pinProps()} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "grace" },
+    });
+    fireEvent.change(screen.getByLabelText("Role"), {
+      target: { value: LITTER },
+    });
+
+    expect(
+      screen.getByText(/does not ask for any Litter picker/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+    expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "grace" }, LITTER);
+  });
+
+  // Somebody is usually pinned for the job they mostly do, and a free Seat of
+  // it is better than none — so a full one is passed over, not hidden.
+  test("the role defaults to one the volunteer holds with a seat free", () => {
     render(<PinDialog {...pinProps(["r-hot"])} onConfirm={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("Who"), {
       target: { value: "ada" },
     });
 
-    expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
-      DUTY_LEAD,
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
       GREETER,
-    ]);
-    expect(screen.getByText(new RegExp(HOT_FOOD))).toBeInTheDocument();
+    );
+    expect(screen.queryByText(/pinned already/)).not.toBeInTheDocument();
   });
 
-  test("nobody can be pinned once every seat is taken", () => {
+  test("somebody can still be pinned once every seat is taken", () => {
     render(
       <PinDialog
         {...pinProps(["r-duty", "r-hot", "r-greet", "r-greet"])}
@@ -683,14 +727,19 @@ describe("PinDialog", () => {
       target: { value: "grace" },
     });
 
-    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
-    expect(screen.getByText(/pinned full/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pin" })).toBeDisabled();
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
+      GREETER,
+    );
+    expect(
+      screen.getByText(/every Greeter seat pinned already/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/pinned full/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pin" })).toBeEnabled();
   });
 
   // #91: an outside provider may be sending anybody, and the API asks nothing
-  // about which Roles they hold — only that the Shape has a seat left.
-  test("someone off the roster may be pinned into any free seat", () => {
+  // about which Roles they hold or how many Seats are left.
+  test("someone off the roster may be pinned into any role", () => {
     render(<PinDialog {...pinProps(["r-hot"])} onConfirm={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("Who"), {
@@ -702,19 +751,26 @@ describe("PinDialog", () => {
 
     expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
       DUTY_LEAD,
+      HOT_FOOD,
       GREETER,
+      LITTER,
     ]);
   });
 
-  test("a shift asking for nobody has nothing to pin into", () => {
+  test("a shift asking for nobody can still have somebody pinned to it", () => {
     render(<PinDialog {...pinProps()} seats={[]} onConfirm={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("Who"), {
       target: { value: "ada" },
     });
 
-    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pin" })).toBeDisabled();
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
+      HOT_FOOD,
+    );
+    expect(
+      screen.getByText(/does not ask for any Hot food/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pin" })).toBeEnabled();
   });
 
   test("an inactive volunteer may be pinned, and is marked as such", () => {
