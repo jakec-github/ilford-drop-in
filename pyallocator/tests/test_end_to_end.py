@@ -93,23 +93,20 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     """Return a list of hard-rule violations (empty = valid rota)."""
     problems: list[str] = []
     groups = {g.group_key: g for g in inp.groups}
-    preallocated_pairs = set()
     # (volunteer id, shift index) -> the Role a pin grants them there, which
     # they need not hold. Both exemptions below are the same rule read twice:
-    # a pin is a decision already taken, and it binds one shift only.
+    # a pin is a decision already taken, and it binds one shift only. It
+    # binds one person too (#234): their group may split on that shift.
     preallocated_roles: dict[tuple[str, int], str] = {}
     member_to_group = {m.id: g.group_key for g in inp.groups for m in g.members}
     roles_held = {m.id: set(m.roles) for g in inp.groups for m in g.members}
     for spec in inp.shifts:
-        if spec_team_lead_id(spec):
-            preallocated_pairs.add(
-                (member_to_group[spec_team_lead_id(spec)], spec.index)
-            )
-        for vid in spec_volunteer_ids(spec):
-            preallocated_pairs.add((member_to_group[vid], spec.index))
         for p in spec.preallocations:
             if p.volunteer_id:
                 preallocated_roles[(p.volunteer_id, spec.index)] = p.role
+    pinned_group_shifts = {
+        (member_to_group[vid], index) for vid, index in preallocated_roles
+    }
 
     allocated: dict[str, list[int]] = {key: [] for key in groups}
     for spec, shift in zip(inp.shifts, out.shifts):
@@ -133,18 +130,27 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         # works the shift as a Service volunteer. So read it off the
         # output rather than deriving it from the input.
         ordinary = len(volunteer_ids(shift))
+        assigned = [a.volunteer_id for a in shift.assignments if a.volunteer_id]
         males = 0
         expected_ids: set[str] = set()
         for key in keys:
             group = groups[key]
             allocated[key].append(shift.index)
-            expected_ids.update(m.id for m in group.members)
-            males += sum(1 for m in group.members if m.gender == "Male")
-            if (
-                shift.index not in group.available_shift_indices
-                and (key, shift.index) not in preallocated_pairs
-            ):
-                problems.append(f"shift {shift.index}: {key} not available")
+            # A pin splits its group: whoever of it is on is the pinned and
+            # the mates the solver chose. Elsewhere, the whole group.
+            on = [
+                m
+                for m in group.members
+                if (key, shift.index) not in pinned_group_shifts or m.id in assigned
+            ]
+            expected_ids.update(m.id for m in on)
+            males += sum(1 for m in on if m.gender == "Male")
+            for m in on:
+                if (
+                    shift.index not in group.available_shift_indices
+                    and (m.id, shift.index) not in preallocated_roles
+                ):
+                    problems.append(f"shift {shift.index}: {m.id} not available")
 
         lead_id = team_lead_id(shift)
 
@@ -166,7 +172,6 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         # is in it; and the people assigned must be exactly the members of
         # the allocated groups, each appearing once.
         shape_roles = {s.role for s in spec.shape if s.count > 0}
-        assigned = [a.volunteer_id for a in shift.assignments if a.volunteer_id]
         for a in shift.assignments:
             if a.role not in shape_roles:
                 problems.append(
@@ -195,9 +200,11 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         if spec_team_lead_id(spec) and lead_id != spec_team_lead_id(spec):
             problems.append(f"shift {shift.index}: preallocated TL not in the TL Seat")
 
-    for group_key, shift_index in preallocated_pairs:
-        if shift_index not in allocated[group_key]:
-            problems.append(f"preallocation ({group_key}, {shift_index}) not honoured")
+    for vol_id, shift_index in preallocated_roles:
+        if vol_id not in volunteer_ids(out.shifts[shift_index]) and vol_id != team_lead_id(
+            out.shifts[shift_index]
+        ):
+            problems.append(f"preallocation ({vol_id}, {shift_index}) not honoured")
 
     last_historical = (
         set(inp.historical_shifts[-1].group_keys) if inp.historical_shifts else set()
@@ -421,11 +428,10 @@ def test_end_to_end_is_deterministic():
     assert first.objective_value == second.objective_value
 
 
-def test_infeasible_reported_not_crashed():
-    # Alice pinned into a shift's only Seat brings her partner, who has
-    # nowhere to sit, so the model is INFEASIBLE — a well-formed result. (A
-    # pin forcing the whole group is the last way a pin can do this; "a pin
-    # pins one person", #234, removes it.)
+def test_pin_with_no_seat_for_the_partner_solves():
+    # Alice pinned into a shift's only Seat leaves her partner nowhere to
+    # sit. A pin pins one person (#234), so Alice works it alone — this was
+    # once INFEASIBLE, the last way a pin could make it so.
     inp = AllocationInput(
         max_allocation_count=2,
         shifts=(
@@ -439,10 +445,9 @@ def test_infeasible_reported_not_crashed():
         historical_shifts=(),
     )
     out = solve(inp)
-    assert not out.success
-    assert out.solver_status == "INFEASIBLE"
-    assert out.shifts == ()
-    assert out.error == ""
+    assert out.success, out.solver_status
+    assert volunteer_ids(out.shifts[0]) == ("alice",)
+    assert verify_solution(inp, out) == []
 
 
 def test_pin_to_a_role_nobody_holds_solves():
@@ -513,11 +518,13 @@ def test_inactive_pinned_volunteer_is_placed_on_their_pin_only():
 
 def test_pins_breaking_every_spacing_and_frequency_rule_at_once_solve():
     # Pins are decisions people have taken, so no rule refuses one and none
-    # makes the solve infeasible (ADR 0010). One couple is pinned through
-    # Alice alone onto three consecutive July shifts, straight after working
-    # the previous rota's last shift, also in July, with a cap of one. That
-    # breaks no_back_to_back (twice, and across the history boundary),
-    # one_shift_per_month and max_frequency all at once, for both of them.
+    # makes the solve infeasible (ADR 0010). Alice is pinned onto three
+    # consecutive July shifts, straight after her couple worked the previous
+    # rota's last shift, also in July, with a cap of one. That breaks
+    # no_back_to_back (twice, and across the history boundary),
+    # one_shift_per_month and max_frequency all at once. The pin pins Alice
+    # alone (#234): Charlie is the allocator's choice, held to every rule,
+    # so he joins her on none of them.
     alice = Member("alice", "Alice", "Green", "Alice", "Female", (SERVICE_VOLUNTEER,))
     charlie = Member("charlie", "Charlie", "Green", "Charlie", "Male", (SERVICE_VOLUNTEER,))
     couple = Group("couple", (alice, charlie), (0, 1, 2, 3), 0)
@@ -542,9 +549,10 @@ def test_pins_breaking_every_spacing_and_frequency_rule_at_once_solve():
     assert out.success, out.error or out.solver_status
     worked = {s.index: set(volunteer_ids(s)) for s in out.shifts}
     for i in range(3):
-        assert {"alice", "charlie"} <= worked[i]
+        assert "alice" in worked[i]
     # The allocator itself still keeps every rule around the pins.
     assert not {"alice", "charlie"} & worked[3]
+    assert not any("charlie" in people for people in worked.values())
 
 
 def test_pins_past_the_shape_solve_with_every_rule_on():

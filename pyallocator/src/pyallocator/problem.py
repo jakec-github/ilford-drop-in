@@ -6,8 +6,8 @@ order, then member order), and group atomicity is enforced by the
 grouping constraint rather than the variable structure. Availability
 is group-resolved in Go, so every member inherits its group's shifts.
 Preallocation resolution (volunteer id -> owning group) and its error
-cases live here because multiple constraints need the resolved pairs
-(e.g. availability exempts preallocated groups).
+cases live here because multiple constraints need the resolved pins
+(e.g. availability exempts pinned volunteers, grouping their groups).
 """
 
 from __future__ import annotations
@@ -59,13 +59,17 @@ class Problem:
         roles: the configured Roles, priority order.
         role_by_name: {name: Role}.
         max_allocation_count: Go-computed cap on allocations per volunteer.
-        preallocated_pairs: {(group_key, shift_index)} that MUST be
-            allocated — from both volunteer and team-lead preallocations.
         preallocated_roles: {(volunteer_id, shift_index): role} the pinned
             person must fill — and, through may_fill, may fill there even
-            if they do not hold the Role. Their group-mates are in
-            preallocated_pairs but not here: they attend, and the solver
-            picks their Seat.
+            if they do not hold the Role. A pin pins this one person (ADR
+            0010); nobody else is forced.
+        pinned_group_shifts: {(group_key, shift_index)} where a member of
+            the group is pinned. The group may split there: the pinned
+            member is on, their group-mates are allocator choices.
+        pinned_mates: ((volunteer_id, shift_index), ...) for each
+            group-mate of a pinned volunteer who is not pinned there
+            themselves, canonical order. The solve keeps as many of them
+            with their pinned member as the rules allow (solver.py).
         last_historical_group_keys: group keys present on the most recent
             historical shift (back-to-back boundary with the previous rota).
         historical_group_months: {group_key: frozenset of YYYY-MM months} the
@@ -113,9 +117,16 @@ class Problem:
                 )
         self.volunteers: tuple[VolunteerView, ...] = tuple(volunteers)
 
-        self.preallocated_pairs: set[tuple[str, int]] = set()
         self.preallocated_roles: dict[tuple[str, int], str] = {}
+        self.pinned_group_shifts: set[tuple[str, int]] = set()
         self._resolve_preallocations()
+        self.pinned_mates: tuple[tuple[str, int], ...] = tuple(
+            (v.id, shift.index)
+            for shift in self.shifts
+            for v in self.volunteers
+            if (v.group_key, shift.index) in self.pinned_group_shifts
+            and (v.id, shift.index) not in self.preallocated_roles
+        )
 
         self.last_historical_group_keys: frozenset[str] = frozenset(
             input_.historical_shifts[-1].group_keys if input_.historical_shifts else ()
@@ -156,10 +167,23 @@ class Problem:
         The one definition every rule exemption reads (ADR 0010): a pinned
         person is somebody's decision, not the allocator's choice, so the
         rules that govern its choices — availability, spacing, frequency —
-        do not apply to them there. A pin forces its whole group today, so a
-        pinned volunteer's group-mates are forced too.
+        do not apply to them there. A pin pins this one person: their
+        group-mates are allocator choices, held to every rule.
         """
-        return (volunteer.group_key, shift_index) in self.preallocated_pairs
+        return (volunteer.id, shift_index) in self.preallocated_roles
+
+    def stand_in(self, group: Group, shift_index: int) -> Member:
+        """The member whose attendance says whether this group works this
+        shift, for preferences that count groups rather than people.
+
+        Ordinarily any member will do, since grouping keeps them together,
+        so the first. Where a pin splits the group the pinned member is the
+        one certainly there.
+        """
+        for m in group.members:
+            if (m.id, shift_index) in self.preallocated_roles:
+                return m
+        return group.members[0]
 
     def seat_roles(self, volunteer: VolunteerView, shift: ShiftSpec) -> tuple[str, ...]:
         """The Roles this volunteer could sit in on this shift, Shape order.
@@ -185,8 +209,7 @@ class Problem:
 
     def pinned_in(self, shift: ShiftSpec, role: str) -> int:
         """How many people pins put in this shift's Role: custom entries and
-        volunteers pinned to it by name. Group-mates a pin brings along are
-        not counted — which Seat they take is the solver's choice."""
+        volunteers pinned to it by name."""
         volunteers = sum(
             1
             for (_, index), pinned in self.preallocated_roles.items()
@@ -221,26 +244,10 @@ class Problem:
 
         A pin names its Role, so it takes a Seat of that Role, and pins past a
         Role's Seats free none anywhere else (ADR 0010). What is left is each
-        Role's room, totalled. A pin also brings the pinned volunteer's
-        group-mates, who must sit somewhere; which Seat is the solver's
-        choice, so only their number is known. When they are enough to take
-        every Seat left, the solver has nobody to choose — the shift is
-        decided before it starts.
+        Role's room, totalled. With none left the solver has nobody to
+        choose — the shift is decided before it starts.
         """
-        left = sum(self.room_for(shift, role) for role in self._shape_roles(shift))
-        named = {
-            vol_id
-            for (vol_id, index) in self.preallocated_roles
-            if index == shift.index
-        }
-        brought = sum(
-            1
-            for group_key, index in self.preallocated_pairs
-            if index == shift.index
-            for m in self.group_by_key[group_key].members
-            if m.id not in named
-        )
-        return brought >= left
+        return sum(self.room_for(shift, role) for role in self._shape_roles(shift)) == 0
 
     @staticmethod
     def _shape_roles(shift: ShiftSpec) -> tuple[str, ...]:
@@ -257,8 +264,8 @@ class Problem:
 
             for pin in shift.preallocations:
                 if not pin.volunteer_id:
-                    # A custom entry names a Role but no person, so there is no
-                    # group to force onto the shift; it just occupies a Seat.
+                    # A custom entry names a Role but no person, so there is
+                    # nobody to force onto the shift; it just occupies a Seat.
                     continue
 
                 group_key = self._group_key_by_member.get(pin.volunteer_id)
@@ -271,7 +278,4 @@ class Problem:
                 # Shape bounds the allocator, not people's decisions (ADR
                 # 0010), so the pin sits past it (seat_roles).
                 self.preallocated_roles[(pin.volunteer_id, shift.index)] = pin.role
-
-                # Multiple ids from the same group dedupe to one pair —
-                # the whole group comes as a unit anyway.
-                self.preallocated_pairs.add((group_key, shift.index))
+                self.pinned_group_shifts.add((group_key, shift.index))

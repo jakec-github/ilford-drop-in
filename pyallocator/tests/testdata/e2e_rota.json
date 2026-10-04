@@ -40,10 +40,10 @@
     },
     "4": {
       "customs": [],
-      "team_lead": "alice",
+      "team_lead": "karen",
       "volunteers": [
-        "bob",
-        "charlie"
+        "charlie",
+        "larry"
       ]
     },
     "5": {
@@ -55,9 +55,9 @@
       "customs": [
         "external_john"
       ],
-      "team_lead": "george",
+      "team_lead": "alice",
       "volunteers": [
-        "helen"
+        "bob"
       ]
     }
   }

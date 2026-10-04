@@ -52,26 +52,23 @@ def test_valid_input_exit_zero(tmp_path):
     assert out["error"] == ""
 
 
-def test_infeasible_exit_zero(tmp_path):
-    payload = json.loads(json.dumps(VALID_INPUT))
-    # v1 pinned into the only Seat brings their partner v2, who has nowhere
-    # to sit -> INFEASIBLE. (A pin forcing the whole group is the last way a
-    # pin can do this; "a pin pins one person", #234, removes it.)
-    payload["shifts"][0]["shape"] = [{"role": "Service volunteer", "count": 1}]
-    payload["shifts"][0]["preallocations"] = [
-        {"volunteer_id": "v1", "custom": "", "role": "Service volunteer"},
-    ]
-    payload["groups"][0]["members"].append(
-        {
-            "id": "v2",
-            "first_name": "Other",
-            "last_name": "Volunteer",
-            "display_name": "Other",
-            "gender": "Male",
-            "roles": ["Service volunteer"],
-        }
+class _Contradiction:
+    name = "contradiction"
+    description = "no rota satisfies this"
+
+    def apply(self, model, x, problem) -> None:
+        model.Add(sum(x.attend.values()) >= len(x.attend) + 1)
+
+
+def test_infeasible_exit_zero(tmp_path, monkeypatch):
+    # No input can make the model INFEASIBLE any more: pins are honoured
+    # past every rule, and a pin pins one person (ADR 0010, #234). The path
+    # still has to report rather than crash should one ever reach it, so a
+    # contradiction is patched in as the run's only rule.
+    monkeypatch.setattr(
+        "pyallocator.api.constraints_for", lambda enabled: [_Contradiction()]
     )
-    code, out = run_cli(tmp_path, payload)
+    code, out = run_cli(tmp_path, VALID_INPUT)
     assert code == 0
     assert out["success"] is False
     assert out["solver_status"] == "INFEASIBLE"
