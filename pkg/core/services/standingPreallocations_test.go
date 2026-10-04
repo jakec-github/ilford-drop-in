@@ -184,6 +184,19 @@ func TestAddStandingPreallocation_CustomHappyPath(t *testing.T) {
 	assert.Equal(t, "St John's team", view.Name, "a custom entry is its own name")
 }
 
+// Not holding a Role is a rule, not a representation limit (ADR 0010), so a
+// standing pin may name any Role the drop-in has.
+func TestAddStandingPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
+	store := &mockStandingStore{}
+	view, err := addStanding(t, store, AddStandingPreallocationParams{
+		RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-team-lead", VolunteerID: "bob",
+	})
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
+	assert.Equal(t, "Team lead", view.Role)
+}
+
 func TestAddStandingPreallocation_Refusals(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -214,11 +227,6 @@ func TestAddStandingPreallocation_Refusals(t *testing.T) {
 			name:    "unknown role",
 			params:  AddStandingPreallocationParams{RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-imaginary", VolunteerID: "alice"},
 			wantErr: "not a known role",
-		},
-		{
-			name:    "volunteer does not hold the role",
-			params:  AddStandingPreallocationParams{RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-team-lead", VolunteerID: "bob"},
-			wantErr: "does not hold the role",
 		},
 		{
 			name:    "inactive volunteer",

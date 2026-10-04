@@ -259,9 +259,7 @@ describe("ConfirmChangeDialog", () => {
 
     expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
     expect(screen.getByText("Still loading the roles…")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Change role" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Change role" })).toBeDisabled();
   });
 });
 
@@ -595,20 +593,53 @@ function pinProps(takenRoleIds: string[] = []) {
 }
 
 describe("PinDialog", () => {
-  // A pin is an instruction to a solve that has not run, so unlike an
-  // alteration it is held to every allocator rule (ADR 0009): the roster says
-  // which Roles this person may be promised, the Shape says how many are left.
-  test("offers only the roles the volunteer holds that the shift has a seat for", () => {
+  // Not holding a Role is a rule, and rules bind the allocator, not whoever is
+  // pinning (ADR 0010). The Shape still says how many Seats are left (#233).
+  test("offers every role the shift has a free seat for, not only the ones the volunteer holds", () => {
+    render(<PinDialog {...pinProps()} onConfirm={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "grace" },
+    });
+
+    expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
+      DUTY_LEAD,
+      HOT_FOOD,
+      GREETER,
+    ]);
+  });
+
+  test("the role defaults to the highest-priority one the volunteer holds", () => {
     render(<PinDialog {...pinProps()} onConfirm={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("Who"), {
       target: { value: "ada" },
     });
 
-    expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
       HOT_FOOD,
-      GREETER,
-    ]);
+    );
+  });
+
+  // A warning, never a block (ADR 0010).
+  test("pinning into a role the volunteer does not hold says so, and is allowed", () => {
+    const onConfirm = mock<(person: unknown, role: string) => void>();
+    render(<PinDialog {...pinProps()} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText("Who"), {
+      target: { value: "grace" },
+    });
+    expect(screen.queryByText(/is not down for/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Role"), {
+      target: { value: DUTY_LEAD },
+    });
+    expect(
+      screen.getByText(new RegExp(`Grace is not down for ${DUTY_LEAD}`)),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+
+    expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "grace" }, DUTY_LEAD);
   });
 
   test("pins into the chosen seat", () => {
@@ -633,13 +664,19 @@ describe("PinDialog", () => {
       target: { value: "ada" },
     });
 
-    expect(optionsOf(screen.getByLabelText("Role"))).toEqual([GREETER]);
+    expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
+      DUTY_LEAD,
+      GREETER,
+    ]);
     expect(screen.getByText(new RegExp(HOT_FOOD))).toBeInTheDocument();
   });
 
-  test("nobody can be pinned once every seat they could fill is taken", () => {
+  test("nobody can be pinned once every seat is taken", () => {
     render(
-      <PinDialog {...pinProps(["r-greet", "r-greet"])} onConfirm={() => {}} />,
+      <PinDialog
+        {...pinProps(["r-duty", "r-hot", "r-greet", "r-greet"])}
+        onConfirm={() => {}}
+      />,
     );
 
     fireEvent.change(screen.getByLabelText("Who"), {
@@ -647,7 +684,7 @@ describe("PinDialog", () => {
     });
 
     expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
-    expect(screen.getByText(new RegExp(GREETER))).toBeInTheDocument();
+    expect(screen.getByText(/pinned full/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pin" })).toBeDisabled();
   });
 

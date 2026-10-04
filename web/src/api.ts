@@ -364,7 +364,7 @@ export async function createPreallocation(
   pin: NewPreallocation,
 ): Promise<void> {
   // Every pin names the Role it fills, by id — a pin is a promise about a job,
-  // and the API refuses one the pinned volunteer does not hold.
+  // and may name one the pinned volunteer does not hold (ADR 0010).
   const body: Record<string, string> = {
     date: pin.date,
     roleId: pin.roleId,

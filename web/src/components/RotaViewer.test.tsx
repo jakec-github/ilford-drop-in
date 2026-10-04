@@ -267,9 +267,7 @@ describe("RotaViewer placement", () => {
       target: { value: HOT_FOOD },
     });
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: "Change role" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Change role" }));
     });
 
     expect(onChange).toHaveBeenCalledWith({
@@ -472,9 +470,9 @@ describe("RotaViewer role pickers", () => {
     expect(roleField.value).toBe(GREETER);
   });
 
-  // A pin instructs a solve that has not run, so it is held to both allocator
-  // rules: the roster, and the Seats this shift's own Shape gives each Role.
-  test("pinning offers only the seats the shift has and the volunteer holds", async () => {
+  // The roster does not narrow a pin (ADR 0010); this shift's own Shape still
+  // says which Seats there are (#233).
+  test("pinning offers every seat the shift has, held or not", async () => {
     await renderEditing(
       "organiser",
       withUnallocated([
@@ -493,12 +491,12 @@ describe("RotaViewer role pickers", () => {
     });
 
     // Alice holds Duty lead and Greeter; this shift asks for no Greeter at all,
-    // so one Seat is hers.
+    // and Hot food is offered though she does not hold it.
     expect(
       within(screen.getByLabelText("Role"))
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual([DUTY_LEAD]);
+    ).toEqual([DUTY_LEAD, HOT_FOOD]);
   });
 });
 

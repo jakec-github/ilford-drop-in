@@ -445,11 +445,11 @@ export function AssigneeDialog({
 // told; a pin is an instruction to an allocation that has not happened, so
 // there is nothing to account for.
 //
-// Unlike the dialogs above it, this one is held to every allocator rule, because
-// a pin is an instruction to a solve that has not run yet (ADR 0009). Two rules
-// settle which Roles it may offer: the roster says which a volunteer may be
-// promised, and the shift's own Shape says how many Seats of each are left. The
-// API enforces both, so offering anything else would be offering a refusal.
+// A pin is a decision somebody has already taken, so the rules that bind the
+// allocator do not bind it (ADR 0010). Anybody may be pinned into any Role the
+// shift has a Seat left in, whether or not the roster says they hold it — not
+// holding it earns a note, never a block. The Seats still bound it, because the
+// API still counts them (#233 lifts that).
 export function PinDialog({
   dateLabel,
   volunteers,
@@ -480,8 +480,9 @@ export function PinDialog({
 }) {
   const [choice, setChoice] = useState("");
   const [customName, setCustomName] = useState("");
-  // Empty until somebody picks one; what is actually on offer depends on who is
-  // being pinned, and is derived below.
+  // Empty until somebody picks one; what is actually offered is derived below,
+  // so that changing who is being pinned re-defaults the Role while an explicit
+  // choice survives it.
   const [role, setRole] = useState<Role>("");
 
   const isCustom = choice === CUSTOM_CHOICE;
@@ -496,46 +497,37 @@ export function PinDialog({
       : null;
 
   const chosen = volunteers?.find((v) => v.id === choice) ?? null;
-  // Which of this shift's Seats this person could be promised. A custom entry
-  // is an outside provider — nothing records what it can do and the API asks
-  // nothing either, so every Seat the shift has is open to it (issue #91). A
-  // volunteer is held to the roster, which is what the API checks.
-  const theirs = seats.filter(
-    (seat) => isCustom || (chosen?.roles.includes(seat.role) ?? false),
-  );
-  const offered = theirs.filter((seat) => seat.taken < seat.seats);
-  const full = theirs.filter((seat) => seat.taken >= seat.seats);
+  const offered = seats.filter((seat) => seat.taken < seat.seats);
+  const full = seats.filter((seat) => seat.taken >= seat.seats);
 
   const options = offered.map((seat) => seat.role);
-  // An explicit pick stands while it is still on offer; otherwise the
-  // highest-priority Seat they could fill, the Shape's order being the order
-  // Seats are filled in. Changing who is being pinned therefore re-defaults the
-  // Role, and picking a Role that person cannot fill is not representable.
-  const pinnedRole = options.includes(role) ? role : (options[0] ?? "");
+  // An explicit pick stands while it is still on offer; otherwise the first
+  // Seat this volunteer holds the Role for, the Shape's order being the order
+  // Seats are filled in.
+  const pinnedRole = options.includes(role)
+    ? role
+    : defaultRoleFor(chosen, options);
+  // Said, not refused: the pin grants the Role for this shift alone.
+  const notHeld =
+    chosen !== null && pinnedRole !== "" && !chosen.roles.includes(pinnedRole);
 
   // Answering the Who field is what makes the Seats below mean anything — a
   // custom entry's name can still be blank, since what may be promised to an
   // outside group does not depend on what it is called.
   const someone = choice !== "";
-  const them = isCustom ? "an outside group" : (chosen?.name ?? "they");
 
-  // Why a Seat this person might have expected is not on offer. Every case has
-  // a way through, because an unallocated shift's Shape can still be changed
-  // and any pin on it can still be removed (issue #131) — so each says which.
+  // Why a Seat is not on offer. Every case has a way through, because an
+  // unallocated shift's Shape can still be changed and any pin on it can still
+  // be removed (issue #131) — so each says which.
   let note: string | null = null;
   if (!someone) {
     note = null;
   } else if (options.length > 0 && full.length > 0) {
     note = `${dateLabel} has every ${listRoles(full.map((seat) => seat.role))} seat pinned already.`;
   } else if (full.length > 0) {
-    const gone = listRoles(full.map((seat) => seat.role));
-    note = isCustom
-      ? `${dateLabel} is pinned full: every seat it asks for is spoken for. Remove one of those pins, or give the shift another seat.`
-      : `${dateLabel} has every ${gone} seat pinned already, and that is all ${them} could fill here. Remove one of those pins, or give the shift another seat.`;
+    note = `${dateLabel} is pinned full: every seat it asks for is spoken for. Remove one of those pins, or give the shift another seat.`;
   } else if (seats.length === 0) {
     note = `${dateLabel} does not ask for anybody yet. Say what the shift asks for to make a seat.`;
-  } else if (options.length === 0) {
-    note = `${dateLabel} does not ask for anything ${them} does. Change what the shift asks for to make a seat.`;
   }
 
   return (
@@ -616,6 +608,13 @@ export function PinDialog({
               ))}
             </select>
           </label>
+        )}
+
+        {notHeld && (
+          <p className="rota-edit-note">
+            {chosen.name} is not down for {pinnedRole} on the roster. Pinning
+            them still puts them in it for this shift.
+          </p>
         )}
 
         {note && <p className="rota-edit-note">{note}</p>}

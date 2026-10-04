@@ -125,12 +125,9 @@ func AddPreallocation(
 		if len(utils.FilterActiveVolunteers([]model.Volunteer{*vol})) == 0 {
 			return nil, wrapf(ErrInvalidInput, "volunteer %s is not active", params.VolunteerID)
 		}
-		// By name, because the roster is a Google Sheet that spells a Role out
-		// in a cell. The id is what the pin is stored under; the name is how
-		// the sheet says who holds it.
-		if !vol.Holds(role.Name) {
-			return nil, wrapf(ErrInvalidInput, "volunteer %s does not hold the role %q", params.VolunteerID, role.Name)
-		}
+		// Whether they hold the Role on the roster is not checked: that is a
+		// rule, and rules bind the allocator, not the Organiser (ADR 0010).
+		// The pin grants the Role for this Shift alone.
 		name = vol.DisplayName
 	}
 

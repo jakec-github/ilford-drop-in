@@ -73,6 +73,17 @@ func TestCreatePreallocationEndpoint_TeamLead(t *testing.T) {
 	assert.Equal(t, "role-team-lead", store.insertedPreallocations[0].RoleID)
 }
 
+// A pin may name a Role the volunteer does not hold (ADR 0010).
+func TestCreatePreallocationEndpoint_RoleNotHeld(t *testing.T) {
+	store := preallocationTestStore()
+	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-team-lead"}`
+
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, organiserCookie())
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Len(t, store.insertedPreallocations, 1)
+	assert.Equal(t, "role-team-lead", store.insertedPreallocations[0].RoleID)
+}
+
 func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 	seeded := func() *mockStore {
 		s := preallocationTestStore()
@@ -109,12 +120,6 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 		{
 			name:       "both volunteer and custom",
 			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper","roleId":"role-service-volunteer"}`,
-			store:      preallocationTestStore(),
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "a role the volunteer does not hold",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-team-lead"}`,
 			store:      preallocationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
