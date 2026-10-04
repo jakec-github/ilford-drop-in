@@ -114,6 +114,23 @@ describe("StandingPreallocationForm", () => {
     });
   });
 
+  // Being inactive is roster data, not a reason to refuse a pin (ADR 0010).
+  test("an inactive volunteer is listed, marked as such", () => {
+    render(
+      <StandingPreallocationForm
+        roles={ROLES}
+        volunteers={[grace, { ...ada, active: false }]}
+        volunteersError={null}
+        onSave={async () => {}}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByRole("option", { name: "Ada Lovelace (not active)" }),
+    ).toBeInTheDocument();
+  });
+
   test("someone off the roster is offered every role, with no warning", () => {
     renderForm();
 
