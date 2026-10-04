@@ -169,9 +169,7 @@ func AddStandingPreallocation(
 		if len(utils.FilterActiveVolunteers([]model.Volunteer{*vol})) == 0 {
 			return nil, wrapf(ErrInvalidInput, "volunteer %s is not active", params.VolunteerID)
 		}
-		if !vol.Holds(role.Name) {
-			return nil, wrapf(ErrInvalidInput, "volunteer %s does not hold the role %q", params.VolunteerID, role.Name)
-		}
+		// Any Role the drop-in has, held or not: ADR 0010, as for a single pin.
 		name = vol.DisplayName
 	}
 

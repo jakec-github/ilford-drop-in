@@ -258,12 +258,17 @@ func TestAddPreallocation_InactiveVolunteer(t *testing.T) {
 	assert.Contains(t, err.Error(), "not active")
 }
 
+// Not holding a Role is a rule, and rules bind the allocator rather than the
+// Organiser (ADR 0010): the pin goes in, under the Role it names.
 func TestAddPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	store := oneShiftStore()
-	_, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
+	view, err := AddPreallocation(context.Background(), store, preallocVolunteers(), testCfg,
 		AddPreallocationParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-team-lead"}, zap.NewNop())
-	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "does not hold the role")
+	require.NoError(t, err)
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
+	assert.Equal(t, "bob", store.inserted[0].VolunteerID)
+	assert.Equal(t, "Team lead", view.Role)
 }
 
 func TestAddPreallocation_UnknownDate(t *testing.T) {

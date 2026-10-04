@@ -44,6 +44,10 @@ from pyallocator.domain import (
     Group,
     HistoricalShift,
     Member,
+    Preallocation,
+    Role,
+    Seat,
+    ShiftSpec,
 )
 
 GOLDEN_PATH = Path(__file__).parent / "testdata" / "e2e_rota.json"
@@ -436,3 +440,44 @@ def test_infeasible_reported_not_crashed():
     assert out.solver_status == "INFEASIBLE"
     assert out.shifts == ()
     assert out.error == ""
+
+
+def test_pin_to_a_role_nobody_holds_solves():
+    # An Organiser may pin anybody into any configured Role (ADR 0010): not
+    # holding it is a rule, and rules bind only the solver's own choices.
+    # Every rule is on, so nothing but the pin's grant lets Alice sit there.
+    food = Role(name="Food collector", priority=3)
+    roles = DEFAULT_ROLES + (food,)
+    shift = ShiftSpec(
+        index=0,
+        date="2026-07-13",
+        closed=False,
+        shape=(
+            Seat(role=TEAM_LEAD, count=1),
+            Seat(role=SERVICE_VOLUNTEER, count=2),
+            Seat(role=food.name, count=1),
+        ),
+        preallocations=(
+            Preallocation(volunteer_id="alice", custom="", role=food.name),
+        ),
+    )
+    inp = AllocationInput(
+        max_allocation_count=2,
+        shifts=(shift,),
+        groups=(
+            _individual("alice", available=[0]),
+            _individual("charlie", available=[0], gender="Male"),
+        ),
+        roles=roles,
+        enabled_constraints=(
+            "max_frequency",
+            "male_required",
+            "no_back_to_back",
+            "one_shift_per_month",
+        ),
+        historical_shifts=(),
+    )
+    out = solve(inp)
+    assert out.success, out.error or out.solver_status
+    seats = {(a.volunteer_id, a.role) for a in out.shifts[0].assignments}
+    assert ("alice", food.name) in seats
