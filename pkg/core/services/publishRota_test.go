@@ -140,10 +140,10 @@ func rotaOnTheSheet() *mockPublishRotaStore {
 		},
 		shifts: sundayShifts("rota-1", "2025-01-05", 2),
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "charlie"},
-			{ID: "a3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a4", ShiftID: "2025-01-12", Role: "Team lead", VolunteerID: "dave"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-team-lead", VolunteerID: "alice"},
+			{ID: "a2", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "charlie"},
+			{ID: "a3", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a4", ShiftID: "2025-01-12", RoleID: "role-team-lead", VolunteerID: "dave"},
 		},
 	}
 }
@@ -169,18 +169,18 @@ func TestPublishRota_LaysOutWhoIsOnEachShift(t *testing.T) {
 }
 
 // The sheet shows the rota as it now is: alterations applied, pinned free text
-// bracketed, a closed shift saying so, and somebody whose Role the app cannot
-// name under Unknown role rather than left off.
+// bracketed, a closed shift saying so, and somebody added before alterations
+// had a Role under Unknown role rather than left off.
 func TestPublishRota_ShowsTheRotaAsItNowIs(t *testing.T) {
 	store := rotaOnTheSheet()
 	store.shifts = closeShift(sundayShifts("rota-1", "2025-01-05", 3), "2025-01-19")
 	store.allocations = append(store.allocations,
-		db.Allocation{ID: "a5", ShiftID: "2025-01-12", Role: "Service volunteer", CustomEntry: "Rotary Club"},
-		db.Allocation{ID: "a6", ShiftID: "2025-01-12", Role: "Retired role", VolunteerID: "bob"},
+		db.Allocation{ID: "a5", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", CustomEntry: "Rotary Club"},
 	)
 	store.alterations = []db.Alteration{
 		{ID: "x1", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "charlie"},
-		{ID: "x2", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", Role: "Service volunteer"},
+		{ID: "x2", ShiftID: "2025-01-05", Direction: "add", VolunteerID: "dave", RoleID: "role-service-volunteer"},
+		{ID: "x3", ShiftID: "2025-01-12", Direction: "add", VolunteerID: "bob"},
 	}
 	sheets := &mockSheetsClient{}
 
@@ -195,11 +195,34 @@ func TestPublishRota_ShowsTheRotaAsItNowIs(t *testing.T) {
 	}, sheet.Rows)
 }
 
+// renamedLeadStore is the rota on the sheet after its Team lead was renamed:
+// the same Role, read back under its new name.
+type renamedLeadStore struct{ *mockPublishRotaStore }
+
+func (renamedLeadStore) ListRoles(context.Context) ([]db.Role, error) {
+	return []db.Role{
+		{ID: "role-team-lead", Name: "Shift lead", Priority: 1, Colour: "violet"},
+		{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
+	}, nil
+}
+
+// A Role renamed after the rota was allocated keeps its people: they are
+// published under its new name, not filed under Unknown role (issue #222).
+func TestPublishRota_ARenamedRoleKeepsItsPeople(t *testing.T) {
+	sheets := &mockSheetsClient{}
+	_, err := PublishRota(context.Background(), renamedLeadStore{rotaOnTheSheet()}, sheets, publishVolunteers, &config.Config{RotaSheetID: "sheet"}, zap.NewNop())
+	require.NoError(t, err)
+
+	sheet := sheets.plan(t).Sheet
+	assert.Equal(t, []string{"Date", "Shift lead", "Service volunteer 1", "Service volunteer 2"}, sheet.Header)
+	assert.Equal(t, []string{"Sun Jan 05 2025", "Alice", "Bob", "Charlie"}, sheet.Rows[0])
+}
+
 // A volunteer since removed from the roster still worked the shift. The row
 // says somebody was there, and the rest of the rota is published.
 func TestPublishRota_ShowsAVolunteerMissingFromTheRosterAsAPlaceholder(t *testing.T) {
 	store := rotaOnTheSheet()
-	store.allocations = append(store.allocations, db.Allocation{ID: "a9", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "long-gone"})
+	store.allocations = append(store.allocations, db.Allocation{ID: "a9", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "long-gone"})
 	sheets := &mockSheetsClient{}
 
 	require.NoError(t, publish(t, store, sheets))

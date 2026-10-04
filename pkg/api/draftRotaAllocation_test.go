@@ -62,8 +62,8 @@ func draftedRotaStore() *mockStore {
 			SeatsFilled:     2,
 		}},
 		draftSeats: []db.DraftAllocation{
-			{ID: "seat-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "seat-2", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "seat-2", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 	}
 }

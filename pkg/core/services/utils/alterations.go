@@ -62,7 +62,7 @@ func ApplyAlterations(
 		case "add":
 			newAlloc := db.Allocation{
 				ShiftID: shiftID,
-				Role:    alt.Role,
+				RoleID:  alt.RoleID,
 			}
 			if alt.VolunteerID != "" {
 				newAlloc.VolunteerID = alt.VolunteerID

@@ -38,7 +38,7 @@ func calendarShift(t *testing.T, date string) Shift {
 func TestBuildVolunteerCalendar_Basic(t *testing.T) {
 	shift := calendarShift(t, "2026-01-12") // GMT: 19:30 London == 19:30 UTC
 	shift.Assignees = []ShiftAssignee{
-		{VolunteerID: "alice", Name: "Alice", Role: "Service volunteer"},
+		{VolunteerID: "alice", Name: "Alice", RoleID: "role-service-volunteer", Role: "Service volunteer"},
 	}
 	shifts := []Shift{shift}
 
@@ -113,8 +113,8 @@ func TestBuildVolunteerCalendar_ReadsTheShiftsOwnTimes(t *testing.T) {
 func TestBuildVolunteerCalendar_RoleSummary(t *testing.T) {
 	shift := calendarShift(t, "2026-01-12")
 	shift.Assignees = []ShiftAssignee{
-		{VolunteerID: "alice", Name: "Alice", Role: "Team lead"},
-		{VolunteerID: "bob", Name: "Bob", Role: "Service volunteer"},
+		{VolunteerID: "alice", Name: "Alice", RoleID: "role-team-lead", Role: "Team lead"},
+		{VolunteerID: "bob", Name: "Bob", RoleID: "role-service-volunteer", Role: "Service volunteer"},
 	}
 	shifts := []Shift{shift}
 
@@ -199,9 +199,9 @@ func unfolded(ics string) string {
 func TestBuildVolunteerCalendar_DescribesWhoIsOn(t *testing.T) {
 	shift := calendarShift(t, "2026-01-12")
 	shift.Assignees = []ShiftAssignee{
-		{VolunteerID: "alice", Name: "Alice", Role: "Team lead"},
-		{VolunteerID: "bob", Name: "Bob", Role: "Service volunteer"},
-		{CustomEntry: "Redbridge youth group", Name: "Redbridge youth group", Role: "Service volunteer"},
+		{VolunteerID: "alice", Name: "Alice", RoleID: "role-team-lead", Role: "Team lead"},
+		{VolunteerID: "bob", Name: "Bob", RoleID: "role-service-volunteer", Role: "Service volunteer"},
+		{CustomEntry: "Redbridge youth group", Name: "Redbridge youth group", RoleID: "role-service-volunteer", Role: "Service volunteer"},
 	}
 
 	out, err := BuildVolunteerCalendar([]Shift{shift}, calendarTestVolunteer(), testRoles, calendarTestDefaults, calendarTestURL)
@@ -219,11 +219,33 @@ func TestBuildVolunteerCalendar_DescribesWhoIsOn(t *testing.T) {
 	assert.Contains(t, body, "URL:"+calendarTestURL)
 }
 
+// A Role renamed after the rota was allocated is still the job the volunteer
+// is doing, so the event names it as it is called now (issue #222).
+func TestBuildVolunteerCalendar_ARenamedRoleIsNamedAsItIsNow(t *testing.T) {
+	shift := calendarShift(t, "2026-01-12")
+	shift.Assignees = []ShiftAssignee{
+		{VolunteerID: "alice", Name: "Alice", RoleID: "role-team-lead"},
+		{VolunteerID: "bob", Name: "Bob", RoleID: "role-service-volunteer"},
+	}
+	renamed := model.NewRoles([]model.Role{
+		{ID: "role-team-lead", Name: "Shift lead", Priority: 1},
+		{ID: "role-service-volunteer", Name: "Helper", Priority: 2},
+	})
+
+	out, err := BuildVolunteerCalendar([]Shift{shift}, calendarTestVolunteer(), renamed, calendarTestDefaults, calendarTestURL)
+	require.NoError(t, err)
+	body := unfolded(out)
+
+	assert.Contains(t, out, "SUMMARY:Ilford Drop-In shift (Shift lead)")
+	assert.Contains(t, body, "You are on as Shift lead.")
+	assert.Contains(t, body, "Bob — Helper")
+}
+
 // A shift with nobody else on it says so, rather than carrying a heading with
 // nothing under it — which would read as a feed that had lost the rest.
 func TestBuildVolunteerCalendar_DescribesALoneShift(t *testing.T) {
 	shift := calendarShift(t, "2026-01-12")
-	shift.Assignees = []ShiftAssignee{{VolunteerID: "alice", Name: "Alice", Role: "Team lead"}}
+	shift.Assignees = []ShiftAssignee{{VolunteerID: "alice", Name: "Alice", RoleID: "role-team-lead", Role: "Team lead"}}
 
 	out, err := BuildVolunteerCalendar([]Shift{shift}, calendarTestVolunteer(), testRoles, calendarTestDefaults, "")
 	require.NoError(t, err)
@@ -241,8 +263,8 @@ func TestBuildVolunteerCalendar_DescribesALoneShift(t *testing.T) {
 func TestBuildVolunteerCalendar_EscapesDescriptionText(t *testing.T) {
 	shift := calendarShift(t, "2026-01-12")
 	shift.Assignees = []ShiftAssignee{
-		{VolunteerID: "alice", Name: "Alice", Role: "Team lead"},
-		{VolunteerID: "bob", Name: "Bob, jr", Role: "Service volunteer"},
+		{VolunteerID: "alice", Name: "Alice", RoleID: "role-team-lead", Role: "Team lead"},
+		{VolunteerID: "bob", Name: "Bob, jr", RoleID: "role-service-volunteer", Role: "Service volunteer"},
 	}
 
 	out, err := BuildVolunteerCalendar([]Shift{shift}, calendarTestVolunteer(), testRoles, calendarTestDefaults, calendarTestURL)

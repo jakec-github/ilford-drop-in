@@ -314,9 +314,18 @@ func (m *mockVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([
 	return m.volunteers, nil
 }
 
+// conversionRoles is the Role table a solve was assembled from, which is what
+// turns the solver's Role names back into the ids a row stores.
+var conversionRoles = model.NewRoles([]model.Role{
+	{ID: "role-lead", Name: "Team lead", Priority: 1},
+	{ID: "role-hot", Name: "Hot food", Priority: 2},
+	{ID: "role-service", Name: "Service volunteer", Priority: 3},
+})
+
 func TestConvertToDBAllocations(t *testing.T) {
-	// One row per filled Seat, each keeping the Role the solver gave it —
-	// including Roles this code has never heard of.
+	// One row per filled Seat, each storing the Role the solver gave it by id:
+	// the solver speaks names, and a row keeps a reference that survives a
+	// rename (issue #222).
 	alice := allocator.Volunteer{ID: "alice"}
 	bob := allocator.Volunteer{ID: "bob"}
 	shifts := []*allocator.Shift{
@@ -338,19 +347,19 @@ func TestConvertToDBAllocations(t *testing.T) {
 	}
 
 	shiftIDByDate := map[string]string{"2025-01-05": "shift-jan-5"}
-	allocations, err := convertToDBAllocations(shiftIDByDate, shifts)
+	allocations, err := convertToDBAllocations(shiftIDByDate, shifts, conversionRoles)
 	require.NoError(t, err)
 	require.Len(t, allocations, 3)
 
 	roles := make(map[string]int)
 	for _, alloc := range allocations {
-		roles[alloc.Role]++
+		roles[alloc.RoleID]++
 		assert.Equal(t, "shift-jan-5", alloc.ShiftID)
 	}
 	assert.Equal(t, map[string]int{
-		"Team lead":         1,
-		"Hot food":          1,
-		"Service volunteer": 1,
+		"role-lead":    1,
+		"role-hot":     1,
+		"role-service": 1,
 	}, roles)
 
 	// A custom entry is a name, not a volunteer.
@@ -378,9 +387,28 @@ func TestConvertToDBAllocations_MissingShiftFails(t *testing.T) {
 		},
 	}
 
-	_, err := convertToDBAllocations(map[string]string{"2025-01-12": "shift-other"}, shifts)
+	_, err := convertToDBAllocations(map[string]string{"2025-01-12": "shift-other"}, shifts, conversionRoles)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "2025-01-05")
+}
+
+func TestConvertToDBAllocations_UnknownRoleFails(t *testing.T) {
+	// The solver only ever names Roles it was handed, so a name the table does
+	// not have is a broken invariant too. It fails rather than storing a Seat
+	// with no Role: the row would say somebody worked a shift as nothing.
+	alice := allocator.Volunteer{ID: "alice"}
+	shifts := []*allocator.Shift{
+		{
+			Date: "2025-01-05",
+			Assignments: []allocator.Assignment{
+				{Volunteer: &alice, Role: "Greeter"},
+			},
+		},
+	}
+
+	_, err := convertToDBAllocations(map[string]string{"2025-01-05": "shift-jan-5"}, shifts, conversionRoles)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Greeter")
 }
 
 func TestFilterActiveVols(t *testing.T) {
@@ -417,14 +445,14 @@ func TestBuildHistoricalShifts_SkipsUnknownVolunteers(t *testing.T) {
 		// Dave is individual
 		allocations: []db.Allocation{
 			// Shift 1 - Dec 1: Alice (group), Bob (group), Charlie (individual)
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
-			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "bob", Role: "Team lead"},
-			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "charlie", Role: "Service volunteer"}, // Unknown
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", RoleID: "role-service-volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "bob", RoleID: "role-team-lead"},
+			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "charlie", RoleID: "role-service-volunteer"}, // Unknown
 			// Shift 2 - Dec 8: Dave (individual), Charlie (individual)
-			{ID: "alloc-4", ShiftID: "2024-12-08", VolunteerID: "dave", Role: "Service volunteer"},
-			{ID: "alloc-5", ShiftID: "2024-12-08", VolunteerID: "charlie", Role: "Service volunteer"}, // Unknown
+			{ID: "alloc-4", ShiftID: "2024-12-08", VolunteerID: "dave", RoleID: "role-service-volunteer"},
+			{ID: "alloc-5", ShiftID: "2024-12-08", VolunteerID: "charlie", RoleID: "role-service-volunteer"}, // Unknown
 			// Allocations from current rota (not one of rota-0's shifts): ignored
-			{ID: "alloc-6", ShiftID: "2025-01-05", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-6", ShiftID: "2025-01-05", VolunteerID: "alice", RoleID: "role-service-volunteer"},
 		},
 	}
 
@@ -490,10 +518,10 @@ func TestBuildHistoricalShifts_KeepsShiftsWithNoKnownVolunteers(t *testing.T) {
 		},
 		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08", "2024-12-15"),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
-			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", RoleID: "role-service-volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", RoleID: "role-service-volunteer"},
 			// Dec 15 (the true last shift) was worked only by a deleted volunteer.
-			{ID: "alloc-3", ShiftID: "2024-12-15", VolunteerID: "ghost", Role: "Service volunteer"},
+			{ID: "alloc-3", ShiftID: "2024-12-15", VolunteerID: "ghost", RoleID: "role-service-volunteer"},
 		},
 	}
 
@@ -532,13 +560,13 @@ func TestBuildHistoricalShifts_AppliesAlterations(t *testing.T) {
 		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08"),
 		allocations: []db.Allocation{
 			// Dec 1: Alice worked as published.
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", RoleID: "role-service-volunteer"},
 			// Dec 8: Alice dropped out and Dave covered (see alterations).
-			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-08", VolunteerID: "alice", RoleID: "role-service-volunteer"},
 		},
 		alterations: []db.Alteration{
 			{ID: "alt-1", ShiftID: "2024-12-08", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:00Z"},
-			{ID: "alt-2", ShiftID: "2024-12-08", Direction: "add", VolunteerID: "dave", Role: "Service volunteer", SetTime: "2024-12-05T10:00:01Z"},
+			{ID: "alt-2", ShiftID: "2024-12-08", Direction: "add", VolunteerID: "dave", RoleID: "role-service-volunteer", SetTime: "2024-12-05T10:00:01Z"},
 			// Alteration on another rota's shift (not one of rota-0's): must be ignored.
 			{ID: "alt-3", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "alice", SetTime: "2024-12-05T10:00:02Z"},
 		},
@@ -581,11 +609,11 @@ func TestBuildHistoricalShifts_UngroupedVolunteersAreSeparateGroups(t *testing.T
 		},
 		shifts: shiftsOnDates("rota-0", "2024-12-01"),
 		allocations: []db.Allocation{
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
-			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "dave", Role: "Service volunteer"},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", RoleID: "role-service-volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "dave", RoleID: "role-service-volunteer"},
 			// A real group on the same shift stays one group.
-			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "bob", Role: "Service volunteer"},
-			{ID: "alloc-4", ShiftID: "2024-12-01", VolunteerID: "cara", Role: "Service volunteer"},
+			{ID: "alloc-3", ShiftID: "2024-12-01", VolunteerID: "bob", RoleID: "role-service-volunteer"},
+			{ID: "alloc-4", ShiftID: "2024-12-01", VolunteerID: "cara", RoleID: "role-service-volunteer"},
 		},
 	}
 
@@ -672,9 +700,9 @@ func TestBuildHistoricalShifts_CustomEntriesIgnored(t *testing.T) {
 		shifts: shiftsOnDates("rota-0", "2024-12-01"),
 		allocations: []db.Allocation{
 			// Regular allocation
-			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", Role: "Service volunteer"},
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", RoleID: "role-service-volunteer"},
 			// Custom entry (should be ignored)
-			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "", CustomEntry: "External John", Role: "Service volunteer"},
+			{ID: "alloc-2", ShiftID: "2024-12-01", VolunteerID: "", CustomEntry: "External John", RoleID: "role-service-volunteer"},
 		},
 	}
 

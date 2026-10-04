@@ -94,8 +94,9 @@ func CreateRole(ctx context.Context, store RoleWriteStore, params RoleParams, lo
 }
 
 // UpdateRole rewrites one Role's name, ceiling, priority and colour. The id
-// never moves, so a rename is invisible to everything holding a reference — an
-// allocated rota still reads as it was made.
+// never moves, so a rename is invisible to everything holding a reference, and
+// an allocated rota reads under the new name: the same job, better labelled
+// (issue #222).
 //
 // What it cannot fix is the half of the name contract this app does not own:
 // volunteers hold Roles by name in the roster Sheet, so a rename here without

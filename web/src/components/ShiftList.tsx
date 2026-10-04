@@ -19,6 +19,7 @@ import {
   roleSuffix,
   samePerson,
   shiftDeficit,
+  type RoleGroup,
 } from "./shifts";
 import { formatShiftTimes } from "./shiftTimes";
 import "./ShiftList.css";
@@ -201,10 +202,10 @@ function Chip({
       // The colour is an attribute rather than a class, and the Role's palette
       // token rather than its name: role names are configuration, so
       // `role-${name}` would mint class names no stylesheet has a rule for,
-      // while the palette is closed and index.css has a rule per token. A Role
-      // the server does not name — one retired since this rota was allocated —
-      // gets no attribute and the chip's own default.
-      data-role-colour={colourOf(assignee.role) ?? undefined}
+      // while the palette is closed and index.css has a rule per token.
+      // Somebody the rota records no Role for gets no attribute and the chip's
+      // own default.
+      data-role-colour={colourOf(assignee.roleId) ?? undefined}
       aria-label={label}
       draggable={draggable}
       // aria-disabled rather than disabled: the chip stays focusable, so
@@ -335,8 +336,8 @@ function draftTitle(assignee: Assignee): string {
 // these under their Roles without caring which kind each one is — the two say
 // the same thing about which job is being done, and differ only in how firmly.
 type Planned =
-  | { kind: "pin"; role: Role; pin: Preallocation }
-  | { kind: "draft"; role: Role; assignee: Assignee };
+  | { kind: "pin"; roleId: string; role: Role; pin: Preallocation }
+  | { kind: "draft"; roleId: string; role: Role; assignee: Assignee };
 
 // How the alterations API would name the person a pin is for. The same shape
 // personRef gives an assignee, so the two can be compared.
@@ -362,11 +363,16 @@ function plannedFor(pins: Preallocation[], drafted: Assignee[]): Planned[] {
   const planned: Planned[] = pins.map((pin) => {
     const i = unmatched.findIndex((a) => samePerson(personRef(a), pinRef(pin)));
     if (i !== -1) unmatched.splice(i, 1);
-    return { kind: "pin", role: pin.role, pin };
+    return { kind: "pin", roleId: pin.roleId, role: pin.role, pin };
   });
 
   for (const assignee of unmatched) {
-    planned.push({ kind: "draft", role: assignee.role, assignee });
+    planned.push({
+      kind: "draft",
+      roleId: assignee.roleId,
+      role: assignee.role,
+      assignee,
+    });
   }
   return planned;
 }
@@ -423,7 +429,7 @@ function PlannedList({
           <li
             key={entry.pin.id}
             className={`chip pinned ${entry.pin.custom ? "custom" : "volunteer"}`}
-            data-role-colour={colourOf(entry.pin.role) ?? undefined}
+            data-role-colour={colourOf(entry.pin.roleId) ?? undefined}
             title={pinTitle(entry.pin)}
           >
             {entry.pin.name}
@@ -457,7 +463,7 @@ function PlannedList({
           <li
             key={chipKey(date, entry.assignee, i)}
             className={`chip draft ${entry.assignee.custom ? "custom" : "volunteer"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
-            data-role-colour={colourOf(entry.assignee.role) ?? undefined}
+            data-role-colour={colourOf(entry.assignee.roleId) ?? undefined}
             title={draftTitle(entry.assignee)}
           >
             {entry.assignee.name}
@@ -506,19 +512,19 @@ function ShiftNeeds({
 // pins and drafted names that cannot), and copying either into a second
 // renderer is how the collapsed row and the expanded one would start to
 // disagree about the same shift.
-function RoleGroups<T extends { role: Role }>({
+function RoleGroups<T extends { roleId: string; role: Role }>({
   shape,
   people,
   children,
 }: {
   shape: RotaShift["shape"];
   people: T[];
-  children: (group: { role: Role; people: T[] }) => ReactNode;
+  children: (group: RoleGroup<T>) => ReactNode;
 }) {
   return (
     <div className="shift-role-groups">
       {groupByRole(shape, people).map((group) => (
-        <div className="shift-role-group" key={group.role}>
+        <div className="shift-role-group" key={group.roleId}>
           <span className="shift-role-name">{roleGroupLabel(group.role)}</span>
           {children(group)}
         </div>
@@ -761,6 +767,7 @@ function ShiftRow({
     const seated = shift.assignees.map((assignee, index) => ({
       assignee,
       index,
+      roleId: assignee.roleId,
       role: assignee.role,
     }));
 

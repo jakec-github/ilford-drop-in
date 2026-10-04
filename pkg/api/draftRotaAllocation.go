@@ -243,6 +243,7 @@ func draftShifts(shifts []services.DraftShift) []draftShiftResponse {
 				VolunteerID: a.VolunteerID,
 				CustomEntry: a.CustomEntry,
 				Name:        a.Name,
+				RoleID:      a.RoleID,
 				Role:        a.Role,
 				Group:       a.Group,
 			})

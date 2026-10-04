@@ -26,15 +26,15 @@ func insertCoverAndAlterations(ctx context.Context, q querier, cover *Cover, alt
 		if a.CustomValue != "" {
 			customValue = &a.CustomValue
 		}
-		if a.Role != "" {
-			role = &a.Role
+		if a.RoleID != "" {
+			role = &a.RoleID
 		}
 
 		// The alteration references its shift directly; the shift is the sole
 		// authority on rota and date (ADR 0001). An unknown ShiftID trips the
 		// shift_id FK constraint and fails loudly.
 		_, err := q.Exec(ctx, `
-			INSERT INTO alteration (id, direction, volunteer_id, custom_value, cover_id, role, shift_id)
+			INSERT INTO alteration (id, direction, volunteer_id, custom_value, cover_id, role_id, shift_id)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`, a.ID, a.Direction, volunteerID, customValue, a.CoverID, role, a.ShiftID)
 		if err != nil {

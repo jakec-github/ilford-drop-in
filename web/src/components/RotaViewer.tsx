@@ -170,7 +170,7 @@ type EditDialog =
       confirmLabel: string;
       // Fully specified bar the reason and, when role is set, the role —
       // both of which the dialog collects.
-      change: Omit<RotaChange, "reason" | "role">;
+      change: Omit<RotaChange, "reason" | "roleId">;
       // Offered for a move, which carries a Role across, and insisted on for
       // a switch, which is nothing but a Role — see askMove and
       // askChangeRole. Not offered for a remove or a swap, neither of which
@@ -441,10 +441,18 @@ export default function RotaViewer({
     }
   }
 
-  function submit(change: RotaChange) {
+  // role is whatever the dialog's picker chose, by name, or nothing where the
+  // change names no Role. An alteration references a Role by id, as a pin does
+  // (issue #222), so it is turned into one here, on the way out — and a name
+  // nothing answers to is refused here for the reason submitPin gives.
+  function submit(change: Omit<RotaChange, "roleId">, role?: Role) {
+    const roleId = role ? idOf(role) : undefined;
     return run(
       change.date,
-      () => onChange(change),
+      () =>
+        roleId === null
+          ? Promise.reject(new Error(`There is no role called ${role}`))
+          : onChange(roleId ? { ...change, roleId } : change),
       "The change was not applied",
     );
   }
@@ -913,7 +921,7 @@ export default function RotaViewer({
             setPending(null);
           }}
           onConfirm={(reason, role) =>
-            void submit({ ...dialog.change, role, reason })
+            void submit({ ...dialog.change, reason }, role)
           }
         />
       )}
@@ -928,16 +936,18 @@ export default function RotaViewer({
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={(person, reason, role) =>
-            void submit({
-              date: dialog.date,
-              in: person,
-              out:
-                dialog.change.kind === "replace"
-                  ? personRef(dialog.change.outgoing)
-                  : undefined,
+            void submit(
+              {
+                date: dialog.date,
+                in: person,
+                out:
+                  dialog.change.kind === "replace"
+                    ? personRef(dialog.change.outgoing)
+                    : undefined,
+                reason,
+              },
               role,
-              reason,
-            })
+            )
           }
         />
       )}

@@ -96,16 +96,19 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 	return cal.Serialize(ics.WithNewLineWindows), nil
 }
 
-// ownRole is the Role this volunteer is doing the shift in, and whether it is
-// one the app can name. A Role the roster no longer holds — renamed since the
-// rota was allocated — is reported as unnamed rather than as itself: the event
-// would otherwise say a job nothing in the app answers to.
+// ownRole is the Role this volunteer is doing the shift in, and whether they
+// are in one at all: an add recorded before alterations had a Role is in none,
+// and the event says only that they are on.
+//
+// The name is the one the Role has today. A Role renamed since the rota was
+// allocated is the same job under a better label (issue #222), so the event
+// says what the rota page says.
 func ownRole(shift Shift, volunteer model.Volunteer, roles model.Roles) (string, bool) {
 	for _, a := range shift.Assignees {
 		if a.VolunteerID != volunteer.ID {
 			continue
 		}
-		if role, ok := roles.ByName(a.Role); ok {
+		if role, ok := roles.ByID(a.RoleID); ok {
 			return role.Name, true
 		}
 		return "", false
@@ -142,8 +145,8 @@ func shiftDescription(shift Shift, volunteer model.Volunteer, roles model.Roles,
 		if a.VolunteerID != "" && a.VolunteerID == volunteer.ID {
 			continue
 		}
-		if _, ok := roles.ByName(a.Role); ok {
-			others = append(others, a.Name+" — "+a.Role)
+		if role, ok := roles.ByID(a.RoleID); ok {
+			others = append(others, a.Name+" — "+role.Name)
 		} else {
 			others = append(others, a.Name)
 		}

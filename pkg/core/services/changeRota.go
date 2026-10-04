@@ -51,7 +51,11 @@ type ChangeRotaParams struct {
 	// happened on the day, and the Shape it would be checked against is
 	// frozen the moment the rota is allocated, so refusing would leave an
 	// extra pair of hands unrecordable (issue #185).
-	Role string
+	//
+	// By id, as every reference to a Role is (issue #222): a name would be
+	// refused, or land on the wrong Role, the moment somebody renamed one
+	// while this change was being made.
+	RoleID string
 }
 
 // ChangeRotaResult contains the result of a rota change. Alterations are keyed
@@ -124,7 +128,7 @@ func ChangeRota(
 		if _, ok := volunteersByID[params.In]; !ok {
 			return nil, wrapf(ErrNotFound, "volunteer %s not found", params.In)
 		}
-		warnUnheldRole(params, volunteersByID, logger)
+		warnUnheldRole(params, volunteersByID, roles, logger)
 	}
 
 	if params.Out != "" {
@@ -214,12 +218,12 @@ func ChangeRota(
 			in:        params.In,
 			outCustom: params.OutCustom,
 			inCustom:  params.InCustom,
-			role:      params.Role,
+			roleID:    params.RoleID,
 		}
 		arriving := person{volunteerID: params.In, custom: params.InCustom}
 		leaving := person{volunteerID: params.Out, custom: params.OutCustom}
-		if (primary.in != "" || primary.inCustom != "") && primary.role == "" {
-			primary.role = roleForIncoming(arriving, leaving, effectiveState, swapEffectiveState)
+		if (primary.in != "" || primary.inCustom != "") && primary.roleID == "" {
+			primary.roleID = roleForIncoming(arriving, leaving, effectiveState, swapEffectiveState)
 		}
 		alterations = append(alterations, buildAlterationsForShift(primary, coverID)...)
 		if params.SwapDate != "" {
@@ -234,7 +238,7 @@ func ChangeRota(
 				inCustom:  params.OutCustom,
 			}
 			if swapLeg.in != "" || swapLeg.inCustom != "" {
-				swapLeg.role = roleForIncoming(leaving, arriving, swapEffectiveState, effectiveState)
+				swapLeg.roleID = roleForIncoming(leaving, arriving, swapEffectiveState, effectiveState)
 			}
 			alterations = append(alterations, buildAlterationsForShift(swapLeg, coverID)...)
 		}
@@ -423,7 +427,7 @@ type shiftChange struct {
 	in        string // Volunteer ID joining
 	outCustom string // Custom entry leaving
 	inCustom  string // Custom entry joining
-	role      string // Role for whoever joins, or empty to inherit it
+	roleID    string // Role for whoever joins, or empty to inherit it
 }
 
 // buildAlterationsForShift creates alteration records for a single shift. The
@@ -452,7 +456,7 @@ func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteratio
 			Direction:   "add",
 			VolunteerID: change.in,
 			CoverID:     coverID,
-			Role:        change.role,
+			RoleID:      change.roleID,
 		})
 	}
 
@@ -473,7 +477,7 @@ func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteratio
 			Direction:   "add",
 			CustomValue: change.inCustom,
 			CoverID:     coverID,
-			Role:        change.role,
+			RoleID:      change.roleID,
 		})
 	}
 
@@ -494,9 +498,9 @@ func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteratio
 func validateRole(params ChangeRotaParams, roles model.Roles) error {
 	arriving := params.In != "" || params.InCustom != ""
 	leaving := params.Out != "" || params.OutCustom != ""
-	if params.Role != "" {
-		if _, ok := roles.ByName(params.Role); !ok {
-			return wrapf(ErrInvalidInput, "role %q is not a configured role", params.Role)
+	if params.RoleID != "" {
+		if _, ok := roles.ByID(params.RoleID); !ok {
+			return wrapf(ErrInvalidInput, "no role has the id %q", params.RoleID)
 		}
 		if !arriving {
 			return wrapf(ErrInvalidInput, "a role can only be set for someone coming in")
@@ -516,17 +520,23 @@ func validateRole(params ChangeRotaParams, roles model.Roles) error {
 // record them as holding. It proceeds: the structure (one Seat, one person) is
 // enforced, but who is up to the job on the day is the call of whoever is changing the rota, and the
 // roster is standing advice rather than a gate on a cover (ADR 0005).
-func warnUnheldRole(params ChangeRotaParams, volunteersByID map[string]model.Volunteer, logger *zap.Logger) {
-	if params.Role == "" || params.In == "" {
+//
+// The roster spells a Role by name, so that is what the id is read as here.
+func warnUnheldRole(params ChangeRotaParams, volunteersByID map[string]model.Volunteer, roles model.Roles, logger *zap.Logger) {
+	if params.RoleID == "" || params.In == "" {
+		return
+	}
+	role, ok := roles.ByID(params.RoleID)
+	if !ok {
 		return
 	}
 	volunteer, known := volunteersByID[params.In]
-	if !known || volunteer.Holds(params.Role) {
+	if !known || volunteer.Holds(role.Name) {
 		return
 	}
 	logger.Warn("Placing a volunteer in a role they do not hold",
 		zap.String("volunteer_id", params.In),
-		zap.String("role", params.Role),
+		zap.String("role", role.Name),
 		zap.String("date", params.Date))
 }
 
@@ -590,14 +600,14 @@ func roleOnShift(p person, allocations []db.Allocation) (string, bool) {
 		return "", false
 	}
 	for _, a := range allocations {
-		if a.Role == "" {
+		if a.RoleID == "" {
 			continue
 		}
 		if p.volunteerID != "" && a.VolunteerID == p.volunteerID {
-			return a.Role, true
+			return a.RoleID, true
 		}
 		if p.custom != "" && a.CustomEntry == p.custom {
-			return a.Role, true
+			return a.RoleID, true
 		}
 	}
 	return "", false
