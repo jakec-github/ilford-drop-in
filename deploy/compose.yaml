@@ -50,10 +50,10 @@ services:
       # directory mount is resolved by path on every start, so a recreate always
       # picks up whatever is in the directory now.
       #
-      # /app is the image's working directory, where the server looks for its
-      # config first; the binary itself lives at /server, so mounting over /app
-      # covers nothing. Populate it with scripts/deploy-config.sh.
-      - ./config:/app:ro
+      # /app is the image's working directory, and the server reads its files
+      # from env/<env>/ beneath it (config.EnvPath). Populate it with
+      # scripts/deploy-config.sh.
+      - ./env/prod:/app/env/prod:ro
     logging:
       driver: json-file
       options:

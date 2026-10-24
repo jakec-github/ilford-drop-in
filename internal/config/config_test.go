@@ -548,10 +548,11 @@ devMode:
   organiserEmail: "agent@example.com"
   volunteersCSV: "test_data/volunteers.csv"
 `
-	for _, env := range []string{"prod", DevEnv} {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "drop_in_config."+env+".yaml"), []byte(cfg), 0644))
-	}
 	t.Chdir(dir)
+	for _, env := range []string{"prod", DevEnv} {
+		require.NoError(t, os.MkdirAll(filepath.Join("env", env), 0755))
+		require.NoError(t, os.WriteFile(EnvPath(env, ConfigFile), []byte(cfg), 0644))
+	}
 
 	_, err := LoadWithEnv("prod")
 	require.Error(t, err)

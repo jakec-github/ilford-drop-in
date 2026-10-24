@@ -11,7 +11,7 @@ the git SHA and `latest`, and — if the `DEPLOY_ENABLED` repository variable is
 `"true"` — deploys it to the droplet. **Rollback**: re-run the workflow on a
 previous commit (Actions → the old run → "Re-run all jobs").
 
-**Config is not part of this.** `drop_in_config.prod.yaml` and the two
+**Config is not part of this.** `env/prod/drop_in_config.yaml` and the two
 credential files live on the droplet by hand and are never shipped by a deploy —
 deliberately, since they hold secrets the repo must not. Roll them out with
 [`scripts/deploy-config.sh`](#config-rollout), on their own schedule.
@@ -68,32 +68,34 @@ ssh root@<ip> ./provision.sh
 ```
 
 Idempotent: installs Docker, enables ufw (22/80/443), creates a 2G swap file,
-`/opt/dropin/config`, and a `/opt/dropin/site.env` skeleton with an empty
+`/opt/dropin/env/prod`, and a `/opt/dropin/site.env` skeleton with an empty
 `SITE_DOMAIN`. Fill that in — the stack will not start until you do.
 
 ### 3. Config files
 
 Four untracked files live on the droplet. Three are the server's, in
-**`/opt/dropin/config/`** — the directory `deploy/compose.yaml` mounts into the
-container as `/app`. The fourth is Caddy's, a level up.
+**`/opt/dropin/env/prod/`** — the directory `deploy/compose.yaml` mounts into the
+container as `/app/env/prod`, which is where the server looks for them. The
+fourth is Caddy's, in `/opt/dropin`. Locally the server's three sit at the same
+paths under the repo root, `env/prod/`.
 
 | File | What it is | How it gets there |
 | --- | --- | --- |
-| `config/drop_in_config.prod.yaml` | the app's config | [`scripts/deploy-config.sh`](#config-rollout) |
-| `config/oauthClientWeb.prod.json` | Google web client | `scp`, about once a year |
-| `config/serviceAccount.prod.json` | Google service account | `scp`, about once a year |
+| `env/prod/drop_in_config.yaml` | the app's config | [`scripts/deploy-config.sh`](#config-rollout) |
+| `env/prod/oauthClientWeb.json` | Google web client | `scp`, about once a year |
+| `env/prod/serviceAccount.json` | Google service account | `scp`, about once a year |
 | `site.env` | `SITE_DOMAIN=<domain>` for Caddy | written by hand, once |
 
-The three in `config/` are the one thing the repo cannot regenerate; keep copies
-with other personal secrets.
+The three in `env/prod/` are the one thing the repo cannot regenerate; keep
+copies with other personal secrets.
 
 The two credentials change about once a year, so they go up by hand:
 
 ```sh
-scp oauthClientWeb.prod.json serviceAccount.prod.json root@<ip>:/opt/dropin/config/
+scp env/prod/oauthClientWeb.json env/prod/serviceAccount.json root@<ip>:/opt/dropin/env/prod/
 ```
 
-Check that `oauthClientWeb.prod.json` lists the production redirect URI
+Check that `oauthClientWeb.json` lists the production redirect URI
 (`https://<domain>/auth/callback`) and that it is also registered on the Google
 web client. It stays at the root of the domain even when the site itself sits
 under a path — see [Base path](#base-path).
@@ -104,7 +106,7 @@ sheet as an **Editor**. Without the second, the app runs as normal and the rota
 sheet is left alone — every publish fails with a warning in the logs, which is
 the only place it shows (issue #191).
 
-`drop_in_config.prod.yaml` changes often, so it gets a script — see
+`drop_in_config.yaml` changes often, so it gets a script — see
 [Config rollout](#config-rollout) below. Run it once here too; it puts the file
 in place and brings the app up.
 
@@ -172,7 +174,7 @@ no deploy:
    Caddy obtains a certificate for the new name as it starts.
 4. Update the Google web client's authorised redirect URI to
    `https://<new domain>/auth/callback`, and `server.redirectURI` in
-   `drop_in_config.prod.yaml` with it — then run
+   `env/prod/drop_in_config.yaml` with it — then run
    [`scripts/deploy-config.sh`](#config-rollout).
 5. Update `SITE_DOMAIN` in your own `.deploy.env`, so the config rollout polls
    the right host.
@@ -214,7 +216,7 @@ single path segment — `/<path>/` rather than `/`. It is optional and absent in
 dev, where the site is at the root.
 
 The value belongs to the deployment and is deliberately not in this repo: it is
-one key in `drop_in_config.<env>.yaml`, and the app derives everything else from
+one key in `env/<env>/drop_in_config.yaml`, and the app derives everything else from
 it. A leading slash, one or more URL-safe segments, no trailing slash; anything
 else fails at startup. Depth is not restricted — `/rota` and `/ilford/rota` work
 the same way, because nothing ever splits the path up.
@@ -252,7 +254,7 @@ emailed. That is why the path was set before go-live rather than after
 
 ## Config rollout
 
-Editing `drop_in_config.prod.yaml` and reaching the running server is one
+Editing `env/prod/drop_in_config.yaml` and reaching the running server is one
 command, from the repo root:
 
 ```sh
@@ -260,7 +262,7 @@ scripts/deploy-config.sh <ip>          # or set DEPLOY_HOST, or put it in .deplo
 ```
 
 It validates the local file, shows what it configures, asks, copies it to
-`/opt/dropin/config/`, recreates the app container, and waits for
+`/opt/dropin/env/prod/`, recreates the app container, and waits for
 `https://$SITE_DOMAIN/health` to answer — exiting non-zero with the app's logs if
 it does not. There is no `docker compose` step to run afterwards.
 
@@ -351,15 +353,24 @@ keeps its own — and the second trims the journal. Then re-run the failed deplo
 On a droplet provisioned before the journal cap existed, rerun
 `scripts/provision.sh` (it is idempotent) so the journal stays capped.
 
-### One-time: moving config into `config/`
+### One-time: moving config into `env/prod/`
 
-Droplets provisioned before the mount changed hold the three files directly in
-`/opt/dropin`. Move them down a level once, then deploy normally:
+Before issue #243 the server's three files sat in `/opt/dropin/config/`, with
+the environment as a filename suffix. The build that reads `env/prod/` does not
+look there, so the files must be in place **before** it deploys, or the app will
+not start. Copy rather than move, so the running build keeps its files until the
+new one replaces it:
 
 ```sh
-ssh root@<ip> 'mkdir -p /opt/dropin/config && mv /opt/dropin/*.prod.yaml /opt/dropin/*.prod.json /opt/dropin/config/'
+ssh root@<ip> '
+  mkdir -p /opt/dropin/env/prod
+  cp /opt/dropin/config/drop_in_config.prod.yaml /opt/dropin/env/prod/drop_in_config.yaml
+  cp /opt/dropin/config/oauthClientWeb.prod.json /opt/dropin/env/prod/oauthClientWeb.json
+  cp /opt/dropin/config/serviceAccount.prod.json /opt/dropin/env/prod/serviceAccount.json
+'
 ```
 
-`scripts/deploy-config.sh` refuses to recreate the container while the
-credentials are missing from `config/`, so a half-done move cannot take the site
-down.
+Once the new build is answering on `/health`, remove the old directory with
+`ssh root@<ip> 'rm -r /opt/dropin/config'`. `scripts/deploy-config.sh` refuses
+to recreate the container while the credentials are missing from `env/prod/`,
+so a half-done move cannot take the site down.

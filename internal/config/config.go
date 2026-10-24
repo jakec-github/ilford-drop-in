@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -107,7 +106,7 @@ const DevEnv = "dev"
 // DevModeConfig turns on the credential-free development stubs: the roster is
 // read from a CSV file instead of Google Sheets, and login mints a session for
 // OrganiserEmail or RotaEditorEmail instead of redirecting to Google. Present only in
-// drop_in_config.dev.yaml — see checkDevMode. Omit the block entirely for a
+// env/dev/drop_in_config.yaml — see checkDevMode. Omit the block entirely for a
 // normal, Google-backed server.
 type DevModeConfig struct {
 	// OrganiserEmail is the account login signs in as. It must also be an
@@ -172,10 +171,10 @@ func init() {
 	validate = validator.New()
 }
 
-// LoadWithEnv loads and validates the configuration with an environment suffix
-// For example, env="test" will look for "drop_in_config.test.yaml"
+// LoadWithEnv loads and validates an environment's configuration, from
+// EnvPath(env, ConfigFile) — env="test" reads env/test/drop_in_config.yaml.
 func LoadWithEnv(env string) (*Config, error) {
-	configPath, err := findConfigFile(env)
+	configPath, err := findEnvFile(env, ConfigFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find config file: %w", err)
 	}
@@ -365,31 +364,4 @@ func Validate(cfg *Config) error {
 	}
 
 	return checkBasePath(cfg.Server)
-}
-
-// findConfigFile searches for config file in current directory and home directory
-// If env is provided, it adds it as an extension (e.g., "drop_in_config.test.yaml")
-func findConfigFile(env string) (string, error) {
-	configFileName := "drop_in_config.yaml"
-	if env != "" {
-		configFileName = "drop_in_config." + env + ".yaml"
-	}
-
-	// Check current directory
-	if _, err := os.Stat(configFileName); err == nil {
-		return configFileName, nil
-	}
-
-	// Check home directory
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	homeConfigPath := filepath.Join(homeDir, configFileName)
-	if _, err := os.Stat(homeConfigPath); err == nil {
-		return homeConfigPath, nil
-	}
-
-	return "", fmt.Errorf("config file not found in current directory or home directory")
 }

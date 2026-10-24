@@ -46,7 +46,7 @@ different part of the system. Set up all three for the `test` environment.
 2. **Desktop OAuth client** — used by the **CLI**.
    - APIs & Services → Credentials → Create credentials → OAuth client ID →
      **Desktop app**.
-   - Download the JSON and save it in the repo root as `oauthClient.test.json`.
+   - Download the JSON and save it as `env/test/oauthClient.json`.
    - On first CLI run this opens a browser to authorise two scopes: Sheets, to
      read the volunteer roster, and email, to record who ran the command. The
      resulting token is cached at
@@ -63,12 +63,12 @@ different part of the system. Set up all three for the `test` environment.
      the URI Google sends the browser back to is the one on 5173. In production
      the server serves the frontend itself, so there the callback is on the
      app's own domain (see [`docs/deployment.md`](deployment.md)).
-   - Download the JSON and save it as `oauthClientWeb.test.json`.
+   - Download the JSON and save it as `env/test/oauthClientWeb.json`.
 
 4. **Service account** — used by the **server** to read the volunteer roster
    and to publish the rota to the rota sheet.
    - IAM & Admin → Service Accounts → create one → add a JSON key → download.
-   - Save it as `serviceAccount.test.json`.
+   - Save it as `env/test/serviceAccount.json`.
    - Copy the service account's `client_email` (looks like
      `name@project.iam.gserviceaccount.com`) — you'll share both sheets with it
      in the next step.
@@ -142,7 +142,7 @@ username if you want mail to route to you.
 
 ## 4. Configuration file
 
-Create `drop_in_config.test.yaml` in the repo root (also git-ignored). Every
+Create `env/test/drop_in_config.yaml` (also git-ignored). Every
 field below without an "optional" note is required:
 
 ```yaml
@@ -178,9 +178,10 @@ server:
     - 'a-rota-editor@gmail.com'
 ```
 
-The `test` suffix in the filename matches the `-e test` / `-env test` flag you
-pass at runtime. Config files are also searched for in your home directory if
-not found in the repo root.
+The `test` directory matches the `-e test` / `-env test` flag you pass at
+runtime: every file an environment needs lives in `env/<env>/`, and that is the
+only place it is looked for. A missing one fails at startup, naming the path it
+expected.
 
 ### Creating the Roles
 
@@ -279,7 +280,7 @@ gets read by whatever build is running, so a key that only some versions know
 must not stop the app starting. To check a file without starting anything:
 
 ```bash
-go run ./cmd/cli -e test validate-config drop_in_config.test.yaml
+go run ./cmd/cli -e test validate-config env/test/drop_in_config.yaml
 ```
 
 That reads the file and nothing else — no database, no Google — and prints what
@@ -374,8 +375,8 @@ building `pyallocator/.venv` first if it is not there yet.
 
 | Symptom | Fix |
 | --- | --- |
-| `failed to load config` | File must be named `drop_in_config.test.yaml` in the repo root (or home dir); check every required field is present. |
-| `failed to load service account` / `web OAuth client config` | The server needs `serviceAccount.test.json` and `oauthClientWeb.test.json` in the repo root. |
+| `failed to load config` | The file must be `env/test/drop_in_config.yaml`, relative to where you run from (the repo root); check every required field is present. |
+| `failed to load service account` / `web OAuth client config` | The server needs `env/test/serviceAccount.json` and `env/test/oauthClientWeb.json`. |
 | `missing required field in header` | The volunteer sheet header row must contain the exact column names in [§3](#volunteer-sheet-format). |
 | `volunteer sheet names a Role no configured Role matches` (warning) | A value in a `Roles` cell isn't one of the roles in your config. The volunteer loads without it. |
 | Nobody gets allocated to a role | Check the `Roles` column actually names it — a role nobody holds has no one to fill its seats. |
@@ -389,12 +390,14 @@ building `pyallocator/.venv` first if it is not there yet.
 
 | File (git-ignored) | Loaded by | Purpose |
 | --- | --- | --- |
-| `oauthClient.test.json` | CLI (`internal/config/oauth.go`) | Desktop OAuth; Sheets/Forms/Gmail access for CLI commands. Token cached in `~/.ilford-drop-in/tokens/`. |
-| `oauthClientWeb.test.json` | Server (`internal/config/oauthweb.go`) | Web OAuth; Organiser and Rota Editor login (OIDC). |
-| `serviceAccount.test.json` | Server (`internal/config/serviceaccount.go`) | Reads the volunteer sheet to sync the roster at startup and on an Organiser's sync. |
-| `drop_in_config.test.yaml` | Both (`internal/config/config.go`) | Sheet IDs, DB URL, shift/allocation settings, server config. |
+| `env/test/oauthClient.json` | CLI (`internal/config/oauth.go`) | Desktop OAuth; Sheets/Forms/Gmail access for CLI commands. Token cached in `~/.ilford-drop-in/tokens/`. |
+| `env/test/oauthClientWeb.json` | Server (`internal/config/oauthweb.go`) | Web OAuth; Organiser and Rota Editor login (OIDC). |
+| `env/test/serviceAccount.json` | Server (`internal/config/serviceaccount.go`) | Reads the volunteer sheet to sync the roster at startup and on an Organiser's sync. |
+| `env/test/drop_in_config.yaml` | Both (`internal/config/config.go`) | Sheet IDs, DB URL, shift/allocation settings, server config. |
 
-`drop_in_config.dev.yaml` is the one exception: it **is** committed, holds no
+Each `env/<env>/` directory is committed with only a `.keep` in it, so a fresh
+clone shows where the files go. `env/dev/drop_in_config.yaml` is the one
+exception: it **is** committed, holds no
 secrets, and needs none of the three credential files above — it turns on the
 stubs described in [`docs/agents/dev-stack.md`](agents/dev-stack.md).
 `internal/config.checkDevMode` refuses to load its `devMode` block under any

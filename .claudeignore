@@ -1,12 +1,11 @@
 # OAuth and authentication secrets
 
-**/oauthClient.\*.json
-**/serviceAccount.\*.json
+**/env/\*/\*.json
 \*\*/.token.json
 
 # Configuration with sensitive data
 
-\*_/drop_in_config._.yaml
+**/env/\*/drop_in_config.yaml
 
 # Log files
 
