@@ -134,10 +134,13 @@ read `x.role`. Modularity is the point of this package:
   preferences use harmonic diminishing returns (the nth unit is worth
   `WEIGHT // n`), which makes marginal value fall as a shift/group
   accumulates — scarce resources spread evenly instead of stacking:
-  - `even_fill` (uncapped Role: 60 // Seat; capped Role: a flat 61+) —
-    get every shift to N volunteers before pushing any shift to N+1,
-    and fill a capped Role's Seat before an ordinary one; custom
-    preallocations occupy their Role's early Seats.
+  - `even_fill` (a Seat: its Role's priority band, 61 apart, plus
+    60 // Seat; a head of any Role: 20 // head) — get every shift to N
+    in each Role before pushing any shift to N+1, and fill a
+    higher-priority Role's Seat before a lower one's; the lighter
+    headcount term then breaks ties towards even totals, so per-Role
+    remainders do not pile onto one shift (#242). Custom preallocations
+    occupy their Role's early Seats and a shift's first heads.
   - `spread_males` (30 // male) — distribute males one-per-shift first.
   - `fairness` (20 // lifetime allocation, historical + this rota) —
     reach for under-used groups before frequently-allocated ones.

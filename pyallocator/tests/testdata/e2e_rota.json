@@ -3,7 +3,7 @@
     "ortools": "9.15.6755",
     "platform": "darwin-x86_64"
   },
-  "objective_value": 1723,
+  "objective_value": 1924,
   "shifts": {
     "0": {
       "customs": [],
@@ -40,10 +40,10 @@
     },
     "4": {
       "customs": [],
-      "team_lead": "karen",
+      "team_lead": "alice",
       "volunteers": [
-        "charlie",
-        "larry"
+        "bob",
+        "charlie"
       ]
     },
     "5": {
@@ -55,9 +55,9 @@
       "customs": [
         "external_john"
       ],
-      "team_lead": "alice",
+      "team_lead": "george",
       "volunteers": [
-        "bob"
+        "helen"
       ]
     }
   }
