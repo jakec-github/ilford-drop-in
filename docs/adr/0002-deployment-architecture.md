@@ -14,9 +14,12 @@ clone.
 Amended in issue #244: main is no longer prod. Every merge deploys the image
 to **preprod** first: a second app container on the same droplet, served by
 the same Caddy at `preprod.<domain>`, with its own Neon database, its own
-synthetic roster and rota sheets, and its own config in `env/preprod/`. Prod
-still deploys on every merge for now; issue #245 turns it into a manual
-promote of an image preprod has already run.
+synthetic roster and rota sheets, and its own config in `env/preprod/`.
+
+Amended in issue #245: a merge deploys preprod and nothing else. Prod is
+released by hand, with a "Deploy to production" workflow that puts an image
+already in GHCR — by default the one preprod last ran — onto prod. It never
+builds, so prod runs exactly the image preprod ran.
 
 ## Decisions and their reasons
 
@@ -47,13 +50,21 @@ promote of an image preprod has already run.
   the root of a host. Its data is synthetic — never a copy or branch of prod's —
   and its roster's emails are addresses the owner controls, so a real email
   from preprod reaches nobody else.
-- **Auto-deploy on merge, but gated until go-live.** The deploy step sits
-  behind a repository variable, originally off because the server could not
-  boot headless (it acquired a Sheets token interactively at startup) and
-  `POST /alterations` was unauthenticated. The OIDC admin-sync work has
-  since landed (2026-07-18): the server fetches the roster with its own
-  service account (non-fatal on failure) and alterations are admin-gated,
-  so the gate now waits only on the remaining go-live prerequisites below.
+- **Prod is promoted by hand, never deployed by a merge** (issue #245).
+  Merging an agent's PR means "on preprod"; prod changes only when the owner
+  decides. The promote takes a commit rather than building one: what reaches
+  prod is the image preprod ran, not a rebuild of the same source, and it is
+  refused before the droplet is touched if that commit has no image. Rollback
+  is the same promote given an older commit, so there is one way to change
+  what prod runs. Superseded: a `DEPLOY_ENABLED` repository variable that
+  gated the auto-deploy until go-live; a manual prod serves that purpose, and
+  preprod has its own off switch.
+- **One rollout on the box at a time**, by a lock in `rollout.sh` rather than
+  a concurrency group in Actions. Each rollout prunes the images no container
+  uses, so two at once can remove the image the other is starting. The lock
+  also covers the rollouts started from a laptop (`deploy-config.sh`,
+  `preprod.sh up`), and unlike a concurrency group it never cancels a queued
+  production deploy because a merge queued behind it.
 - **Secrets are three plain files scp'd to the box** (`drop_in_config.prod.yaml`,
   `oauthClientWeb.prod.json`, `serviceAccount.prod.json`), mounted read-only
   into the container. The installed-app OAuth client
@@ -76,10 +87,13 @@ promote of an image preprod has already run.
   Caddyfile, workflow, provisioning script), a domain registered and
   pointed at the droplet (the same hostname goes into the Caddyfile and
   the Google web-client redirect URI), the three config files on the box,
-  deploy gate flipped. (OIDC admin-sync, formerly a prerequisite, merged
+  the first deploy run. (OIDC admin-sync, formerly a prerequisite, merged
   2026-07-18.)
-- Rollback is rerunning the deploy workflow on a previous SHA (or only its
-  prod leg).
+- Rollback is "Deploy to production" with an older commit. It does not undo
+  migrations: the older build runs against the newer schema, ignoring
+  migrations it does not know.
+- Anything a change needs beyond its code (config, Roles, a one-off command)
+  is done twice: on preprod after the merge, on prod just before promoting.
 - Two app containers share a 512 MiB box. Preprod is the one that gives way:
   `scripts/preprod.sh down` stops it, and deploys skip it until `up`.
 - Everything assumes exactly one app instance per environment: the in-memory volunteer
