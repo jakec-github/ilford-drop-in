@@ -4,15 +4,15 @@ Scheduling tools for a weekly charity drop-in in Ilford, London, which provides
 food and support to vulnerable community members. The system collects volunteer
 availability, allocates volunteers to shifts, and publishes the resulting rota.
 
-It has two parts:
-
-- A **Go CLI** (`cmd/cli`) for the organiser workflow — defining rotas, requesting
-  availability, allocating, and publishing.
-- A **Go web server + React frontend** (`cmd/server`, `web/`) that serves the
-  public rota page and organiser tools.
+It is a **Go web server + React frontend** (`cmd/server`, `web/`) that serves
+the public rota page and every Organiser tool — defining a rota, asking volunteers
+for their availability, allocating it and changing it afterwards. A small
+**Go CLI** (`cmd/cli`) is left over from before the app; see
+[CLI commands](#cli-commands).
 
 The volunteer roster lives in Google Sheets; scheduling data lives in Postgres;
-allocation is solved by a Python CP-SAT service (`pyallocator/`).
+allocation is solved by a Python CP-SAT service (`pyallocator/`). The server
+republishes the rota to a Google Sheet after every change.
 
 ## Quick start
 
@@ -52,27 +52,32 @@ Google. The database starts empty, so the rota page does too — see
 
 ## CLI commands
 
-All commands take `-e`/`--env` to pick the environment, whose files are read
-from `env/<env>/` (`env/test/drop_in_config.yaml` and so on):
-
-```bash
-./cli -e test <command> [args]
-./cli --help
-```
-
-| Command | Description |
-| --- | --- |
-| `listVolunteers` | List volunteers from the volunteer sheet. |
-| `publishRota` | Bring the rota sheet's `Latest` tab up to date with the rota allocated most recently. The server does this itself after every change; this is the same publish, run by hand. |
-| `viewHistoricalResponses ...` | Inspect past availability responses. |
-
+The CLI is on its way out ([#220](https://github.com/jakec-github/ilford-drop-in/issues/220)).
 The whole life of a rota is in the app now — defining it, preparing its shifts,
 asking volunteers, allocating and changing it afterwards all happen on Organiser →
 Allocation and the rota page. Allocating in particular could never be a command:
 it re-solves and commits only the rota the Organiser was shown, and a command that
-solved and committed in one step could not honour that (ADR 0008). What is left
-here reads or writes the Google Sheets; see
-[`docs/local-setup.md`](docs/local-setup.md) for what they need.
+solved and committed in one step could not honour that (ADR 0008).
+
+The roster is on Organiser → Volunteers, and the rota sheet republishes itself
+after every change. To republish by hand, press **Sync** on that tab: it re-reads
+the roster and publishes again.
+
+What is left takes `-e`/`--env` to pick the environment, whose files are read
+from `env/<env>/` (`env/test/drop_in_config.yaml` and so on):
+
+```bash
+go run ./cmd/cli -e test <command> [args]
+go run ./cmd/cli --help
+```
+
+| Command | Description |
+| --- | --- |
+| `validate-config <path>` | Check a config file and print what it configures, without connecting to anything. `scripts/deploy-config.sh` runs it before shipping a config. |
+| `viewHistoricalResponses <count>` | How each volunteer answered the availability requests for the last `count` allocated rotas. |
+
+`viewHistoricalResponses` signs in to Google on every run; see
+[`docs/local-setup.md`](docs/local-setup.md) for what that needs.
 
 ## Requirements
 

@@ -25,11 +25,12 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "cli",
 		Short: "Ilford Drop-In CLI - Manage volunteer rotas",
-		Long: `A CLI tool for the Google Sheets around the Ilford Drop-in rota.
+		Long: `What is left of the Ilford Drop-in CLI, on its way out (issue #220).
 
 The rota itself lives in the web app: defining it, preparing its shifts, asking
-volunteers, allocating it and changing it afterwards all happen there. What is
-left here reads or writes a Sheet.`,
+volunteers, allocating it and changing it afterwards all happen there, and the
+rota sheet republishes itself after every change. What is left here is a config
+check and a report the app does not have yet.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Skip initialization for help commands - no need for OAuth/API clients or env flag
 			helpFlag, _ := cmd.Flags().GetBool("help")
@@ -63,8 +64,10 @@ left here reads or writes a Sheet.`,
 	// only the rota the Organiser was shown, and a command that solved and committed
 	// in one step could not honour that — two paths where one breaks the rule is
 	// worse than one path (ADR 0008).
-	rootCmd.AddCommand(newLazyCommand(commands.PublishRotaCmd))
-	rootCmd.AddCommand(newLazyCommand(commands.ListVolunteersCmd))
+	//
+	// listVolunteers and publishRota went the same way (issue #252): the roster
+	// is the Volunteers tab, and the server publishes the sheet after every
+	// change, with that tab's Sync button for doing it by hand.
 	rootCmd.AddCommand(newLazyCommand(commands.ViewHistoricalResponsesCmd))
 
 	// Not lazy, and deliberately not initialised: validate-config reads a file

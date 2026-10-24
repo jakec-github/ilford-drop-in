@@ -43,7 +43,8 @@ type SheetsClient interface {
 // allocated most recently (issue #191).
 //
 // It is the one way the sheet is written. The server runs it after every change
-// that could show there, and the publishRota CLI command runs it by hand. It
+// that could show there, and after every roster sync — which is how an Organiser
+// republishes by hand, from the Sync button on the Volunteers tab. It
 // always publishes the latest allocated rota, whatever prompted it: a change to
 // an older rota, already archived, publishes nothing new.
 //
