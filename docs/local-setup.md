@@ -16,8 +16,8 @@ Cloud project** for the path this guide describes.
 > the real, Sheets-backed path, and is what you need to develop against actual
 > data or to use the CLI.
 
-> **Scope.** Production and the sheet-backed commands (`publishRota`,
-> `listVolunteers`) are **not** expected to work for outside
+> **Scope.** Production and the sheet-backed CLI command
+> (`viewHistoricalResponses`) are **not** expected to work for outside
 > contributors — they need real Sheets wired up and, for prod, infrastructure
 > access. This guide covers everything needed to run the app, view the rota, and
 > develop against it locally.
@@ -322,9 +322,11 @@ cached and subsequent commands are quiet.
 Commands to explore:
 
 ```bash
-./cli -e test listVolunteers    # prints the roster from the volunteer sheet
-./cli --help                    # all commands
+./cli -e test viewHistoricalResponses 4   # who answered the last four rotas' requests
+./cli --help                              # all commands
 ```
+
+The roster itself is on Organiser → Volunteers once the app is running (§7).
 
 ## 7. Run the app
 
