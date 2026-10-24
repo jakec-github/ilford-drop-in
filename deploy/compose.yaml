@@ -1,3 +1,23 @@
+# What each app service runs, and how it is told so.
+#
+# Each environment's image tag lives in its own file, env/<env>/image.env
+# (PROD_IMAGE_TAG=<sha>, PREPROD_IMAGE_TAG=<sha>), which deploy/rollout.sh
+# writes when it deploys that environment. Compose only interpolates from .env,
+# so rollout.sh rebuilds .env from those files every time: .env is derived and
+# never edited by hand. That way a deploy of one environment cannot overwrite
+# the other's tag, and any compose command run by hand sees both — a bare
+# `docker compose up -d` changes nothing rather than rolling both to latest.
+#
+# A deploy only ever names its own service (`up -d app-preprod`), so one
+# environment's deploy never recreates the other's container.
+x-app: &app
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
 services:
   caddy:
     image: caddy:2
@@ -39,11 +59,13 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # prod. Still called `app`, its name from before preprod existed: renaming it
+  # would replace the container.
   app:
-    image: ghcr.io/jakec-github/ilford-drop-in:${IMAGE_TAG:-latest}
-    restart: unless-stopped
+    <<: *app
+    image: ghcr.io/jakec-github/ilford-drop-in:${PROD_IMAGE_TAG:-latest}
     volumes:
-      # The config directory, not the three files individually. A single-file
+      # The environment's directory, not its files individually. A single-file
       # bind mount pins the inode it resolved at container start, so replacing
       # the file on the host leaves the container serving the previous revision —
       # which is how a config fix took four rounds to land (issue #100). A
@@ -52,13 +74,15 @@ services:
       #
       # /app is the image's working directory, and the server reads its files
       # from env/<env>/ beneath it (config.EnvPath). Populate it with
-      # scripts/deploy-config.sh.
+      # scripts/deploy-config.sh <env>.
       - ./env/prod:/app/env/prod:ro
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
+
+  app-preprod:
+    <<: *app
+    image: ghcr.io/jakec-github/ilford-drop-in:${PREPROD_IMAGE_TAG:-latest}
+    command: ["-env", "preprod"]
+    volumes:
+      - ./env/preprod:/app/env/preprod:ro
 
 volumes:
   caddy_data:

@@ -45,6 +45,9 @@ COPY --from=pybuild /opt/pyallocator /opt/pyallocator
 # How the server finds the solver (allocator.ResolvePythonInterpreter).
 # scripts/image-smoke.sh runs it from this variable, so CI fails if it breaks.
 ENV ILFORD_CPSAT_PYTHON=/opt/pyallocator/bin/python
-# Config files are mounted read-only into /app (the working directory, where
-# the server looks first) by compose — see deploy/compose.yaml.
-ENTRYPOINT ["/server", "-env", "prod"]
+# Each environment's files are mounted read-only at /app/env/<env>/ (the
+# working directory is /app) by compose — see deploy/compose.yaml. The
+# environment is CMD rather than part of the ENTRYPOINT so compose can run the
+# same image as preprod with `command: ["-env", "preprod"]`.
+ENTRYPOINT ["/server"]
+CMD ["-env", "prod"]

@@ -1,7 +1,21 @@
-# The site address is a fact about where the box is reached, not about what the
-# app does, so it lives on the droplet rather than in the repo (issue #202).
-# Caddy substitutes {$SITE_DOMAIN} from its own process environment, which
-# deploy/compose.yaml fills from the untracked /opt/dropin/site.env.
+# The site addresses are facts about where the box is reached, not about what
+# the app does, so they live on the droplet rather than in the repo (issue
+# #202). Caddy substitutes {$SITE_DOMAIN} and {$PREPROD_DOMAIN} from its own
+# process environment, which deploy/compose.yaml fills from the untracked
+# /opt/dropin/site.env.
 {$SITE_DOMAIN} {
 	reverse_proxy app:8080
+}
+
+# preprod, on its own host: /api, /auth and /health sit at the root of a host
+# (#201), so it cannot share prod's under a path.
+#
+# The second address is what keeps an empty PREPROD_DOMAIN from taking prod
+# down. On its own, an empty first address leaves a block with no key, which
+# Caddy refuses to load at all — prod's block with it. With the second address
+# there, an empty domain leaves a plain-HTTP site that no request ever names,
+# and Caddy certifies nothing for it. It holds under `caddy reload` too, which
+# a check in compose's startup shell would not.
+{$PREPROD_DOMAIN} http://preprod.invalid {
+	reverse_proxy app-preprod:8080
 }

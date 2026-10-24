@@ -46,13 +46,26 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
 
+  # One leg per environment, run one at a time so two rollouts never prune
+  # images under each other. Each leg names only its own service, so deploying
+  # one never recreates the other (rollout.sh fails the leg if it did).
+  #
+  # Preprod first. Prod still deploys on every push until the manual promote
+  # lands (#245), and fail-fast is off so a broken preprod does not hold it back
+  # meanwhile.
   deploy:
     needs: build
     # Gated until go-live (ADR 0002). Set the DEPLOY_ENABLED repository
     # variable to "true" to enable. Rollback is re-running this workflow on a
-    # previous commit.
+    # previous commit — or just its prod leg.
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        env: [preprod, prod]
+    name: deploy (${{ matrix.env }})
     steps:
       - uses: actions/checkout@v5
 
@@ -63,19 +76,19 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
-      - name: Sync compose files to the droplet
-        run: scp deploy/compose.yaml deploy/Caddyfile "root@${{ secrets.DEPLOY_HOST }}:/opt/dropin/"
+      - name: Sync deploy files to the droplet
+        run: scp deploy/compose.yaml deploy/Caddyfile deploy/rollout.sh "root@${{ secrets.DEPLOY_HOST }}:/opt/dropin/"
 
-      # `prune -a`, not `prune`: every image here is tagged with its commit, so
-      # none is ever dangling, and plain prune left each deploy's image behind
-      # until the disk filled (#223). -a removes every image no container uses;
-      # rollback pulls its image back from ghcr.
+      # rollout.sh records the tag, recreates this environment's container,
+      # waits for /health on its own host and prunes unused images — or, while
+      # the environment is switched off, skips with a notice.
+      #
+      # The logout matters: the token dies with this job, and docker refuses
+      # even a public pull ("denied") while it holds a dead login for the
+      # registry, which would break `scripts/preprod.sh up` and every rollback.
       - name: Deploy
         run: |
           ssh "root@${{ secrets.DEPLOY_HOST }}" \
-            "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin \
-            && echo 'IMAGE_TAG=${{ github.sha }}' > /opt/dropin/.env \
-            && cd /opt/dropin \
-            && docker compose pull -q \
-            && docker compose up -d \
-            && docker image prune -af"
+            "trap 'docker logout ghcr.io >/dev/null' EXIT \
+            && echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin \
+            && GITHUB_ACTIONS=true bash /opt/dropin/rollout.sh '${{ matrix.env }}' '${{ github.sha }}'"

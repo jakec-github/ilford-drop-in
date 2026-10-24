@@ -238,6 +238,10 @@ func TestResolveRedirectURI(t *testing.T) {
 		got, err = resolveRedirectURI(uris, "prod", "")
 		require.NoError(t, err)
 		assert.Equal(t, "https://dropin.example.org/auth/callback", got)
+
+		got, err = resolveRedirectURI(uris, "preprod", "")
+		require.NoError(t, err)
+		assert.Equal(t, "https://dropin.example.org/auth/callback", got)
 	})
 
 	t.Run("falls back to the first URI when none matches the wanted locality", func(t *testing.T) {

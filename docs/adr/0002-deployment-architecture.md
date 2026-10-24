@@ -8,8 +8,15 @@ and one app container in which the Go server serves both the API and the
 embedded frontend build (`web/dist/`). Postgres is not on the box: it lives
 on Neon (managed serverless, London). GitHub Actions builds the image on
 every merge to main, tags it with the git SHA, pushes it to GHCR, and
-deploys over SSH with `docker compose pull && up -d` — so main *is* prod,
-and the droplet never builds anything or holds a git clone.
+deploys over SSH, and the droplet never builds anything or holds a git
+clone.
+
+Amended in issue #244: main is no longer prod. Every merge deploys the image
+to **preprod** first: a second app container on the same droplet, served by
+the same Caddy at `preprod.<domain>`, with its own Neon database, its own
+synthetic roster and rota sheets, and its own config in `env/preprod/`. Prod
+still deploys on every merge for now; issue #245 turns it into a manual
+promote of an image preprod has already run.
 
 ## Decisions and their reasons
 
@@ -31,6 +38,15 @@ and the droplet never builds anything or holds a git clone.
   second vendor and free-tier risk. Side benefit: the CLI rota workflow
   keeps running from a laptop, connecting straight to the prod database —
   nothing operational runs on the box.
+- **A preprod beside prod, on the same box** (issue #244). Merging an agent's
+  PR should not be the same as releasing it, and nothing resembling prod
+  existed to check a change on first. A second droplet would double the bill
+  for a box that sits idle; a second container costs memory, so preprod can be
+  switched off and on (`scripts/preprod.sh`) without touching prod. It must be
+  a subdomain rather than a path, because `/api`, `/auth` and `/health` sit at
+  the root of a host. Its data is synthetic — never a copy or branch of prod's —
+  and its roster's emails are addresses the owner controls, so a real email
+  from preprod reaches nobody else.
 - **Auto-deploy on merge, but gated until go-live.** The deploy step sits
   behind a repository variable, originally off because the server could not
   boot headless (it acquired a Sheets token interactively at startup) and
@@ -62,7 +78,10 @@ and the droplet never builds anything or holds a git clone.
   the Google web-client redirect URI), the three config files on the box,
   deploy gate flipped. (OIDC admin-sync, formerly a prerequisite, merged
   2026-07-18.)
-- Rollback is rerunning the deploy workflow on a previous SHA.
-- Everything assumes exactly one app instance: the in-memory volunteer
+- Rollback is rerunning the deploy workflow on a previous SHA (or only its
+  prod leg).
+- Two app containers share a 512 MiB box. Preprod is the one that gives way:
+  `scripts/preprod.sh down` stops it, and deploys skip it until `up`.
+- Everything assumes exactly one app instance per environment: the in-memory volunteer
   cache and run-migrations-at-startup are both only safe with a single
   replica. Scaling out would reopen both.

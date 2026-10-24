@@ -133,7 +133,7 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 		secret:           []byte(srv.SessionSecret),
 		organiserEmails:  allowlist(srv.OrganiserEmails),
 		rotaEditorEmails: allowlist(srv.RotaEditorEmails),
-		secure:           env == "prod",
+		secure:           config.Hosted(env),
 		logger:           logger,
 		syncVolunteers:   syncVolunteers,
 		basePath:         srv.BasePath,
@@ -393,8 +393,8 @@ func (a *Authenticator) clearCookie(w http.ResponseWriter, name, path string) {
 // the OAuth client. A non-empty preferred URI wins, but only if it is one of the
 // registered ones — Google rejects anything else, so failing here gives a far
 // clearer error than the consent screen would. Otherwise the URI is chosen by
-// locality: a localhost URI for dev (env != "prod"), a non-localhost URI for
-// prod, falling back to the first registered URI if none matches.
+// locality: a non-localhost URI for a hosted environment (config.Hosted), a
+// localhost one otherwise, falling back to the first registered URI if none matches.
 func resolveRedirectURI(uris []string, env, preferred string) (string, error) {
 	if len(uris) == 0 {
 		return "", fmt.Errorf("no redirect URI registered with the OAuth client for env %q", env)
@@ -407,7 +407,7 @@ func resolveRedirectURI(uris []string, env, preferred string) (string, error) {
 		return "", fmt.Errorf("redirect URI %q is not registered with the OAuth client; registered: %v", preferred, uris)
 	}
 
-	wantLocal := env != "prod"
+	wantLocal := !config.Hosted(env)
 	for _, u := range uris {
 		if isLocalhostURI(u) == wantLocal {
 			return u, nil
