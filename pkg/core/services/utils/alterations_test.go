@@ -11,9 +11,9 @@ import (
 func TestApplyAlterations_RemoveVolunteer(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
-			{ID: "a2", VolunteerID: "bob", Role: "Service volunteer", ShiftID: "shift-1"},
-			{ID: "a3", VolunteerID: "charlie", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-team-lead", ShiftID: "shift-1"},
+			{ID: "a2", VolunteerID: "bob", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+			{ID: "a3", VolunteerID: "charlie", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -32,8 +32,8 @@ func TestApplyAlterations_RemoveVolunteer(t *testing.T) {
 func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
-			{ID: "a2", CustomEntry: "External John", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-team-lead", ShiftID: "shift-1"},
+			{ID: "a2", CustomEntry: "External John", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -50,19 +50,19 @@ func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 func TestApplyAlterations_AddVolunteer(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-team-lead", ShiftID: "shift-1"},
 		},
 	}
 
 	alterations := []db.Alteration{
-		{ID: "alt1", ShiftID: "shift-1", Direction: "add", VolunteerID: "bob", Role: "Service volunteer", SetTime: "2025-01-01T00:00:00Z"},
+		{ID: "alt1", ShiftID: "shift-1", Direction: "add", VolunteerID: "bob", RoleID: "role-service-volunteer", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
 	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 2)
 	assert.Equal(t, "bob", result["shift-1"][1].VolunteerID)
-	assert.Equal(t, "Service volunteer", result["shift-1"][1].Role)
+	assert.Equal(t, "role-service-volunteer", result["shift-1"][1].RoleID)
 	assert.Equal(t, "shift-1", result["shift-1"][1].ShiftID)
 }
 
@@ -82,32 +82,32 @@ func TestApplyAlterations_AddWithoutARoleKeepsNone(t *testing.T) {
 	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 1)
-	assert.Equal(t, "", result["shift-1"][0].Role)
+	assert.Equal(t, "", result["shift-1"][0].RoleID)
 }
 
 func TestApplyAlterations_AddCustomEntry(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Team lead", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-team-lead", ShiftID: "shift-1"},
 		},
 	}
 
 	alterations := []db.Alteration{
-		{ID: "alt1", ShiftID: "shift-1", Direction: "add", CustomValue: "External John", Role: "Service volunteer", SetTime: "2025-01-01T00:00:00Z"},
+		{ID: "alt1", ShiftID: "shift-1", Direction: "add", CustomValue: "External John", RoleID: "role-service-volunteer", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
 	result := ApplyAlterations(allocationsByShiftID, alterations)
 
 	assert.Len(t, result["shift-1"], 2)
 	assert.Equal(t, "External John", result["shift-1"][1].CustomEntry)
-	assert.Equal(t, "Service volunteer", result["shift-1"][1].Role)
+	assert.Equal(t, "role-service-volunteer", result["shift-1"][1].RoleID)
 	assert.Equal(t, "shift-1", result["shift-1"][1].ShiftID)
 }
 
 func TestApplyAlterations_AppliedInSetTimeOrder(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -127,7 +127,7 @@ func TestApplyAlterations_AppliedInSetTimeOrder(t *testing.T) {
 func TestApplyAlterations_RemoveNonExistentIsNoOp(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -145,11 +145,11 @@ func TestApplyAlterations_RemoveNonExistentIsNoOp(t *testing.T) {
 func TestApplyAlterations_MultipleShifts(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
-			{ID: "a2", VolunteerID: "bob", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+			{ID: "a2", VolunteerID: "bob", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 		"shift-2": {
-			{ID: "a3", VolunteerID: "charlie", Role: "Service volunteer", ShiftID: "shift-2"},
+			{ID: "a3", VolunteerID: "charlie", RoleID: "role-service-volunteer", ShiftID: "shift-2"},
 		},
 	}
 
@@ -171,7 +171,7 @@ func TestApplyAlterations_MultipleShifts(t *testing.T) {
 func TestApplyAlterations_EmptyAlterations(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 	}
 
@@ -189,14 +189,14 @@ func TestApplyAlterations_EmptyAlterations(t *testing.T) {
 func TestApplyAlterations_RemoveBeforeAddAtTheSameInstant(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {
-			{ID: "a1", VolunteerID: "alice", Role: "Service volunteer", ShiftID: "shift-1"},
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
 		},
 	}
 
 	// Listed add-first, which is the order the insert produced and the order a
 	// query ordering only by set_time may hand back.
 	alterations := []db.Alteration{
-		{ID: "alt2", ShiftID: "shift-1", Direction: "add", VolunteerID: "alice", Role: "Team lead", SetTime: "2025-01-01T00:00:00Z"},
+		{ID: "alt2", ShiftID: "shift-1", Direction: "add", VolunteerID: "alice", RoleID: "role-team-lead", SetTime: "2025-01-01T00:00:00Z"},
 		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", VolunteerID: "alice", SetTime: "2025-01-01T00:00:00Z"},
 	}
 
@@ -204,5 +204,5 @@ func TestApplyAlterations_RemoveBeforeAddAtTheSameInstant(t *testing.T) {
 
 	assert.Len(t, result["shift-1"], 1)
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
-	assert.Equal(t, "Team lead", result["shift-1"][0].Role)
+	assert.Equal(t, "role-team-lead", result["shift-1"][0].RoleID)
 }

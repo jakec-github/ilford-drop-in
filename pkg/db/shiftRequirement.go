@@ -11,11 +11,8 @@ import (
 // ShiftRequirement is one entry of one Shift's stored Shape: how many Seats of
 // one Role that Shift asks for (issue #137).
 //
-// The Role travels as an id, with a foreign key behind it, because a Shape is a
-// live question — what this Shift still needs — and a live question has to
-// survive a rename. The rows that record what *happened* do the opposite and
-// keep the name (allocation.role, alteration.role, preallocation.role), so a
-// rota already made reads as it was made.
+// The Role travels as an id, with a foreign key behind it, so a Shape survives
+// a rename. Every other row referencing a Role does the same (issue #222).
 type ShiftRequirement struct {
 	ShiftID string // UUID, references shift(id)
 	RoleID  string // UUID, references role(id)

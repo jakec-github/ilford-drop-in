@@ -110,6 +110,7 @@ func TestPreallocationInsertReadDelete(t *testing.T) {
 // rejection.
 func TestPreallocationFrozenAfterAllocation(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
@@ -124,7 +125,7 @@ func TestPreallocationFrozenAfterAllocation(t *testing.T) {
 	}))
 
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Service volunteer", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"}},
 		rota.ID, time.Now()))
 
 	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {

@@ -32,7 +32,7 @@ import (
 // through the availability window.
 func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	database, _ := dbtest.New(t)
-	dbtest.SeedRoles(t, database)
+	roleIDs := dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
@@ -50,8 +50,8 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 		SolverStatus: "OPTIMAL",
 		Diagnostics:  []byte(`{}`),
 	}, []db.DraftAllocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Service volunteer", CustomEntry: "External Org"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: second.ID, RoleID: roleIDs["Service volunteer"], CustomEntry: "External Org"},
 	}))
 
 	// The shift listing, anonymously. The Shifts are there — they exist whether
@@ -108,7 +108,7 @@ func TestDraftRotaAllocationReachesNoPublicEndpoint(t *testing.T) {
 	// silence above is about drafts, not about a feed that never emits an event
 	// or a listing that never names anybody.
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
 	}, rota.ID, time.Now().UTC()))
 
 	rec = doRequest(t, handler, http.MethodGet, "/api/shifts", "")
@@ -145,7 +145,7 @@ func TestSolveDraftRotaAllocationSaysWhichStepIsMissing(t *testing.T) {
 // a draft beside it could only contradict it. A conflict, not a fault.
 func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 	database, _ := dbtest.New(t)
-	dbtest.SeedRoles(t, database)
+	roleIDs := dbtest.SeedRoles(t, database)
 	dbtest.SeedRotaDefaults(t, database)
 	ctx := context.Background()
 	handler := NewHandler(database, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
@@ -154,7 +154,7 @@ func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	require.NoError(t, database.InsertDefinedRota(ctx, &rota, []db.Shift{shift}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
 	}, rota.ID, time.Now().UTC()))
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/draft-rota-allocation", "", organiserCookie())

@@ -121,16 +121,18 @@ func NewRoles(roles []Role) Roles {
 	return Roles{ordered: ordered, byName: byName, byID: byID}
 }
 
-// ByName looks a Role up by name. Names are matched exactly: the roster, the
-// stored Roles and the solver all speak the same string.
+// ByName looks a Role up by name. Names are matched exactly. Only the two
+// things that speak in names use it: the roster, which spells a Role out in a
+// cell, and the solver, whose contract names the Roles it was handed. Anything
+// stored references a Role by id.
 func (r Roles) ByName(name string) (Role, bool) {
 	role, ok := r.byName[name]
 	return role, ok
 }
 
-// ByID looks a Role up by its stable id. That is how anything long-lived
-// references a Role — a Standing Preallocation outlives any number of renames —
-// where a per-rota row records the name it was made under.
+// ByID looks a Role up by its stable id, which is how every stored row
+// references one (issue #222): a rename changes what a Role is called, never
+// which Role a row means.
 func (r Roles) ByID(id string) (Role, bool) {
 	role, ok := r.byID[id]
 	return role, ok

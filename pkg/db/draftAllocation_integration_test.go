@@ -28,14 +28,15 @@ func draftFixture(t *testing.T, database *db.DB) (db.Rotation, db.Shift, db.Shif
 // window, and the Seats it placed, scoped by shift the way allocations are.
 func TestReplaceDraftRotaAllocation(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rota, first, second := draftFixture(t, database)
 
 	solvedAt := time.Date(2026, 8, 5, 9, 30, 0, 0, time.UTC)
 	seats := []db.DraftAllocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Service volunteer", CustomEntry: "External Org"},
-		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Team lead", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Service volunteer"], CustomEntry: "External Org"},
+		{ID: uuid.New().String(), ShiftID: second.ID, RoleID: roleIDs["Team lead"], VolunteerID: "bob"},
 	}
 	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
 		RotaID:         rota.ID,
@@ -91,6 +92,7 @@ func TestReplaceDraftRotaAllocation(t *testing.T) {
 // forever.
 func TestReplaceDraftRotaAllocationRecordsFreshness(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rota, first, _ := draftFixture(t, database)
 
@@ -103,7 +105,7 @@ func TestReplaceDraftRotaAllocationRecordsFreshness(t *testing.T) {
 		SeatsAsked:   10,
 		SeatsFilled:  7,
 	}, []db.DraftAllocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
 	}))
 
 	draft, err := database.GetDraftRotaAllocation(ctx, rota.ID)
@@ -157,6 +159,7 @@ func TestGetDraftRotaAllocationUnsolved(t *testing.T) {
 // makes a draft a whole rota rather than an accumulation of guesses.
 func TestReplaceDraftRotaAllocationReplacesTheWholeDraft(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rota, first, second := draftFixture(t, database)
 
@@ -167,8 +170,8 @@ func TestReplaceDraftRotaAllocationReplacesTheWholeDraft(t *testing.T) {
 		SolverStatus: "OPTIMAL",
 		Diagnostics:  []byte(`{}`),
 	}, []db.DraftAllocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Team lead", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: second.ID, RoleID: roleIDs["Team lead"], VolunteerID: "bob"},
 	}))
 
 	// The rota turns out infeasible on the next solve, so it staffs nobody.
@@ -196,11 +199,12 @@ func TestReplaceDraftRotaAllocationReplacesTheWholeDraft(t *testing.T) {
 // the write refuses, under the same rotation row lock allocation itself takes.
 func TestReplaceDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rota, first, _ := draftFixture(t, database)
 
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
 	}, rota.ID, time.Now().UTC()))
 
 	err := database.ReplaceDraftRotaAllocation(ctx, db.DraftRotaAllocation{
@@ -210,7 +214,7 @@ func TestReplaceDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 		SolverStatus: "OPTIMAL",
 		Diagnostics:  []byte(`{}`),
 	}, []db.DraftAllocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "bob"},
 	})
 
 	require.Error(t, err)
@@ -231,6 +235,7 @@ func TestReplaceDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 // for a rota nobody can draft again.
 func TestInsertAllocationsAndSetAllocatedClearsTheDraft(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rota, first, second := draftFixture(t, database)
 
@@ -241,13 +246,13 @@ func TestInsertAllocationsAndSetAllocatedClearsTheDraft(t *testing.T) {
 		SolverStatus: "OPTIMAL",
 		Diagnostics:  []byte(`{}`),
 	}, []db.DraftAllocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Team lead", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: second.ID, RoleID: roleIDs["Team lead"], VolunteerID: "bob"},
 	}))
 
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), ShiftID: second.ID, Role: "Team lead", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: second.ID, RoleID: roleIDs["Team lead"], VolunteerID: "bob"},
 	}, rota.ID, time.Now().UTC()))
 
 	draft, err := database.GetDraftRotaAllocation(ctx, rota.ID)
@@ -269,16 +274,17 @@ func TestInsertAllocationsAndSetAllocatedClearsTheDraft(t *testing.T) {
 // draft at the same moment meet here.
 func TestInsertAllocationsAndSetAllocatedRefusesASecondAllocation(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 	rota, first, _ := draftFixture(t, database)
 
 	firstAllocated := time.Now().UTC()
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
 	}, rota.ID, firstAllocated))
 
 	err := database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roleIDs["Team lead"], VolunteerID: "bob"},
 	}, rota.ID, time.Now().UTC())
 
 	require.Error(t, err)

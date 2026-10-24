@@ -317,11 +317,11 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 		},
 		shifts: shiftsOnDates("rota-0", "2026-06-29", "2026-07-06"),
 		allocations: []db.Allocation{
-			{ID: "a-0", ShiftID: "2026-06-29", VolunteerID: "alice", Role: "Service volunteer"},
-			{ID: "a-1", ShiftID: "2026-07-06", VolunteerID: "alice", Role: "Service volunteer"},
-			{ID: "a-2", ShiftID: "2026-07-06", VolunteerID: "bob", Role: "Service volunteer"},
-			{ID: "a-3", ShiftID: "2026-07-06", VolunteerID: "diana", Role: "Service volunteer"},
-			{ID: "a-4", ShiftID: "2026-07-06", VolunteerID: "eve", Role: "Service volunteer"},
+			{ID: "a-0", ShiftID: "2026-06-29", VolunteerID: "alice", RoleID: "role-service-volunteer"},
+			{ID: "a-1", ShiftID: "2026-07-06", VolunteerID: "alice", RoleID: "role-service-volunteer"},
+			{ID: "a-2", ShiftID: "2026-07-06", VolunteerID: "bob", RoleID: "role-service-volunteer"},
+			{ID: "a-3", ShiftID: "2026-07-06", VolunteerID: "diana", RoleID: "role-service-volunteer"},
+			{ID: "a-4", ShiftID: "2026-07-06", VolunteerID: "eve", RoleID: "role-service-volunteer"},
 		},
 	}
 
@@ -513,16 +513,20 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 	require.Len(t, shift.AllocatedGroups, 2)
 
 	// convertToDBAllocations reuses the rebuilt shifts: one row per filled
-	// Seat, each carrying its own Role.
-	dbAllocations, err := convertToDBAllocations(map[string]string{"2026-07-13": "shift-1"}, shifts)
+	// Seat, each carrying its own Role by id.
+	contractRoles := model.NewRoles([]model.Role{
+		{ID: "role-lead", Name: "Team lead", Priority: 1},
+		{ID: "role-service", Name: "Service volunteer", Priority: 2},
+	})
+	dbAllocations, err := convertToDBAllocations(map[string]string{"2026-07-13": "shift-1"}, shifts, contractRoles)
 	require.NoError(t, err)
 	require.Len(t, dbAllocations, 4)
 	roles := map[string]int{}
 	for _, a := range dbAllocations {
 		assert.Equal(t, "shift-1", a.ShiftID)
-		roles[a.Role]++
+		roles[a.RoleID]++
 	}
-	assert.Equal(t, map[string]int{"Team lead": 1, "Service volunteer": 3}, roles)
+	assert.Equal(t, map[string]int{"role-lead": 1, "role-service": 3}, roles)
 
 	// Unknown IDs from the solver are rejected.
 	output.Shifts[0].Assignments = []allocator.CpsatAssignment{

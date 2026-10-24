@@ -40,7 +40,7 @@ func newHandlerAtBasePath(store *mockStore, base string) http.Handler {
 func basePathStore() *mockStore {
 	return &mockStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2026-01-11", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2026-01-11", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 	}
 }
@@ -56,7 +56,7 @@ func TestBasePathMovesWhatLeavesTheApp(t *testing.T) {
 
 			for path, want := range map[string]int{
 				base + "/":                     http.StatusOK,
-				base + "/organiser/allocation":     http.StatusOK,
+				base + "/organiser/allocation": http.StatusOK,
 				base + "/availability/a-token": http.StatusOK,
 				base + "/calendars/alice.ics":  http.StatusOK,
 				base + "/chunk-abc.js":         http.StatusOK,

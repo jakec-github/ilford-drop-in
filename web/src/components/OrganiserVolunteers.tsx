@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import Button from "../ui/Button";
-import type { RoleColourOf } from "../hooks/useRoles";
+import type { RoleColourOf, RoleIdOf } from "../hooks/useRoles";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers, type SyncState } from "../hooks/useVolunteers";
 import type { Volunteer } from "../types";
@@ -98,9 +98,13 @@ function Count({
 function RosterRow({
   volunteer,
   colourOf,
+  idOf,
 }: {
   volunteer: Volunteer;
   colourOf: RoleColourOf;
+  // The roster spells a Role out by name, and a colour is the Role's own, so
+  // the name is read as the Role it names before it is coloured.
+  idOf: RoleIdOf;
 }) {
   return (
     <li
@@ -115,7 +119,7 @@ function RosterRow({
           <span
             key={role}
             className="roster-tag roster-tag--role"
-            data-role-colour={colourOf(role) ?? undefined}
+            data-role-colour={colourOf(idOf(role) ?? "") ?? undefined}
           >
             {role}
           </span>
@@ -141,7 +145,7 @@ export default function OrganiserVolunteers() {
   const { volunteers, error, syncState, sync } = useVolunteers();
   // A Role wears its configured colour here as well as on the rota, so a lead
   // looks like a lead wherever they appear.
-  const { colourOf } = useRoles();
+  const { colourOf, idOf } = useRoles();
   const counts = useMemo(
     () => (volunteers ? countRoster(volunteers) : null),
     [volunteers],
@@ -200,7 +204,12 @@ export default function OrganiserVolunteers() {
           </p>
           <ul className="roster">
             {volunteers.map((v) => (
-              <RosterRow key={v.id} volunteer={v} colourOf={colourOf} />
+              <RosterRow
+                key={v.id}
+                volunteer={v}
+                colourOf={colourOf}
+                idOf={idOf}
+              />
             ))}
           </ul>
         </>

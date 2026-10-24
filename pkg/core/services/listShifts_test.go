@@ -133,9 +133,9 @@ func TestListShifts_BaseAllocations(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a2", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
-			{ID: "a3", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2025-01-05", RoleID: "role-team-lead", VolunteerID: "alice"},
+			{ID: "a3", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 			{ID: "a4", ShiftID: "2025-01-05", CustomEntry: "External Org"},
 		},
 	}
@@ -182,7 +182,7 @@ func TestListShifts_UnallocatedRotaShiftsAppear(t *testing.T) {
 			{Shift: db.Shift{Date: "2025-01-19", RotaID: "rota-2"}, Allocated: false},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 	}
 
@@ -209,7 +209,7 @@ func TestListShifts_BaseAllocationsReportAllocated(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 	}
 
@@ -266,7 +266,7 @@ func TestListShifts_AlterationsApplied(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 		alterations: []db.Alteration{
 			{ID: "alt1", ShiftID: "2025-01-05", Direction: "remove", VolunteerID: "bob", SetTime: "2025-01-01T10:00:00Z"},
@@ -291,9 +291,9 @@ func TestListShifts_DateFilters(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2025-01-19", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a3", ShiftID: "2025-01-19", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -346,8 +346,8 @@ func TestListShifts_ClosedShift(t *testing.T) {
 			{Shift: db.Shift{Date: "2025-01-12"}, Allocated: true},
 		},
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "a2", ShiftID: "2025-01-12", Role: "Service volunteer", VolunteerID: "bob"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "a2", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		},
 	}
 
@@ -367,7 +367,7 @@ func TestListShifts_UnknownVolunteerDegradesToRawID(t *testing.T) {
 
 	store := &mockListShiftsStore{
 		allocations: []db.Allocation{
-			{ID: "a1", ShiftID: "2025-01-05", Role: "Service volunteer", VolunteerID: "ghost-id"},
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "ghost-id"},
 		},
 	}
 

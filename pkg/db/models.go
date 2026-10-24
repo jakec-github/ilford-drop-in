@@ -93,10 +93,14 @@ type AvailabilityGeneration struct {
 // Allocation represents a database allocation record. It is keyed solely by
 // ShiftID; rota and date live on the referenced shift, never denormalised here
 // (ADR 0001).
+//
+// RoleID rather than a Role name (issue #222). A Role is permanent, so the id
+// never dangles, and a rename is a better label for the same job: a past rota
+// reads under the name the Role has today, the same name its Shape reads under.
 type Allocation struct {
 	ID          string
 	ShiftID     string // UUID
-	Role        string
+	RoleID      string // UUID, references role(id)
 	VolunteerID string
 	CustomEntry string
 }
@@ -141,7 +145,7 @@ type DraftRotaAllocation struct {
 type DraftAllocation struct {
 	ID          string // UUID
 	ShiftID     string // UUID
-	Role        string
+	RoleID      string // UUID, references role(id)
 	VolunteerID string
 	CustomEntry string
 }
@@ -152,11 +156,8 @@ type DraftAllocation struct {
 // allocation row shape — a volunteer pin sets VolunteerID, a custom entry sets
 // CustomValue, and RoleID names the Seat it fills.
 //
-// RoleID rather than a Role name, unlike Allocation and Alteration beside it
-// (issue #195). Those two record what happened and keep the name they happened
-// under; a pin is a promise about what the solver must still do, so it is a
-// live question like a Shift's Shape and has to survive a rename the way one
-// does.
+// RoleID rather than a Role name (issue #195), like every other reference to a
+// Role: a rename must not orphan the Seat a pin promises.
 //
 // There is one kind of these however it came to exist (issue #131): a row an
 // Organiser added by hand and a row a Standing Preallocation seeded at definition
@@ -207,5 +208,8 @@ type Alteration struct {
 	CustomValue string // nullable
 	CoverID     string // UUID
 	SetTime     string // TIMESTAMPTZ
-	Role        string // nullable - role for "add" alterations
+	// The Role whoever an "add" brings in takes, by id like Allocation's.
+	// Empty for a removal, and for an add recorded before 004 gave alterations
+	// a Role at all.
+	RoleID string // nullable UUID, references role(id)
 }

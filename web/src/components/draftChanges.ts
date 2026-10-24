@@ -64,7 +64,7 @@ export function compareDrafts(
           name: assignee.name,
           role: assignee.role,
         });
-      } else if (was.role !== assignee.role) {
+      } else if (was.roleId !== assignee.roleId) {
         changes.push({
           shiftId,
           kind: "role",

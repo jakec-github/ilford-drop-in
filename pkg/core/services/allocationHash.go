@@ -25,6 +25,9 @@ import (
 // rota — a volunteer's name, a Shift's hours — throwing confirmations that mean
 // nothing.
 //
+// The Role is in it by id, so renaming one between looking at the draft and
+// allocating it is not a different rota: the same people are in the same jobs.
+//
 // Two things are deliberately not in it. Seat ids, because every solve mints
 // fresh ones and they say nothing about who is working: hashing them would make
 // every confirmation fail. And order, because the solver's canonical order
@@ -34,11 +37,11 @@ import (
 func hashAllocations(seats []db.Allocation) string {
 	lines := make([]string, 0, len(seats))
 	for _, seat := range seats {
-		// Tab-separated because none of these fields can contain one: ids and
-		// Role names come from this app, and a custom entry is a name typed
-		// into a text field. Without a separator that cannot appear in a field,
+		// Tab-separated because none of these fields can contain one: the ids
+		// come from this app, and a custom entry is a name typed into a text
+		// field. Without a separator that cannot appear in a field,
 		// two different rotas could write the same line.
-		lines = append(lines, strings.Join([]string{seat.ShiftID, seat.Role, seat.VolunteerID, seat.CustomEntry}, "\t"))
+		lines = append(lines, strings.Join([]string{seat.ShiftID, seat.RoleID, seat.VolunteerID, seat.CustomEntry}, "\t"))
 	}
 	sort.Strings(lines)
 

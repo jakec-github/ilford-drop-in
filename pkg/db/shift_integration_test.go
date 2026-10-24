@@ -18,6 +18,7 @@ import (
 // allocated_datetime, and that the from/to bounds are inclusive (issue #38).
 func TestGetShiftsInRange(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	// rota1 is allocated; rota2 is minted but left unallocated.
@@ -28,7 +29,7 @@ func TestGetShiftsInRange(t *testing.T) {
 		dbtest.Shift(rota1.ID, "2026-08-09"),
 	}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift1.ID, Role: "team-lead", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift1.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"}},
 		rota1.ID, time.Now()))
 
 	rota2 := &db.Rotation{ID: uuid.New().String()}
@@ -62,6 +63,7 @@ func TestGetShiftsInRange(t *testing.T) {
 // an empty id set is a no-op.
 func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
@@ -69,8 +71,8 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 	shiftB := dbtest.Shift(rota.ID, "2026-08-09")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: shiftA.ID, Role: "team-lead", VolunteerID: "alice"},
-		{ID: uuid.New().String(), ShiftID: shiftB.ID, Role: "volunteer", VolunteerID: "bob"},
+		{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: shiftB.ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "bob"},
 	}, rota.ID, time.Now()))
 
 	// An alteration on shiftB only; its cover_id must reference the cover row.
@@ -120,6 +122,7 @@ func TestGetAllocationsAndAlterationsByShiftIDs(t *testing.T) {
 // trip on the resolved-via-subselect shift_id.
 func TestInsertAllocationsUnknownShiftIDFails(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
@@ -128,7 +131,7 @@ func TestInsertAllocationsUnknownShiftIDFails(t *testing.T) {
 	}, nil, nil))
 
 	err := database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: uuid.New().String(), Role: "volunteer", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: uuid.New().String(), RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"},
 	}, rota.ID, time.Now())
 	require.Error(t, err, "an unknown ShiftID must be rejected by the FK")
 
@@ -390,13 +393,14 @@ func TestShiftTimesConstraints(t *testing.T) {
 // which is what the allocation here is for.
 func TestSetShiftTimes(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Team lead", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleIDs["Team lead"], VolunteerID: "alice"}},
 		rota.ID, time.Now()))
 
 	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {

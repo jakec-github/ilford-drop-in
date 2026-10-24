@@ -1,6 +1,7 @@
 # Domain settings live in the app, not in the config file
 
-Status: accepted
+Status: accepted. Amended 2026-10-04 (#222): every stored reference to a Role
+is by id — see "Roles get an identity separate from their name".
 
 Everything an admin decides about how the drop-in runs — the Roles that exist,
 the default Shape, shift times, which optional allocator rules apply, the
@@ -38,11 +39,18 @@ part of the system most expected to change.
   still offered?" question at any of the dozen places a Role is read, and no
   reference that can dangle. The cost is a picker that accumulates Roles the
   drop-in has stopped using, which is a cosmetic problem and a cheap one to
-  solve later if it ever bites. `allocation.role` and `alteration.role` still
-  keep the name as `TEXT`, so a past rota reads as it was made even after a
-  rename. `preallocation` does not: it was amended to `role_id` in issue #195,
-  because a pin is a promise the solver has still to keep rather than a record
-  of what happened, and a rename left it naming a Seat no Shape had.
+  solve later if it ever bites.
+
+  *Amended 2026-10-04 (#222):* every row that references a Role does so by id —
+  `allocation`, `alteration` and `draft_allocation` as well as the Shapes and
+  pins. A rename is a better label for the same job, so a past rota reads under
+  the Role's name today; a different job is a new Role. *Superseded:* the
+  history tables kept the name as `TEXT` "so a past rota reads as it was made".
+  It never did: the Shift's Shape, by id, read under the new name while its
+  people read under the old one, and every join between the two — the rota
+  page's groups, the published sheet's columns, the calendar, the draft's
+  filled-Seat count — quietly missed. `preallocation` moved to `role_id` first,
+  in #195.
 
 - **Renaming a Role is allowed but flagged.** The roster is a Google Sheet and
   a volunteer's held Roles are names in a cell, so the app owns only half of

@@ -182,8 +182,12 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 // shift_id FK on insert (ADR 0001).
 //
 // One filled Seat is one row, whatever Role it is: the solver decided the
-// Role, so there is nothing to work out here.
-func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator.Shift) ([]db.Allocation, error) {
+// Role, so there is nothing to work out here but its id. The solver speaks Role
+// names and a row stores the Role itself (issue #222), so roles must be the
+// table the solve was assembled from: names are unique within it, and a name it
+// does not have is a Seat the solver invented, which fails as loudly as a date
+// with no Shift.
+func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator.Shift, roles model.Roles) ([]db.Allocation, error) {
 	allocations := make([]db.Allocation, 0)
 
 	for _, shift := range shifts {
@@ -193,6 +197,10 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 		}
 
 		for _, assignment := range shift.Assignments {
+			role, ok := roles.ByName(assignment.Role)
+			if !ok {
+				return nil, fmt.Errorf("solver filled a %q seat on %s, which is not a role it was given", assignment.Role, shift.Date)
+			}
 			volunteerID := ""
 			if assignment.Volunteer != nil {
 				volunteerID = assignment.Volunteer.ID
@@ -200,7 +208,7 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 			allocations = append(allocations, db.Allocation{
 				ID:          uuid.New().String(),
 				ShiftID:     shiftID,
-				Role:        assignment.Role,
+				RoleID:      role.ID,
 				VolunteerID: volunteerID,
 				CustomEntry: assignment.Custom,
 			})

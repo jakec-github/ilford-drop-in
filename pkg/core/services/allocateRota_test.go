@@ -140,10 +140,10 @@ func TestAllocateRotaInFlightCommitsTheRotaItWasShown(t *testing.T) {
 	// screen shows once allocating has succeeded.
 	byShift := map[string][]string{}
 	for _, seat := range store.insertedAllocations {
-		byShift[seat.ShiftID] = append(byShift[seat.ShiftID], seat.Role+":"+seat.VolunteerID)
+		byShift[seat.ShiftID] = append(byShift[seat.ShiftID], seat.RoleID+":"+seat.VolunteerID)
 	}
-	assert.ElementsMatch(t, []string{"Team lead:vol-1", "Service volunteer:vol-2"}, byShift["2026-08-02"])
-	assert.ElementsMatch(t, []string{"Service volunteer:vol-1"}, byShift["2026-08-09"])
+	assert.ElementsMatch(t, []string{"role-team-lead:vol-1", "role-service-volunteer:vol-2"}, byShift["2026-08-02"])
+	assert.ElementsMatch(t, []string{"role-service-volunteer:vol-1"}, byShift["2026-08-09"])
 }
 
 // The whole point of confirming by output hash: if re-solving answers something
@@ -343,7 +343,7 @@ func TestAllocateRotaInFlightIgnoresAClosedShiftWithNoShape(t *testing.T) {
 
 	outcome, err := AllocateRotaInFlight(
 		context.Background(), store, volunteers, testCfg, zap.NewNop(),
-		hashAllocations([]db.Allocation{{ShiftID: "2026-08-02", Role: "Team lead", VolunteerID: "vol-1"}}),
+		hashAllocations([]db.Allocation{{ShiftID: "2026-08-02", RoleID: "role-team-lead", VolunteerID: "vol-1"}}),
 		stubSolver(t, solved),
 	)
 

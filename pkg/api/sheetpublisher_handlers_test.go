@@ -120,7 +120,7 @@ func TestChangesThatCouldShowOnTheSheetPublishIt(t *testing.T) {
 		{
 			name: "a change to who is on a shift", store: alterationTestStore,
 			method: http.MethodPost, path: "/api/alterations",
-			body:   `{"date":"2026-01-11","out":"bob","in":"charlie","role":"Service volunteer","reason":"Holiday cover"}`,
+			body:   `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`,
 			status: http.StatusCreated, publishes: true,
 		},
 		{

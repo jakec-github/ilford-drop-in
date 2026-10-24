@@ -209,8 +209,10 @@ func TestAnAllocatedRotaIsNeverStamped(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 	rota, first, _ := inputsFixture(t, database)
+	roles, err := database.ListRoles(ctx)
+	require.NoError(t, err)
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx, []db.Allocation{
-		{ID: uuid.New().String(), ShiftID: first.ID, Role: "Team lead", VolunteerID: "alice"},
+		{ID: uuid.New().String(), ShiftID: first.ID, RoleID: roles[0].ID, VolunteerID: "alice"},
 	}, rota.ID, time.Now().UTC()))
 
 	// A time change is all that is still allowed on an allocated rota's Shift,

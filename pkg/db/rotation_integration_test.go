@@ -17,6 +17,7 @@ import (
 // unallocated Rotation, or nothing at all (issue #139).
 func TestGetRotaInFlight(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	// Nothing defined is nothing in flight, and not an error: it is the
@@ -43,7 +44,7 @@ func TestGetRotaInFlight(t *testing.T) {
 	assert.Equal(t, allocated.ID, inFlight.ID)
 
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: allocatedShift.ID, Role: "Service volunteer", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: allocatedShift.ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"}},
 		allocated.ID, time.Now()))
 
 	// Now only the later rota is unallocated, and its span and size are derived
@@ -156,12 +157,12 @@ func TestDiscardRota(t *testing.T) {
 	// discard does not leave a draft naming a rota that is not there.
 	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx,
 		db.DraftRotaAllocation{RotaID: keeper.ID, SolvedAt: time.Now(), Success: true, SolverStatus: "OPTIMAL", Diagnostics: []byte(`{}`)},
-		[]db.DraftAllocation{{ID: uuid.New().String(), ShiftID: keeperShift.ID, Role: roles[0].Name, VolunteerID: "alice"}}))
+		[]db.DraftAllocation{{ID: uuid.New().String(), ShiftID: keeperShift.ID, RoleID: roles[0].ID, VolunteerID: "alice"}}))
 	require.NoError(t, database.ReplaceDraftRotaAllocation(ctx,
 		db.DraftRotaAllocation{RotaID: doomed.ID, SolvedAt: time.Now(), Success: true, SolverStatus: "OPTIMAL", Diagnostics: []byte(`{}`)},
 		[]db.DraftAllocation{
-			{ID: uuid.New().String(), ShiftID: doomedShifts[0].ID, Role: roles[0].Name, VolunteerID: "bob"},
-			{ID: uuid.New().String(), ShiftID: doomedShifts[1].ID, Role: roles[0].Name, VolunteerID: "alice"},
+			{ID: uuid.New().String(), ShiftID: doomedShifts[0].ID, RoleID: roles[0].ID, VolunteerID: "bob"},
+			{ID: uuid.New().String(), ShiftID: doomedShifts[1].ID, RoleID: roles[0].ID, VolunteerID: "alice"},
 		}))
 
 	discarded, err := database.DiscardRota(ctx, doomed.ID)
@@ -237,13 +238,14 @@ func TestDiscardRota(t *testing.T) {
 // overtaken by an allocation landing a moment later.
 func TestDiscardRota_RefusesAnAllocatedRota(t *testing.T) {
 	database, _ := dbtest.New(t)
+	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 	require.NoError(t, database.InsertAllocationsAndSetAllocated(ctx,
-		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, Role: "Service volunteer", VolunteerID: "alice"}},
+		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"}},
 		rota.ID, time.Now()))
 
 	discarded, err := database.DiscardRota(ctx, rota.ID)

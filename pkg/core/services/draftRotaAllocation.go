@@ -153,7 +153,7 @@ func SolveDraftRotaAllocation(
 	// is allocated — so there is one converter and this lifts its answer across
 	// rather than walking the solved shifts a second way. Two walks would be two
 	// chances to disagree about what the solver said.
-	allocations, err := convertToDBAllocations(solve.shiftIDByDate, solve.solvedShifts)
+	allocations, err := convertToDBAllocations(solve.shiftIDByDate, solve.solvedShifts, solve.roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert the solved rota: %w", err)
 	}
@@ -186,7 +186,7 @@ func storeSolveAsDraft(
 		seats = append(seats, db.DraftAllocation{
 			ID:          a.ID,
 			ShiftID:     a.ShiftID,
-			Role:        a.Role,
+			RoleID:      a.RoleID,
 			VolunteerID: a.VolunteerID,
 			CustomEntry: a.CustomEntry,
 		})
@@ -371,7 +371,7 @@ func DraftRotaAllocationInFlight(
 		allocations = append(allocations, db.Allocation{
 			ID:          seat.ID,
 			ShiftID:     seat.ShiftID,
-			Role:        seat.Role,
+			RoleID:      seat.RoleID,
 			VolunteerID: seat.VolunteerID,
 			CustomEntry: seat.CustomEntry,
 		})

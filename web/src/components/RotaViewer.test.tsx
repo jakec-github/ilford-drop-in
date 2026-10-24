@@ -94,6 +94,7 @@ function shifts(): RotaShift[] {
       assignees: [
         {
           name: "Alice",
+          roleId: "r-duty",
           role: DUTY_LEAD,
           custom: false,
           group: null,
@@ -101,6 +102,7 @@ function shifts(): RotaShift[] {
         },
         {
           name: "Dan",
+          roleId: "r-greet",
           role: GREETER,
           custom: false,
           group: null,
@@ -119,6 +121,7 @@ function shifts(): RotaShift[] {
       assignees: [
         {
           name: "Carol",
+          roleId: "r-greet",
           role: GREETER,
           custom: false,
           group: null,
@@ -137,6 +140,7 @@ function shifts(): RotaShift[] {
       assignees: [
         {
           name: "Alice",
+          roleId: "r-greet",
           role: GREETER,
           custom: false,
           group: null,
@@ -274,7 +278,7 @@ describe("RotaViewer placement", () => {
       date: "2026-01-04",
       in: { volunteerId: "alice" },
       out: { volunteerId: "alice" },
-      role: HOT_FOOD,
+      roleId: "r-hot",
       reason: "",
     });
   });
@@ -423,6 +427,7 @@ function withUnrecordedRole(): RotaShift[] {
     ...rota[0].assignees,
     {
       name: "Erin",
+      roleId: "",
       role: "",
       custom: false,
       group: null,

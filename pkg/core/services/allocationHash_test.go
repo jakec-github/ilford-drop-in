@@ -14,14 +14,14 @@ import (
 // the store's read order is not, so neither may reach the fingerprint.
 func TestHashAllocationsIgnoresIdsAndOrder(t *testing.T) {
 	shown := []db.Allocation{
-		{ID: "seat-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
-		{ID: "seat-2", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-2"},
-		{ID: "seat-3", ShiftID: "shift-2", Role: "Service volunteer", CustomEntry: "St John's team"},
+		{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
+		{ID: "seat-2", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-2"},
+		{ID: "seat-3", ShiftID: "shift-2", RoleID: "role-service-volunteer", CustomEntry: "St John's team"},
 	}
 	resolved := []db.Allocation{
-		{ID: "seat-9", ShiftID: "shift-2", Role: "Service volunteer", CustomEntry: "St John's team"},
-		{ID: "seat-7", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
-		{ID: "seat-8", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-2"},
+		{ID: "seat-9", ShiftID: "shift-2", RoleID: "role-service-volunteer", CustomEntry: "St John's team"},
+		{ID: "seat-7", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
+		{ID: "seat-8", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-2"},
 	}
 
 	assert.Equal(t, hashAllocations(shown), hashAllocations(resolved),
@@ -33,29 +33,29 @@ func TestHashAllocationsIgnoresIdsAndOrder(t *testing.T) {
 // commit another.
 func TestHashAllocationsSeparatesDifferentRotas(t *testing.T) {
 	base := []db.Allocation{
-		{ID: "seat-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
-		{ID: "seat-2", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-2"},
+		{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
+		{ID: "seat-2", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-2"},
 	}
 
 	for name, other := range map[string][]db.Allocation{
 		"somebody else in a Seat": {
-			{ID: "seat-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
-			{ID: "seat-2", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-3"},
+			{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
+			{ID: "seat-2", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-3"},
 		},
 		"the same people on another shift": {
-			{ID: "seat-1", ShiftID: "shift-2", Role: "Team lead", VolunteerID: "vol-1"},
-			{ID: "seat-2", ShiftID: "shift-2", Role: "Service volunteer", VolunteerID: "vol-2"},
+			{ID: "seat-1", ShiftID: "shift-2", RoleID: "role-team-lead", VolunteerID: "vol-1"},
+			{ID: "seat-2", ShiftID: "shift-2", RoleID: "role-service-volunteer", VolunteerID: "vol-2"},
 		},
 		"the same people in swapped Roles": {
-			{ID: "seat-1", ShiftID: "shift-1", Role: "Service volunteer", VolunteerID: "vol-1"},
-			{ID: "seat-2", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-2"},
+			{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
+			{ID: "seat-2", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-2"},
 		},
 		"a Seat nobody is in": {
-			{ID: "seat-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
+			{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
 		},
 		"a custom entry rather than a volunteer": {
-			{ID: "seat-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
-			{ID: "seat-2", ShiftID: "shift-1", Role: "Service volunteer", CustomEntry: "vol-2"},
+			{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
+			{ID: "seat-2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomEntry: "vol-2"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -72,6 +72,6 @@ func TestHashAllocationsOfAnEmptyRota(t *testing.T) {
 	assert.NotEmpty(t, hashAllocations(nil))
 	assert.Equal(t, hashAllocations(nil), hashAllocations([]db.Allocation{}))
 	assert.NotEqual(t, hashAllocations(nil), hashAllocations([]db.Allocation{
-		{ID: "seat-1", ShiftID: "shift-1", Role: "Team lead", VolunteerID: "vol-1"},
+		{ID: "seat-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "vol-1"},
 	}))
 }

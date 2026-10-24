@@ -38,8 +38,13 @@ type ShiftAssignee struct {
 	VolunteerID string // empty for custom entries
 	CustomEntry string // empty for volunteers
 	Name        string // volunteer display name, or the custom entry verbatim
-	Role        string
-	Group       string // volunteer's group key; empty for custom entries and ungrouped volunteers
+	// RoleID is the Role of the Seat they are in, and Role its name as it reads
+	// today, so a Role renamed since the rota was allocated reads under its new
+	// name, the same one the Shift's Shape uses (issue #222). Both empty for an
+	// add recorded before alterations had a Role.
+	RoleID string
+	Role   string
+	Group  string // volunteer's group key; empty for custom entries and ungrouped volunteers
 }
 
 // Shift is one minted shift after applying alterations. Unallocated shifts are
@@ -235,7 +240,12 @@ func buildAssignees(
 		assignee := ShiftAssignee{
 			VolunteerID: a.VolunteerID,
 			CustomEntry: a.CustomEntry,
-			Role:        a.Role,
+			RoleID:      a.RoleID,
+		}
+		// The foreign key means a stored id always names a Role; the miss is a
+		// Role-less add, which stays nameless rather than being given one.
+		if role, ok := roles.ByID(a.RoleID); ok {
+			assignee.Role = role.Name
 		}
 		switch {
 		case a.CustomEntry != "":
@@ -254,17 +264,17 @@ func buildAssignees(
 		assignees = append(assignees, assignee)
 	}
 
-	// A Role the config does not know — an allocation written before it was
-	// removed — sorts after every configured one rather than jumping to the
-	// front, which is where an unrecognised name would otherwise land.
-	priority := func(role string) int {
-		if r, ok := roles.ByName(role); ok {
+	// Somebody in no Role — an add recorded before alterations had one — sorts
+	// after every Role rather than jumping to the front, which is where the
+	// zero priority would otherwise put them.
+	priority := func(roleID string) int {
+		if r, ok := roles.ByID(roleID); ok {
 			return r.Priority
 		}
 		return math.MaxInt
 	}
 	sort.Slice(assignees, func(i, j int) bool {
-		iPriority, jPriority := priority(assignees[i].Role), priority(assignees[j].Role)
+		iPriority, jPriority := priority(assignees[i].RoleID), priority(assignees[j].RoleID)
 		if iPriority != jPriority {
 			return iPriority < jPriority
 		}

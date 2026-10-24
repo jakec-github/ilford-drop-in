@@ -64,8 +64,12 @@ export function formatShiftDateLong(dateStr: string): string {
 // Generic over who is in it because the two things a shift row shows people for
 // are not the same shape — an allocated shift has Assignees, an unallocated one
 // has pins and drafted names — and grouping them is the same arithmetic either
-// way. All it asks of an entry is the Role it holds.
+// way. All it asks of an entry is the Role it holds, by id and by name.
+//
+// roleId is the empty string for the group of people the rota records no Role
+// for, and role is then empty too.
 export interface RoleGroup<T> {
+  roleId: string;
   role: Role;
   people: T[];
 }
@@ -83,40 +87,50 @@ export interface RoleGroup<T> {
 // rota. A Role nobody holds is left out entirely — the expanded view is about
 // who is on the shift, not how many Seats went unfilled.
 //
-// Matched by name rather than by id because that is all a person on a shift
-// carries: an Assignee holds the Role it was allocated under, as a name. A Role
-// renamed since would fall out of the Shape's order into the trailing group,
-// which is the honest answer — the rota records the name it was made with.
-export function groupByRole<T extends { role: Role }>(
+// Matched by the Role's id, never its name (issue #222): the id is what both
+// the Shape and a person's Seat reference, and a name is only what one is
+// called today. A group is headed with the Shape's name for its Role where the
+// Shape has it, and otherwise with the name its first person carries.
+export function groupByRole<T extends { roleId: string; role: Role }>(
   shape: ShapeSeat[],
   people: T[],
 ): RoleGroup<T>[] {
-  const groups = new Map<Role, T[]>();
+  const groups = new Map<string, RoleGroup<T>>();
 
   // Seeded from the Shape so its order wins, then pruned: a Role nobody holds
   // leaves an empty list behind, and an empty list is not a group.
   for (const seat of shape) {
-    if (!groups.has(seat.role)) groups.set(seat.role, []);
+    if (!groups.has(seat.roleId)) {
+      groups.set(seat.roleId, {
+        roleId: seat.roleId,
+        role: seat.role,
+        people: [],
+      });
+    }
   }
   for (const person of people) {
-    const held = groups.get(person.role);
-    if (held) {
-      held.push(person);
+    const group = groups.get(person.roleId);
+    if (group) {
+      group.people.push(person);
     } else {
-      groups.set(person.role, [person]);
+      groups.set(person.roleId, {
+        roleId: person.roleId,
+        role: person.role,
+        people: [person],
+      });
     }
   }
 
-  const grouped = [...groups]
-    .filter(([, held]) => held.length > 0)
-    .map(([role, held]) => ({ role, people: held }));
+  const grouped = [...groups.values()].filter(
+    (group) => group.people.length > 0,
+  );
 
   // The unrecorded group last, whatever order it arrived in: it is the one
   // group that is not a job, and it reads as a footnote rather than as the
   // shift's first line.
   return [
-    ...grouped.filter(({ role }) => role !== ""),
-    ...grouped.filter(({ role }) => role === ""),
+    ...grouped.filter(({ roleId }) => roleId !== ""),
+    ...grouped.filter(({ roleId }) => roleId === ""),
   ];
 }
 
@@ -137,14 +151,16 @@ export function roleGroupLabel(role: Role): string {
 // the Shape asks for none of is not counted against anything.
 export function shiftDeficit(
   shape: ShapeSeat[],
-  assignees: { role: Role }[],
+  assignees: { roleId: string }[],
 ): { role: string; deficit: number }[] {
+  // Counted by the Role's id, which is what a Seat and a person both reference
+  // (issue #222); the name is only what the answer is said in.
   const assigneeCountByRole = assignees.reduce(
-    (acc: Record<string, number>, { role }) => {
-      if (acc[role]) {
-        acc[role] += 1;
+    (acc: Record<string, number>, { roleId }) => {
+      if (acc[roleId]) {
+        acc[roleId] += 1;
       } else {
-        acc[role] = 1;
+        acc[roleId] = 1;
       }
       return acc;
     },
@@ -152,13 +168,13 @@ export function shiftDeficit(
   );
 
   return shape
-    .map(({ role, count }) => ({
+    .map(({ roleId, role, count }) => ({
       role,
       // A Role nobody was drafted into is short its whole count, not absent
       // from the answer: without the fallback the subtraction is NaN, NaN > 0
       // is false, and a shift the solver could fill no Seat of some Role on was
       // the one shift that said nothing about it.
-      deficit: count - (assigneeCountByRole[role] ?? 0),
+      deficit: count - (assigneeCountByRole[roleId] ?? 0),
     }))
     .filter(({ deficit }) => deficit > 0);
 }

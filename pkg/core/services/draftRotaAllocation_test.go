@@ -182,8 +182,8 @@ func TestDraftRotaAllocationCarriesTheRotaItDrafted(t *testing.T) {
 			SeatsFilled:     2,
 		}},
 		storedDraftSeats: [][]db.DraftAllocation{{
-			{ID: "seat-1", ShiftID: "2026-08-02", Role: "Service volunteer", VolunteerID: "bob"},
-			{ID: "seat-2", ShiftID: "2026-08-02", Role: "Team lead", VolunteerID: "alice"},
+			{ID: "seat-1", ShiftID: "2026-08-02", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+			{ID: "seat-2", ShiftID: "2026-08-02", RoleID: "role-team-lead", VolunteerID: "alice"},
 		}},
 	}
 	volunteers := &mockVolClient{volunteers: []model.Volunteer{

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { createRole, fetchRoles, updateRole } from "../api";
 import type { ConfiguredRole, Role, RoleColour, RoleEdit } from "../types";
 
-// RoleColourOf answers what a Role is drawn in. null covers both "the roles
-// have not loaded yet" and "no configured Role goes by that name" — a rota can
-// name a Role that has been renamed since it was allocated — and callers treat
-// the two the same way, by falling back to their neutral colour.
-export type RoleColourOf = (role: Role) => RoleColour | null;
+// RoleColourOf answers what a Role is drawn in, given its id: a rota's chips
+// carry the id of the Role they are in, which survives a rename where the name
+// does not (issue #222). null covers both "the roles have not loaded yet" and
+// "no Role" — somebody the rota records no Role for — and callers treat the two
+// the same way, by falling back to their neutral colour.
+export type RoleColourOf = (roleId: string) => RoleColour | null;
 
 // RoleIdOf answers which Role a name refers to. null while the roles are still
 // loading, or for a name no configured Role goes by — a caller that has to
@@ -154,8 +155,8 @@ export function useRoles(): UseRoles {
   // passed down to every chip, and a new function each render would re-render
   // all of them.
   const colourOf = useMemo<RoleColourOf>(() => {
-    const byName = new Map((roles ?? []).map((r) => [r.name, r.colour]));
-    return (role) => byName.get(role) ?? null;
+    const byId = new Map((roles ?? []).map((r) => [r.id, r.colour]));
+    return (roleId) => byId.get(roleId) ?? null;
   }, [roles]);
 
   const idOf = useMemo<RoleIdOf>(() => {
