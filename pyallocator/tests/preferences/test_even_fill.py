@@ -126,6 +126,43 @@ def test_every_role_spreads_across_shifts_not_just_the_biggest():
     assert [len(keys) for keys in by_shift.values()] == [1, 1]
 
 
+class _Layout:
+    """Fixes who works which shift, so a layout's score can be read off."""
+
+    name = "layout"
+    description = "every volunteer works exactly the shift given"
+
+    def __init__(self, shift_of: dict[str, int]):
+        self.shift_of = shift_of
+
+    def apply(self, model, x, problem) -> None:
+        for (volunteer_id, shift_index), attend in x.attend.items():
+            model.Add(attend == int(self.shift_of.get(volunteer_id) == shift_index))
+
+
+def test_headcount_spreads_across_shifts_not_only_each_role():
+    # Three shifts, two leads, four ordinary volunteers. Both layouts split
+    # each Role as evenly as it goes — ordinary volunteers 2-1-1, leads
+    # 1-1-0 — so counting per Role they tie. Only the shift's total tells
+    # them apart: the leads belong on the shifts with one ordinary volunteer,
+    # making 2-2-2, not on the one with two, making 3-2-1 (#242). Scores are
+    # compared rather than a free solve, which can break a tie either way.
+    groups = [make_group(f"lead{i}", team_lead=True, available=[0, 1, 2]) for i in range(2)]
+    groups += [make_group(f"g{i}", available=[0, 1, 2]) for i in range(4)]
+    inp = make_input(groups=groups, shifts=[make_shift(i, size=4) for i in range(3)])
+    ordinary = {"g0": 0, "g1": 0, "g2": 1, "g3": 2}
+
+    def score(leads: dict[str, int]) -> int:
+        layout = _Layout({**ordinary, **leads})
+        out = solve_with(inp, [seat_capacity.CONSTRAINT, layout], preferences=PREFS)
+        assert out.success
+        return out.objective_value
+
+    two_two_two = score({"lead0": 1, "lead1": 2})
+    three_two_one = score({"lead0": 0, "lead1": 1})
+    assert two_two_two > three_two_one
+
+
 def test_no_reward_beyond_capacity():
     # With capacity active, fill stops at size even though more groups
     # are available; the preference must not fight the constraint.

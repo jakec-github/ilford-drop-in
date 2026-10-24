@@ -26,6 +26,22 @@ One rule for every Role. Until #185 there were two — capped Roles took a
 flat weight above every uncapped Seat — and the split rested on a `max`
 that no longer exists. Priority is what says which Role is filled first
 now, which is what priority always meant.
+
+Counting per Role alone is blind to the shift as a whole: a lead's Seat
+is worth the same whether the shift has one ordinary volunteer or four,
+so where each Role splits as evenly as it can, the remainders may still
+pile onto one shift — 3-2-1 scoring the same as 2-2-2 (#242). A second,
+lighter harmonic over each shift's headcount, every Role and custom entry
+together, breaks those ties towards even totals:
+
+    weight(total_n) = TOTAL_FILL_WEIGHT // total_n
+
+It is a third of the per-Role weight: light enough to settle what
+counting per Role leaves even rather than overturn how a Role spreads.
+That is a matter of weights, not a strict lexicographic order, so it was
+checked rather than assumed — on the end-to-end scenario and on
+production-sized rosters, plentiful and scarce, every rota it chose was
+already optimal counting per Role alone.
 """
 
 from __future__ import annotations
@@ -33,7 +49,7 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 from ..constraints.base import Vars
-from ..domain import Role
+from ..domain import Role, ShiftSpec
 from ..problem import Problem
 from .base import ObjectiveTerm
 
@@ -47,6 +63,12 @@ EVEN_FILL_WEIGHT = 60
 # lower-priority one — being short of a Team lead is worse than being short
 # of an ordinary volunteer however many Seats deep the comparison is.
 PRIORITY_BAND = EVEN_FILL_WEIGHT + 1
+
+# Weight of a shift's first head, of any Role; its nth is worth
+# TOTAL_FILL_WEIGHT // n. A tie-break on headcount beneath the per-Role
+# Seats, and the smallest round weight whose levels stay distinct up to the
+# six heads a production shift asks for (20, 10, 6, 5, 4, 3).
+TOTAL_FILL_WEIGHT = 20
 
 
 class EvenFillPreference:
@@ -88,7 +110,32 @@ class EvenFillPreference:
                     terms.append((level, weight))
                 if levels:
                     model.Add(sum(levels) <= sum(occupants))
+            terms.extend(_total_terms(model, x, problem, shift))
         return terms
+
+
+def _total_terms(
+    model: cp_model.CpModel, x: Vars, problem: Problem, shift: ShiftSpec
+) -> list[ObjectiveTerm]:
+    """One level per head the shift's Shape has room for, every Role
+    together; custom entries are its first heads, as they are a Role's
+    first Seats."""
+    customs = sum(len(problem.customs_for(shift, role.name)) for role in problem.roles)
+    seats = sum(problem.seats_for(shift, role.name) for role in problem.roles)
+    heads = [x.attend[(v.id, shift.index)] for v in problem.volunteers]
+    terms: list[ObjectiveTerm] = []
+    levels = []
+    for k in range(1, max(0, seats - customs) + 1):
+        head_number = customs + k
+        weight = TOTAL_FILL_WEIGHT // head_number
+        if weight == 0:
+            break
+        level = model.NewBoolVar(f"total_level_{shift.index}_{head_number}")
+        levels.append(level)
+        terms.append((level, weight))
+    if levels:
+        model.Add(sum(levels) <= sum(heads))
+    return terms
 
 
 def _priority_bands(roles: tuple[Role, ...]) -> dict[int, int]:
