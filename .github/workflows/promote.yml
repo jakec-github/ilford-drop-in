@@ -1,0 +1,118 @@
+name: Deploy to production
+
+# Prod is released by hand, never by a merge (ADR 0002, #245). A merge builds
+# the image and deploys it to preprod; this puts an image that already exists
+# in ghcr onto prod. There is no build here, so prod runs exactly the bytes
+# preprod ran.
+#
+# With no input it promotes the commit preprod last ran. Given an older commit,
+# it rolls prod back to it.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to deploy, full or short. Empty: the one preprod last ran. An older one rolls back."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy (prod)
+    runs-on: ubuntu-latest
+    # Where the prod deploy secrets live, and where required reviewers can be
+    # turned on later.
+    environment: production
+    steps:
+      - name: Set up SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      # Everything here only reads, so a run that stops in this step has
+      # changed nothing on the droplet.
+      - name: Choose the image
+        id: image
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error title=Not deployed::$*"
+            exit 1
+          }
+
+          # The tag each environment last deployed, as rollout.sh records it.
+          running() {
+            ssh "root@${HOST}" "cat /opt/dropin/env/$1/image.env 2>/dev/null || true" \
+              | sed -n 's/^[A-Z_]*IMAGE_TAG=//p'
+          }
+          preprod="$(running preprod)"
+          prod="$(running prod)"
+
+          if [[ -z "$INPUT_SHA" ]]; then
+            if [[ -z "$preprod" ]]; then
+              fail "preprod has no deploy recorded (/opt/dropin/env/preprod/image.env), so there is nothing to promote. Name a commit instead."
+            fi
+            sha="$preprod"
+          else
+            # A commit and nothing else: a branch name would promote whatever
+            # it points at now, which preprod may never have run.
+            if [[ ! "$INPUT_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              fail "'${INPUT_SHA}' is not a commit SHA."
+            fi
+            if ! sha="$(gh api "repos/${REPO}/commits/${INPUT_SHA}" --jq .sha 2>/dev/null)"; then
+              fail "no commit ${INPUT_SHA} in ${REPO}."
+            fi
+          fi
+
+          # Images are tagged with the full SHA of the merge that built them.
+          # The image is public, so an anonymous pull token is enough to ask.
+          image="ghcr.io/${REPO}:${sha}"
+          token="$(curl -fsS "https://ghcr.io/token?scope=repository:${REPO}:pull" | jq -r .token)"
+          status="$(curl -s -o /dev/null -w '%{http_code}' -I \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/${REPO}/manifests/${sha}")"
+          case "$status" in
+            200) ;;
+            404) fail "no image ${image}. Only commits built on main have one: check that commit's Build and deploy run." ;;
+            *) fail "ghcr answered ${status} when asked for ${image}." ;;
+          esac
+
+          if [[ "$sha" != "$preprod" ]]; then
+            echo "::notice title=Not preprod's image::Deploying ${sha}; preprod last ran ${preprod:-nothing}."
+          fi
+
+          {
+            echo "### Deploy to production"
+            echo ""
+            echo "| | Commit |"
+            echo "| --- | --- |"
+            echo "| prod before | \`${prod:-none}\` |"
+            echo "| prod after | \`${sha}\` |"
+            echo "| preprod | \`${preprod:-none}\` |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          echo "sha=${sha}" >>"$GITHUB_OUTPUT"
+
+      # The deploy files (compose.yaml, the Caddyfile, rollout.sh) are not
+      # synced here: every merge's deploy puts main's on the droplet, and prod
+      # shares them with preprod. Only the image is promoted.
+      #
+      # rollout.sh records the tag in env/prod/image.env, recreates the app
+      # container and no other, waits for prod's /health and prunes unused
+      # images. No registry login: the image is public.
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SHA: ${{ steps.image.outputs.sha }}
+        run: ssh "root@${HOST}" "GITHUB_ACTIONS=true bash /opt/dropin/rollout.sh prod '${SHA}'"

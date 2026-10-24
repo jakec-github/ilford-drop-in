@@ -3,29 +3,72 @@
 Architecture and rationale: `docs/adr/0002-deployment-architecture.md`. In
 short: one droplet running Docker Compose — Caddy, and an app container each
 for prod and [preprod](#preprod) — Postgres on Neon, images built by CI on
-every merge to main and deployed over SSH.
+every merge to main and deployed over SSH: to preprod by every merge, to prod
+only by hand.
 
-## Continuous deployment (no action needed)
+## Merges deploy preprod
 
 Every merge to main builds `ghcr.io/jakec-github/ilford-drop-in`, tagged with
-the git SHA and `latest`, and — if the `DEPLOY_ENABLED` repository variable is
-`"true"` — deploys it to the droplet: to preprod, then to prod, one after the
-other. Prod keeps deploying on every merge until the manual promote (#245)
-lands; meanwhile a failed preprod does not hold it back.
+the git SHA and `latest`, smoke-tests it, and deploys it to
+[preprod](#preprod). Nothing else: a merge never changes the prod container.
+While preprod is [switched off](#switching-it-off) the deploy skips it with a
+notice on the run.
 
-Each leg is `deploy/rollout.sh <env> <sha>` on the droplet, which:
+Every rollout is `deploy/rollout.sh <env> <sha>` on the droplet, which:
 
+- waits for any other rollout on the box to finish (a lock, held for at most
+  ten minutes);
 - records the tag in that environment's own `env/<env>/image.env`;
-- recreates that environment's container and no other — and fails the leg if
-  the other environment's container changed;
-- waits for `https://<its domain>/health` and fails the leg, printing the app's
-  last 50 log lines, if it does not answer within two minutes;
+- recreates that environment's container and no other — and fails if the
+  other environment's container changed;
+- waits for `https://<its domain>/health` and fails, printing the app's last
+  50 log lines, if it does not answer within two minutes;
 - removes the images no container uses.
 
-**Rollback**: re-run the workflow on a previous commit (Actions → the old run →
-"Re-run all jobs"), or only its `deploy (prod)` job to roll back prod alone.
+The merge's deploy also copies `deploy/compose.yaml`, `deploy/Caddyfile` and
+`rollout.sh` to the droplet. They are main's for both environments; a
+production deploy promotes an image and leaves them as they are.
 
-**Config is not part of this.** Each environment's `drop_in_config.yaml` and
+## Deploy to production
+
+Prod is released by hand: **Actions → Deploy to production → Run workflow**.
+
+- **Leave the commit empty** to promote what preprod last ran — the build that
+  was actually checked. It is the same image, not a rebuild, so prod runs the
+  bytes preprod ran.
+- **Give an older commit to roll back.** Full or short SHA; it must be a merge
+  to main, since only those have an image. That is the whole of rollback.
+
+Before anything on the droplet changes, the workflow reads which commit each
+environment runs, resolves the one asked for, and checks that
+`ghcr.io/jakec-github/ilford-drop-in:<sha>` exists. A branch name, an unknown
+commit or a commit with no image fails there and touches nothing. A commit
+other than preprod's is deployed with a notice saying so. The run's summary
+shows prod's commit before and after, and preprod's.
+
+Then it runs `rollout.sh prod <sha>`, so it waits for prod's `/health` as a
+merge's deploy waits for preprod's, and fails the same way.
+
+It runs in the GitHub Environment `production`. That is where required
+reviewers can be turned on, and where prod's deploy secrets can move if prod
+and preprod ever stop sharing a box.
+
+A rollback past a migration runs the older build against the newer schema:
+migrations are never reversed, and the older build ignores the ones it does
+not know. That is harmless for a migration that only adds; check the
+migrations between the two commits before rolling back across one that drops
+or renames.
+
+### On preprod first, then prod
+
+A step that used to be "run X after the merge" is now **"run X on preprod, then
+on prod before promoting"**. After a merge, preprod is running the new build
+and prod the old one, so anything the new build needs — a config change, a
+Role created on Organiser → Settings, a one-off command — is done on preprod
+straight away, and on prod just before promoting: not at the merge, while prod
+still runs the build that does not need it.
+
+**Config is not part of either deploy.** Each environment's `drop_in_config.yaml` and
 its two credential files live on the droplet by hand and are never shipped by a
 deploy —
 deliberately, since they hold secrets the repo must not. Roll them out with
@@ -34,8 +77,8 @@ deliberately, since they hold secrets the repo must not. Roll them out with
 A consequence worth knowing: a deploy can ship a binary that rejects the config
 already on the box. That is what happened when `roles` became required — the
 deploy was green, the app crash-looped, and no check anywhere failed. Whenever a
-change makes a config key required, removed or renamed, run the config rollout
-alongside the merge.
+change makes a config key required, removed or renamed, roll the config out to
+preprod after the merge, and to prod just before promoting.
 
 ## The image
 
@@ -138,21 +181,19 @@ Repository **secrets**:
 | `DEPLOY_SSH_KEY` | private key of a dedicated CI deploy key pair (`ssh-keygen -t ed25519`); add the public half to the droplet's `/root/.ssh/authorized_keys` |
 | `DEPLOY_KNOWN_HOSTS` | output of `ssh-keyscan <ip>` |
 
-Repository **variable**:
-
-| Name | Value |
-| --- | --- |
-| `DEPLOY_ENABLED` | unset until go-live; `true` to enable the deploy job |
+Both workflows read them. The production one runs in the GitHub Environment
+`production`, which GitHub creates on its first run; an environment secret of
+the same name would override the repository one for prod alone.
 
 ### 5. First deploy
 
-Set `DEPLOY_ENABLED=true`, then run the workflow (Actions → Build and deploy →
-"Run workflow", or merge anything to main). Each deploy leg copies
-`deploy/compose.yaml`, `deploy/Caddyfile` and `deploy/rollout.sh` to
-`/opt/dropin` and starts Caddy and its own app; Caddy obtains its certificate
-on first boot. `site.env` must already be there with a domain in it, or the
-stack will not come up. Until preprod is set up, switch it off first
-(`scripts/preprod.sh down`), or its leg fails on every merge.
+Run Actions → Build and deploy → "Run workflow", or merge anything to main. It
+copies `deploy/compose.yaml`, `deploy/Caddyfile` and `deploy/rollout.sh` to
+`/opt/dropin`, starts Caddy and deploys preprod; Caddy obtains its certificate
+on first boot. Then run Actions → Deploy to production with the same commit to
+start prod. `site.env` must already be there with a domain in it, or the stack
+will not come up. Until preprod is set up, switch it off first
+(`scripts/preprod.sh down`), or every merge's deploy fails.
 
 ## The site's domain
 
@@ -230,10 +271,10 @@ but never restarts Caddy, so the running one keeps the routes it started with.
 An absent or empty `SITE_DOMAIN` stops the stack rather than serving on a
 wildcard address with no certificate:
 
-- **No `site.env` at all** — `docker compose up` refuses to run, so the deploy
-  job itself goes red: `env file /opt/dropin/site.env not found`.
-- **Empty `PREPROD_DOMAIN`** — prod is unaffected, and preprod's deploy leg
-  fails before touching anything, naming the variable. Switch preprod off until
+- **No `site.env` at all** — every rollout refuses to run, so the deploy goes
+  red: `/opt/dropin/site.env not found`.
+- **Empty `PREPROD_DOMAIN`** — prod is unaffected, and a merge's deploy fails
+  before touching anything, naming the variable. Switch preprod off until
   it has one.
 - **Empty `SITE_DOMAIN`** — the caddy container exits, saying so by name:
   `SITE_DOMAIN is empty or unset: set it in /opt/dropin/site.env`. That check is
@@ -357,8 +398,9 @@ screen says as much at the point of rename.
 
 ## Preprod
 
-A second copy of the app on the same droplet, at its own host, deployed from
-main before prod (ADR 0002, issue #244). It is there to try a change on
+A second copy of the app on the same droplet, at its own host, deployed by
+every merge to main (ADR 0002, issue #244). Prod only ever runs an image
+preprod has run first, [by hand](#deploy-to-production). It is there to try a change on
 before it reaches anyone, so it shares nothing with prod but the box and the
 image:
 
@@ -390,7 +432,8 @@ droplet it comes to:
 4. `scp env/preprod/oauthClientWeb.json env/preprod/serviceAccount.json root@<ip>:/opt/dropin/env/preprod/`
 5. `scripts/preprod.sh up`, if it was switched off, then
    `scripts/deploy-config.sh preprod`. If preprod has never been deployed,
-   re-run the deploy workflow first: `rollout.sh` needs a tag to start.
+   re-run the Build and deploy workflow first: `rollout.sh` needs a tag to
+   start.
 
 ### Seeding synthetic data
 
@@ -417,7 +460,7 @@ scripts/preprod.sh up       # bring back the image it last ran, and wait for /he
 ```
 
 `down` leaves `/opt/dropin/env/preprod/disabled` on the box. While it is there,
-every deploy's preprod leg skips with a notice on the run, and
+every merge's deploy skips it with a notice on the run, and
 `scripts/deploy-config.sh preprod` ships the file without starting anything.
 Prod is untouched either way. Caddy keeps its preprod site, which answers 502
 while preprod is down. `up` pulls the image back if a prune has removed it;

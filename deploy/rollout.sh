@@ -5,13 +5,15 @@
 # Usage (on the droplet): bash /opt/dropin/rollout.sh <prod|preprod> [image-tag]
 #
 # Everything that starts an app container goes through here — the deploy
-# workflow (with a tag), scripts/deploy-config.sh after shipping a config, and
+# workflow for preprod and the production workflow for prod (each with a tag),
+# scripts/deploy-config.sh after shipping a config, and
 # scripts/preprod.sh up (both without one) — so there is one place that knows
 # which service an environment is, where its tag is recorded, and what counts
 # as it being up. The deploy workflow copies it to /opt/dropin beside
 # compose.yaml and the Caddyfile.
 #
 # It:
+#   - waits for any other rollout on the box to finish first;
 #   - does nothing, with a notice, while env/<env>/disabled exists
 #     (scripts/preprod.sh down);
 #   - records the tag, if given, in env/<env>/image.env and rebuilds .env from
@@ -61,6 +63,17 @@ fail() {
     echo "$ENV: $*" >&2
     exit 1
 }
+
+# One rollout at a time, whichever of the deploy workflow, the production
+# workflow, deploy-config.sh or preprod.sh started it: each ends by pruning
+# every image no container uses, which can remove the image another is about to
+# start. A lock here covers all four, where a concurrency group in Actions
+# would cover only the workflows — and would cancel a queued production deploy
+# when a merge queued behind it.
+exec 9>.rollout.lock
+if ! flock -w "${ROLLOUT_LOCK_TIMEOUT:-600}" 9; then
+    fail "another rollout has held /opt/dropin/.rollout.lock for ${ROLLOUT_LOCK_TIMEOUT:-600}s"
+fi
 
 mkdir -p "$ENV_DIR"
 
