@@ -57,7 +57,7 @@ func run(env string, portOverride int) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 	if cfg.Server == nil {
-		return fmt.Errorf("server config missing: add server.port to drop_in_config.%s.yaml", env)
+		return fmt.Errorf("server config missing: add server.port to %s", config.EnvPath(env, config.ConfigFile))
 	}
 	if portOverride != 0 {
 		cfg.Server.Port = portOverride

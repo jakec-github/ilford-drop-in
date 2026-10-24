@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // OAuthClientWebConfig represents a Google "Web application" OAuth client.
@@ -26,10 +25,10 @@ type OAuthWeb struct {
 	RedirectURIs            []string `json:"redirect_uris" validate:"required,min=1,dive,uri"`
 }
 
-// LoadOAuthClientWebWithEnv loads and validates the web OAuth client configuration
-// with an environment suffix. For example, env="test" looks for "oauthClientWeb.test.json".
+// LoadOAuthClientWebWithEnv loads and validates an environment's web OAuth client
+// configuration, from EnvPath(env, OAuthClientWebFile).
 func LoadOAuthClientWebWithEnv(env string) (*OAuthClientWebConfig, error) {
-	path, err := findOAuthWebFile(env)
+	path, err := findEnvFile(env, OAuthClientWebFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find web oauth client file: %w", err)
 	}
@@ -55,30 +54,4 @@ func LoadOAuthClientWebFromPath(path string) (*OAuthClientWebConfig, error) {
 	}
 
 	return &cfg, nil
-}
-
-// findOAuthWebFile searches for the web OAuth client file in the current directory
-// and the home directory. If env is provided it is added as an extension
-// (e.g. "oauthClientWeb.test.json").
-func findOAuthWebFile(env string) (string, error) {
-	fileName := "oauthClientWeb.json"
-	if env != "" {
-		fileName = "oauthClientWeb." + env + ".json"
-	}
-
-	if _, err := os.Stat(fileName); err == nil {
-		return fileName, nil
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	homePath := filepath.Join(homeDir, fileName)
-	if _, err := os.Stat(homePath); err == nil {
-		return homePath, nil
-	}
-
-	return "", fmt.Errorf("web oauth client file not found in current directory or home directory")
 }

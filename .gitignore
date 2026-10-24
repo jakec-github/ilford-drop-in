@@ -9,16 +9,15 @@
 # Logs
 **/logs/
 
-# Config files with secrets
-**/oauthClient*.json
-**/drop_in_config*.yaml
-drop_in_config.*.yaml
-oauthClient.*.json
-serviceAccount.*.json
-.token.json
+# Each environment's config and credentials live in env/<env>/, and none of
+# them is committed. The .keep in each directory is, so a fresh clone shows
+# where an environment's files go.
+/env/*/*
+!/env/*/.keep
 # The one exception: the dev environment holds no secrets and is committed, so
 # a fresh checkout boots with no setup at all (docs/agents/dev-stack.md).
-!drop_in_config.dev.yaml
+!/env/dev/drop_in_config.yaml
+.token.json
 
 # Any other secrets
 *.secret

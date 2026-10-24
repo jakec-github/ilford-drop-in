@@ -23,6 +23,7 @@ frontend can run against a locally-populated database.
 | `pkg/clients/` | Google Sheets/Forms/Gmail clients. |
 | `pkg/api/` | HTTP handlers, auth, volunteer cache. |
 | `internal/config/` | Config and credential loading. |
+| `env/<env>/` | Each environment's config and credentials, all git-ignored but `env/dev/drop_in_config.yaml`. |
 | `web/` | React + TypeScript frontend (see `web/README.md`). |
 | `pyallocator/` | Python CP-SAT allocator (see `pyallocator/README.md`). |
 | `docs/` | Setup, deployment, architecture decision records (`docs/adr/`). |

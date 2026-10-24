@@ -52,8 +52,8 @@ Google. The database starts empty, so the rota page does too — see
 
 ## CLI commands
 
-All commands take `-e`/`--env` to pick the config environment
-(`drop_in_config.<env>.yaml`):
+All commands take `-e`/`--env` to pick the environment, whose files are read
+from `env/<env>/` (`env/test/drop_in_config.yaml` and so on):
 
 ```bash
 ./cli -e test <command> [args]

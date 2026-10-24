@@ -36,8 +36,8 @@ scripts/worktree-init.sh
 
 | Step | What it does |
 | --- | --- |
-| Credentials | Symlinks `serviceAccount.test.json`, `oauthClientWeb.test.json`, `oauthClient.test.json` and `.claude/settings.local.json` from the primary checkout. Without the last one the agent has no `GH_TOKEN` and cannot reach the issue tracker. |
-| Config | Copies `drop_in_config.test.yaml` and rewrites `databaseURL`, `server.port` and `server.redirectURI` for this worktree. |
+| Credentials | Symlinks `env/test/serviceAccount.json`, `env/test/oauthClientWeb.json`, `env/test/oauthClient.json` and `.claude/settings.local.json` from the primary checkout. Without the last one the agent has no `GH_TOKEN` and cannot reach the issue tracker. |
+| Config | Copies `env/test/drop_in_config.yaml` and rewrites `databaseURL`, `server.port` and `server.redirectURI` for this worktree. |
 | Ports | Claims the lowest unused offset (1–5) and records it in `.worktree.env`. |
 | Dependencies | Runs `bun install` in `web/`. |
 | Database | Clones the seeded template into this worktree's own database. |
@@ -63,7 +63,7 @@ the web OAuth client → Authorised redirect URIs) and every worktree is covered
 `server.redirectURI` takes the first localhost URI the OAuth client has
 registered — fine when 5173 is the only one, order-dependent once the worktree
 URIs are there too. Add this to the primary checkout's
-`drop_in_config.test.yaml` under `server:` when you register them, so its login
+`env/test/drop_in_config.yaml` under `server:` when you register them, so its login
 cannot drift onto a worktree's port:
 
 ```yaml
@@ -72,7 +72,7 @@ cannot drift onto a worktree's port:
 
 Until that is done, `worktree-init.sh` leaves `server.redirectURI` out of the
 copied config and says so: the server still runs and everything but Google login
-works. Once the URIs are registered, delete `drop_in_config.test.yaml` in the
+works. Once the URIs are registered, delete `env/test/drop_in_config.yaml` in the
 worktree and re-run the script to pick the right one up. Where the key *is* set,
 the server refuses to start if it names a URI the OAuth client does not have
 registered, listing the ones it does — that error means the registration is

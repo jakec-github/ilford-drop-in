@@ -44,7 +44,7 @@ func runValidateConfig(t *testing.T, args ...string) (string, error) {
 
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "drop_in_config.prod.yaml")
+	path := filepath.Join(t.TempDir(), "drop_in_config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(body), 0644))
 	return path
 }

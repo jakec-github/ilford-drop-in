@@ -41,11 +41,11 @@ ufw allow 443/tcp
 ufw --force enable
 
 # Deploy directory: compose files arrive via the deploy workflow. The three
-# config files (drop_in_config.prod.yaml, oauthClientWeb.prod.json,
-# serviceAccount.prod.json) go in config/, which compose mounts into the
-# container whole — scripts/deploy-config.sh ships the first, the other two are
-# scp'd by hand. site.env beside them holds the domain. See docs/deployment.md.
-mkdir -p /opt/dropin/config
+# config files (drop_in_config.yaml, oauthClientWeb.json, serviceAccount.json)
+# go in env/prod/, which compose mounts into the container whole —
+# scripts/deploy-config.sh ships the first, the other two are scp'd by hand.
+# site.env holds the domain. See docs/deployment.md.
+mkdir -p /opt/dropin/env/prod
 
 # The domain Caddy serves. It is deployment, not code, so it is not in the repo
 # (issue #202) — deploy/compose.yaml reads it from this file, and Caddy refuses

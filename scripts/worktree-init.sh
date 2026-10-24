@@ -31,13 +31,13 @@ COMMON_GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir)"
 PRIMARY_ROOT="$(cd "$COMMON_GIT_DIR/.." && pwd)"
 
 ENV_FILE="$REPO_ROOT/.worktree.env"
-CONFIG_FILE="drop_in_config.test.yaml"
+CONFIG_FILE="env/test/drop_in_config.yaml"
 
 # Symlinked from the primary checkout: shared, secret, and identical everywhere.
 LINKED_FILES=(
-    "serviceAccount.test.json"
-    "oauthClientWeb.test.json"
-    "oauthClient.test.json"
+    "env/test/serviceAccount.json"
+    "env/test/oauthClientWeb.json"
+    "env/test/oauthClient.json"
     ".claude/settings.local.json"
 )
 
@@ -238,8 +238,8 @@ done
 # login still works, which beats a server that will not boot.
 CONFIGURED_REDIRECT_URI="$REDIRECT_URI"
 REDIRECT_URI_REGISTERED=true
-if [[ -e "$REPO_ROOT/oauthClientWeb.test.json" ]] &&
-    ! grep -qF "\"${REDIRECT_URI}\"" "$REPO_ROOT/oauthClientWeb.test.json"; then
+if [[ -e "$REPO_ROOT/env/test/oauthClientWeb.json" ]] &&
+    ! grep -qF "\"${REDIRECT_URI}\"" "$REPO_ROOT/env/test/oauthClientWeb.json"; then
     CONFIGURED_REDIRECT_URI=""
     REDIRECT_URI_REGISTERED=false
 fi

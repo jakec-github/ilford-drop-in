@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Ship drop_in_config.prod.yaml to the droplet.
+# Ship env/prod/drop_in_config.yaml to the droplet.
 #
 # Usage: scripts/deploy-config.sh [host] [-y]
 #
@@ -29,20 +29,20 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ENV="prod"
-CONFIG_FILE="$REPO_ROOT/drop_in_config.${ENV}.yaml"
+CONFIG_FILE="$REPO_ROOT/env/${ENV}/drop_in_config.yaml"
 
 # Where the compose file expects to find the config directory it mounts into the
 # container. Keep in step with deploy/compose.yaml.
 REMOTE_DIR="/opt/dropin"
-REMOTE_CONFIG_DIR="$REMOTE_DIR/config"
+REMOTE_CONFIG_DIR="$REMOTE_DIR/env/${ENV}"
 
 # The two credentials that live beside the config in that directory. They are
 # not shipped here — they change once a year, not once a week — but the
 # directory is mounted whole, so a recreate with either of them missing starts a
 # server that cannot reach Google.
 REMOTE_CREDENTIALS=(
-    "oauthClientWeb.${ENV}.json"
-    "serviceAccount.${ENV}.json"
+    "oauthClientWeb.json"
+    "serviceAccount.json"
 )
 
 # How long to give the app to answer after the recreate. It pulls nothing and
@@ -180,8 +180,8 @@ fi
 # 3. Check the credentials are already in the config directory. The container
 #    mounts the directory whole, so recreating it without them would take the
 #    site down — and the likeliest reason for them to be missing is a droplet
-#    still holding its config files a level up, from before the mount changed
-#    (see docs/deployment.md).
+#    still holding its files in /opt/dropin/config/, from before they moved to
+#    env/<env>/ (see docs/deployment.md).
 echo ""
 echo "Checking ${REMOTE_CONFIG_DIR} on ${HOST}..."
 remote "mkdir -p ${REMOTE_CONFIG_DIR}"
@@ -197,7 +197,7 @@ if ((${#missing[@]})); then
     echo "The app mounts that directory whole, so recreating it now would start a" >&2
     echo "server with no Google credentials. Put them there first:" >&2
     echo "" >&2
-    echo "  ssh ${SSH_TARGET} 'mv ${REMOTE_DIR}/*.${ENV}.json ${REMOTE_CONFIG_DIR}/'" >&2
+    echo "  ssh ${SSH_TARGET} 'mv ${REMOTE_DIR}/config/oauthClientWeb.${ENV}.json ${REMOTE_CONFIG_DIR}/oauthClientWeb.json && mv ${REMOTE_DIR}/config/serviceAccount.${ENV}.json ${REMOTE_CONFIG_DIR}/serviceAccount.json'" >&2
     echo "" >&2
     echo "or scp them from your own copies." >&2
     exit 1

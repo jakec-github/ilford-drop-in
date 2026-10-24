@@ -7,7 +7,7 @@
 #
 # Unlike scripts/dev.sh this runs one process on one port — the Go server,
 # serving the frontend build embedded in the binary at /, exactly as production
-# does. No Google credentials are involved: drop_in_config.dev.yaml turns on the
+# does. No Google credentials are involved: env/dev/drop_in_config.yaml turns on the
 # stubs (see docs/agents/dev-stack.md).
 #
 # start blocks only until GET /health returns 200, then leaves the server
@@ -30,7 +30,7 @@ if [[ -f "$REPO_ROOT/.worktree.env" ]]; then
 fi
 
 ENV="dev"
-CONFIG_FILE="$REPO_ROOT/drop_in_config.${ENV}.yaml"
+CONFIG_FILE="$REPO_ROOT/env/${ENV}/drop_in_config.yaml"
 
 # logs/ is gitignored, so the pid file, the log and the built binary all live
 # there rather than needing ignore entries of their own.
@@ -74,7 +74,7 @@ config_db_name() {
 require_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo "Missing ${CONFIG_FILE}" >&2
-        echo "It is committed to the repo — restore it with 'git checkout drop_in_config.${ENV}.yaml'." >&2
+        echo "It is committed to the repo — restore it with 'git checkout env/${ENV}/drop_in_config.yaml'." >&2
         exit 1
     fi
 }

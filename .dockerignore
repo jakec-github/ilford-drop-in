@@ -1,7 +1,5 @@
 # Secrets must never enter the build context
-drop_in_config.*.yaml
-oauthClient*.json
-serviceAccount*.json
+env/
 *.secret
 *.key
 .claude/

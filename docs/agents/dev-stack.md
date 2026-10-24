@@ -297,7 +297,7 @@ Postgres will not clone a database with a connection open on it.
 
 ## Why this is safe
 
-`drop_in_config.dev.yaml` is the one config file committed to the repo. It holds
+`env/dev/drop_in_config.yaml` is the one config file committed to the repo. It holds
 no secrets: fake sheet IDs that are never read, an `agent@example.com` Organiser
 and a `rota-editor@example.com` Rota Editor, and a session secret that signs sessions for a server which already
 mints them on request.
@@ -321,4 +321,4 @@ login, so a stack running with the stubs on says so in its own log.
 | `Something is already serving http://localhost:8080/health` | Another stack has the port. Stop it, or set `API_PORT`. |
 | `Server exited during startup` | The log tail is printed with it — usually the port or the database. |
 | `Timed out after 60s` | The server is up but `/health` is not answering; the database is the usual cause. `scripts/test-db.sh status`. |
-| `Missing drop_in_config.dev.yaml` | It is committed — `git checkout drop_in_config.dev.yaml`. |
+| `Missing env/dev/drop_in_config.yaml` | It is committed — `git checkout env/dev/drop_in_config.yaml`. |
