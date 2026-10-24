@@ -40,22 +40,27 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
-# Deploy directory: compose files arrive via the deploy workflow. The three
-# config files (drop_in_config.yaml, oauthClientWeb.json, serviceAccount.json)
-# go in env/prod/, which compose mounts into the container whole —
-# scripts/deploy-config.sh ships the first, the other two are scp'd by hand.
-# site.env holds the domain. See docs/deployment.md.
-mkdir -p /opt/dropin/env/prod
+# Deploy directory: compose.yaml, the Caddyfile and rollout.sh arrive via the
+# deploy workflow. Each environment's three config files (drop_in_config.yaml,
+# oauthClientWeb.json, serviceAccount.json) go in env/<env>/, which compose
+# mounts into that environment's container whole — scripts/deploy-config.sh
+# ships the first, the other two are scp'd by hand. site.env holds the domains.
+# See docs/deployment.md.
+mkdir -p /opt/dropin/env/prod /opt/dropin/env/preprod
 
-# The domain Caddy serves. It is deployment, not code, so it is not in the repo
-# (issue #202) — deploy/compose.yaml reads it from this file, and Caddy refuses
-# to start while it is empty. Written as a skeleton rather than left absent so a
-# fresh box fails at "fill this in" rather than at a file that is not there.
+# The domains Caddy serves. They are deployment, not code, so they are not in
+# the repo (issue #202) — deploy/compose.yaml reads them from this file, and
+# Caddy refuses to start while SITE_DOMAIN is empty. Written as a skeleton rather
+# than left absent so a fresh box fails at "fill this in" rather than at a file
+# that is not there. An empty PREPROD_DOMAIN only fails preprod's deploys:
+# switch preprod off (scripts/preprod.sh down) until it has one.
 if [ ! -f /opt/dropin/site.env ]; then
   cat >/opt/dropin/site.env <<'EOF'
-# The domain this box answers on. Hostname only — no scheme, no path, no port.
-# Its A record must already point here: Caddy certifies this name on first boot.
+# The domains this box answers on. Hostnames only — no scheme, no path, no port.
+# Their A records must already point here: Caddy certifies them on first boot.
 SITE_DOMAIN=
+# preprod.<SITE_DOMAIN>, by convention.
+PREPROD_DOMAIN=
 EOF
   echo "Created /opt/dropin/site.env — set SITE_DOMAIN before the first deploy"
 fi

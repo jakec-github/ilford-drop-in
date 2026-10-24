@@ -26,6 +26,17 @@ func TestEnvPath(t *testing.T) {
 	assert.Equal(t, filepath.Join("env", "test", "drop_in_config.yaml"), EnvPath("test", ConfigFile))
 }
 
+// prod and preprod both run on the droplet behind Caddy's TLS, so whatever
+// prod does because it is hosted, preprod must do too.
+func TestHosted(t *testing.T) {
+	for _, env := range []string{"prod", "preprod"} {
+		assert.True(t, Hosted(env), env)
+	}
+	for _, env := range []string{"dev", "test", ""} {
+		assert.False(t, Hosted(env), env)
+	}
+}
+
 // Each file an environment needs, and the loader that finds it by env.
 var envFiles = []struct {
 	name    string

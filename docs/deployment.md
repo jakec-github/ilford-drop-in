@@ -1,18 +1,33 @@
 # Deployment runbook
 
 Architecture and rationale: `docs/adr/0002-deployment-architecture.md`. In
-short: one droplet running Docker Compose (Caddy + app), Postgres on Neon,
-images built by CI on every merge to main and deployed over SSH.
+short: one droplet running Docker Compose — Caddy, and an app container each
+for prod and [preprod](#preprod) — Postgres on Neon, images built by CI on
+every merge to main and deployed over SSH.
 
 ## Continuous deployment (no action needed)
 
 Every merge to main builds `ghcr.io/jakec-github/ilford-drop-in`, tagged with
 the git SHA and `latest`, and — if the `DEPLOY_ENABLED` repository variable is
-`"true"` — deploys it to the droplet. **Rollback**: re-run the workflow on a
-previous commit (Actions → the old run → "Re-run all jobs").
+`"true"` — deploys it to the droplet: to preprod, then to prod, one after the
+other. Prod keeps deploying on every merge until the manual promote (#245)
+lands; meanwhile a failed preprod does not hold it back.
 
-**Config is not part of this.** `env/prod/drop_in_config.yaml` and the two
-credential files live on the droplet by hand and are never shipped by a deploy —
+Each leg is `deploy/rollout.sh <env> <sha>` on the droplet, which:
+
+- records the tag in that environment's own `env/<env>/image.env`;
+- recreates that environment's container and no other — and fails the leg if
+  the other environment's container changed;
+- waits for `https://<its domain>/health` and fails the leg, printing the app's
+  last 50 log lines, if it does not answer within two minutes;
+- removes the images no container uses.
+
+**Rollback**: re-run the workflow on a previous commit (Actions → the old run →
+"Re-run all jobs"), or only its `deploy (prod)` job to roll back prod alone.
+
+**Config is not part of this.** Each environment's `drop_in_config.yaml` and
+its two credential files live on the droplet by hand and are never shipped by a
+deploy —
 deliberately, since they hold secrets the repo must not. Roll them out with
 [`scripts/deploy-config.sh`](#config-rollout), on their own schedule.
 
@@ -68,23 +83,26 @@ ssh root@<ip> ./provision.sh
 ```
 
 Idempotent: installs Docker, enables ufw (22/80/443), creates a 2G swap file,
-`/opt/dropin/env/prod`, and a `/opt/dropin/site.env` skeleton with an empty
-`SITE_DOMAIN`. Fill that in — the stack will not start until you do.
+`/opt/dropin/env/prod` and `/opt/dropin/env/preprod`, and a
+`/opt/dropin/site.env` skeleton with empty `SITE_DOMAIN` and `PREPROD_DOMAIN`.
+Fill in `SITE_DOMAIN` — the stack will not start until you do. Preprod has its
+own setup, [below](#preprod).
 
 ### 3. Config files
 
-Four untracked files live on the droplet. Three are the server's, in
-**`/opt/dropin/env/prod/`** — the directory `deploy/compose.yaml` mounts into the
-container as `/app/env/prod`, which is where the server looks for them. The
-fourth is Caddy's, in `/opt/dropin`. Locally the server's three sit at the same
-paths under the repo root, `env/prod/`.
+Each environment has three untracked files on the droplet, in
+**`/opt/dropin/env/<env>/`** — the directory `deploy/compose.yaml` mounts into
+that environment's container as `/app/env/<env>`, which is where the server
+looks for them. A fourth, Caddy's, is in `/opt/dropin`. Locally each
+environment's three sit at the same paths under the repo root, `env/<env>/`.
+Prod's are below; preprod's are the same three, in `env/preprod/`.
 
 | File | What it is | How it gets there |
 | --- | --- | --- |
 | `env/prod/drop_in_config.yaml` | the app's config | [`scripts/deploy-config.sh`](#config-rollout) |
 | `env/prod/oauthClientWeb.json` | Google web client | `scp`, about once a year |
 | `env/prod/serviceAccount.json` | Google service account | `scp`, about once a year |
-| `site.env` | `SITE_DOMAIN=<domain>` for Caddy | written by hand, once |
+| `site.env` | `SITE_DOMAIN=<domain>` and `PREPROD_DOMAIN=<domain>` for Caddy | written by hand, once |
 
 The three in `env/prod/` are the one thing the repo cannot regenerate; keep
 copies with other personal secrets.
@@ -107,8 +125,8 @@ sheet is left alone — every publish fails with a warning in the logs, which is
 the only place it shows (issue #191).
 
 `drop_in_config.yaml` changes often, so it gets a script — see
-[Config rollout](#config-rollout) below. Run it once here too; it puts the file
-in place and brings the app up.
+[Config rollout](#config-rollout) below. Run it once after the first deploy;
+it puts the file in place and brings the app up.
 
 ### 4. GitHub Actions secrets and variables
 
@@ -129,10 +147,12 @@ Repository **variable**:
 ### 5. First deploy
 
 Set `DEPLOY_ENABLED=true`, then run the workflow (Actions → Build and deploy →
-"Run workflow", or merge anything to main). The deploy job copies
-`deploy/compose.yaml` and `deploy/Caddyfile` to `/opt/dropin` and starts the
-stack; Caddy obtains its certificate on first boot. `site.env` must already be
-there with a domain in it, or the stack will not come up.
+"Run workflow", or merge anything to main). Each deploy leg copies
+`deploy/compose.yaml`, `deploy/Caddyfile` and `deploy/rollout.sh` to
+`/opt/dropin` and starts Caddy and its own app; Caddy obtains its certificate
+on first boot. `site.env` must already be there with a domain in it, or the
+stack will not come up. Until preprod is set up, switch it off first
+(`scripts/preprod.sh down`), or its leg fails on every merge.
 
 ## The site's domain
 
@@ -144,6 +164,10 @@ does, so it lives on the droplet exactly as the config files do (issue #202).
 {$SITE_DOMAIN} {
 	reverse_proxy app:8080
 }
+
+{$PREPROD_DOMAIN} http://preprod.invalid {
+	reverse_proxy app-preprod:8080
+}
 ```
 
 and `deploy/compose.yaml` gives the caddy service `env_file: ./site.env`,
@@ -153,8 +177,11 @@ pointing at an untracked `/opt/dropin/site.env`:
 ssh root@<ip> 'echo SITE_DOMAIN=example.org > /opt/dropin/site.env'
 ```
 
-Hostname only — no scheme, no path, no port. Two details are deliberate and
-worth not undoing:
+Hostname only — no scheme, no path, no port. `PREPROD_DOMAIN` is preprod's,
+the same way; the `http://preprod.invalid` beside it is only there so an empty
+one leaves a site nobody visits rather than a Caddyfile that will not load,
+which would take prod down with it. Two details are deliberate and worth not
+undoing:
 
 - **`site.env`, not `.env`.** The deploy workflow writes `/opt/dropin/.env`
   wholesale on every deploy, so anything else put there survives until the next
@@ -175,11 +202,10 @@ no deploy:
 4. Update the Google web client's authorised redirect URI to
    `https://<new domain>/auth/callback`, and `server.redirectURI` in
    `env/prod/drop_in_config.yaml` with it — then run
-   [`scripts/deploy-config.sh`](#config-rollout).
-5. Update `SITE_DOMAIN` in your own `.deploy.env`, so the config rollout polls
-   the right host.
+   [`scripts/deploy-config.sh prod`](#config-rollout).
 
-Reverting is the same five steps with the old name.
+Reverting is the same four steps with the old name. Preprod's domain moves the
+same way, with `PREPROD_DOMAIN` and `env/preprod/drop_in_config.yaml`.
 
 **Step 3 is what makes the edit take.** `SITE_DOMAIN` is read into Caddy's
 process environment once, when the container starts, so only a *new* container
@@ -196,6 +222,9 @@ compose cannot see (the issue #100 lesson, recorded in `deploy/compose.yaml`).
 ask the operator to remember which kinds of change compose notices. Expect a few
 seconds of downtime while the new container starts and certifies the new name.
 
+A changed `Caddyfile` needs the same step: a deploy copies the new file over
+but never restarts Caddy, so the running one keeps the routes it started with.
+
 ### When it is missing
 
 An absent or empty `SITE_DOMAIN` stops the stack rather than serving on a
@@ -203,6 +232,9 @@ wildcard address with no certificate:
 
 - **No `site.env` at all** — `docker compose up` refuses to run, so the deploy
   job itself goes red: `env file /opt/dropin/site.env not found`.
+- **Empty `PREPROD_DOMAIN`** — prod is unaffected, and preprod's deploy leg
+  fails before touching anything, naming the variable. Switch preprod off until
+  it has one.
 - **Empty `SITE_DOMAIN`** — the caddy container exits, saying so by name:
   `SITE_DOMAIN is empty or unset: set it in /opt/dropin/site.env`. That check is
   in `deploy/compose.yaml` rather than left to Caddy, which rejects the empty
@@ -254,34 +286,35 @@ emailed. That is why the path was set before go-live rather than after
 
 ## Config rollout
 
-Editing `env/prod/drop_in_config.yaml` and reaching the running server is one
+Editing `env/<env>/drop_in_config.yaml` and reaching the running server is one
 command, from the repo root:
 
 ```sh
-scripts/deploy-config.sh <ip>          # or set DEPLOY_HOST, or put it in .deploy.env
+scripts/deploy-config.sh prod          # or preprod
 ```
 
 It validates the local file, shows what it configures, asks, copies it to
-`/opt/dropin/env/prod/`, recreates the app container, and waits for
-`https://$SITE_DOMAIN/health` to answer — exiting non-zero with the app's logs if
-it does not. There is no `docker compose` step to run afterwards.
+`/opt/dropin/env/<env>/`, and runs `rollout.sh <env>` on the droplet — the same
+recreate and `/health` wait a deploy does, against that environment's container
+and host only, exiting non-zero with the app's logs if it does not answer. There
+is no `docker compose` step to run afterwards. While preprod is switched off its
+config is shipped but nothing is started; `scripts/preprod.sh up` picks it up.
 
-`.deploy.env` names the box it is all pointed at. Both lines are needed — the
-domain is no longer anywhere in the checkout for the script to read:
+`.deploy.env` names the box it is all pointed at:
 
 ```sh
 DEPLOY_HOST=<ip>
-SITE_DOMAIN=<domain>
 ```
 
-Either can be given in the environment instead, and `HEALTH_URL` overrides the
-poll URL outright. With no domain to work one out from, the script says so and
-stops before shipping anything.
+It can be given in the environment instead, or as the argument after the
+environment. Nothing here needs the domains any more: `rollout.sh` reads them
+from the droplet's own `site.env`, so a `SITE_DOMAIN` line left in
+`.deploy.env` is ignored.
 
 Three things it is doing on purpose:
 
 - **Validation happens before the file leaves the machine.** Under the hood it
-  is `go run ./cmd/cli -e prod validate-config <path>`, which reads the file and
+  is `go run ./cmd/cli -e <env> validate-config <path>`, which reads the file and
   nothing else: no database, no Google. Run it on its own any time.
 - **The summary is the point.** "Valid" is not the same as "right" — a config
   can parse and validate with a whole section missing. The counts it prints are
@@ -322,10 +355,83 @@ permanent — there is no delete and no retire — so getting the name right the
 first time saves a rename, which the roster has to be edited to match; the
 screen says as much at the point of rename.
 
+## Preprod
+
+A second copy of the app on the same droplet, at its own host, deployed from
+main before prod (ADR 0002, issue #244). It is there to try a change on
+before it reaches anyone, so it shares nothing with prod but the box and the
+image:
+
+- **Its own host**, `PREPROD_DOMAIN` in `site.env` — conventionally
+  `preprod.<domain>`. Not a path under prod's: `/api`, `/auth` and `/health`
+  sit at the root of a host (see [Base path](#base-path)). No basic auth;
+  Organiser screens need a Google login, as in prod.
+- **Its own database**, a separate Neon project — not a branch of prod's.
+- **Its own synthetic roster and rota sheets.** Never a copy of prod's
+  volunteers: the roster's emails are plus-addresses the owner controls, as in
+  `test_data/volunteers.csv`, so the real availability emails preprod sends
+  reach nobody else.
+- **Its own config**, `env/preprod/drop_in_config.yaml`, with real OIDC —
+  `devMode` is refused outside dev. It ships exactly as prod's does:
+  `scripts/deploy-config.sh preprod`.
+
+### Setting it up
+
+The owner-side half (DNS, Neon, Google, the sheets) is issue #246. On the
+droplet it comes to:
+
+1. Point `preprod.<domain>`'s A record at the droplet.
+2. Set `PREPROD_DOMAIN=preprod.<domain>` in `/opt/dropin/site.env`, then
+   `ssh root@<ip> 'cd /opt/dropin && docker compose up -d --force-recreate caddy'`
+   so Caddy reads it and certifies the name (a few seconds of prod downtime).
+3. Register `https://preprod.<domain>/auth/callback` on preprod's Google web
+   client, and give preprod's service account the same access to its sheets as
+   prod's has to prod's (see [Config files](#3-config-files)).
+4. `scp env/preprod/oauthClientWeb.json env/preprod/serviceAccount.json root@<ip>:/opt/dropin/env/preprod/`
+5. `scripts/preprod.sh up`, if it was switched off, then
+   `scripts/deploy-config.sh preprod`. If preprod has never been deployed,
+   re-run the deploy workflow first: `rollout.sh` needs a tag to start.
+
+### Seeding synthetic data
+
+A fresh preprod database is empty, as prod's was:
+
+1. Create the Roles on **Organiser → Settings**, named as in the synthetic
+   roster's `Roles` column (see [Domain settings](#domain-settings)).
+2. Define a rota and open its availability round from the Organiser screens.
+3. Answer the round with made-up availability, logged in as an Organiser and
+   passing that session's cookie (real OIDC, so the script cannot log in by
+   itself):
+
+   ```sh
+   scripts/fake-availability.py --api-url https://preprod.<domain> --session <cookie>
+   ```
+
+### Switching it off
+
+Two apps on a 512 MiB box is tight. When it runs short, preprod gives way:
+
+```sh
+scripts/preprod.sh down     # stop and remove app-preprod
+scripts/preprod.sh up       # bring back the image it last ran, and wait for /health
+```
+
+`down` leaves `/opt/dropin/env/preprod/disabled` on the box. While it is there,
+every deploy's preprod leg skips with a notice on the run, and
+`scripts/deploy-config.sh preprod` ships the file without starting anything.
+Prod is untouched either way. Caddy keeps its preprod site, which answers 502
+while preprod is down. `up` pulls the image back if a prune has removed it;
+the image is public, so that needs no login.
+
 ## Operations
 
-- **Logs**: `ssh root@<ip> 'cd /opt/dropin && docker compose logs -f app'`
+- **Logs**: `ssh root@<ip> 'cd /opt/dropin && docker compose logs -f app'` —
+  `app-preprod` for preprod
 - **Status**: `docker compose ps` in `/opt/dropin`
+- **What each runs**: `env/prod/image.env` and `env/preprod/image.env` hold the
+  tag each environment last deployed. `/opt/dropin/.env` is rebuilt from them on
+  every rollout, so a bare `docker compose up -d` leaves both as they are; edit
+  neither by hand.
 - **Restart**: `docker compose restart app` — note this does *not* pick up a
   changed config; use the config rollout above for that.
 - The box holds no unregenerable state: rebuilding it is droplet + provision +
