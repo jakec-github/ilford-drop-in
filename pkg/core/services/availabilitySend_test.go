@@ -77,7 +77,7 @@ func sendStore() *mockAvailabilityStore {
 
 // sendTestCfg closes no dates: which shifts are open is the form's business,
 // not the email's, so these tests have no use for overrides.
-var sendTestCfg = &config.Config{}
+var sendTestCfg = &config.Organisation{}
 
 func sendParams(mode SendMode) SendParams {
 	return SendParams{

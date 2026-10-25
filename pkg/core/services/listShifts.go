@@ -83,7 +83,7 @@ func ListShifts(
 	ctx context.Context,
 	database ListShiftsStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	params ListShiftsParams,
 	logger *zap.Logger,
 ) ([]Shift, error) {
@@ -128,7 +128,7 @@ func ListShifts(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

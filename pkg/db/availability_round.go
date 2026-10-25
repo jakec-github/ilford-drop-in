@@ -59,8 +59,9 @@ func (d *DB) GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string)
 		SELECT `+availabilityRequestColumns+`
 		FROM availability_request
 		WHERE rota_id = $1
+		  AND rota_id IN (SELECT id FROM rotation WHERE organisation_id = $2)
 		ORDER BY volunteer_id
-	`, rotaID)
+	`, rotaID, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query availability requests for rota %s: %w", rotaID, err)
 	}
@@ -90,7 +91,8 @@ func (d *DB) GetAvailabilityRequestByToken(ctx context.Context, token string) (*
 		SELECT `+availabilityRequestColumns+`
 		FROM availability_request
 		WHERE token = $1
-	`, token)
+		  AND rota_id IN (SELECT id FROM rotation WHERE organisation_id = $2)
+	`, token, d.org())
 
 	req, err := scanAvailabilityRequest(row)
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -84,7 +84,7 @@ func ChangeRota(
 	ctx context.Context,
 	database ChangeRotaStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	params ChangeRotaParams,
 	logger *zap.Logger,
 ) (*ChangeRotaResult, error) {
@@ -127,7 +127,7 @@ func ChangeRota(
 	}
 
 	// Step 1b: Fetch volunteers and validate IDs
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

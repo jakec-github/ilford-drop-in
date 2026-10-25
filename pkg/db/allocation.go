@@ -15,10 +15,10 @@ import (
 // rota and date live on the shift (ADR 0001). An empty id set returns no rows
 // without a query.
 func (d *DB) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Allocation, error) {
-	return getAllocationsByShiftIDs(ctx, d.pool, shiftIDs)
+	return getAllocationsByShiftIDs(ctx, d.pool, d.org(), shiftIDs)
 }
 
-func getAllocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string) ([]Allocation, error) {
+func getAllocationsByShiftIDs(ctx context.Context, q querier, organisationID string, shiftIDs []string) ([]Allocation, error) {
 	if len(shiftIDs) == 0 {
 		return nil, nil
 	}
@@ -26,7 +26,8 @@ func getAllocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string)
 		SELECT id, shift_id, role_id, volunteer_id, custom_entry
 		FROM allocation
 		WHERE shift_id = ANY($1)
-	`, shiftIDs)
+		  AND shift_id IN (SELECT id FROM shift WHERE organisation_id = $2)
+	`, shiftIDs, organisationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query allocations by shift: %w", err)
 	}
@@ -82,7 +83,7 @@ func (d *DB) InsertAllocationsAndSetAllocated(ctx context.Context, allocations [
 	// allocated_datetime this run set and fails. On failure the deferred
 	// Rollback writes nothing.
 	var allocatedAt *time.Time
-	if err := tx.QueryRow(ctx, `SELECT allocated_datetime FROM rotation WHERE id = $1 FOR UPDATE`, rotaID).Scan(&allocatedAt); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT allocated_datetime FROM rotation WHERE id = $1 AND organisation_id = $2 FOR UPDATE`, rotaID, d.org()).Scan(&allocatedAt); err != nil {
 		return fmt.Errorf("failed to lock rotation %s: %w", rotaID, err)
 	}
 	if allocatedAt != nil {

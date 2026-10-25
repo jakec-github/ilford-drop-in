@@ -74,7 +74,7 @@ func AddPreallocation(
 	ctx context.Context,
 	store PreallocationStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	params AddPreallocationParams,
 	logger *zap.Logger,
 ) (*PreallocationView, error) {
@@ -107,7 +107,7 @@ func AddPreallocation(
 	// listed one without a second fetch.
 	name := params.Custom
 	if params.VolunteerID != "" {
-		volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+		volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 		}
@@ -262,7 +262,7 @@ func ListPreallocations(
 	ctx context.Context,
 	store PreallocationStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	params ListPreallocationsParams,
 	logger *zap.Logger,
 ) ([]PreallocationView, error) {
@@ -296,7 +296,7 @@ func ListPreallocations(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

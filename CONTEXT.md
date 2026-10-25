@@ -157,6 +157,14 @@ used to seed real ones when a Rotation is defined. It is a convenience at
 definition, not a standing fact: once seeded, the Preallocations it made are
 ordinary and outlive any later change to it.
 
+**Organisation**:
+One drop-in that runs its rota on the app: its own Roles, Rota Defaults,
+Rotations, roster and allowlists, sharing nothing with any other. Listed in the
+deployment's config, served under `/org/<id>/`, and never linked to or listed
+anywhere else, so its address is the only way in (ADR 0011). Being an Organiser
+or a Rota Editor is always of one Organisation.
+_Avoid_: tenant, site, org (alone, outside URLs)
+
 **Organiser**:
 A trusted person authorised to make every edit the app offers — the Rota
 Defaults, defining and discarding a Rotation, its Availability Round, the Draft

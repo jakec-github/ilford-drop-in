@@ -90,7 +90,7 @@ type mockChangeRotaVolClient struct {
 	volunteers []model.Volunteer
 }
 
-func (m *mockChangeRotaVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
+func (m *mockChangeRotaVolClient) ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
 	return m.volunteers, nil
 }
 
@@ -108,7 +108,7 @@ func defaultVolunteers() *mockChangeRotaVolClient {
 
 // testCfg is a config with nothing in it worth setting: Roles left config for
 // the database, and the services below take what they need from testRoleStore.
-var testCfg = &config.Config{}
+var testCfg = &config.Organisation{}
 
 // testRoleStore serves the two Roles S1 ships with: one Team lead Seat ahead of
 // the uncapped Service volunteer. Every mock store in these tests embeds it,

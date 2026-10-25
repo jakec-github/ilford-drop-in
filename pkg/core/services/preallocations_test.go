@@ -134,7 +134,7 @@ type preallocVolClient struct {
 	volunteers []model.Volunteer
 }
 
-func (c *preallocVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
+func (c *preallocVolClient) ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
 	return c.volunteers, nil
 }
 

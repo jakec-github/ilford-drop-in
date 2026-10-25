@@ -33,7 +33,7 @@ func TestSolveDraftRotaAllocationRefusesAnAllocatedRota(t *testing.T) {
 		context.Background(),
 		store,
 		&mockVolClient{},
-		&config.Config{},
+		&config.Organisation{},
 		zap.NewNop(),
 		"", // pythonFlag
 	)
@@ -61,7 +61,7 @@ func TestSolveDraftRotaAllocationSharesTheAllocationGates(t *testing.T) {
 		context.Background(),
 		store,
 		&mockVolClient{},
-		&config.Config{},
+		&config.Organisation{},
 		zap.NewNop(),
 		"", // pythonFlag
 	)
@@ -129,7 +129,7 @@ func TestDraftRotaAllocationDirtiness(t *testing.T) {
 				}},
 			}
 
-			status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
+			status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Organisation{}, zap.NewNop())
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.dirty, status.Dirty)
@@ -154,7 +154,7 @@ func TestDraftRotaAllocationOfAnUndraftedRota(t *testing.T) {
 		shifts:    sundayShifts("rota-1", "2026-08-02", 2),
 	}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Organisation{}, zap.NewNop())
 
 	require.NoError(t, err)
 	assert.False(t, status.Solved)
@@ -191,7 +191,7 @@ func TestDraftRotaAllocationCarriesTheRotaItDrafted(t *testing.T) {
 		{ID: "bob", FirstName: "Bob", LastName: "Barnes", Status: "Active"},
 	}}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store, volunteers, &config.Config{}, zap.NewNop())
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, volunteers, &config.Organisation{}, zap.NewNop())
 
 	require.NoError(t, err)
 	require.Len(t, status.Shifts, 1, "the Shift the solver staffed, not the one it left empty")
@@ -214,7 +214,7 @@ func TestDraftRotaAllocationOfAnUndraftedRotaReadsNoRoster(t *testing.T) {
 	status, err := DraftRotaAllocationInFlight(
 		context.Background(), store,
 		&mockVolClient{listErr: errors.New("the sheet was read")},
-		&config.Config{}, zap.NewNop(),
+		&config.Organisation{}, zap.NewNop(),
 	)
 
 	require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestDraftRotaAllocationWithNoRotaInFlight(t *testing.T) {
 		shifts: sundayShifts("rota-1", "2026-08-02", 2),
 	}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Organisation{}, zap.NewNop())
 
 	require.ErrorIs(t, err, ErrNotFound)
 	assert.Nil(t, status)
@@ -249,7 +249,7 @@ func TestDraftRotaAllocationSurfacesAReadFailure(t *testing.T) {
 		getDraftErr: errors.New("connection refused"),
 	}
 
-	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Config{}, zap.NewNop())
+	status, err := DraftRotaAllocationInFlight(context.Background(), store, &mockVolClient{}, &config.Organisation{}, zap.NewNop())
 
 	require.Error(t, err)
 	assert.Nil(t, status)

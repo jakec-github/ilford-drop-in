@@ -114,7 +114,7 @@ func DefineRota(
 	ctx context.Context,
 	database DefineRotaStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	params DefineRotaParams,
 ) (*RotaResult, error) {
@@ -276,7 +276,7 @@ func DefineRota(
 		Rotation:       rotation,
 		Shifts:         shifts,
 		Preallocations: preallocations,
-		Asked:          openRound(ctx, database, volunteerClient, cfg, logger, rotation.ID),
+		Asked:          openRound(ctx, database, volunteerClient, organisation, logger, rotation.ID),
 	}, nil
 }
 
@@ -294,7 +294,7 @@ func openRound(
 	ctx context.Context,
 	database DefineRotaStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	rotaID string,
 ) int {
@@ -305,7 +305,7 @@ func openRound(
 		return 0
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		logger.Warn("Defined the rota but could not read the roster to open its round",
 			zap.String("rotation_id", rotaID), zap.Error(err))

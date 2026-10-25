@@ -63,8 +63,9 @@ func (d *DB) ListRoles(ctx context.Context) ([]Role, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT id, name, priority, colour
 		FROM role
+		WHERE organisation_id = $1
 		ORDER BY priority, name
-	`)
+	`, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query roles: %w", err)
 	}
@@ -97,16 +98,16 @@ func (d *DB) ListRoles(ctx context.Context) ([]Role, error) {
 func (d *DB) InsertRole(ctx context.Context, role Role) error {
 	return d.inTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO role (id, name, priority, colour)
-			VALUES ($1, $2, $3, $4)
-		`, role.ID, role.Name, role.Priority, role.Colour)
+			INSERT INTO role (id, organisation_id, name, priority, colour)
+			VALUES ($1, $5, $2, $3, $4)
+		`, role.ID, role.Name, role.Priority, role.Colour, d.org())
 		if err != nil {
 			if isDuplicateName(err) {
 				return fmt.Errorf("failed to insert role %q: %w", role.Name, ErrDuplicateRoleName)
 			}
 			return fmt.Errorf("failed to insert role %q: %w", role.Name, err)
 		}
-		return markAllRotaInputsChanged(ctx, tx)
+		return markAllRotaInputsChanged(ctx, tx, d.org())
 	})
 }
 
@@ -127,8 +128,8 @@ func (d *DB) UpdateRole(ctx context.Context, role Role) (bool, error) {
 		tag, err := tx.Exec(ctx, `
 			UPDATE role
 			SET name = $2, priority = $3, colour = $4
-			WHERE id = $1
-		`, role.ID, role.Name, role.Priority, role.Colour)
+			WHERE id = $1 AND organisation_id = $5
+		`, role.ID, role.Name, role.Priority, role.Colour, d.org())
 		if err != nil {
 			if isDuplicateName(err) {
 				return fmt.Errorf("failed to update role %q: %w", role.Name, ErrDuplicateRoleName)
@@ -143,7 +144,7 @@ func (d *DB) UpdateRole(ctx context.Context, role Role) (bool, error) {
 		// works to, so the rota in flight's draft is stale (issue #142). A
 		// rename is stamped with them rather than picked apart, and costs one
 		// re-solve.
-		return markAllRotaInputsChanged(ctx, tx)
+		return markAllRotaInputsChanged(ctx, tx, d.org())
 	})
 	if err != nil {
 		return false, err

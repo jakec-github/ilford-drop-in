@@ -150,7 +150,7 @@ func rotaOnTheSheet() *mockPublishRotaStore {
 
 func publish(t *testing.T, store *mockPublishRotaStore, sheets *mockSheetsClient) error {
 	t.Helper()
-	_, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Config{RotaSheetID: "sheet"}, zap.NewNop())
+	_, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Organisation{RotaSheetID: "sheet"}, zap.NewNop())
 	return err
 }
 
@@ -210,7 +210,7 @@ func (renamedLeadStore) ListRoles(context.Context) ([]db.Role, error) {
 // published under its new name, not filed under Unknown role (issue #222).
 func TestPublishRota_ARenamedRoleKeepsItsPeople(t *testing.T) {
 	sheets := &mockSheetsClient{}
-	_, err := PublishRota(context.Background(), renamedLeadStore{rotaOnTheSheet()}, sheets, publishVolunteers, &config.Config{RotaSheetID: "sheet"}, zap.NewNop())
+	_, err := PublishRota(context.Background(), renamedLeadStore{rotaOnTheSheet()}, sheets, publishVolunteers, &config.Organisation{RotaSheetID: "sheet"}, zap.NewNop())
 	require.NoError(t, err)
 
 	sheet := sheets.plan(t).Sheet
@@ -255,7 +255,7 @@ func TestPublishRota_PublishesNothingBeforeAnythingIsAllocated(t *testing.T) {
 	store.rotations[0].AllocatedDatetime = ""
 	sheets := &mockSheetsClient{}
 
-	sheet, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Config{}, zap.NewNop())
+	sheet, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Organisation{}, zap.NewNop())
 
 	require.NoError(t, err)
 	assert.Nil(t, sheet)
@@ -368,7 +368,7 @@ func TestPublishRota_WarnsWhenLatestWasMissing(t *testing.T) {
 	store := rotaOnTheSheet()
 	sheets := &mockSheetsClient{latestWasMissing: true}
 
-	_, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Config{}, zap.New(core))
+	_, err := PublishRota(context.Background(), store, sheets, publishVolunteers, &config.Organisation{}, zap.New(core))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, logs.FilterMessageSnippet("Latest tab was missing").Len())
@@ -392,7 +392,7 @@ func TestPublishRota_RefusesBeforeTheRosterHasLoaded(t *testing.T) {
 	store := rotaOnTheSheet()
 	sheets := &mockSheetsClient{}
 
-	_, err := PublishRota(context.Background(), store, sheets, &mockVolClient{}, &config.Config{}, zap.NewNop())
+	_, err := PublishRota(context.Background(), store, sheets, &mockVolClient{}, &config.Organisation{}, zap.NewNop())
 
 	require.ErrorContains(t, err, "roster")
 	assert.Empty(t, sheets.applied)

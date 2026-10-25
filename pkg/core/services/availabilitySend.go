@@ -91,7 +91,7 @@ func SendAvailabilityEmails(
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
 	mailer GmailClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	params SendParams,
 ) (*SendReport, error) {
@@ -121,7 +121,7 @@ func SendAvailabilityEmails(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

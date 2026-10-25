@@ -61,7 +61,7 @@ type RotaChangeStore interface {
 // from fn rolls the whole transaction back.
 func (d *DB) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store RotaChangeStore) error) error {
 	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
-		return fn(&rotaTx{tx: tx})
+		return fn(&rotaTx{tx: tx, org: d.org()})
 	})
 }
 
@@ -84,7 +84,9 @@ func (d *DB) withRotaLockTx(ctx context.Context, rotaIDs []string, fn func(tx pg
 
 	for _, id := range ids {
 		var locked string
-		if err := tx.QueryRow(ctx, `SELECT id FROM rotation WHERE id = $1 FOR UPDATE`, id).Scan(&locked); err != nil {
+		// Scoped like every other read: another Organisation's rota does not
+		// exist from here, so it cannot be locked or written under.
+		if err := tx.QueryRow(ctx, `SELECT id FROM rotation WHERE id = $1 AND organisation_id = $2 FOR UPDATE`, id, d.org()).Scan(&locked); err != nil {
 			return fmt.Errorf("failed to lock rotation %s: %w", id, err)
 		}
 	}
@@ -119,7 +121,7 @@ type PreallocationTxStore interface {
 // locking transaction.
 func (d *DB) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store PreallocationTxStore) error) error {
 	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
-		return fn(&rotaTx{tx: tx})
+		return fn(&rotaTx{tx: tx, org: d.org()})
 	})
 }
 
@@ -143,7 +145,7 @@ type ShiftTxStore interface {
 // per-Shift edits serialise against allocation of the rota they belong to.
 func (d *DB) WithRotaShiftLock(ctx context.Context, rotaIDs []string, fn func(store ShiftTxStore) error) error {
 	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
-		return fn(&rotaTx{tx: tx})
+		return fn(&rotaTx{tx: tx, org: d.org()})
 	})
 }
 
@@ -165,51 +167,53 @@ type ShapeTxStore interface {
 // a Shape edit serialises against allocation of the rota it belongs to.
 func (d *DB) WithRotaShapeLock(ctx context.Context, rotaIDs []string, fn func(store ShapeTxStore) error) error {
 	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
-		return fn(&rotaTx{tx: tx})
+		return fn(&rotaTx{tx: tx, org: d.org()})
 	})
 }
 
-// rotaTx implements RotaChangeStore against the locking transaction.
+// rotaTx implements RotaChangeStore against the locking transaction, scoped
+// to the Organisation of the DB that opened it.
 type rotaTx struct {
-	tx pgx.Tx
+	tx  pgx.Tx
+	org string
 }
 
 func (r *rotaTx) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Allocation, error) {
-	return getAllocationsByShiftIDs(ctx, r.tx, shiftIDs)
+	return getAllocationsByShiftIDs(ctx, r.tx, r.org, shiftIDs)
 }
 
 func (r *rotaTx) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Alteration, error) {
-	return getAlterationsByShiftIDs(ctx, r.tx, shiftIDs)
+	return getAlterationsByShiftIDs(ctx, r.tx, r.org, shiftIDs)
 }
 
 func (r *rotaTx) InsertCoverAndAlterations(ctx context.Context, cover *Cover, alterations []Alteration) error {
-	return insertCoverAndAlterations(ctx, r.tx, cover, alterations)
+	return insertCoverAndAlterations(ctx, r.tx, r.org, cover, alterations)
 }
 
 func (r *rotaTx) RotaAllocated(ctx context.Context, rotaID string) (bool, error) {
-	return rotaAllocated(ctx, r.tx, rotaID)
+	return rotaAllocated(ctx, r.tx, r.org, rotaID)
 }
 
 func (r *rotaTx) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error) {
-	return getPreallocationsByShiftIDs(ctx, r.tx, shiftIDs)
+	return getPreallocationsByShiftIDs(ctx, r.tx, r.org, shiftIDs)
 }
 
 func (r *rotaTx) InsertPreallocation(ctx context.Context, mp Preallocation) error {
-	return insertPreallocation(ctx, r.tx, mp)
+	return insertPreallocation(ctx, r.tx, r.org, mp)
 }
 
 func (r *rotaTx) DeletePreallocationByID(ctx context.Context, id string) (bool, error) {
-	return deletePreallocationByID(ctx, r.tx, id)
+	return deletePreallocationByID(ctx, r.tx, r.org, id)
 }
 
 func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error) {
-	return setShiftClosed(ctx, r.tx, shiftID, closed)
+	return setShiftClosed(ctx, r.tx, r.org, shiftID, closed)
 }
 
 func (r *rotaTx) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
-	return setShiftTimes(ctx, r.tx, shiftID, startAt, endAt)
+	return setShiftTimes(ctx, r.tx, r.org, shiftID, startAt, endAt)
 }
 
 func (r *rotaTx) SetShiftShape(ctx context.Context, shiftID string, seats []ShiftRequirement) (bool, error) {
-	return setShiftShape(ctx, r.tx, shiftID, seats)
+	return setShiftShape(ctx, r.tx, r.org, shiftID, seats)
 }

@@ -33,14 +33,15 @@ func isDuplicateStanding(err error) bool {
 // an Organiser reads whole, and the two callers — the settings screen and rota
 // definition — both want all of them.
 func (d *DB) GetStandingPreallocations(ctx context.Context) ([]StandingPreallocation, error) {
-	return getStandingPreallocations(ctx, d.pool)
+	return getStandingPreallocations(ctx, d.pool, d.org())
 }
 
-func getStandingPreallocations(ctx context.Context, q querier) ([]StandingPreallocation, error) {
+func getStandingPreallocations(ctx context.Context, q querier, organisationID string) ([]StandingPreallocation, error) {
 	rows, err := q.Query(ctx, `
 		SELECT id, rrule, role_id, volunteer_id, custom_value
 		FROM standing_preallocation
-	`)
+		WHERE organisation_id = $1
+	`, organisationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query standing preallocations: %w", err)
 	}
@@ -87,15 +88,21 @@ func (d *DB) InsertStandingPreallocation(ctx context.Context, s StandingPrealloc
 	if s.CustomValue != "" {
 		customValue = &s.CustomValue
 	}
-	_, err := d.pool.Exec(ctx, `
-		INSERT INTO standing_preallocation (id, rrule, role_id, volunteer_id, custom_value)
-		VALUES ($1, $2, $3, $4, $5)
-	`, s.ID, s.RRule, s.RoleID, volunteerID, customValue)
+	// Selected from the Role, so another Organisation's Role inserts nothing.
+	tag, err := d.pool.Exec(ctx, `
+		INSERT INTO standing_preallocation (id, organisation_id, rrule, role_id, volunteer_id, custom_value)
+		SELECT $1, r.organisation_id, $2, r.id, $4, $5
+		FROM role r
+		WHERE r.id = $3 AND r.organisation_id = $6
+	`, s.ID, s.RRule, s.RoleID, volunteerID, customValue, d.org())
 	if err != nil {
 		if isDuplicateStanding(err) {
 			return ErrDuplicateStandingPreallocation
 		}
 		return fmt.Errorf("failed to insert standing preallocation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("failed to insert standing preallocation: no role %s", s.RoleID)
 	}
 	return nil
 }
@@ -107,7 +114,7 @@ func (d *DB) InsertStandingPreallocation(ctx context.Context, s StandingPrealloc
 // seeded are ordinary Preallocations belonging to the rotas that minted them,
 // and they outlive it: it is a convenience at definition, not a standing fact.
 func (d *DB) DeleteStandingPreallocationByID(ctx context.Context, id string) (bool, error) {
-	tag, err := d.pool.Exec(ctx, `DELETE FROM standing_preallocation WHERE id = $1`, id)
+	tag, err := d.pool.Exec(ctx, `DELETE FROM standing_preallocation WHERE id = $1 AND organisation_id = $2`, id, d.org())
 	if err != nil {
 		return false, fmt.Errorf("failed to delete standing preallocation %s: %w", id, err)
 	}

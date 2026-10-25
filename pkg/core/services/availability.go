@@ -133,7 +133,7 @@ func MintAvailabilityRound(
 	ctx context.Context,
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	rotaID string,
 ) (*AvailabilityRound, error) {
@@ -153,7 +153,7 @@ func MintAvailabilityRound(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -162,7 +162,7 @@ func MintAvailabilityRound(
 		return nil, err
 	}
 
-	return buildRound(ctx, database, rota, volunteers, roles, cfg, logger)
+	return buildRound(ctx, database, rota, volunteers, roles, organisation, logger)
 }
 
 // MintRequestsStore is the sliver of the store minting the links needs, as
@@ -227,7 +227,7 @@ func GetAvailabilityRound(
 	ctx context.Context,
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	rotaID string,
 ) (*AvailabilityRound, error) {
@@ -241,12 +241,12 @@ func GetAvailabilityRound(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
 
-	return buildRound(ctx, database, rota, volunteers, roles, cfg, logger)
+	return buildRound(ctx, database, rota, volunteers, roles, organisation, logger)
 }
 
 // GetAvailabilityForm resolves a volunteer's link to the form behind it.
@@ -258,11 +258,11 @@ func GetAvailabilityForm(
 	ctx context.Context,
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	token string,
 ) (*AvailabilityForm, error) {
-	request, rota, shifts, volunteers, err := resolveToken(ctx, database, volunteerClient, cfg, logger, token)
+	request, rota, shifts, volunteers, err := resolveToken(ctx, database, volunteerClient, organisation, logger, token)
 	if err != nil {
 		return nil, err
 	}
@@ -286,12 +286,12 @@ func SubmitAvailability(
 	ctx context.Context,
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	token string,
 	shiftIDs []string,
 ) (*AvailabilityForm, error) {
-	request, rota, shifts, volunteers, err := resolveToken(ctx, database, volunteerClient, cfg, logger, token)
+	request, rota, shifts, volunteers, err := resolveToken(ctx, database, volunteerClient, organisation, logger, token)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +352,7 @@ func resolveToken(
 	ctx context.Context,
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	token string,
 ) (*db.AvailabilityRequest, *db.Rotation, []AvailabilityShift, []model.Volunteer, error) {
@@ -385,7 +385,7 @@ func resolveToken(
 		return nil, nil, nil, nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -495,7 +495,7 @@ func buildRound(
 	rota *db.Rotation,
 	volunteers []model.Volunteer,
 	roles model.Roles,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 ) (*AvailabilityRound, error) {
 	shifts, err := rotaAvailabilityShifts(ctx, database, rota.ID)

@@ -77,7 +77,7 @@ type mockHistoricalVolClient struct {
 	listErr    error
 }
 
-func (m *mockHistoricalVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
+func (m *mockHistoricalVolClient) ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
@@ -134,7 +134,7 @@ func TestViewHistoricalResponses_BasicMatrix(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -175,7 +175,7 @@ func TestViewHistoricalResponses_IgnoresAnswersAfterAllocation(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "no_response", result.Matrix["alice"]["rota-1"].Status,
@@ -210,7 +210,7 @@ func TestViewHistoricalResponses_CountLimitsRotations(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 2, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 2, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Rotations, 2)
@@ -244,7 +244,7 @@ func TestViewHistoricalResponses_FiltersUnallocatedRotations(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 10, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 10, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Rotations, 2)
@@ -278,7 +278,7 @@ func TestViewHistoricalResponses_VolunteerIDFilter(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, []string{"alice", "carol"})
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, []string{"alice", "carol"})
 	require.NoError(t, err)
 
 	require.Len(t, result.Volunteers, 2)
@@ -306,7 +306,7 @@ func TestViewHistoricalResponses_NoAllocatedRotations(t *testing.T) {
 	}
 
 	_, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no allocated rotations found")
 }
@@ -344,7 +344,7 @@ func TestViewHistoricalResponses_VolunteerAcrossRotations(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Volunteers, 3)
@@ -380,12 +380,12 @@ func TestViewHistoricalResponses_EmptyVolunteerIDFilterShowsAll(t *testing.T) {
 	}
 
 	result, err := ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, []string{})
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, []string{})
 	require.NoError(t, err)
 	assert.Len(t, result.Volunteers, 2)
 
 	result, err = ViewHistoricalResponses(
-		context.Background(), store, volClient, &config.Config{}, zap.NewNop(), 5, nil)
+		context.Background(), store, volClient, &config.Organisation{}, zap.NewNop(), 5, nil)
 	require.NoError(t, err)
 	assert.Len(t, result.Volunteers, 2)
 }

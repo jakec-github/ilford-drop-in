@@ -54,7 +54,7 @@ func PublishRota(
 	database PublishRotaStore,
 	sheetsClient SheetsClient,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 ) (*rotasheet.Sheet, error) {
 	rotations, err := database.GetRotations(ctx)
@@ -67,7 +67,7 @@ func PublishRota(
 		return nil, nil
 	}
 
-	rota, err := sheetRota(ctx, database, volunteerClient, cfg, target)
+	rota, err := sheetRota(ctx, database, volunteerClient, organisation, target)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func PublishRota(
 		archiveTitle = archiveTabTitle(rotations, last, target, logger)
 	}
 
-	latestWasMissing, err := sheetsClient.ApplyRotaPlan(cfg.RotaSheetID, plan, archiveTitle)
+	latestWasMissing, err := sheetsClient.ApplyRotaPlan(organisation.RotaSheetID, plan, archiveTitle)
 	if err != nil {
 		// Google can apply a batch and lose the answer, so the record may no
 		// longer describe Latest. Marking it makes the next publish rebuild
@@ -156,7 +156,7 @@ func sheetRota(
 	ctx context.Context,
 	database PublishRotaStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	target *db.Rotation,
 ) (rotasheet.Rota, error) {
 	// A rota always has at least one shift (ADR 0001); none is a broken
@@ -191,7 +191,7 @@ func sheetRota(
 	if err != nil {
 		return rotasheet.Rota{}, err
 	}
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return rotasheet.Rota{}, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

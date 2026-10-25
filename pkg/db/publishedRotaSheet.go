@@ -16,7 +16,7 @@ import (
 // Carried as JSON rather than decoded here: the layout is rotasheet's, and this
 // package knows nothing of the domain packages.
 func (d *DB) GetPublishedRotaSheet(ctx context.Context) (layout []byte, stale bool, err error) {
-	err = d.pool.QueryRow(ctx, `SELECT layout, stale FROM published_rota_sheet`).Scan(&layout, &stale)
+	err = d.pool.QueryRow(ctx, `SELECT layout, stale FROM published_rota_sheet WHERE organisation_id = $1`, d.org()).Scan(&layout, &stale)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -30,11 +30,11 @@ func (d *DB) GetPublishedRotaSheet(ctx context.Context) (layout []byte, stale bo
 // replacing the record of the one before.
 func (d *DB) SavePublishedRotaSheet(ctx context.Context, rotaID string, layout []byte) error {
 	_, err := d.pool.Exec(ctx, `
-		INSERT INTO published_rota_sheet (singleton, rota_id, layout, stale, published_at)
-		VALUES (TRUE, $1, $2, FALSE, now())
-		ON CONFLICT (singleton) DO UPDATE
+		INSERT INTO published_rota_sheet (organisation_id, rota_id, layout, stale, published_at)
+		VALUES ($3, $1, $2, FALSE, now())
+		ON CONFLICT (organisation_id) DO UPDATE
 		SET rota_id = EXCLUDED.rota_id, layout = EXCLUDED.layout, stale = FALSE, published_at = EXCLUDED.published_at
-	`, rotaID, layout)
+	`, rotaID, layout, d.org())
 	if err != nil {
 		return fmt.Errorf("failed to save published rota sheet: %w", err)
 	}
@@ -45,7 +45,7 @@ func (d *DB) SavePublishedRotaSheet(ctx context.Context, rotaID string, layout [
 // record may not be what Latest holds. No record is nothing to mark: the next
 // publish rebuilds anyway.
 func (d *DB) MarkPublishedRotaSheetStale(ctx context.Context) error {
-	if _, err := d.pool.Exec(ctx, `UPDATE published_rota_sheet SET stale = TRUE`); err != nil {
+	if _, err := d.pool.Exec(ctx, `UPDATE published_rota_sheet SET stale = TRUE WHERE organisation_id = $1`, d.org()); err != nil {
 		return fmt.Errorf("failed to mark published rota sheet stale: %w", err)
 	}
 	return nil
