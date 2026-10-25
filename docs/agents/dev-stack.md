@@ -196,12 +196,14 @@ whole flow works with no credentials — **the emails are written to the log
 instead of being sent**.
 
 ```bash
-curl -b cookies.txt -L 'localhost:8080/org/dev-org/auth/gmail?mode=round&deadline=Friday+28+August'
-curl -b cookies.txt -L 'localhost:8080/org/dev-org/auth/gmail?mode=reminder&deadline=Friday+28+August'
-curl -b cookies.txt -L 'localhost:8080/org/dev-org/auth/gmail?mode=resend&volunteerId=<id>&deadline=Friday+28+August'
+curl -b cookies.txt -L -d mode=round -d 'deadline=Friday 28 August' localhost:8080/org/dev-org/auth/gmail
+curl -b cookies.txt -L -d mode=reminder -d 'deadline=Friday 28 August' localhost:8080/org/dev-org/auth/gmail
+curl -b cookies.txt -L -d mode=resend -d volunteerId=<id> -d 'deadline=Friday 28 August' localhost:8080/org/dev-org/auth/gmail
 ```
 
-Each redirects to `/org/dev-org/organiser/allocation?send=<job id>` and the emails go out
+A send is a form POST, never a link: it mails every volunteer, so the server
+reads the instruction from the body alone and refuses one submitted from
+another origin. Each redirects to `/org/dev-org/organiser/allocation?send=<job id>` and the emails go out
 behind it — a send is a background job, not the body of the request, because
 thirty of them at Gmail's three-second throttle takes about ninety seconds.
 `GET /api/availability-sends/<job id>` reports how far it has got and, once it

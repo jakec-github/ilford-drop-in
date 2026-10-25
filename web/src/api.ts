@@ -1059,21 +1059,36 @@ function toOutcome(o: ApiSendOutcome): SendOutcome {
   };
 }
 
-// sendUrl is the address that starts a send. Navigating to it — not fetching it
-// — is the point: the server answers with a redirect to Google for the
-// gmail.send scope, and only a real navigation can carry the Organiser through a
-// consent screen and back.
+// startSend starts a send by submitting a form — not fetching, and not
+// navigating to a link. A real navigation is the point: the server answers with
+// a redirect to Google for the gmail.send scope, and only a navigation can carry
+// the Organiser through a consent screen and back. A POST rather than a link
+// because a send mails every volunteer: the server refuses one started by
+// anything but a form on this site.
 //
 // The deadline is quoted in the email and nowhere else. It is not stored, not
 // shown on the site and not enforced; allocation is the real cutoff.
-export function sendUrl(
+export function startSend(
   mode: SendMode,
   deadline: string,
   volunteerId?: string,
-): string {
-  const params = new URLSearchParams({ mode, deadline });
-  if (volunteerId) params.set("volunteerId", volunteerId);
-  return `${BASE_PATH}/auth/gmail?${params.toString()}`;
+): void {
+  const fields: Record<string, string> = { mode, deadline };
+  if (volunteerId) fields.volunteerId = volunteerId;
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = `${BASE_PATH}/auth/gmail`;
+  form.hidden = true;
+  for (const [name, value] of Object.entries(fields)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
 }
 
 // fetchSend reports on a send in progress or just finished. Organiser-only, and

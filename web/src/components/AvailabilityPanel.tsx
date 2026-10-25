@@ -67,6 +67,8 @@ function SendDialog({
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
             placeholder="Friday 7 August"
+            // The server's limit: it is one line in an email subject.
+            maxLength={100}
             autoFocus
           />
         </label>

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -73,10 +75,24 @@ func newSendTestHandler(store *mockStore, mailer services.GmailClient) http.Hand
 	return NewHandler(store, volunteers, apiTestCfg, auth, nil, newMailer, nil, nil, zap.NewNop()).Routes()
 }
 
+// postSendForm submits the form that starts a send, the way the Allocation tab
+// does: a POST whose body is the instruction.
+func postSendForm(t *testing.T, handler http.Handler, form string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/auth/gmail", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 // startSendRequest returns the job id a started send redirected to.
 func startSendRequest(t *testing.T, handler http.Handler, query string) string {
 	t.Helper()
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", organiserCookie())
+	rec := postSendForm(t, handler, query, organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code, rec.Body.String())
 
 	location, err := url.Parse(rec.Header().Get("Location"))
@@ -109,7 +125,7 @@ func awaitSend(t *testing.T, handler http.Handler, jobID string) sendResponse {
 func TestSendEndpointsRequireAnOrganiser(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), &recordingMailer{})
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "")
+	rec := postSendForm(t, handler, "mode=round&deadline=Friday")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
 	rec = doRequest(t, handler, http.MethodGet, "/api/availability-sends/anything", "")
@@ -148,9 +164,50 @@ func TestSendIsRefusedWithoutADeadline(t *testing.T) {
 	mailer := &recordingMailer{}
 	handler := newSendTestHandler(sendTestStore(), mailer)
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round", "", organiserCookie())
+	rec := postSendForm(t, handler, "mode=round", organiserCookie())
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Empty(t, mailer.recipients())
+}
+
+// TestSendIsRefusedForADeadlineThatIsNotOneLine: the deadline is quoted in the
+// Subject header, so a line break in it would end that header and start one of
+// the sender's choosing — a Bcc collecting every volunteer's link, or a body
+// written by someone else. It is refused before anyone is sent to Google.
+func TestSendIsRefusedForADeadlineThatIsNotOneLine(t *testing.T) {
+	mailer := &recordingMailer{}
+	handler := newSendTestHandler(sendTestStore(), mailer)
+
+	for _, deadline := range []string{
+		"Friday\r\nBcc: someone@example.com",
+		"Friday\nBcc: someone@example.com",
+		"Friday\x00",
+		strings.Repeat("x", 101),
+	} {
+		form := url.Values{"mode": {"round"}, "deadline": {deadline}}.Encode()
+		rec := postSendForm(t, handler, form, organiserCookie())
+		assert.Equal(t, http.StatusBadRequest, rec.Code, "%q", deadline)
+	}
+	assert.Empty(t, mailer.recipients())
+}
+
+// TestSendCannotBeStartedByALink: a send mails every volunteer, so it must not
+// be something another site can set off by sending an Organiser to an address. A
+// GET is not routed at all, and a POST reads its instruction from the form
+// alone — the same fields on the URL are not an instruction.
+func TestSendCannotBeStartedByALink(t *testing.T) {
+	mailer := &recordingMailer{}
+	handler := newSendTestHandler(sendTestStore(), mailer)
+
+	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/gmail?mode=round&deadline=Friday", nil)
+	req.AddCookie(organiserCookie())
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
 	assert.Empty(t, mailer.recipients())
 }
 
@@ -161,7 +218,7 @@ func TestSendIsRefusedForAnUnknownMode(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), mailer)
 
 	for _, query := range []string{"deadline=Friday", "mode=everyone&deadline=Friday", "mode=resend&deadline=Friday"} {
-		rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", organiserCookie())
+		rec := postSendForm(t, handler, query, organiserCookie())
 		assert.Equal(t, http.StatusBadRequest, rec.Code, query)
 	}
 	assert.Empty(t, mailer.recipients())
@@ -182,7 +239,7 @@ func (m *gatedMailer) SendEmail(to, subject, body string) error {
 // startSendRefused returns the error a refused send redirected back with.
 func startSendRefused(t *testing.T, handler http.Handler, query string) string {
 	t.Helper()
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", organiserCookie())
+	rec := postSendForm(t, handler, query, organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code, rec.Body.String())
 
 	location, err := url.Parse(rec.Header().Get("Location"))
@@ -328,7 +385,7 @@ func TestGmailConsentAsksOnlyForTheSendScope(t *testing.T) {
 	}
 	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil, nil, nil, nil, zap.NewNop()).Routes()
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
+	rec := postSendForm(t, handler, "mode=round&deadline=Friday", organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code)
 
 	consent, err := url.Parse(rec.Header().Get("Location"))
@@ -397,7 +454,7 @@ func TestSendCallbackRequiresASession(t *testing.T) {
 func TestSendKeepsNoCredentialOnTheSession(t *testing.T) {
 	handler := newSendTestHandler(sendTestStore(), &recordingMailer{})
 
-	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
+	rec := postSendForm(t, handler, "mode=round&deadline=Friday", organiserCookie())
 
 	require.Equal(t, http.StatusFound, rec.Code)
 	assert.Empty(t, rec.Result().Cookies(), "starting a send must not write any cookie")
