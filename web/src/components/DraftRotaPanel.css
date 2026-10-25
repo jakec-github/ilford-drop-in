@@ -55,13 +55,6 @@
   border-color: var(--accent);
 }
 
-/* A button that cannot be pressed says so rather than only failing to respond:
-   an allocation is unavailable for a reason the sentence above it gives. */
-.draft-panel-controls .button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 /* An allocation that would not commit. Bordered in the accent because it is the
    answer to something the Organiser just did, unlike the standing report above it. */
 .draft-panel-moved {
@@ -105,13 +98,6 @@
   color: var(--bg);
   background: var(--accent);
   border-color: var(--accent);
-}
-
-/* Same reason as the panel's own controls: the confirm button is unavailable
-   while the solve behind it runs, and it should look it. */
-.allocate-actions .button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 /* The count that stands in for the list when the solver has re-balanced the
