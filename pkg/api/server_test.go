@@ -37,7 +37,7 @@ func newServer(t *testing.T, health Pinger) (http.Handler, *Authenticator) {
 	auth := newTestAuthenticator()
 	east := NewHandler(serverStore(), testVolunteers(), eastOrganisation, auth, testFrontend, nil, nil, nil, zap.NewNop())
 	west := NewHandler(&mockStore{}, testVolunteers(), westOrganisation, auth, testFrontend, nil, nil, nil, zap.NewNop())
-	return Mount(auth, []*Handler{east, west}, health, zap.NewNop()), auth
+	return Mount(auth, []*Handler{east, west}, testFrontend, health, zap.NewNop()), auth
 }
 
 func serverStore() *mockStore {
@@ -68,9 +68,10 @@ func TestServer_AnOrganisationIsServedUnderItsPath(t *testing.T) {
 		assert.Equal(t, want, rec.Code, path)
 	}
 
-	// And none of it answers outside one.
+	// And none of it answers outside one. The assets are the exception: the
+	// build is the same everywhere, and the root's own pages load it.
 	for _, path := range []string{
-		"/organiser/allocation", "/availability/a-token", "/calendars/alice.ics", "/chunk-abc.js", "/api/shifts", "/auth/me",
+		"/organiser/allocation", "/availability/a-token", "/calendars/alice.ics", "/api/shifts", "/auth/me",
 	} {
 		rec := doRequest(t, server, http.MethodGet, path, "")
 		assert.Equal(t, http.StatusNotFound, rec.Code, path)
@@ -78,7 +79,8 @@ func TestServer_AnOrganisationIsServedUnderItsPath(t *testing.T) {
 }
 
 // An id nobody configured is a missing page like any other, so which drop-ins a
-// server runs cannot be found out by asking it.
+// server runs cannot be found out by asking it. Both get the app with its base
+// at the root, which draws its "Page not found" for any path but /.
 func TestServer_AnUnknownOrganisationIsAPlainNotFound(t *testing.T) {
 	server, _ := newServer(t, databaseUp)
 
@@ -86,8 +88,16 @@ func TestServer_AnUnknownOrganisationIsAPlainNotFound(t *testing.T) {
 	missing := doRequest(t, server, http.MethodGet, "/no-such-page", "")
 
 	assert.Equal(t, http.StatusNotFound, unknown.Code)
+	assert.Equal(t, http.StatusNotFound, missing.Code)
 	assert.Equal(t, missing.Body.String(), unknown.Body.String())
-	assert.Equal(t, http.StatusNotFound, doRequest(t, server, http.MethodGet, "/org/north/api/shifts", "").Code)
+	assert.Contains(t, missing.Body.String(), baseTag)
+	assert.Contains(t, missing.Header().Get("Content-Type"), "text/html")
+	for _, path := range []string{"/org/north/api/shifts", "/org/north/chunk-abc.js"} {
+		rec := doRequest(t, server, http.MethodGet, path, "")
+		assert.Equal(t, http.StatusNotFound, rec.Code, path)
+		assert.Equal(t, missing.Body.String(), rec.Body.String(), path)
+	}
+	assert.Equal(t, http.StatusNotFound, doRequest(t, server, http.MethodPost, "/org/north/api/shifts", "").Code)
 }
 
 // Each Organisation reads its own store, and calls itself by its own name.
@@ -126,20 +136,19 @@ func TestServer_OrganisationSaysWhoItIs(t *testing.T) {
 	assert.JSONEq(t, `{"id":"west","displayName":"West Drop-In"}`, rec.Body.String())
 }
 
-// The root names no Organisation: an address is the only way in.
-func TestServer_RootIsASplashThatLinksNowhere(t *testing.T) {
+// The root is the app, with no Organisation in its base: what it says is the
+// frontend's splash, tested there.
+func TestServer_RootIsTheAppWithNoOrganisation(t *testing.T) {
 	server, _ := newServer(t, databaseUp)
 
 	rec := doRequest(t, server, http.MethodGet, "/", "")
-
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
-	body := rec.Body.String()
-	assert.NotContains(t, body, "<a ")
-	for _, org := range []*config.Organisation{eastOrganisation, westOrganisation} {
-		assert.NotContains(t, body, org.ID)
-		assert.NotContains(t, body, org.DisplayName)
-	}
+	assert.Contains(t, rec.Body.String(), baseTag)
+
+	asset := doRequest(t, server, http.MethodGet, "/chunk-abc.js", "")
+	assert.Equal(t, http.StatusOK, asset.Code)
+	assert.Equal(t, "console.log(1)", asset.Body.String())
 }
 
 // /org/east and /org/east/ are the same page, and the second is the one every

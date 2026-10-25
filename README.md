@@ -1,8 +1,14 @@
-# Ilford Drop-in
+<p align="center">
+  <img src="docs/images/logo.svg" alt="" width="96" height="96" />
+</p>
 
-Scheduling tools for a weekly charity drop-in in Ilford, London, which provides
-food and support to vulnerable community members. The system collects volunteer
-availability, allocates volunteers to shifts, and publishes the resulting rota.
+<h1 align="center">Rota Wise</h1>
+
+Volunteer rotas for drop-ins and other services run by volunteers. Rota Wise
+collects volunteer availability, allocates volunteers to shifts, and publishes
+the resulting rota. One server runs several drop-ins, each under its own
+address; the first was a weekly charity drop-in in Ilford, London, which
+provides food and support to vulnerable community members.
 
 It is a **Go web server + React frontend** (`cmd/server`, `web/`) that serves
 the public rota page and every Organiser tool — defining a rota, asking volunteers

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"io/fs"
 	"net/http"
 	"regexp"
 
@@ -40,16 +41,21 @@ type Pinger interface {
 //     who you are, which is the same everywhere.
 //   - /health, because it is infrastructure, not site: the deploy workflow,
 //     scripts/deploy-config.sh and scripts/dev-stack.sh all poll it.
-//   - / itself, a plain page that names and links to no Organisation. An
-//     Organisation's address is the only way in (ADR 0011).
+//   - Everything else is the frontend, served with its base at the root. With
+//     no Organisation in its base the app renders the splash at / and its
+//     "Page not found" anywhere else; the splash names and links to no
+//     Organisation, since an Organisation's address is the only way in
+//     (ADR 0011).
 //
-// Anything else — including an Organisation id that is not configured — is the
-// same plain 404 as any missing page, so ids cannot be probed for.
-func Mount(auth *Authenticator, organisations []*Handler, health Pinger, logger *zap.Logger) http.Handler {
+// An Organisation id that is not configured falls through to that same 404
+// page as any other missing path, byte for byte, so ids cannot be probed for.
+func Mount(auth *Authenticator, organisations []*Handler, frontend fs.FS, health Pinger, logger *zap.Logger) http.Handler {
 	root := http.NewServeMux()
 	root.Handle("GET /health", healthHandler(health, logger))
 	auth.registerRoutes(root)
-	root.HandleFunc("GET /{$}", handleSplash)
+	if hasFrontend(frontend) {
+		root.Handle("/", rootFrontendHandler(frontend))
+	}
 
 	for _, h := range organisations {
 		base := h.basePath()
@@ -62,30 +68,4 @@ func Mount(auth *Authenticator, organisations []*Handler, health Pinger, logger 
 	}
 
 	return root
-}
-
-// splashPage is the whole of what the root of the site says. Nothing on it
-// names, lists or links to an Organisation.
-const splashPage = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Drop-in rota</title>
-    <style>
-      body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; color: #1f2937; }
-      h1 { font-size: 1.5rem; }
-    </style>
-  </head>
-  <body>
-    <h1>Drop-in rota</h1>
-    <p>This site runs the volunteer rotas for drop-ins.</p>
-    <p>If you volunteer or organise for one, use the link your drop-in gave you.</p>
-  </body>
-</html>
-`
-
-func handleSplash(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(splashPage))
 }

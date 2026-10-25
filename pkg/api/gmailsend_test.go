@@ -438,7 +438,7 @@ func withOrganiser(org *config.Organisation, email string) *config.Organisation 
 // sendCallbackServer mounts h the way the server does, because a send finishes
 // at the shared /auth/callback rather than under the Organisation.
 func sendCallbackServer(h *Handler) http.Handler {
-	return Mount(h.auth, []*Handler{h}, databaseUp, zap.NewNop())
+	return Mount(h.auth, []*Handler{h}, testFrontend, databaseUp, zap.NewNop())
 }
 
 // TestSendCallbackGoesToTheOrganisationInTheState: the callback is shared, so
@@ -452,7 +452,7 @@ func TestSendCallbackGoesToTheOrganisationInTheState(t *testing.T) {
 		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return eastMailer, nil }, nil, nil, zap.NewNop())
 	west := NewHandler(sendTestStore(), testVolunteers(), westOrganisation, auth, nil,
 		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return westMailer, nil }, nil, nil, zap.NewNop())
-	server := Mount(auth, []*Handler{east, west}, databaseUp, zap.NewNop())
+	server := Mount(auth, []*Handler{east, west}, testFrontend, databaseUp, zap.NewNop())
 	eastOrganiser := sessionCookieFor(auth, "east@example.com")
 
 	for organisation, want := range map[string]int{
