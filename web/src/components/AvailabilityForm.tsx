@@ -163,6 +163,8 @@ export default function AvailabilityForm({ token }: { token: string }) {
 
   const openShifts = form.shifts.filter((s) => !s.closed);
   const chosen = openShifts.filter((s) => selected.has(s.id)).length;
+  // What is on screen is exactly what the server already holds.
+  const answerStands = form.submitted && changed.size === 0;
 
   return (
     <main className="availability">
@@ -245,12 +247,21 @@ export default function AvailabilityForm({ token }: { token: string }) {
           )}
         </p>
 
-        <Button type="submit" disabled={submitState === "sending"}>
+        {/* Once an answer is in, sending it again unchanged would tell us
+            nothing, so the button says it is in and waits for a change
+            (issue #149). A first answer can go as it stands: every date
+            starting on yes is a real answer. */}
+        <Button
+          type="submit"
+          disabled={submitState === "sending" || answerStands}
+        >
           {submitState === "sending"
             ? "Sending…"
-            : changed.size > 0
-              ? "Send my changes"
-              : "Send my availability"}
+            : answerStands
+              ? "Answer sent"
+              : changed.size > 0
+                ? "Send my changes"
+                : "Send my availability"}
         </Button>
 
         {/* aria-live because submitting moves nothing into focus: without it
