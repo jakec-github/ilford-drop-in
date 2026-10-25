@@ -4,6 +4,8 @@ WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web/ ./
+# The app renders the guide from its Markdown at build time.
+COPY docs/organiser-guide.md /build/docs/
 RUN bun run build
 
 # Stage 2: server build, embedding the frontend

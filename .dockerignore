@@ -26,6 +26,8 @@ pyallocator/src/*.egg-info/
 .github/
 test_data/
 docs/
+# ...except the organiser's guide, which the frontend build renders into the app.
+!docs/organiser-guide.md
 deploy/
 
 # Worktrees are whole checkouts of this repo, node_modules and all; without this
