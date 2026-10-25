@@ -95,7 +95,11 @@ function AllocateDialog({
   const unfilled = state.seatsAsked - state.seatsFilled;
 
   return (
-    <Dialog title="Allocate this rota?" onClose={onClose}>
+    <Dialog
+      title="Allocate this rota?"
+      onClose={onClose}
+      dismissable={!allocating}
+    >
       <p className="allocate-lead">
         The draft below becomes the rota: {state.seatsFilled} of{" "}
         {state.seatsAsked} seats filled
@@ -223,6 +227,7 @@ export default function DraftRotaPanel({
   loadError,
   stale,
   solving,
+  reading,
   solveError,
   onSolve,
   allocating,
@@ -250,6 +255,9 @@ export default function DraftRotaPanel({
   // ADR 0008 exists to stop.
   stale: boolean;
   solving: boolean;
+  // True while a read is out, which may itself be solving. Regenerate waits for
+  // it rather than setting a second solve going beside it (issue #149).
+  reading: boolean;
   solveError: string | null;
   onSolve: () => void;
   allocating: boolean;
@@ -429,7 +437,7 @@ export default function DraftRotaPanel({
               the change no stamp can see — a volunteer added to the roster
               Sheet, or a Role given to one — and the button has to say "do it
               anyway" rather than "catch up". */}
-          <Button size="small" onClick={onSolve} disabled={busy}>
+          <Button size="small" onClick={onSolve} disabled={busy || reading}>
             {solving ? "Solving…" : "Regenerate draft"}
           </Button>
           <Button

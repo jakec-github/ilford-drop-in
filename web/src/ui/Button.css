@@ -14,3 +14,14 @@
   font-size: 0.875rem;
   padding: 0.25rem 0.625rem;
 }
+
+/* A button that cannot be pressed says so rather than only failing to respond.
+   The colours above are author styles, so they outrank the browser's own
+   greying of a disabled control — without this rule a disabled button looks
+   exactly like a live one. Opacity rather than new colours, so the filled
+   variants callers draw (Allocate, Discard) dim the same way without a rule of
+   their own. */
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

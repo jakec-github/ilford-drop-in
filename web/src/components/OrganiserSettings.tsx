@@ -52,6 +52,15 @@ function RoleForm({
   // A rename is the one edit this app cannot finish on its own, so it is
   // flagged the moment the field diverges rather than on the way out.
   const renaming = role !== null && trimmed !== "" && trimmed !== role.name;
+  // An emptied priority box would go as priority 0 — the very top — which is
+  // not what clearing a box to retype it means (issue #149).
+  // Saving an edit that leaves the Role as it was would change nothing (issue
+  // #149). A new Role always has something to say.
+  const changed =
+    role === null ||
+    trimmed !== role.name ||
+    Number(priority) !== role.priority ||
+    colour !== role.colour;
 
   async function save() {
     setSaving(true);
@@ -72,7 +81,11 @@ function RoleForm({
   }
 
   return (
-    <Dialog title={role ? `Edit ${role.name}` : "New role"} onClose={onClose}>
+    <Dialog
+      title={role ? `Edit ${role.name}` : "New role"}
+      onClose={onClose}
+      dismissable={!saving}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -139,7 +152,12 @@ function RoleForm({
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" disabled={trimmed === "" || saving}>
+          <Button
+            type="submit"
+            disabled={
+              trimmed === "" || priority.trim() === "" || !changed || saving
+            }
+          >
             {saving ? "Saving…" : role ? "Save changes" : "Add role"}
           </Button>
         </div>
@@ -257,6 +275,9 @@ function StandingPreallocationsSettings() {
   const { volunteers, error: volunteersError } = useVolunteers();
   const [adding, setAdding] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  // The pins whose removal is on its way, so a second press cannot send the
+  // same delete again while the first is still out (issue #149).
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
 
   // Nothing to pin anybody into until Roles exist, and the Roles section above
   // says so — offering the button here would open a form with an empty picker.
@@ -304,18 +325,28 @@ function StandingPreallocationsSettings() {
                 </span>
                 <Button
                   size="small"
+                  disabled={removing.has(pin.id)}
                   onClick={() => {
                     setRemoveError(null);
-                    void removeStanding(pin.id).catch((err: unknown) => {
-                      setRemoveError(
-                        err instanceof Error
-                          ? err.message
-                          : "Failed to remove the pin",
+                    setRemoving((ids) => new Set(ids).add(pin.id));
+                    void removeStanding(pin.id)
+                      .catch((err: unknown) => {
+                        setRemoveError(
+                          err instanceof Error
+                            ? err.message
+                            : "Failed to remove the pin",
+                        );
+                      })
+                      .finally(() =>
+                        setRemoving((ids) => {
+                          const rest = new Set(ids);
+                          rest.delete(pin.id);
+                          return rest;
+                        }),
                       );
-                    });
                   }}
                 >
-                  Remove
+                  {removing.has(pin.id) ? "Removing…" : "Remove"}
                 </Button>
               </li>
             ))}
@@ -366,13 +397,28 @@ function AllocationRulesForm({
   // The share is held as a percentage because that is how anybody says it —
   // "a third of the rota", not "0.34" — and as a string so the box can be
   // emptied while it is being retyped. It converts on the way out.
-  const [percent, setPercent] = useState(
+  const savedPercent =
     settings.maxFrequency > 0
       ? String(Math.round(settings.maxFrequency * 100))
-      : "",
-  );
+      : "";
+  const [percent, setPercent] = useState(savedPercent);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Saving the rules as they stand would change nothing (issue #149). The share
+  // is compared as it was shown rather than as a fraction, so a stored share
+  // that does not round to a whole percent is not "changed" by being looked at.
+  // A rule that carries a value cannot go on without one — the server refuses
+  // a share of nothing — so an emptied box holds Save back rather than earning
+  // a refusal (issue #149).
+  const valueMissing =
+    percent.trim() === "" &&
+    constraints.some((c) => c.valueLabel && (enabled[c.name] ?? false));
+  const changed =
+    percent !== savedPercent ||
+    constraints.some(
+      (c) => (enabled[c.name] ?? false) !== (settings.enabled[c.name] ?? false),
+    );
 
   async function save() {
     setSaving(true);
@@ -396,7 +442,7 @@ function AllocationRulesForm({
   }
 
   return (
-    <Dialog title="Allocation rules" onClose={onClose}>
+    <Dialog title="Allocation rules" onClose={onClose} dismissable={!saving}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -447,7 +493,7 @@ function AllocationRulesForm({
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={!changed || valueMissing || saving}>
             {saving ? "Saving\u2026" : "Save rules"}
           </Button>
         </div>

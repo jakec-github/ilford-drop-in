@@ -134,7 +134,8 @@ export function ConfirmChangeDialog({
   //
   // required marks the change that is nothing but a statement of Role: a
   // switch, where the server takes no unstated one and "No role" is therefore
-  // not an answer. A move leaves it false — it carries whatever the person held
+  // not an answer — and nor is the Role already held, which would record a
+  // change that changed nothing (issue #149). A move leaves it false — it carries whatever the person held
   // across, Role-less allocations included.
   role?: { initial: Role; roles: Role[] | null; required: boolean };
   // True only for a remove, which leaves the shift short of someone — the
@@ -170,7 +171,7 @@ export function ConfirmChangeDialog({
         : (options[0] ?? "");
 
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} onClose={onCancel} dismissable={!busy}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -216,7 +217,8 @@ export function ConfirmChangeDialog({
           busy={busy}
           canConfirm={
             (!reasonRequired || reason.trim() !== "") &&
-            (!role?.required || chosenRole !== "")
+            (!role?.required ||
+              (chosenRole !== "" && chosenRole !== role.initial))
           }
           onCancel={onCancel}
         />
@@ -320,6 +322,7 @@ export function AssigneeDialog({
           : `Replace ${change.outgoing.name}`
       }
       onClose={onCancel}
+      dismissable={!busy}
     >
       <form
         onSubmit={(e) => {
@@ -526,7 +529,11 @@ export function PinDialog({
   }
 
   return (
-    <Dialog title={`Pin someone to ${dateLabel}`} onClose={onCancel}>
+    <Dialog
+      title={`Pin someone to ${dateLabel}`}
+      onClose={onCancel}
+      dismissable={!busy}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -658,6 +665,7 @@ export function ClosureDialog({
     <Dialog
       title={closing ? `Close ${dateLabel}?` : `Reopen ${dateLabel}?`}
       onClose={onCancel}
+      dismissable={!busy}
     >
       <form
         onSubmit={(e) => {
@@ -740,9 +748,15 @@ export function ShiftTimesDialog({
 
   const stated = from !== "" && to !== "";
   const backwards = stated && to <= from;
+  // Saving the times the shift already has would change nothing (issue #149).
+  const changed = from !== toLocalInput(start) || to !== toLocalInput(end);
 
   return (
-    <Dialog title={`When does ${dateLabel} run?`} onClose={onCancel}>
+    <Dialog
+      title={`When does ${dateLabel} run?`}
+      onClose={onCancel}
+      dismissable={!busy}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -773,7 +787,7 @@ export function ShiftTimesDialog({
         <DialogActions
           confirmLabel="Save times"
           busy={busy}
-          canConfirm={stated && !backwards}
+          canConfirm={stated && !backwards && changed}
           onCancel={onCancel}
         />
       </form>
@@ -795,7 +809,11 @@ export function UnpinDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Dialog title={`Remove pin for ${name}?`} onClose={onCancel}>
+    <Dialog
+      title={`Remove pin for ${name}?`}
+      onClose={onCancel}
+      dismissable={!busy}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();

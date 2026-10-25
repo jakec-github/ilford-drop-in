@@ -672,6 +672,10 @@ export default function RotaViewer({
         onOpenMenu: setOpenMenu,
         onRemove: (a) => askRemove(shift.date, a),
         onReplace: (a) => askReplace(shift.date, a),
+        // Offered while the Roles are still loading: the dialog says so, and
+        // a button that switches itself off a moment later would be worse.
+        canChangeRole: (a) =>
+          roles === null || roles.some((role) => role.id !== a.roleId),
         onChangeRole: (a) => askChangeRole(shift.date, a),
         onPickUp: (a) => pickUp(shift.date, a, false),
         onDragStart: (a) => pickUp(shift.date, a, true),

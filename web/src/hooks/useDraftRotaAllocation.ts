@@ -27,6 +27,10 @@ interface UseDraftRotaAllocation {
   // True while a solve is running. It is a CP-SAT subprocess capped at thirty
   // seconds, so this is a spinner the Organiser waits out rather than a flicker.
   solving: boolean;
+  // True while a read is out. A read can itself solve — it does whenever the
+  // draft's inputs have moved — so a Regenerate pressed during one would set a
+  // second solve going beside it (issue #149).
+  reading: boolean;
   // The message from a solve that was refused, kept apart from `error` above:
   // that one means the draft could not be read, this one means the rota cannot
   // be solved yet and names the step that is missing.
@@ -103,6 +107,10 @@ export function useDraftRotaAllocation(): UseDraftRotaAllocation {
   const [allocateFailure, setAllocateFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState<AllocationAttempt | null>(null);
   const [stale, setStale] = useState(false);
+  // Which read has come back, by the reloads count that started it. A read is
+  // out whenever this lags behind reloads; a superseded one never reports, and
+  // does not need to, because its successor will.
+  const [readOf, setReadOf] = useState(-1);
 
   // One request at a time. Every request here can end in a solve, and a solve
   // is a CP-SAT subprocess the server queues one at a time anyway — so a second
@@ -145,6 +153,7 @@ export function useDraftRotaAllocation(): UseDraftRotaAllocation {
       .finally(() => {
         inFlight.current = false;
         if (cancelled) return;
+        setReadOf(reloads);
         // A read that came back with an edit still unaccounted for has not
         // answered the question, so it goes round again and the draft stays
         // stale. Reading is what makes a draft current (ADR 0008), so there is
@@ -261,6 +270,7 @@ export function useDraftRotaAllocation(): UseDraftRotaAllocation {
     state: loaded,
     error: loadError,
     solving,
+    reading: readOf !== reloads,
     // The read's own refusal is the fallback rather than the override: a solve
     // this Organiser asked for is the more recent of the two, and it is the one
     // they are waiting on an answer to.

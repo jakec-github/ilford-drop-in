@@ -146,11 +146,13 @@ function MemberDetails({
   member,
   allocated,
   named,
+  sending,
   onResend,
 }: {
   member: AvailabilityEntry;
   allocated: boolean;
   named: boolean;
+  sending: boolean;
   onResend: (member: AvailabilityEntry) => void;
 }) {
   return (
@@ -176,7 +178,11 @@ function MemberDetails({
         <CopyableLink
           link={member.link}
           actions={
-            <Button size="small" onClick={() => onResend(member)}>
+            <Button
+              size="small"
+              disabled={sending}
+              onClick={() => onResend(member)}
+            >
               {member.sentAt === null ? "Send" : "Resend"}
             </Button>
           }
@@ -283,6 +289,7 @@ function GroupRow({
   shifts,
   allocated,
   open,
+  sending,
   onToggle,
   onResend,
 }: {
@@ -290,6 +297,7 @@ function GroupRow({
   shifts: ShiftCoverage[];
   allocated: boolean;
   open: boolean;
+  sending: boolean;
   onToggle: () => void;
   onResend: (member: AvailabilityEntry) => void;
 }) {
@@ -356,6 +364,7 @@ function GroupRow({
                   // A group of one is already named by its row, and the link
                   // under it can only be theirs.
                   named={alone === null}
+                  sending={sending}
                   onResend={onResend}
                 />
               ))}
@@ -376,9 +385,14 @@ function GroupRow({
 // into one column would cost the comparison to save a scroll.
 export default function ResponseGrid({
   round,
+  sending = false,
   onResend,
 }: {
   round: AvailabilityRound;
+  // True while a send is running. Every resend waits for it: a send stamps
+  // each volunteer as their email goes, so one started now would mail again
+  // somebody the running one has not reached yet (issue #149).
+  sending?: boolean;
   onResend: (member: AvailabilityEntry) => void;
 }) {
   const [filter, setFilter] = useState<Role | null>(null);
@@ -513,6 +527,7 @@ export default function ResponseGrid({
                 shifts={round.shifts}
                 allocated={round.allocated}
                 open={open.has(group.key)}
+                sending={sending}
                 onToggle={() => toggle(group.key)}
                 onResend={onResend}
               />

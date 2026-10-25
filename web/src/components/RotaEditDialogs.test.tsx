@@ -4,6 +4,7 @@ import {
   AssigneeDialog,
   ConfirmChangeDialog,
   PinDialog,
+  ShiftTimesDialog,
 } from "./RotaEditDialogs";
 import type { Role, Volunteer } from "../types";
 import { seatCounts } from "./shape";
@@ -247,6 +248,39 @@ describe("ConfirmChangeDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("", DUTY_LEAD);
   });
 
+  // A switch onto the Role already held would record a change that changed
+  // nothing, so the button waits for a different one (issue #149).
+  test("a switch cannot be confirmed until a different role is chosen", () => {
+    render(
+      <ConfirmChangeDialog
+        {...switchProps()}
+        role={{ initial: GREETER, roles: ROLES, required: true }}
+        onConfirm={() => {}}
+      />,
+    );
+
+    const confirm = screen.getByRole("button", { name: "Change role" });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Role"), {
+      target: { value: HOT_FOOD },
+    });
+    expect(confirm).toBeEnabled();
+  });
+
+  // A move carries the Role across unchanged by default, and that is a real
+  // change: the person still lands somewhere else.
+  test("a move can be confirmed with the role it started on", () => {
+    render(
+      <ConfirmChangeDialog
+        {...baseProps()}
+        role={{ initial: GREETER, roles: ROLES, required: false }}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Move" })).toBeEnabled();
+  });
+
   // Until the Roles arrive there is nothing to switch to and nothing to send,
   // so the dialog says which of the two it is rather than showing an empty
   // picker beside a live button.
@@ -262,6 +296,29 @@ describe("ConfirmChangeDialog", () => {
     expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
     expect(screen.getByText("Still loading the roles…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change role" })).toBeDisabled();
+  });
+});
+
+describe("ShiftTimesDialog", () => {
+  // Saving the times a shift already has would change nothing (issue #149).
+  test("cannot be saved until a time is changed", () => {
+    render(
+      <ShiftTimesDialog
+        dateLabel="Sun 23 Aug"
+        start="2026-08-23T19:30:00"
+        end="2026-08-23T21:30:00"
+        busy={false}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    );
+
+    const save = screen.getByRole("button", { name: "Save times" });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Ends"), {
+      target: { value: "2026-08-23T22:00" },
+    });
+    expect(save).toBeEnabled();
   });
 });
 

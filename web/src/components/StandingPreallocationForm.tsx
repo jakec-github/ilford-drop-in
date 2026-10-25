@@ -81,7 +81,11 @@ export default function StandingPreallocationForm({
   }
 
   return (
-    <Dialog title="New standing preallocation" onClose={onClose}>
+    <Dialog
+      title="New standing preallocation"
+      onClose={onClose}
+      dismissable={!saving}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
