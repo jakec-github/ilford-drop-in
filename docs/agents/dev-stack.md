@@ -40,6 +40,20 @@ current run.
 | `API_PORT` | Port to listen on. Set automatically in a git worktree via `.worktree.env` (see [worktrees.md](worktrees.md)), so two checkouts can run stacks at once. |
 | `DEV_STACK_TIMEOUT` | Seconds to wait for readiness. Default 60. |
 
+## Review a PR
+
+```bash
+scripts/review-pr.sh <pr-number>
+```
+
+Run from the primary checkout, clean and on `main`. It checks out the PR's head
+**detached** — its branch is usually checked out in an agent's worktree, and git
+will not check out one branch twice — and starts the PR's own stack against a
+throwaway database, `ilford_dropin_pr<n>`, so the PR's migrations never reach
+`ilford_dropin_dev`. It then follows the log. Ctrl-C stops the stack, drops the
+database and checks out `main` again. The database starts empty, as a fresh
+stack's does.
+
 ## Log in
 
 ```bash
