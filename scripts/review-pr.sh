@@ -1,19 +1,19 @@
 #!/bin/bash
 #
-# Boot a pull request's code on the dev stack to look at it, then put the
-# checkout back the way it was.
+# Boot a pull request's code on the test environment to look at it, then put
+# the checkout back the way it was.
 #
 # Usage: scripts/review-pr.sh <pr-number>
 #
 # Run from the primary checkout, clean and on main. It checks out the PR's head
 # detached — the PR's branch is usually checked out in an agent's worktree
-# already, and git will not check out one branch in two places — then starts the
-# PR's own scripts/dev-stack.sh and follows its log. Ctrl-C stops the stack and
-# returns to main.
+# already, and git will not check out one branch in two places — then runs the
+# PR's own `scripts/dev.sh test` in the foreground. Ctrl-C stops it and returns
+# to main.
 #
-# The stack runs against a throwaway database, ilford_dropin_pr<n>, dropped on
-# exit: a migration main has not got would otherwise leave the shared
-# ilford_dropin_dev unbootable from main.
+# The server runs against ilford_dropin_pr<n>, a copy of the seeded
+# ilford_dropin_test dropped on exit: the PR's migrations must never reach the
+# template every worktree's database is cloned from.
 #
 
 set -euo pipefail
@@ -30,7 +30,7 @@ fi
 REPO_ROOT="$REVIEW_PR_ROOT"
 rm -f "$0"
 
-CONFIG_FILE="env/dev/drop_in_config.yaml"
+CONFIG_FILE="env/test/drop_in_config.yaml"
 
 PR="${1:-}"
 if [[ ! "$PR" =~ ^[0-9]+$ ]]; then
@@ -52,6 +52,10 @@ if [[ -n "$(git status --porcelain)" ]]; then
     git status --short >&2
     exit 1
 fi
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Missing ${CONFIG_FILE} — the test environment is not set up (docs/local-setup.md)." >&2
+    exit 1
+fi
 
 echo "Fetching PR #${PR}..."
 if ! git fetch --quiet origin "pull/${PR}/head"; then
@@ -59,43 +63,40 @@ if ! git fetch --quiet origin "pull/${PR}/head"; then
     exit 1
 fi
 
-LOG_PID=""
+# The config is untracked and holds real settings, so git cannot restore it:
+# a copy is taken before it is touched, and put back on every way out.
+BACKUP_DIR="$(mktemp -d -t review-pr-config)"
+cp "$CONFIG_FILE" "$BACKUP_DIR/drop_in_config.yaml"
 
 cleanup() {
     trap - EXIT INT TERM
-    if [[ -n "$LOG_PID" ]]; then { kill "$LOG_PID"; wait "$LOG_PID"; } 2>/dev/null || true; fi
     echo ""
     echo "Cleaning up..."
-    scripts/dev-stack.sh stop || true
-    git checkout --quiet -- "$CONFIG_FILE" 2>/dev/null || true
+    cp "$BACKUP_DIR/drop_in_config.yaml" "$CONFIG_FILE" && rm -rf "$BACKUP_DIR"
     git checkout --quiet main
     scripts/test-db.sh drop "$DB_NAME" > /dev/null 2>&1 || true
-    echo "Back on main; dropped ${DB_NAME}."
+    echo "Back on main; config restored; dropped ${DB_NAME}."
 }
 trap cleanup EXIT
+# Ctrl-C reaches dev.sh too, which stops its own server and frontend; this
+# script carries on into cleanup once it has.
 trap 'exit 130' INT TERM
 
-git checkout --quiet --detach FETCH_HEAD
-echo "Checked out PR #${PR} at $(git rev-parse --short HEAD) (detached)"
+scripts/test-db.sh start > /dev/null
+# A copy left by a run that died before cleanup would hold another commit's
+# migrations, so it is replaced rather than reused.
+scripts/test-db.sh drop "$DB_NAME" > /dev/null 2>&1 || true
+scripts/test-db.sh clone "$DB_NAME" > /dev/null
 
-# The PR's config may differ from main's, so the database is swapped in the
-# file it brought rather than a copy of main's.
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo "PR #${PR} has no ${CONFIG_FILE} — it predates the dev stack. Rebase it on main." >&2
-    exit 1
-fi
 sed -i '' -E "s#(^databaseURL:.*/)[A-Za-z0-9_]+(\?)#\1${DB_NAME}\2#" "$CONFIG_FILE"
 if ! grep -q "/${DB_NAME}?" "$CONFIG_FILE"; then
-    echo "Could not point ${CONFIG_FILE} at ${DB_NAME}; refusing to touch the shared database." >&2
+    echo "Could not point ${CONFIG_FILE} at ${DB_NAME}; refusing to touch the template." >&2
     exit 1
 fi
 
-scripts/dev-stack.sh start
+git checkout --quiet --detach FETCH_HEAD
+echo "Checked out PR #${PR} at $(git rev-parse --short HEAD) (detached), against ${DB_NAME}"
+echo "  app: http://localhost:${WEB_PORT:-5173}/   Ctrl-C to stop and return to main."
 echo ""
-echo "Reviewing PR #${PR} against ${DB_NAME}. Ctrl-C to stop and return to main."
-echo ""
-# In the background and waited on, not in the foreground: bash runs a trap only
-# once the foreground child exits, so a TERM would otherwise wait on tail.
-tail -f logs/dev-stack.log &
-LOG_PID=$!
-wait "$LOG_PID"
+
+scripts/dev.sh test

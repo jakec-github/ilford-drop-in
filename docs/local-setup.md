@@ -350,6 +350,24 @@ For the credential-free alternative — one process on 8080, serving the built
 frontend itself, started in the background — see
 [`docs/agents/dev-stack.md`](agents/dev-stack.md).
 
+### Reviewing a pull request
+
+```bash
+scripts/review-pr.sh <pr-number>
+```
+
+Runs a PR's code on the test environment, for checking it by hand. Run it from
+the primary checkout, clean and on `main`. It checks out the PR's head
+**detached** — its branch is usually checked out in an agent's worktree, and git
+will not check out one branch twice — and runs the PR's own `scripts/dev.sh test`
+against `ilford_dropin_pr<n>`, a fresh copy of `ilford_dropin_test`, so the PR's
+migrations never reach the template. Ctrl-C stops it, restores
+`env/test/drop_in_config.yaml`, drops the copy and checks out `main` again.
+
+Copying needs nothing else connected to `ilford_dropin_test`, so stop any other
+`dev.sh test` first. The PR still talks to the test environment's real Google
+sheets, like any `dev.sh test` run.
+
 ## 8. Run the tests
 
 ```bash
