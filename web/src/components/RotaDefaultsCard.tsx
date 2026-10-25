@@ -29,6 +29,11 @@ function ShiftTimesForm({
   const [timezone, setTimezone] = useState(defaults.shiftTimezone);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Saving the times already stated would change nothing (issue #149).
+  const changed =
+    start !== defaults.shiftStartTime ||
+    end !== defaults.shiftEndTime ||
+    timezone.trim() !== defaults.shiftTimezone;
 
   async function save() {
     setSaving(true);
@@ -102,7 +107,10 @@ function ShiftTimesForm({
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" disabled={start === "" || end === "" || saving}>
+          <Button
+            type="submit"
+            disabled={start === "" || end === "" || !changed || saving}
+          >
             {saving ? "Saving…" : "Save times"}
           </Button>
         </div>

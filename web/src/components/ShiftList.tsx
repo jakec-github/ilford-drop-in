@@ -115,6 +115,10 @@ export interface PlacementEdit {
   onOpenMenu: (key: string | null) => void;
   onRemove: (assignee: Assignee) => void;
   onReplace: (assignee: Assignee) => void;
+  // Whether there is another Role this person could be switched to. False when
+  // the only Role the drop-in has is the one they already hold, where a switch
+  // would change nothing (issue #149).
+  canChangeRole: (assignee: Assignee) => boolean;
   // Changes what job this person is doing on this shift, leaving them on it.
   onChangeRole: (assignee: Assignee) => void;
   onPickUp: (assignee: Assignee) => void;
@@ -256,6 +260,7 @@ function ChipMenu({
   name,
   onRemove,
   onReplace,
+  canChangeRole,
   onChangeRole,
   onPickUp,
   onClose,
@@ -263,6 +268,7 @@ function ChipMenu({
   name: string;
   onRemove: () => void;
   onReplace: () => void;
+  canChangeRole: boolean;
   onChangeRole: () => void;
   onPickUp: () => void;
   onClose: () => void;
@@ -282,7 +288,7 @@ function ChipMenu({
       <Button ref={first} size="small" onClick={onPickUp}>
         Move or swap
       </Button>
-      <Button size="small" onClick={onChangeRole}>
+      <Button size="small" disabled={!canChangeRole} onClick={onChangeRole}>
         Change role
       </Button>
       <Button size="small" onClick={onReplace}>
@@ -912,6 +918,7 @@ function ShiftRow({
           name={menuAssignee.name}
           onRemove={() => placement.onRemove(menuAssignee)}
           onReplace={() => placement.onReplace(menuAssignee)}
+          canChangeRole={placement.canChangeRole(menuAssignee)}
           onChangeRole={() => placement.onChangeRole(menuAssignee)}
           onPickUp={() => placement.onPickUp(menuAssignee)}
           onClose={() => placement.onOpenMenu(null)}

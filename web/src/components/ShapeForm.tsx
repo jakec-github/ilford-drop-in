@@ -54,6 +54,9 @@ export default function ShapeForm({
     .map((role) => ({ roleId: role.id, count: Number(counts[role.id] || 0) }))
     .filter((seat) => seat.count > 0);
   const total = seats.reduce((sum, seat) => sum + seat.count, 0);
+  // Saving what is already there would change nothing, and on the Allocation
+  // tab it would still mark the draft stale and force a re-solve (issue #149).
+  const changed = seatsKey(seats) !== seatsKey(shape);
 
   async function save() {
     setSaving(true);
@@ -107,11 +110,21 @@ export default function ShapeForm({
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving || !changed}>
             {saving ? "Saving…" : saveLabel}
           </Button>
         </div>
       </form>
     </Dialog>
   );
+}
+
+// seatsKey says which Seats a list asks for, whatever order they come in and
+// whether or not a Role is listed at nought.
+function seatsKey(seats: { roleId: string; count: number }[]): string {
+  return seats
+    .filter((seat) => seat.count > 0)
+    .map((seat) => `${seat.roleId}:${seat.count}`)
+    .sort()
+    .join(",");
 }

@@ -52,6 +52,13 @@ function RoleForm({
   // A rename is the one edit this app cannot finish on its own, so it is
   // flagged the moment the field diverges rather than on the way out.
   const renaming = role !== null && trimmed !== "" && trimmed !== role.name;
+  // Saving an edit that leaves the Role as it was would change nothing (issue
+  // #149). A new Role always has something to say.
+  const changed =
+    role === null ||
+    trimmed !== role.name ||
+    Number(priority) !== role.priority ||
+    colour !== role.colour;
 
   async function save() {
     setSaving(true);
@@ -139,7 +146,7 @@ function RoleForm({
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" disabled={trimmed === "" || saving}>
+          <Button type="submit" disabled={trimmed === "" || !changed || saving}>
             {saving ? "Saving…" : role ? "Save changes" : "Add role"}
           </Button>
         </div>
@@ -366,13 +373,22 @@ function AllocationRulesForm({
   // The share is held as a percentage because that is how anybody says it —
   // "a third of the rota", not "0.34" — and as a string so the box can be
   // emptied while it is being retyped. It converts on the way out.
-  const [percent, setPercent] = useState(
+  const savedPercent =
     settings.maxFrequency > 0
       ? String(Math.round(settings.maxFrequency * 100))
-      : "",
-  );
+      : "";
+  const [percent, setPercent] = useState(savedPercent);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Saving the rules as they stand would change nothing (issue #149). The share
+  // is compared as it was shown rather than as a fraction, so a stored share
+  // that does not round to a whole percent is not "changed" by being looked at.
+  const changed =
+    percent !== savedPercent ||
+    constraints.some(
+      (c) => (enabled[c.name] ?? false) !== (settings.enabled[c.name] ?? false),
+    );
 
   async function save() {
     setSaving(true);
@@ -447,7 +463,7 @@ function AllocationRulesForm({
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={!changed || saving}>
             {saving ? "Saving\u2026" : "Save rules"}
           </Button>
         </div>

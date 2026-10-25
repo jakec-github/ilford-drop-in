@@ -134,7 +134,8 @@ export function ConfirmChangeDialog({
   //
   // required marks the change that is nothing but a statement of Role: a
   // switch, where the server takes no unstated one and "No role" is therefore
-  // not an answer. A move leaves it false — it carries whatever the person held
+  // not an answer — and nor is the Role already held, which would record a
+  // change that changed nothing (issue #149). A move leaves it false — it carries whatever the person held
   // across, Role-less allocations included.
   role?: { initial: Role; roles: Role[] | null; required: boolean };
   // True only for a remove, which leaves the shift short of someone — the
@@ -216,7 +217,8 @@ export function ConfirmChangeDialog({
           busy={busy}
           canConfirm={
             (!reasonRequired || reason.trim() !== "") &&
-            (!role?.required || chosenRole !== "")
+            (!role?.required ||
+              (chosenRole !== "" && chosenRole !== role.initial))
           }
           onCancel={onCancel}
         />
@@ -740,6 +742,8 @@ export function ShiftTimesDialog({
 
   const stated = from !== "" && to !== "";
   const backwards = stated && to <= from;
+  // Saving the times the shift already has would change nothing (issue #149).
+  const changed = from !== toLocalInput(start) || to !== toLocalInput(end);
 
   return (
     <Dialog title={`When does ${dateLabel} run?`} onClose={onCancel}>
@@ -773,7 +777,7 @@ export function ShiftTimesDialog({
         <DialogActions
           confirmLabel="Save times"
           busy={busy}
-          canConfirm={stated && !backwards}
+          canConfirm={stated && !backwards && changed}
           onCancel={onCancel}
         />
       </form>

@@ -283,6 +283,21 @@ describe("RotaViewer placement", () => {
     });
   });
 
+  // With only the one Role Alice already holds, there is nothing to switch her
+  // to, so the menu says so rather than opening a dialog that cannot be
+  // confirmed (issue #149).
+  test("changing a role is not offered when the drop-in has no other role", async () => {
+    fetchRoles.mockResolvedValue([ROLES[0]]);
+    await renderEditing();
+
+    fireEvent.click(
+      within(rowFor("4 Jan")).getByRole("button", {
+        name: "Alice, change this shift",
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Change role" })).toBeDisabled();
+  });
+
   test("swapping onto another person never offers a role field — the role is inherited, not chosen", async () => {
     await renderEditing();
     pickUpAlice();
