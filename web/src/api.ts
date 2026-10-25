@@ -30,6 +30,7 @@ import type {
   ShiftTimes,
   StandingPreallocation,
   Volunteer,
+  VolunteerHistory,
 } from "./types";
 import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "./types";
 import { BASE_PATH } from "./basePath";
@@ -1110,4 +1111,14 @@ export async function syncVolunteers(): Promise<void> {
   if (!res.ok) {
     throw new Error(`Failed to sync volunteers (${res.status})`);
   }
+}
+
+// fetchVolunteerHistory reads each volunteer's record over the last allocated
+// rotas. Organiser-only.
+export async function fetchVolunteerHistory(): Promise<VolunteerHistory> {
+  const res = await fetch(`${BASE_PATH}/api/volunteer-history`);
+  if (!res.ok) {
+    throw new Error(`Failed to load history (${res.status})`);
+  }
+  return (await res.json()) as VolunteerHistory;
 }

@@ -1,0 +1,77 @@
+/* The History tab's grid. Desktop first, like the responses grid: it scrolls
+   sideways on a phone rather than folding into one column. */
+
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.history-modes {
+  display: flex;
+  gap: 1rem;
+}
+
+.history-mode,
+.history-sort {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.history-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.history-grid {
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.history-grid th,
+.history-grid td {
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.history-grid th[scope="row"],
+.history-grid thead th:first-child {
+  text-align: left;
+}
+
+.history-row--inactive th {
+  opacity: 0.6;
+}
+
+.history-band {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.history-band--not_sent {
+  opacity: 0.5;
+}
+
+.history-band--no_response,
+.history-band--unavailable,
+.history-band--low {
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+}
+
+.history-band--ok {
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.history-band--good {
+  background: color-mix(in srgb, var(--positive) 18%, transparent);
+}
