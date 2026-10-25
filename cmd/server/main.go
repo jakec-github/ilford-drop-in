@@ -30,7 +30,19 @@ func main() {
 	// once: a git worktree runs its own stack on its own port (see
 	// docs/agents/worktrees.md) without editing the config it shares.
 	port := flag.Int("port", 0, "Override server.port from the config (0 keeps the configured port)")
+	// Checks a config file and exits, without connecting to anything — so it is
+	// safe to point at a prod config from a laptop. It must return before run(),
+	// which opens the database the file names.
+	validatePath := flag.String("validate-config", "", "Validate the config file at this path, print what it configures, and exit")
 	flag.Parse()
+
+	if *validatePath != "" {
+		if err := validateConfig(os.Stdout, *validatePath, *env); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *env == "" {
 		fmt.Fprintln(os.Stderr, "required flag \"env\" not set")
@@ -56,8 +68,8 @@ func run(env string, portOverride int) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-	if cfg.Server == nil {
-		return fmt.Errorf("server config missing: add server.port to %s", config.EnvPath(env, config.ConfigFile))
+	if err := requireServer(cfg, config.EnvPath(env, config.ConfigFile)); err != nil {
+		return err
 	}
 	if portOverride != 0 {
 		cfg.Server.Port = portOverride

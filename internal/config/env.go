@@ -11,7 +11,6 @@ import (
 // names carry no suffix.
 const (
 	ConfigFile         = "drop_in_config.yaml"
-	OAuthClientFile    = "oauthClient.json"
 	OAuthClientWebFile = "oauthClientWeb.json"
 	ServiceAccountFile = "serviceAccount.json"
 )

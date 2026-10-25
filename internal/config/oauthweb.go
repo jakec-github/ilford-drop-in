@@ -7,9 +7,8 @@ import (
 )
 
 // OAuthClientWebConfig represents a Google "Web application" OAuth client.
-// Web clients nest their fields under a "web" key rather than the "installed"
-// key used by the installed-app client (see oauth.go), so this is a small
-// parallel of OAuthClientConfig rather than a reuse.
+// Web clients nest their fields under a "web" key; a desktop client's JSON
+// nests them under "installed", and is refused here.
 type OAuthClientWebConfig struct {
 	Web OAuthWeb `json:"web" validate:"required"`
 }

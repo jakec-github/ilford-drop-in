@@ -53,8 +53,8 @@ fi
 
 cd "$REPO_ROOT"
 
-# go build covers the packages go test does not — the legacy CLI has no tests of
-# its own, so vet and test alone would let it rot.
+# go build covers the packages go test does not: one with no tests of its own
+# would otherwise rot unnoticed.
 run go build ./...
 run go vet ./...
 run env DBTEST_REQUIRED=1 go test ./...

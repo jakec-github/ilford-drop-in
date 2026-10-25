@@ -351,7 +351,7 @@ startup by name. To move one across, and keep its existing links working:
    allowlists into it, and add a `displayName`.
 2. Delete `server.basePath`, the moved keys, `gmailUserID` and `gmailSender`
    (the last two are no longer read, and only warn).
-3. Validate with `go run ./cmd/cli -e <env> validate-config <path>`, then run
+3. Validate with `go run ./cmd/server -env <env> -validate-config <path>`, then run
    `scripts/deploy-config.sh <env>` once the new image is out. Between the
    deploy and the config the server refuses to start, so expect downtime.
 
@@ -391,7 +391,7 @@ from the droplet's own `site.env`, so a `SITE_DOMAIN` line left in
 Three things it is doing on purpose:
 
 - **Validation happens before the file leaves the machine.** Under the hood it
-  is `go run ./cmd/cli -e <env> validate-config <path>`, which reads the file and
+  is `go run ./cmd/server -env <env> -validate-config <path>`, which reads the file and
   nothing else: no database, no Google. Run it on its own any time.
 - **The summary is the point.** "Valid" is not the same as "right" — a config
   can parse and validate with a whole section missing. The counts it prints are

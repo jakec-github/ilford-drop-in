@@ -70,7 +70,7 @@ type ChangeRotaParams struct {
 
 // ChangeRotaResult contains the result of a rota change. Alterations are keyed
 // by shift id (ADR 0001); DatesByShiftID maps each shift id touched by this
-// change back to its date so the API and CLI can still render dates without
+// change back to its date so the API can still render dates without
 // re-resolving them.
 type ChangeRotaResult struct {
 	CoverID        string

@@ -37,7 +37,6 @@ CONFIG_FILE="env/test/drop_in_config.yaml"
 LINKED_FILES=(
     "env/test/serviceAccount.json"
     "env/test/oauthClientWeb.json"
-    "env/test/oauthClient.json"
     ".claude/settings.local.json"
 )
 

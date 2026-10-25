@@ -123,7 +123,7 @@ fi
 
 echo "Validating ${CONFIG_FILE}..."
 echo ""
-if ! (cd "$REPO_ROOT" && go run ./cmd/cli -e "$ENV" validate-config "$CONFIG_FILE"); then
+if ! (cd "$REPO_ROOT" && go run ./cmd/server -env "$ENV" -validate-config "$CONFIG_FILE"); then
     echo "" >&2
     echo "Not shipping: the server would reject this file." >&2
     exit 1

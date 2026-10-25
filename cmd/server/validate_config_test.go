@@ -1,4 +1,4 @@
-package commands_test
+package main
 
 import (
 	"bytes"
@@ -6,17 +6,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/jakechorley/ilford-drop-in/cmd/cli/commands"
 )
 
-// prodConfigYAML is a valid prod-shaped config whose databaseURL points at a
-// port nothing listens on. Every test here loads it, so a run that passes is
-// also proof the command never opened the database it names.
-const prodConfigYAML = `
+// organisationsYAML is a prod-shaped config with no server block, and a
+// databaseURL that points at a port nothing listens on. Every test here loads
+// it, so a run that passes is also proof the check never opened the database it
+// names.
+const organisationsYAML = `
 organisations:
   - id: "east"
     displayName: "East Drop-In"
@@ -28,21 +26,20 @@ organisations:
 databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
 `
 
-// runValidateConfig executes the command the way main.go wires it: under a root
-// that owns the persistent env flag.
-func runValidateConfig(t *testing.T, args ...string) (string, error) {
+// prodConfigYAML is organisationsYAML with the server block that makes it a file
+// the server would start from.
+const prodConfigYAML = organisationsYAML + `server:
+  port: 8080
+  sessionSecret: "sixteen-characters-long"
+`
+
+// runValidateConfig runs the check the way main does for -validate-config,
+// returning what it printed.
+func runValidateConfig(t *testing.T, env, path string) (string, error) {
 	t.Helper()
 
-	root := &cobra.Command{Use: "cli", SilenceUsage: true, SilenceErrors: true}
-	root.PersistentFlags().StringP("env", "e", "", "Environment")
-	root.AddCommand(commands.ValidateConfigCmd())
-
 	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs(append([]string{"validate-config"}, args...))
-
-	err := root.Execute()
+	err := validateConfig(&out, path, env)
 	return out.String(), err
 }
 
@@ -53,33 +50,45 @@ func writeConfig(t *testing.T, body string) string {
 	return path
 }
 
-func TestValidateConfigCmd_ValidConfig(t *testing.T) {
+func TestValidateConfig_ValidConfig(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML)
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
+	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, path)
 	assert.Contains(t, out, "is a valid prod config")
-	// What a file this command can read still configures is the deployment, so
+	// What a file this check can read still configures is the deployment, so
 	// the server block is the whole of the summary now. The counts that used to
 	// sit above it described domain settings, which are rows in the database
-	// (ADR 0006) and not this command's to report.
+	// (ADR 0006) and not this check's to report.
 	assert.Contains(t, out, "server:")
+	assert.Contains(t, out, "port 8080")
+}
+
+// The server refuses to start without a server block, so a file that has none
+// is not one to ship, however well it parses.
+func TestValidateConfig_RejectsMissingServer(t *testing.T) {
+	path := writeConfig(t, organisationsYAML)
+
+	_, err := runValidateConfig(t, "prod", path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server.port")
+	assert.Contains(t, err.Error(), path)
 }
 
 // `roles:` left config for the database in ticket #126, and a deployed file
 // still carrying it must validate: the file outlives the build reading it. The
 // summary is the only place an operator finds out the key stopped configuring
 // anything.
-func TestValidateConfigCmd_LegacyRolesKeyIsReportedNotRejected(t *testing.T) {
+func TestValidateConfig_LegacyRolesKeyIsReportedNotRejected(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+`roles:
   - name: "Team lead"
     max: 1
     priority: 1
 `)
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
+	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "1 unknown key")
@@ -90,10 +99,10 @@ func TestValidateConfigCmd_LegacyRolesKeyIsReportedNotRejected(t *testing.T) {
 // asks for is the default Shape now — so a deployed file still carrying it
 // validates, and the summary is where an operator finds out it configures
 // nothing.
-func TestValidateConfigCmd_LegacyShiftSizeKeyIsReportedNotRejected(t *testing.T) {
+func TestValidateConfig_LegacyShiftSizeKeyIsReportedNotRejected(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+"defaultShiftSize: 4\n")
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
+	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "1 unknown key")
@@ -102,10 +111,10 @@ func TestValidateConfigCmd_LegacyShiftSizeKeyIsReportedNotRejected(t *testing.T)
 
 // An unknown key is reported, not rejected — it may be one another build knows.
 // The summary is where the operator sees it, since nothing else will now stop.
-func TestValidateConfigCmd_UnknownKey(t *testing.T) {
+func TestValidateConfig_UnknownKey(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+"preallocatedTeamLeadID: 'V1'\n")
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
+	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "1 unknown key")
@@ -119,7 +128,7 @@ func TestValidateConfigCmd_UnknownKey(t *testing.T) {
 // deployed config carries the block on the day this ships — one of them with an
 // rrule that never parsed — so it has to be reported rather than rejected, and
 // the whole block reads as the one key it now is.
-func TestValidateConfigCmd_LegacyRotaOverridesKeyIsReportedNotRejected(t *testing.T) {
+func TestValidateConfig_LegacyRotaOverridesKeyIsReportedNotRejected(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+`rotaOverrides:
   - rrule: 'FREQ=MONTHLY;BYDAY=3SU'
     shiftSize: 5
@@ -128,7 +137,7 @@ func TestValidateConfigCmd_LegacyRotaOverridesKeyIsReportedNotRejected(t *testin
         role: 'Service volunteer'
 `)
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
+	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "is a valid prod config")
@@ -136,10 +145,10 @@ func TestValidateConfigCmd_LegacyRotaOverridesKeyIsReportedNotRejected(t *testin
 	assert.Contains(t, out, "rotaOverrides")
 }
 
-// devMode is env-dependent, so the command has to know which environment the
+// devMode is env-dependent, so the check has to know which environment the
 // file is destined for rather than just parsing it.
-func TestValidateConfigCmd_DevModeRejectedForProd(t *testing.T) {
-	path := writeConfig(t, prodConfigYAML+`
+func TestValidateConfig_DevModeRejectedForProd(t *testing.T) {
+	path := writeConfig(t, organisationsYAML+`
 server:
   port: 8080
   sessionSecret: "sixteen-characters-long"
@@ -148,7 +157,7 @@ devMode:
   volunteersCSV: "test_data/volunteers.csv"
 `)
 
-	_, err := runValidateConfig(t, "-e", "prod", path)
+	_, err := runValidateConfig(t, "prod", path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "devMode")
 }
@@ -156,7 +165,7 @@ devMode:
 // The summary names each Organisation and counts each level: deploy-config.sh
 // prints it before a config ships, which is the moment to notice a list that is
 // not what was meant.
-func TestValidateConfigCmd_SummarisesOrganisations(t *testing.T) {
+func TestValidateConfig_SummarisesOrganisations(t *testing.T) {
 	path := writeConfig(t, `
 organisations:
   - id: "east"
@@ -182,7 +191,7 @@ server:
   sessionSecret: "sixteen-characters-long"
 `)
 
-	out, err := runValidateConfig(t, "-e", "prod", path)
+	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
 	assert.Contains(t, out, "east (East Drop-In) — 1 organiser, 0 rota editors")
 	assert.Contains(t, out, "west (West Drop-In) — 2 organisers, 1 rota editor")
@@ -191,8 +200,8 @@ server:
 
 // A file still in the single-drop-in shape is refused before it ships, naming
 // the keys that have to move (ADR 0011).
-func TestValidateConfigCmd_RejectsSingleOrganisationKeys(t *testing.T) {
-	path := writeConfig(t, prodConfigYAML+`
+func TestValidateConfig_RejectsSingleOrganisationKeys(t *testing.T) {
+	path := writeConfig(t, organisationsYAML+`
 server:
   port: 8080
   sessionSecret: "sixteen-characters-long"
@@ -200,21 +209,21 @@ server:
     - "a@example.com"
 `)
 
-	_, err := runValidateConfig(t, "-e", "prod", path)
+	_, err := runValidateConfig(t, "prod", path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "server.organiserEmails")
 }
 
-func TestValidateConfigCmd_RequiresEnv(t *testing.T) {
+func TestValidateConfig_RequiresEnv(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML)
 
-	_, err := runValidateConfig(t, path)
+	_, err := runValidateConfig(t, "", path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "env")
 }
 
-func TestValidateConfigCmd_MissingFile(t *testing.T) {
-	_, err := runValidateConfig(t, "-e", "prod", filepath.Join(t.TempDir(), "absent.yaml"))
+func TestValidateConfig_MissingFile(t *testing.T) {
+	_, err := runValidateConfig(t, "prod", filepath.Join(t.TempDir(), "absent.yaml"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read config file")
 }

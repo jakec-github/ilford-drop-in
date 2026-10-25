@@ -8,9 +8,7 @@ env/
 web/node_modules/
 web/dist/
 **/logs/
-/cli
 /server
-/cmd/cli/cli
 /cmd/server/server
 
 # The solver's source goes into the image (the Dockerfile's pybuild stage);

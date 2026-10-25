@@ -201,8 +201,7 @@ const solveCeiling = 60 * time.Second
 // caller holds the solve slot.
 //
 // No python flag: the server has none to pass, and ResolvePythonInterpreter
-// falls back to $ILFORD_CPSAT_PYTHON, then the venv, then python3. The flag
-// belongs to the CLI, where a maintainer is choosing an interpreter by hand.
+// falls back to $ILFORD_CPSAT_PYTHON, then the venv, then python3.
 func (h *Handler) solveDraftRotaAllocation(r *http.Request) (*services.DraftRotaAllocationStatus, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
 	defer cancel()

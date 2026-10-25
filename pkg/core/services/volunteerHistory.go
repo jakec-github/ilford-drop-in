@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -12,6 +13,19 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
+
+// VolunteerRotaStatus represents a volunteer's response status for a single rotation.
+//
+// The four statuses come straight off the stored round: no request row is
+// "no_form"; a request with no generation before the cut-off is "no_response";
+// a generation that ticked nothing is "no_availability"; anything else is
+// "available". The Forms path had a fifth, "form_error", for a form that could
+// not be read — there is no API left to fail, so it is gone.
+type VolunteerRotaStatus struct {
+	Status         string // "no_form", "no_response", "no_availability", "available"
+	AvailableCount int    // number of shifts available (only set when Status == "available")
+	ShiftCount     int    // total shifts in the rotation
+}
 
 // AvailabilityBand is how much of a rota a volunteer said they could do, read
 // as at the moment it was allocated (issue #260).
@@ -71,7 +85,10 @@ type VolunteerHistoryResult struct {
 }
 
 type VolunteerHistoryStore interface {
-	ViewHistoricalResponsesStore
+	RoleStore
+	GetRotations(ctx context.Context) ([]db.Rotation, error)
+	GetAvailabilityRequestsByRotaID(ctx context.Context, rotaID string) ([]db.AvailabilityRequest, error)
+	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
@@ -202,4 +219,52 @@ func VolunteerHistory(
 
 	logger.Debug("Volunteer history", zap.Int("rotations", len(allocated)), zap.Int("volunteers", len(volunteers)))
 	return &VolunteerHistoryResult{Rotations: allocated, Volunteers: volunteers, Entries: entries}, nil
+}
+
+// rotaResponseStatuses reads one allocated rota's round and returns a status per
+// volunteer who was asked, keyed by volunteer id. Volunteers who were not asked
+// are simply absent — the caller decides what that means.
+func rotaResponseStatuses(
+	ctx context.Context,
+	database VolunteerHistoryStore,
+	rota db.Rotation,
+) (map[string]VolunteerRotaStatus, error) {
+	cutoff, err := time.Parse(time.RFC3339, rota.AllocatedDatetime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse allocated_datetime: %w", err)
+	}
+
+	requests, err := database.GetAvailabilityRequestsByRotaID(ctx, rota.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch availability requests: %w", err)
+	}
+
+	requestIDs := make([]string, 0, len(requests))
+	for _, r := range requests {
+		requestIDs = append(requestIDs, r.ID)
+	}
+	latest, err := database.GetLatestAvailability(ctx, requestIDs, &cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read availability: %w", err)
+	}
+
+	statuses := make(map[string]VolunteerRotaStatus, len(requests))
+	for _, request := range requests {
+		status := VolunteerRotaStatus{ShiftCount: rota.ShiftCount}
+		generation, replied := latest[request.ID]
+		switch {
+		case !replied:
+			status.Status = "no_response"
+		case len(generation.Answers) == 0:
+			// Available for nothing: a real answer, and one the Forms encoding
+			// could not tell apart from silence.
+			status.Status = "no_availability"
+		default:
+			status.Status = "available"
+			status.AvailableCount = len(generation.Answers)
+		}
+		statuses[request.VolunteerID] = status
+	}
+
+	return statuses, nil
 }

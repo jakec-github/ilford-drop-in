@@ -9,18 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const validInstalledOAuth = `{
-  "installed": {
-    "client_id": "test-client-id.apps.googleusercontent.com",
-    "project_id": "test-project",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_secret": "test-secret",
-    "redirect_uris": ["http://localhost"]
-  }
-}`
-
 func TestEnvPath(t *testing.T) {
 	assert.Equal(t, filepath.Join("env", "prod", "serviceAccount.json"), EnvPath("prod", "serviceAccount.json"))
 	assert.Equal(t, filepath.Join("env", "test", "drop_in_config.yaml"), EnvPath("test", ConfigFile))
@@ -44,7 +32,6 @@ var envFiles = []struct {
 	load    func(env string) error
 }{
 	{ConfigFile, minimalConfigYAML, func(env string) error { _, err := LoadWithEnv(env); return err }},
-	{OAuthClientFile, validInstalledOAuth, func(env string) error { _, err := LoadOAuthClientWithEnv(env); return err }},
 	{OAuthClientWebFile, validWebOAuth, func(env string) error { _, err := LoadOAuthClientWebWithEnv(env); return err }},
 	{ServiceAccountFile, validServiceAccount, func(env string) error { _, err := LoadServiceAccountWithEnv(env); return err }},
 }
