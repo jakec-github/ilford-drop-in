@@ -43,6 +43,15 @@ describe("OrganiserPage", () => {
     expect(screen.getByText("The panel")).toBeInTheDocument();
   });
 
+  // Every tab shares the shell, so the guide is one click from any of them.
+  test("links to the organiser's guide at the site's root", () => {
+    renderAs("organiser");
+
+    expect(
+      screen.getByRole("link", { name: "Organiser's guide" }),
+    ).toHaveAttribute("href", "/guide");
+  });
+
   test("a Rota Editor sees nothing of the area, and is not asked to log in", () => {
     renderAs("rotaEditor");
 

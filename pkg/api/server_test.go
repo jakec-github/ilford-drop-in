@@ -149,6 +149,11 @@ func TestServer_RootIsTheAppWithNoOrganisation(t *testing.T) {
 	asset := doRequest(t, server, http.MethodGet, "/chunk-abc.js", "")
 	assert.Equal(t, http.StatusOK, asset.Code)
 	assert.Equal(t, "console.log(1)", asset.Body.String())
+
+	// The organiser's guide is a page of the app's own, not a missing one.
+	guide := doRequest(t, server, http.MethodGet, "/guide", "")
+	assert.Equal(t, http.StatusOK, guide.Code)
+	assert.Contains(t, guide.Body.String(), baseTag)
 }
 
 // /org/east and /org/east/ are the same page, and the second is the one every

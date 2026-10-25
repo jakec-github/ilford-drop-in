@@ -51,3 +51,15 @@
 .organiser-panel h2 {
   margin-top: 0;
 }
+
+.organiser-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.organiser-guide-link {
+  font-size: 0.875rem;
+  color: var(--accent);
+}

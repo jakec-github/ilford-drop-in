@@ -49,7 +49,13 @@ export default function OrganiserPage({ tab }: { tab: OrganiserTab }) {
         tab.wide ? "organiser-page organiser-page--wide" : "organiser-page"
       }
     >
-      <h1>Organiser</h1>
+      <div className="organiser-heading">
+        <h1>Organiser</h1>
+        {/* The guide sits at the site's root, outside every Organisation. */}
+        <a href="/guide" className="organiser-guide-link">
+          Organiser's guide
+        </a>
+      </div>
 
       <nav className="organiser-tabs">
         {ORGANISER_TABS.map((t) => (
