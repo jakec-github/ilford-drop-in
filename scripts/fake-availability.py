@@ -11,7 +11,10 @@ Usage:
     scripts/fake-availability.py --mean 0.6 --sd 0.16
     scripts/fake-availability.py --rota <rotaId> --seed 1 --dry-run
 
-Organiser session: by default it logs in at /auth/login, which against the
+--api-url (or API_URL) is the drop-in's own address, under /org/<id>; it
+defaults to the dev config's Organisation.
+
+Organiser session: by default it logs in at <api-url>/auth/login, which against the
 credential-free dev stack mints a session with no Google round trip (see
 docs/agents/dev-stack.md). Against anything with real OIDC that will not work —
 pass an existing session cookie with --session instead.
@@ -36,7 +39,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULT_API_URL = "http://localhost:8080"
+DEFAULT_API_URL = "http://localhost:8080/org/dev-org"
 
 # The cookie the server issues a session in (pkg/api/auth.go).
 SESSION_COOKIE = "session"
@@ -127,12 +130,12 @@ class Client:
         and name the account when it works.
         """
         try:
-            return self.request("GET", "/auth/me")["email"]
+            return self.request("GET", "/api/me")["email"]
         except SystemExit:
             raise SystemExit(
                 f"the session was rejected by {self.base_url}. It is either "
                 "expired, from a different server, or for an address that is "
-                "not in that environment's server.organiserEmails."
+                "not on that Organisation's organiserEmails."
             )
 
 

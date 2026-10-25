@@ -21,8 +21,9 @@
 # "id", which is also the only thing `delete` can be pointed at — a config pin
 # is changed by editing the config.
 #
-# Dates are YYYY-MM-DD. The target server defaults to http://localhost:8080;
-# override with API_URL, e.g. API_URL=http://localhost:9090 scripts/preallocs.sh list
+# Dates are YYYY-MM-DD. API_URL is the drop-in's own address, under /org/<id>;
+# it defaults to the dev config's http://localhost:8080/org/dev-org. Override it,
+# e.g. API_URL=http://localhost:9090/org/dev-org scripts/preallocs.sh list
 #
 # Examples:
 #   scripts/preallocs.sh login
@@ -35,7 +36,7 @@
 
 set -euo pipefail
 
-API_URL="${API_URL:-http://localhost:8080}"
+API_URL="${API_URL:-http://localhost:8080/org/dev-org}"
 COOKIE_JAR="${COOKIE_JAR:-cookies.txt}"
 
 # curl with the session attached. Sends nothing when there is no jar yet,
