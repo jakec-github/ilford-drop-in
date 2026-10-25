@@ -29,6 +29,8 @@ const webPort = process.env.WEB_PORT ?? "5173";
 // the SPA fallback below and the caller gets index.html with a 200, which
 // surfaces as "Unexpected token '<'" when it tries to parse it as JSON.
 const organisationAPIPrefixes = ["/api", "/auth", "/calendars"];
+// Outside every Organisation, the paths that are still the Go server's.
+const rootServerPrefixes = ["/auth", "/health"];
 const organisationPath = /^\/org\/([a-z0-9][a-z0-9-]*)(\/.*)?$/;
 
 // How long a proxied request may take before this server gives up on it.
@@ -68,10 +70,34 @@ const server = Bun.serve({
         signal: req.signal,
       });
 
-    // Outside every Organisation — the splash page, /auth, /health, and the 404
-    // for everything else — the Go server answers exactly as it does in prod.
+    // index.html as built, its <base> at the root: the app outside every
+    // Organisation, which draws the splash at / and "Page not found" elsewhere.
+    // As in prod (pkg/api/frontend.go), the 404 is the same page with the
+    // status, whatever path asked for it.
+    const rootIndex = async (status: number) =>
+      new Response(await Bun.file("./dist/index.html").text(), {
+        status,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+
+    // Outside every Organisation, /auth and /health are the Go server's; the
+    // rest is the frontend with its base at the root, assets included.
     const match = organisationPath.exec(pathname);
-    if (!match) return proxy();
+    if (!match) {
+      if (
+        rootServerPrefixes.some(
+          (p) => pathname === p || pathname.startsWith(`${p}/`),
+        )
+      ) {
+        return proxy();
+      }
+      if (pathname === "/") return rootIndex(200);
+      if (pathname !== "/index.html") {
+        const asset = Bun.file(`./dist${pathname}`);
+        if (await asset.exists()) return new Response(asset);
+      }
+      return rootIndex(404);
+    }
 
     const [, id, rest] = match;
     // The bare /org/<id> is the server's redirect to /org/<id>/.
@@ -94,13 +120,13 @@ const server = Bun.serve({
     const publicFile = Bun.file(`./public${resolved}`);
     if (await publicFile.exists()) return new Response(publicFile);
 
-    // An id the server does not run is its plain 404, as in prod, rather than
+    // An id the server does not run is the root's 404, as in prod, rather than
     // an app shell whose every request then fails.
     const known = await fetch(
       `http://localhost:${apiPort}/org/${id}/api/organisation`,
       { signal: req.signal },
     );
-    if (!known.ok) return proxy();
+    if (!known.ok) return rootIndex(404);
 
     // The server rewrites index.html's <base> to the Organisation's path as it
     // serves it (pkg/api/frontend.go); this does the same to the dev build.

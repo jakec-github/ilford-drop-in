@@ -48,7 +48,7 @@ func testStubAuth(t *testing.T) *Authenticator {
 func stubServer(a *Authenticator) http.Handler {
 	orgs := testOrganisations()
 	h := NewHandler(&mockStore{}, testVolunteers(), &orgs[0], a, nil, nil, nil, nil, zap.NewNop())
-	return Mount(a, []*Handler{h}, pingerFunc(func(context.Context) error { return nil }), zap.NewNop())
+	return Mount(a, []*Handler{h}, testFrontend, pingerFunc(func(context.Context) error { return nil }), zap.NewNop())
 }
 
 // stubLogin logs in through the Organisation's login link, follows it to the

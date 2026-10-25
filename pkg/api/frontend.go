@@ -59,6 +59,40 @@ func frontendHandler(frontend fs.FS, base string) http.Handler {
 	})
 }
 
+// rootFrontendHandler serves the frontend outside every Organisation: its
+// assets at the root, index.html unchanged — its <base> already says the root —
+// at /, and the same index.html with a 404 for every other path. The app reads
+// the empty base path as "no Organisation" and draws the splash or its
+// "Page not found" from the path, so a missing page and an unknown
+// Organisation's address get the identical response.
+func rootFrontendHandler(frontend fs.FS) http.Handler {
+	site := frontendHandler(frontend, "")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && path != "" {
+			http.NotFound(w, r)
+			return
+		}
+		if path == "" {
+			site.ServeHTTP(w, r)
+			return
+		}
+		if f, err := frontend.Open(path); err == nil {
+			f.Close()
+			site.ServeHTTP(w, r)
+			return
+		}
+		index, err := fs.ReadFile(frontend, "index.html")
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write(index)
+	})
+}
+
 // withBase points index.html's <base> element at the path the site is served
 // under. An empty base leaves the document alone: the tag as built already says
 // the root, which is where the site then is.

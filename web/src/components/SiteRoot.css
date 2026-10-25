@@ -1,0 +1,10 @@
+.site-root {
+  max-width: 32rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  text-align: center;
+}
+
+.site-root h1 {
+  margin: 1rem 0 0.5rem;
+}
