@@ -26,7 +26,7 @@ Cloud project** for the path this guide describes.
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| [Go](https://go.dev/dl/) | ≥ 1.25 | Builds the CLI and server. |
+| [Go](https://go.dev/dl/) | ≥ 1.26 | Builds the CLI and server. |
 | [Docker](https://www.docker.com/) | any recent | Runs the local Postgres. |
 | [Bun](https://bun.sh/) | latest | Frontend runtime/bundler: `curl -fsSL https://bun.sh/install \| bash`. |
 

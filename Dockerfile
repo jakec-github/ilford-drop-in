@@ -9,7 +9,7 @@ COPY docs/organiser-guide.md /build/docs/
 RUN bun run build
 
 # Stage 2: server build, embedding the frontend
-FROM golang:1.25 AS gobuild
+FROM golang:1.26 AS gobuild
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
