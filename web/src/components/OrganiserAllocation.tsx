@@ -59,7 +59,11 @@ function DiscardDialog({
   onClose: () => void;
 }) {
   return (
-    <Dialog title="Discard this rota?" onClose={onClose}>
+    <Dialog
+      title="Discard this rota?"
+      onClose={onClose}
+      dismissable={!discarding}
+    >
       <p className="discard-lead">
         The rota running {formatSpan(rota)} will be deleted, along with its{" "}
         {rota.shiftCount} {rota.shiftCount === 1 ? "shift" : "shifts"}, what
@@ -216,6 +220,7 @@ function InFlightRota({
     stale,
     inputsMoved,
     solving,
+    reading,
     solveError,
     solve,
     allocating,
@@ -247,6 +252,7 @@ function InFlightRota({
         loadError={draftError}
         stale={stale}
         solving={solving}
+        reading={reading}
         solveError={solveError}
         onSolve={() => void solve()}
         allocating={allocating}

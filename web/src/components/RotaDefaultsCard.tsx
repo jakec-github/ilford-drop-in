@@ -57,7 +57,7 @@ function ShiftTimesForm({
   }
 
   return (
-    <Dialog title="Shift times" onClose={onClose}>
+    <Dialog title="Shift times" onClose={onClose} dismissable={!saving}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

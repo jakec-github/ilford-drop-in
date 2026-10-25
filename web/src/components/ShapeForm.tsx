@@ -73,7 +73,7 @@ export default function ShapeForm({
   }
 
   return (
-    <Dialog title={title} onClose={onClose}>
+    <Dialog title={title} onClose={onClose} dismissable={!saving}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

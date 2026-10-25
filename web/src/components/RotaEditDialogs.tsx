@@ -171,7 +171,7 @@ export function ConfirmChangeDialog({
         : (options[0] ?? "");
 
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} onClose={onCancel} dismissable={!busy}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -322,6 +322,7 @@ export function AssigneeDialog({
           : `Replace ${change.outgoing.name}`
       }
       onClose={onCancel}
+      dismissable={!busy}
     >
       <form
         onSubmit={(e) => {
@@ -528,7 +529,11 @@ export function PinDialog({
   }
 
   return (
-    <Dialog title={`Pin someone to ${dateLabel}`} onClose={onCancel}>
+    <Dialog
+      title={`Pin someone to ${dateLabel}`}
+      onClose={onCancel}
+      dismissable={!busy}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -660,6 +665,7 @@ export function ClosureDialog({
     <Dialog
       title={closing ? `Close ${dateLabel}?` : `Reopen ${dateLabel}?`}
       onClose={onCancel}
+      dismissable={!busy}
     >
       <form
         onSubmit={(e) => {
@@ -746,7 +752,11 @@ export function ShiftTimesDialog({
   const changed = from !== toLocalInput(start) || to !== toLocalInput(end);
 
   return (
-    <Dialog title={`When does ${dateLabel} run?`} onClose={onCancel}>
+    <Dialog
+      title={`When does ${dateLabel} run?`}
+      onClose={onCancel}
+      dismissable={!busy}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -799,7 +809,11 @@ export function UnpinDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Dialog title={`Remove pin for ${name}?`} onClose={onCancel}>
+    <Dialog
+      title={`Remove pin for ${name}?`}
+      onClose={onCancel}
+      dismissable={!busy}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();

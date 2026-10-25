@@ -81,7 +81,11 @@ function RoleForm({
   }
 
   return (
-    <Dialog title={role ? `Edit ${role.name}` : "New role"} onClose={onClose}>
+    <Dialog
+      title={role ? `Edit ${role.name}` : "New role"}
+      onClose={onClose}
+      dismissable={!saving}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -438,7 +442,7 @@ function AllocationRulesForm({
   }
 
   return (
-    <Dialog title="Allocation rules" onClose={onClose}>
+    <Dialog title="Allocation rules" onClose={onClose} dismissable={!saving}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
