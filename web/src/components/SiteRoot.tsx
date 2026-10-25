@@ -1,17 +1,21 @@
 import Logo from "./Logo";
+import OrganiserGuide from "./OrganiserGuide";
 import "./SiteRoot.css";
 
 // SiteRoot is the app outside every Organisation, when the server leaves the
-// base path at the root: the splash at /, and "Page not found" anywhere else —
+// base path at the root: the splash at /, the organiser's guide at /guide, and
+// "Page not found" anywhere else —
 // including an unknown Organisation's address, which must look exactly like
 // any other missing page. It fetches nothing: there is no Organisation here to
 // ask about, and no session worth checking.
 export default function SiteRoot({ pathname }: { pathname: string }) {
-  return pathname === "/" ? <Splash /> : <NotFound />;
+  if (pathname === "/") return <Splash />;
+  if (pathname === "/guide") return <OrganiserGuide />;
+  return <NotFound />;
 }
 
 // Splash names, lists and links to no Organisation: an Organisation's address
-// is the only way in (ADR 0011).
+// is the only way in (ADR 0011). Its one link is the organiser's guide.
 function Splash() {
   return (
     <main className="site-root">
@@ -21,6 +25,9 @@ function Splash() {
       <p>
         If you volunteer or organise for one, use the link your drop-in gave
         you.
+      </p>
+      <p>
+        <a href="/guide">Organiser's guide</a>
       </p>
     </main>
   );

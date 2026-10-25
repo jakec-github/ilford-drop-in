@@ -31,6 +31,8 @@ const webPort = process.env.WEB_PORT ?? "5173";
 const organisationAPIPrefixes = ["/api", "/auth", "/calendars"];
 // Outside every Organisation, the paths that are still the Go server's.
 const rootServerPrefixes = ["/auth", "/health"];
+// The app's own pages outside every Organisation, as in pkg/api/frontend.go.
+const rootPages = ["/", "/guide"];
 const organisationPath = /^\/org\/([a-z0-9][a-z0-9-]*)(\/.*)?$/;
 
 // How long a proxied request may take before this server gives up on it.
@@ -91,7 +93,7 @@ const server = Bun.serve({
       ) {
         return proxy();
       }
-      if (pathname === "/") return rootIndex(200);
+      if (rootPages.includes(pathname)) return rootIndex(200);
       if (pathname !== "/index.html") {
         const asset = Bun.file(`./dist${pathname}`);
         if (await asset.exists()) return new Response(asset);

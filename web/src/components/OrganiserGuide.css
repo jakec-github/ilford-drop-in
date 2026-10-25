@@ -1,0 +1,44 @@
+.organiser-guide {
+  max-width: 44rem;
+  margin: 2rem auto 4rem;
+  padding: 0 1rem;
+}
+
+.organiser-guide-home {
+  display: inline-block;
+}
+
+.organiser-guide h3 {
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.organiser-guide a {
+  color: var(--accent);
+}
+
+.organiser-guide code {
+  font-size: 0.875em;
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--accent-bg);
+}
+
+.organiser-guide table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9375rem;
+}
+
+.organiser-guide th,
+.organiser-guide td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.organiser-guide th {
+  color: var(--text-h);
+  font-weight: 500;
+}

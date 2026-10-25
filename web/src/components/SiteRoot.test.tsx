@@ -15,12 +15,25 @@ afterEach(() => {
 });
 
 describe("SiteRoot", () => {
-  // The root names no Organisation: an address is the only way in.
-  test("the splash links nowhere and asks the server nothing", () => {
+  // The root names no Organisation: an address is the only way in. The guide
+  // is the one place it links to.
+  test("the splash links only to the guide and asks the server nothing", () => {
     const { container } = render(<SiteRoot pathname="/" />);
 
     expect(screen.getByRole("heading", { name: "Rota Wise" })).toBeVisible();
-    expect(container.querySelectorAll("a")).toHaveLength(0);
+    const links = [...container.querySelectorAll("a")];
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/guide"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("/guide is the organiser's guide, rendered from its Markdown", () => {
+    render(<SiteRoot pathname="/guide" />);
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Organiser's guide" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Your first rota" })).toBeVisible();
+    expect(screen.queryByText(/history/i)).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

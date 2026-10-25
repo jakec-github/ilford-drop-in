@@ -65,6 +65,10 @@ func frontendHandler(frontend fs.FS, base string) http.Handler {
 // the empty base path as "no Organisation" and draws the splash or its
 // "Page not found" from the path, so a missing page and an unknown
 // Organisation's address get the identical response.
+// rootPages are the app's own pages outside every Organisation: the splash
+// and the organiser's guide. web/dev.ts keeps the same list.
+var rootPages = map[string]bool{"": true, "guide": true}
+
 func rootFrontendHandler(frontend fs.FS) http.Handler {
 	site := frontendHandler(frontend, "")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +77,7 @@ func rootFrontendHandler(frontend fs.FS) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if path == "" {
+		if rootPages[path] {
 			site.ServeHTTP(w, r)
 			return
 		}
