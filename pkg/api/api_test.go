@@ -1166,6 +1166,49 @@ func TestCreateAlterationEndpoint_CustomEntryNeedsARole(t *testing.T) {
 	assert.Empty(t, store.insertedAlterations)
 }
 
+// TestCreateAlterationEndpoint_CustomEntryLeavingNamesItsSeat proves both
+// leaving Roles reach the change: a custom entry holding two Seats on a shift
+// says which it leaves, on the date and on the swap date (issue #216).
+func TestCreateAlterationEndpoint_CustomEntryLeavingNamesItsSeat(t *testing.T) {
+	twice := func() *mockStore {
+		store := alterationTestStore()
+		store.allocations = append(store.allocations,
+			db.Allocation{ID: "a2", ShiftID: "s1", RoleID: "role-team-lead", CustomEntry: "Red Cross"},
+			db.Allocation{ID: "a3", ShiftID: "s1", RoleID: "role-service-volunteer", CustomEntry: "Red Cross"})
+		return store
+	}
+
+	t.Run("on the date", func(t *testing.T) {
+		store := twice()
+		body := `{"date":"2026-01-11","outCustom":"Red Cross","outRoleId":"role-service-volunteer","reason":"Only one came"}`
+
+		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		require.Len(t, store.insertedAlterations, 1)
+		assert.Equal(t, "role-service-volunteer", store.insertedAlterations[0].RoleID)
+	})
+
+	t.Run("on the swap date", func(t *testing.T) {
+		store := twice()
+		body := `{"date":"2026-01-18","inCustom":"Red Cross","swapDate":"2026-01-11","swapOutRoleId":"role-service-volunteer","reason":""}`
+
+		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		for _, a := range store.insertedAlterations {
+			assert.Equal(t, "role-service-volunteer", a.RoleID, a.Direction)
+		}
+	})
+
+	t.Run("refused without one", func(t *testing.T) {
+		store := twice()
+		body := `{"date":"2026-01-11","outCustom":"Red Cross","reason":"Only one came"}`
+
+		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+		assert.Empty(t, store.insertedAlterations)
+	})
+}
+
 // TestCreateAlterationEndpoint_ReasonOptional proves a change that fills the
 // place it empties needs no reason: charlie takes bob's shift, so the rota is
 // no worse off and there is nothing to explain (issue #148). The cover is still

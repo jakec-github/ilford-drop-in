@@ -47,6 +47,69 @@ func TestApplyAlterations_RemoveCustomEntry(t *testing.T) {
 	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
 }
 
+// A custom entry may hold several Seats on one shift (#195), so a removal that
+// names the Role of the Seat it leaves takes that one off and leaves the rest
+// (issue #216).
+func TestApplyAlterations_RemoveCustomEntryTakesTheSeatInItsRole(t *testing.T) {
+	allocationsByShiftID := map[string][]db.Allocation{
+		"shift-1": {
+			{ID: "a1", CustomEntry: "Red Cross", RoleID: "role-team-lead", ShiftID: "shift-1"},
+			{ID: "a2", CustomEntry: "Red Cross", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+		},
+	}
+
+	alterations := []db.Alteration{
+		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", CustomValue: "Red Cross", RoleID: "role-service-volunteer", SetTime: "2025-01-01T00:00:00Z"},
+	}
+
+	result := ApplyAlterations(allocationsByShiftID, alterations)
+
+	assert.Len(t, result["shift-1"], 1)
+	assert.Equal(t, "a1", result["shift-1"][0].ID)
+}
+
+// Two copies in the same Role are the same Seat as far as anybody can tell, so
+// either may go — but only one does.
+func TestApplyAlterations_RemoveCustomEntryTakesOneCopyOfTheSameRole(t *testing.T) {
+	allocationsByShiftID := map[string][]db.Allocation{
+		"shift-1": {
+			{ID: "a1", CustomEntry: "Red Cross", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+			{ID: "a2", CustomEntry: "Red Cross", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+		},
+	}
+
+	alterations := []db.Alteration{
+		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", CustomValue: "Red Cross", RoleID: "role-service-volunteer", SetTime: "2025-01-01T00:00:00Z"},
+	}
+
+	result := ApplyAlterations(allocationsByShiftID, alterations)
+
+	assert.Len(t, result["shift-1"], 1)
+	assert.Equal(t, "Red Cross", result["shift-1"][0].CustomEntry)
+}
+
+// A custom entry's removal written before #216 names no Role, and meant every
+// copy of it. It keeps that meaning, so no shift already changed reads
+// differently now.
+func TestApplyAlterations_RoleLessCustomRemovalTakesEveryCopy(t *testing.T) {
+	allocationsByShiftID := map[string][]db.Allocation{
+		"shift-1": {
+			{ID: "a1", VolunteerID: "alice", RoleID: "role-team-lead", ShiftID: "shift-1"},
+			{ID: "a2", CustomEntry: "Red Cross", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+			{ID: "a3", CustomEntry: "Red Cross", RoleID: "role-service-volunteer", ShiftID: "shift-1"},
+		},
+	}
+
+	alterations := []db.Alteration{
+		{ID: "alt1", ShiftID: "shift-1", Direction: "remove", CustomValue: "Red Cross", SetTime: "2025-01-01T00:00:00Z"},
+	}
+
+	result := ApplyAlterations(allocationsByShiftID, alterations)
+
+	assert.Len(t, result["shift-1"], 1)
+	assert.Equal(t, "alice", result["shift-1"][0].VolunteerID)
+}
+
 func TestApplyAlterations_AddVolunteer(t *testing.T) {
 	allocationsByShiftID := map[string][]db.Allocation{
 		"shift-1": {

@@ -722,6 +722,8 @@ export async function createAlteration(change: RotaChange): Promise<void> {
   if (change.out) Object.assign(body, personFields("out", change.out));
   if (change.swapDate) body.swapDate = change.swapDate;
   if (change.roleId) body.roleId = change.roleId;
+  if (change.outRoleId) body.outRoleId = change.outRoleId;
+  if (change.swapOutRoleId) body.swapOutRoleId = change.swapOutRoleId;
 
   const res = await fetch("/api/alterations", {
     method: "POST",

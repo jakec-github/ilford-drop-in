@@ -87,8 +87,12 @@ produced by the allocator.
 **Alteration**:
 A single post-allocation change to a Shift: adding or removing one person. One
 that adds somebody names the Role of the Seat they take, whether they are on the
-roster or not; one that removes somebody names none, having no Seat to fill.
-Alterations are never edited or deleted; the effective state of a Shift is its
+roster or not. One that removes a volunteer names none: a volunteer holds at
+most one Seat on a Shift, so there is no question which they leave. One that
+removes a custom entry names the Role of the Seat it leaves, since the entry
+may hold several, and takes exactly that one Seat off. A custom entry's removal
+recorded before this rule names no Role and took every copy of the entry off,
+and it is still read that way. Alterations are never edited or deleted; the effective state of a Shift is its
 Allocations with Alterations applied in order. An Alteration records what
 happened on the day rather than instructing a solve, so the allocator's rules
 do not bind it: it may place someone in a Role the roster does not record them
