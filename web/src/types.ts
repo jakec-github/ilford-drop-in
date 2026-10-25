@@ -340,6 +340,13 @@ export const CUSTOM_CHOICE = "custom";
 // Shape asks for: an alteration records what happened on the day rather than
 // instructing a solve (ADR 0009).
 //
+// outRoleId is the Role of the Seat a custom entry named by out leaves on
+// date, and swapOutRoleId the one a custom entry named by in leaves on
+// swapDate. A custom entry may hold several Seats on one shift (#195), so it
+// says which it is leaving, and only that one comes off (issue #216). Never
+// sent for a volunteer, who holds one Seat on a shift at most, nor for a Seat
+// with no Role.
+//
 // reason is what the change is recorded against, and is only insisted on for a
 // remove — the one shape that leaves the shift short of someone, with no
 // replacement naming why (issue #148). Send it empty anywhere else.
@@ -349,6 +356,8 @@ export interface RotaChange {
   out?: PersonRef;
   swapDate?: string;
   roleId?: string;
+  outRoleId?: string;
+  swapOutRoleId?: string;
   reason: string;
 }
 

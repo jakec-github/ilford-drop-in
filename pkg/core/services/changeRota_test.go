@@ -11,6 +11,7 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -256,6 +257,7 @@ func TestChangeRota_CustomInOut(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		OutCustom: "External John",
+		OutRoleID: "role-service-volunteer",
 		InCustom:  "External Jane",
 		RoleID:    "role-service-volunteer",
 		Reason:    "Replacement",
@@ -1259,6 +1261,52 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 				RoleID:    "role-team-lead",
 			},
 		},
+		{
+			// A volunteer holds at most one Seat on a shift, so there is no
+			// Seat to pick out and nothing for a leaving Role to say.
+			name: "with a leaving role for a volunteer",
+			params: ChangeRotaParams{
+				Date:      "2025-01-05",
+				Out:       "alice",
+				OutRoleID: "role-team-lead",
+			},
+		},
+		{
+			name: "with a leaving role that is not a configured role",
+			params: ChangeRotaParams{
+				Date:      "2025-01-05",
+				OutCustom: "Redbridge youth group",
+				OutRoleID: "role-supervisor",
+			},
+		},
+		{
+			name: "with a leaving role and nobody going out",
+			params: ChangeRotaParams{
+				Date:      "2025-01-05",
+				InCustom:  "Redbridge youth group",
+				RoleID:    "role-team-lead",
+				OutRoleID: "role-team-lead",
+			},
+		},
+		{
+			// Only a swap date has anybody leaving it.
+			name: "with a swap date's leaving role and no swap date",
+			params: ChangeRotaParams{
+				Date:          "2025-01-05",
+				InCustom:      "Redbridge youth group",
+				RoleID:        "role-team-lead",
+				SwapOutRoleID: "role-team-lead",
+			},
+		},
+		{
+			name: "with a swap date's leaving role for a volunteer",
+			params: ChangeRotaParams{
+				Date:          "2025-01-05",
+				In:            "bob",
+				SwapDate:      "2025-01-12",
+				SwapOutRoleID: "role-service-volunteer",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1348,6 +1396,7 @@ func TestChangeRota_SwapLegsInheritTheRoleOfACustomEntry(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		OutCustom: "Redbridge youth group",
+		OutRoleID: "role-team-lead",
 		In:        "bob",
 		SwapDate:  "2025-01-12",
 		UserEmail: "test@example.com",
@@ -1383,10 +1432,11 @@ func TestChangeRota_MoveCarriesACustomEntrysRoleAcross(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		InCustom:  "Redbridge youth group",
-		SwapDate:  "2025-01-12",
-		UserEmail: "test@example.com",
+		Date:          "2025-01-05",
+		InCustom:      "Redbridge youth group",
+		SwapDate:      "2025-01-12",
+		SwapOutRoleID: "role-team-lead",
+		UserEmail:     "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1408,11 +1458,12 @@ func TestChangeRota_MoveOfACustomEntryTakesAnExplicitRole(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		InCustom:  "Redbridge youth group",
-		SwapDate:  "2025-01-12",
-		RoleID:    "role-service-volunteer",
-		UserEmail: "test@example.com",
+		Date:          "2025-01-05",
+		InCustom:      "Redbridge youth group",
+		SwapDate:      "2025-01-12",
+		SwapOutRoleID: "role-team-lead",
+		RoleID:        "role-service-volunteer",
+		UserEmail:     "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1420,9 +1471,10 @@ func TestChangeRota_MoveOfACustomEntryTakesAnExplicitRole(t *testing.T) {
 	assert.Equal(t, "role-service-volunteer", addedAlteration(t, store).RoleID)
 }
 
-// A remove states no Role: there is nobody arriving to fill a Seat, so there is
-// nothing to say.
-func TestChangeRota_RemovalOfACustomEntryStoresNoRole(t *testing.T) {
+// A custom entry's removal states the Role of the Seat it leaves, since the
+// same entry may hold several Seats on one shift and the Role is what says
+// which (issue #216).
+func TestChangeRota_RemovalOfACustomEntryStoresTheRoleItLeaves(t *testing.T) {
 	store := &mockChangeRotaStore{
 		shifts: sundayShifts("rota-1", "2025-01-05", 1),
 		allocations: []db.Allocation{
@@ -1433,6 +1485,7 @@ func TestChangeRota_RemovalOfACustomEntryStoresNoRole(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		OutCustom: "Redbridge youth group",
+		OutRoleID: "role-team-lead",
 		Reason:    "They could not make it",
 		UserEmail: "test@example.com",
 	}
@@ -1442,7 +1495,7 @@ func TestChangeRota_RemovalOfACustomEntryStoresNoRole(t *testing.T) {
 
 	require.Len(t, store.insertedAlterations, 1)
 	assert.Equal(t, "remove", store.insertedAlterations[0].Direction)
-	assert.Empty(t, store.insertedAlterations[0].RoleID)
+	assert.Equal(t, "role-team-lead", store.insertedAlterations[0].RoleID)
 }
 
 // A Role switch is the same person out and in on one shift: they stay where
@@ -1502,6 +1555,7 @@ func TestChangeRota_SwitchRoleForACustomEntry(t *testing.T) {
 	params := ChangeRotaParams{
 		Date:      "2025-01-05",
 		OutCustom: "Redbridge youth group",
+		OutRoleID: "role-service-volunteer",
 		InCustom:  "Redbridge youth group",
 		RoleID:    "role-team-lead",
 		UserEmail: "test@example.com",
@@ -1597,4 +1651,211 @@ func TestChangeRota_SwitchRoleRequiresARole(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "role is required")
+}
+
+// redCrossTwice is a shift on which one custom entry holds two Seats in
+// different Roles (#195), with Bob alone on the next shift — the case issue
+// #216 is about, where taking one copy off used to take every copy off.
+func redCrossTwice() *mockChangeRotaStore {
+	return &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 2),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-team-lead", CustomEntry: "Red Cross"},
+			{ID: "a2", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", CustomEntry: "Red Cross"},
+			{ID: "a3", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "bob"},
+		},
+	}
+}
+
+// seatsAfter is each shift as the change leaves it, one "who:Role" per Seat:
+// the store's allocations with everything it has been sent applied. Reading
+// the result rather than the rows written is what proves only one copy went.
+func seatsAfter(store *mockChangeRotaStore, shiftID string) []string {
+	byShift := map[string][]db.Allocation{}
+	for _, a := range store.allocations {
+		byShift[a.ShiftID] = append(byShift[a.ShiftID], a)
+	}
+	applied := utils.ApplyAlterations(byShift, append(append([]db.Alteration{}, store.alterations...), store.insertedAlterations...))
+	var seats []string
+	for _, a := range applied[shiftID] {
+		who := a.VolunteerID
+		if who == "" {
+			who = a.CustomEntry
+		}
+		seats = append(seats, who+":"+a.RoleID)
+	}
+	return seats
+}
+
+func TestChangeRota_RemovingOneCopyOfACustomEntryLeavesTheOther(t *testing.T) {
+	store := redCrossTwice()
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Red Cross",
+		OutRoleID: "role-service-volunteer",
+		Reason:    "Only one could come",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"Red Cross:role-team-lead"}, seatsAfter(store, "2025-01-05"))
+}
+
+// A move away is a removal on the shift being left, so it takes one copy too,
+// and the Role it carries across is the one that copy held.
+func TestChangeRota_MovingOneCopyOfACustomEntryLeavesTheOtherBehind(t *testing.T) {
+	store := redCrossTwice()
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:          "2025-01-12",
+		InCustom:      "Red Cross",
+		SwapDate:      "2025-01-05",
+		SwapOutRoleID: "role-service-volunteer",
+		UserEmail:     "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"Red Cross:role-team-lead"}, seatsAfter(store, "2025-01-05"))
+	assert.ElementsMatch(t, []string{"bob:role-service-volunteer", "Red Cross:role-service-volunteer"},
+		seatsAfter(store, "2025-01-12"))
+}
+
+// On a swap the Seat handed over is the one named, so whoever comes in takes
+// its Role rather than whichever copy happened to come first.
+func TestChangeRota_SwappingOneCopyOfACustomEntryLeavesTheOtherBehind(t *testing.T) {
+	store := redCrossTwice()
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Red Cross",
+		OutRoleID: "role-service-volunteer",
+		In:        "bob",
+		SwapDate:  "2025-01-12",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []string{"Red Cross:role-team-lead", "bob:role-service-volunteer"},
+		seatsAfter(store, "2025-01-05"))
+	assert.Equal(t, []string{"Red Cross:role-service-volunteer"}, seatsAfter(store, "2025-01-12"))
+}
+
+// The case that needs the Role named: switching the Service volunteer copy to
+// Team lead must take that copy off. Taking the lead off and putting a lead
+// back would change nothing.
+func TestChangeRota_SwitchingOneCopyOfACustomEntryLeavesTheOther(t *testing.T) {
+	store := redCrossTwice()
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Red Cross",
+		OutRoleID: "role-service-volunteer",
+		InCustom:  "Red Cross",
+		RoleID:    "role-team-lead",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"Red Cross:role-team-lead", "Red Cross:role-team-lead"},
+		seatsAfter(store, "2025-01-05"))
+}
+
+// An organisation may send several people, so a custom entry can be moved onto
+// a shift it is already on (#195). A volunteer cannot, and still is refused.
+func TestChangeRota_MovingACustomEntryOntoAShiftItIsOn(t *testing.T) {
+	store := redCrossTwice()
+	store.allocations = append(store.allocations,
+		db.Allocation{ID: "a4", ShiftID: "2025-01-12", RoleID: "role-team-lead", CustomEntry: "Red Cross"})
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:          "2025-01-12",
+		InCustom:      "Red Cross",
+		SwapDate:      "2025-01-05",
+		SwapOutRoleID: "role-service-volunteer",
+		UserEmail:     "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []string{"bob:role-service-volunteer", "Red Cross:role-team-lead", "Red Cross:role-service-volunteer"},
+		seatsAfter(store, "2025-01-12"))
+}
+
+func TestChangeRota_LeavingCustomEntryMustHoldTheRoleNamed(t *testing.T) {
+	store := redCrossTwice()
+	store.allocations = store.allocations[:1] // Red Cross as Team lead only
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Red Cross",
+		OutRoleID: "role-service-volunteer",
+		Reason:    "Testing",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "Red Cross")
+	assert.Contains(t, err.Error(), "Service volunteer")
+	assert.Nil(t, store.insertedCover)
+}
+
+// Which Seat goes is the caller's to say, so a custom entry whose Seats all
+// hold a Role cannot leave without naming one.
+func TestChangeRota_LeavingCustomEntryMustNameItsRole(t *testing.T) {
+	tests := []struct {
+		name   string
+		params ChangeRotaParams
+	}{
+		{
+			name: "on a removal",
+			params: ChangeRotaParams{
+				Date:      "2025-01-05",
+				OutCustom: "Red Cross",
+				Reason:    "Testing",
+			},
+		},
+		{
+			name: "on a move away",
+			params: ChangeRotaParams{
+				Date:     "2025-01-12",
+				InCustom: "Red Cross",
+				SwapDate: "2025-01-05",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := redCrossTwice()
+			params := tt.params
+			params.UserEmail = "test@example.com"
+
+			_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
+			require.ErrorIs(t, err, ErrInvalidInput)
+			assert.Contains(t, err.Error(), "Red Cross")
+			assert.Nil(t, store.insertedCover)
+		})
+	}
+}
+
+// A custom entry added before #214 holds a Seat with no Role, and so names
+// none when it leaves. That is the shape every removal had before #216, and it
+// is stored and read the same way.
+func TestChangeRota_RoleLessCustomEntryLeavesNamingNoRole(t *testing.T) {
+	store := &mockChangeRotaStore{
+		shifts: sundayShifts("rota-1", "2025-01-05", 1),
+		allocations: []db.Allocation{
+			{ID: "a1", ShiftID: "2025-01-05", CustomEntry: "Red Cross"},
+		},
+	}
+
+	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
+		Date:      "2025-01-05",
+		OutCustom: "Red Cross",
+		Reason:    "They could not make it",
+		UserEmail: "test@example.com",
+	}, zap.NewNop())
+	require.NoError(t, err)
+
+	require.Len(t, store.insertedAlterations, 1)
+	assert.Empty(t, store.insertedAlterations[0].RoleID)
+	assert.Empty(t, seatsAfter(store, "2025-01-05"))
 }

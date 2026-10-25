@@ -39,6 +39,27 @@ export function samePerson(a: PersonRef, b: PersonRef): boolean {
     : "custom" in a && "custom" in b && a.custom === b.custom;
 }
 
+// Whether a person can take a Seat on this shift without being on it twice. A
+// volunteer cannot join a shift they are on. A custom entry always can: it is
+// usually an organisation, and an organisation may send several people (#195).
+export function canJoin(shift: RotaShift, person: PersonRef): boolean {
+  return (
+    !("volunteerId" in person) ||
+    !shift.assignees.some((a) => a.volunteerId === person.volunteerId)
+  );
+}
+
+// The Role a change names for the Seat somebody leaves, given the Role id that
+// Seat holds. Only a custom entry names one — it may hold several Seats on a
+// shift, and the Role says which goes (issue #216). A volunteer holds one at
+// most, and a Seat with no Role has none to name.
+export function leavingRoleId(
+  person: PersonRef,
+  roleId: string,
+): string | undefined {
+  return "custom" in person && roleId ? roleId : undefined;
+}
+
 // "2 Feb" — weekday and year are redundant down a list of a rota's own dates.
 export function formatShiftDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-GB", {

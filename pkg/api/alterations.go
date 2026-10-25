@@ -22,6 +22,13 @@ type createAlterationRequest struct {
 	// exception (issue #214) — except on a swap, where each leg inherits the
 	// Role of the person it replaces, so naming one is refused.
 	RoleID string `json:"roleId,omitempty"`
+	// OutRoleID is the Role of the Seat OutCustom leaves on Date, and
+	// SwapOutRoleID the Role of the Seat InCustom leaves on SwapDate. A custom
+	// entry may hold several Seats on one shift, so leaving one says which,
+	// and only that Seat comes off (issue #216). Required wherever the entry's
+	// Seat has a Role; refused for a volunteer.
+	OutRoleID     string `json:"outRoleId,omitempty"`
+	SwapOutRoleID string `json:"swapOutRoleId,omitempty"`
 }
 
 type alterationResponse struct {
@@ -48,14 +55,16 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 	}
 
 	params := services.ChangeRotaParams{
-		Date:      req.Date,
-		In:        req.In,
-		Out:       req.Out,
-		InCustom:  req.InCustom,
-		OutCustom: req.OutCustom,
-		SwapDate:  req.SwapDate,
-		Reason:    req.Reason,
-		RoleID:    req.RoleID,
+		Date:          req.Date,
+		In:            req.In,
+		Out:           req.Out,
+		InCustom:      req.InCustom,
+		OutCustom:     req.OutCustom,
+		SwapDate:      req.SwapDate,
+		Reason:        req.Reason,
+		RoleID:        req.RoleID,
+		OutRoleID:     req.OutRoleID,
+		SwapOutRoleID: req.SwapOutRoleID,
 		// The actor is the verified person from the session, not a trusted
 		// client field. requireLevel gates this route, so it is always set.
 		UserEmail: sessionEmail(r.Context()),

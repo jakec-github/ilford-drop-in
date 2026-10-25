@@ -88,7 +88,9 @@ export interface Pending {
   name: string;
   // The Role they hold on the shift they were picked up from — the move
   // confirmation defaults to this rather than guessing from the roster, since
-  // it is what they were actually doing a moment ago.
+  // it is what they were actually doing a moment ago. Its id is what a custom
+  // entry names as the Seat it is leaving (issue #216).
+  roleId: string;
   role: Role;
   // True while an HTML5 drag is in flight. The tap route sets it false and the
   // row then grows an explicit "Move here" button; doing that mid-drag would
@@ -105,12 +107,14 @@ export interface PlacementEdit {
   // one closes the last.
   openMenu: string | null;
   // Whether the person being carried could land on this shift at all. False
-  // when they are already on it: nobody can be on one shift twice, so neither
-  // a move nor a swap onto it is possible.
+  // when a volunteer is already on it: no volunteer can be on one shift twice,
+  // so neither a move nor a swap onto it is possible. A custom entry may hold
+  // several Seats on a shift (#195), so it can always land.
   canReceive: boolean;
   // Whether this shift's assignee could take the carried person's place. False
-  // when they are already on the shift being carried from — the swap would put
-  // them there twice.
+  // when they are a volunteer already on the shift being carried from — the
+  // swap would put them there twice — or the very custom entry being carried,
+  // which a swap would trade for itself.
   canSwapWith: (assignee: Assignee) => boolean;
   onOpenMenu: (key: string | null) => void;
   onRemove: (assignee: Assignee) => void;
@@ -311,6 +315,8 @@ function swapBlockedReason(
   if (picked) return `${assignee.name}, the person you are moving`;
   if (isSource) return `${assignee.name}, on the shift you are moving from`;
   if (!canReceive) return `${pending.name} is already on this shift`;
+  if (samePerson(pending.person, personRef(assignee)))
+    return `${assignee.name}, the same as the one you are moving`;
   return `${assignee.name} is already on ${formatShiftDateLong(pending.date)}`;
 }
 
@@ -797,10 +803,13 @@ function ShiftRow({
       // when someone is being carried.
       const swappable =
         pending !== null && isDestination && placement.canSwapWith(a);
+      // A custom entry may be on the shift more than once, so its Role is
+      // what says which copy was picked up.
       const picked =
         pending !== null &&
         isSource &&
-        samePerson(pending.person, personRef(a));
+        samePerson(pending.person, personRef(a)) &&
+        (!a.custom || a.roleId === pending.roleId);
       return (
         <Chip
           key={key}

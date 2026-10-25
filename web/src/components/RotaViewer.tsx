@@ -30,9 +30,11 @@ import ShapeForm from "./ShapeForm";
 import type { SeatCount } from "./shape";
 import { seatCounts } from "./shape";
 import {
+  canJoin,
   formatShiftDate,
   formatShiftDateLong,
   isUnallocated,
+  leavingRoleId,
   personRef,
   samePerson,
 } from "./shifts";
@@ -506,7 +508,11 @@ export default function RotaViewer({
       title: `Remove ${assignee.name}?`,
       summary: `${assignee.name} comes off the shift on ${formatShiftDateLong(date)}.`,
       confirmLabel: "Remove",
-      change: { date, out: personRef(assignee) },
+      change: {
+        date,
+        out: personRef(assignee),
+        ...leaving("outRoleId", personRef(assignee), assignee.roleId),
+      },
       // Nobody takes their place, so the shift is a pair of hands short and the
       // cover record is the only account of why.
       reasonRequired: true,
@@ -537,7 +543,12 @@ export default function RotaViewer({
       title: `Move ${pending.name}?`,
       summary: `${pending.name} moves from ${formatShiftDateLong(pending.date)} to ${formatShiftDateLong(to)}.`,
       confirmLabel: "Move",
-      change: { date: to, in: pending.person, swapDate: pending.date },
+      change: {
+        date: to,
+        in: pending.person,
+        swapDate: pending.date,
+        ...leaving("swapOutRoleId", pending.person, pending.roleId),
+      },
       role: { initial: pending.role, required: false },
       reasonRequired: false,
     });
@@ -555,7 +566,12 @@ export default function RotaViewer({
       title: `Change ${assignee.name}'s role?`,
       summary: `${assignee.name} stays on the shift on ${formatShiftDateLong(date)} — only the job they are doing there changes.`,
       confirmLabel: "Change role",
-      change: { date, out: personRef(assignee), in: personRef(assignee) },
+      change: {
+        date,
+        out: personRef(assignee),
+        ...leaving("outRoleId", personRef(assignee), assignee.roleId),
+        in: personRef(assignee),
+      },
       role: { initial: assignee.role, required: true },
       reasonRequired: false,
     });
@@ -573,8 +589,10 @@ export default function RotaViewer({
       change: {
         date: pending.date,
         out: pending.person,
+        ...leaving("outRoleId", pending.person, pending.roleId),
         in: personRef(assignee),
         swapDate: to,
+        ...leaving("swapOutRoleId", personRef(assignee), assignee.roleId),
       },
       reasonRequired: false,
     });
@@ -587,23 +605,25 @@ export default function RotaViewer({
       date,
       person: personRef(assignee),
       name: assignee.name,
+      roleId: assignee.roleId,
       role: assignee.role,
       dragging,
     });
   }
 
   function rowEdit(shift: RotaShift): RowEdit {
-    // Nobody can be on one shift twice, which rules out both ends of a swap
-    // independently: the carried person must not already be on the destination,
-    // and whoever they trade with must not already be on the shift they came
-    // from. The server enforces both; ruling them out here means the editor is
-    // not offered a drop that can only end in a refusal.
+    // No volunteer can be on one shift twice, which rules out both ends of a
+    // swap independently: the carried volunteer must not already be on the
+    // destination, and a volunteer they trade with must not already be on the
+    // shift they came from. A custom entry may hold several Seats on a shift
+    // (#195), so neither rule applies to one — but trading a custom entry for
+    // itself would change nothing, and the server refuses it. It enforces all
+    // three; ruling them out here means the editor is not offered a drop that
+    // can only end in a refusal.
     const carriedFrom = pending
       ? rotaShifts.find((s) => s.date === pending.date)
       : undefined;
-    const alreadyHere =
-      pending !== null &&
-      shift.assignees.some((a) => samePerson(personRef(a), pending.person));
+    const alreadyHere = pending !== null && !canJoin(shift, pending.person);
 
     return {
       error: changeError?.date === shift.date ? changeError.message : null,
@@ -647,9 +667,8 @@ export default function RotaViewer({
         openMenu,
         canReceive: !alreadyHere,
         canSwapWith: (a) =>
-          !carriedFrom?.assignees.some((x) =>
-            samePerson(personRef(x), personRef(a)),
-          ),
+          !(pending && samePerson(pending.person, personRef(a))) &&
+          (!carriedFrom || canJoin(carriedFrom, personRef(a))),
         onOpenMenu: setOpenMenu,
         onRemove: (a) => askRemove(shift.date, a),
         onReplace: (a) => askReplace(shift.date, a),
@@ -940,10 +959,14 @@ export default function RotaViewer({
               {
                 date: dialog.date,
                 in: person,
-                out:
-                  dialog.change.kind === "replace"
-                    ? personRef(dialog.change.outgoing)
-                    : undefined,
+                ...(dialog.change.kind === "replace" && {
+                  out: personRef(dialog.change.outgoing),
+                  ...leaving(
+                    "outRoleId",
+                    personRef(dialog.change.outgoing),
+                    dialog.change.outgoing.roleId,
+                  ),
+                }),
                 reason,
               },
               role,
@@ -1019,4 +1042,17 @@ export default function RotaViewer({
       )}
     </div>
   );
+}
+
+// The Role a change names for the Seat somebody leaves, under the key the
+// change names it by. Left off rather than sent empty where there is none —
+// anybody but a custom entry, or a Seat with no Role — so a change says only
+// what it means (issue #216).
+function leaving(
+  key: "outRoleId" | "swapOutRoleId",
+  person: PersonRef,
+  roleId: string,
+): Partial<RotaChange> {
+  const id = leavingRoleId(person, roleId);
+  return id ? { [key]: id } : {};
 }

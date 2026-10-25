@@ -48,12 +48,26 @@ func ApplyAlterations(
 		case "remove":
 			allocations := allocationsByShiftID[shiftID]
 			filtered := make([]db.Allocation, 0, len(allocations))
+			// A custom entry may hold several Seats on one shift (#195), so a
+			// removal naming the Role of the Seat it leaves takes exactly one
+			// copy in that Role (issue #216). One naming none was written
+			// before removals named a Role, when it meant every copy, and it
+			// still does: reading it as one copy would change shifts already
+			// published.
+			takeOneSeat := alt.CustomValue != "" && alt.RoleID != ""
+			taken := false
 			for _, a := range allocations {
 				if alt.VolunteerID != "" && a.VolunteerID == alt.VolunteerID {
 					continue // Remove this volunteer
 				}
 				if alt.CustomValue != "" && a.CustomEntry == alt.CustomValue {
-					continue // Remove this custom entry
+					if !takeOneSeat {
+						continue // Remove every copy of this custom entry
+					}
+					if !taken && a.RoleID == alt.RoleID {
+						taken = true
+						continue // Remove this one Seat
+					}
 				}
 				filtered = append(filtered, a)
 			}

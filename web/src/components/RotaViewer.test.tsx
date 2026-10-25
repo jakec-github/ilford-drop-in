@@ -767,3 +767,177 @@ describe("RotaViewer expanded shift view", () => {
     ).toBeInTheDocument();
   });
 });
+
+// A custom entry may hold several Seats on one shift — it is usually an
+// organisation, and an organisation sends several people (#195). Red Cross
+// holds two on 4 Jan, in different Roles, and one on 11 Jan; the Scouts are
+// on 11 Jan too, in a third Role.
+function redCrossShifts(): RotaShift[] {
+  const redCross = (roleId: string, role: string) => ({
+    name: "Red Cross",
+    roleId,
+    role,
+    custom: true,
+    group: null,
+    volunteerId: null,
+  });
+  const [a, b] = shifts();
+  return [
+    {
+      ...a,
+      assignees: [redCross("r-duty", DUTY_LEAD), redCross("r-greet", GREETER)],
+    },
+    {
+      ...b,
+      assignees: [
+        ...b.assignees,
+        redCross("r-greet", GREETER),
+        {
+          name: "Scouts",
+          roleId: "r-hot",
+          role: HOT_FOOD,
+          custom: true,
+          group: null,
+          volunteerId: null,
+        },
+      ],
+    },
+  ];
+}
+
+// Opens the menu of the one Red Cross chip on 4 Jan that sits under role,
+// which is the only way to tell the two copies apart.
+function openRedCross(role: string) {
+  const row = rowFor("4 Jan");
+  fireEvent.click(
+    within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+  );
+  fireEvent.click(
+    within(groupFor(row, role)).getByRole("button", {
+      name: "Red Cross, change this shift",
+    }),
+  );
+}
+
+describe("RotaViewer custom entries on a shift more than once", () => {
+  beforeEach(() => {
+    fetchRoles.mockClear();
+    fetchRoles.mockResolvedValue(ROLES);
+    fetchVolunteers.mockClear();
+    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchDraftRotaAllocation.mockClear();
+    fetchDraftRotaAllocation.mockResolvedValue(null);
+    fetchPreallocations.mockClear();
+    fetchPreallocations.mockResolvedValue([]);
+  });
+
+  test("a custom entry can be moved onto a shift it is already on", async () => {
+    await renderEditing("organiser", redCrossShifts());
+    openRedCross(GREETER);
+    fireEvent.click(screen.getByRole("button", { name: "Move or swap" }));
+
+    expect(
+      within(rowFor("11 Jan")).getByRole("button", {
+        name: "Move Red Cross here",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  test("moving one copy names the Role of the Seat it leaves", async () => {
+    const onChange = mock(async () => {});
+    await renderEditing("organiser", redCrossShifts(), onChange);
+    openRedCross(GREETER);
+    fireEvent.click(screen.getByRole("button", { name: "Move or swap" }));
+    fireEvent.click(
+      within(rowFor("11 Jan")).getByRole("button", {
+        name: "Move Red Cross here",
+      }),
+    );
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Move" }));
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      date: "2026-01-11",
+      in: { custom: "Red Cross" },
+      swapDate: "2026-01-04",
+      swapOutRoleId: "r-greet",
+      roleId: "r-greet",
+      reason: "",
+    });
+  });
+
+  test("removing one copy names the Role of the Seat it leaves", async () => {
+    const onChange = mock(async () => {});
+    await renderEditing("organiser", redCrossShifts(), onChange);
+    openRedCross(GREETER);
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.change(await screen.findByLabelText("Reason"), {
+      target: { value: "Only one came" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      date: "2026-01-04",
+      out: { custom: "Red Cross" },
+      outRoleId: "r-greet",
+      reason: "Only one came",
+    });
+  });
+
+  test("a swap names the Seat each side leaves", async () => {
+    const onChange = mock(async () => {});
+    await renderEditing("organiser", redCrossShifts(), onChange);
+    openRedCross(GREETER);
+    fireEvent.click(screen.getByRole("button", { name: "Move or swap" }));
+
+    // Trading Red Cross for Red Cross would change nothing, so it is not
+    // offered; the Scouts are.
+    const row = rowFor("11 Jan");
+    expect(
+      within(row).queryByRole("button", {
+        name: "Swap Red Cross with Red Cross",
+      }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Swap Red Cross with Scouts" }),
+    );
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Swap" }));
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      date: "2026-01-04",
+      out: { custom: "Red Cross" },
+      outRoleId: "r-greet",
+      in: { custom: "Scouts" },
+      swapDate: "2026-01-11",
+      swapOutRoleId: "r-hot",
+      reason: "",
+    });
+  });
+
+  test("changing one copy's role names the Seat it leaves", async () => {
+    const onChange = mock(async () => {});
+    await renderEditing("organiser", redCrossShifts(), onChange);
+    openRedCross(GREETER);
+    fireEvent.click(screen.getByRole("button", { name: "Change role" }));
+    fireEvent.change(await screen.findByLabelText("Role"), {
+      target: { value: DUTY_LEAD },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Change role" }));
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      date: "2026-01-04",
+      out: { custom: "Red Cross" },
+      outRoleId: "r-greet",
+      in: { custom: "Red Cross" },
+      roleId: "r-duty",
+      reason: "",
+    });
+  });
+});
