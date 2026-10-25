@@ -1,15 +1,11 @@
-// BASE_PATH is the path the app's own pages are served under: "" at the root of
-// a domain, "/something" — or "/some/thing", depth is not restricted — where a
-// deployment has put the site below it (issue #201).
+// BASE_PATH is the path this drop-in is served under: "/org/<id>" (ADR 0011).
+// One server runs several Organisations and one build serves them all, so the
+// page cannot know which it is until it is served.
 //
-// The value belongs to the deployment and appears nowhere in this repo. The
-// server rewrites index.html's <base> element as it serves the page, and this
-// reads it back — one token, stated once, that the router and the two links
-// leaving the app derive their URLs from.
-//
-// The API and /auth are not under it and need nothing from this: they are
-// requested with root-absolute paths, and a leading slash resets the path when
-// a URL is resolved, so the <base> element does not touch them.
+// The server rewrites index.html's <base> element as it serves the page, and
+// this reads it back — one token, stated once, that the router, every API
+// request and the links leaving the app derive their URLs from. Only signing
+// out is not under it: the session is the whole site's.
 //
 // It is the element's href rather than document.baseURI because href is already
 // a path; baseURI is an absolute URL, so using it would mean stripping the
@@ -20,7 +16,7 @@ export const BASE_PATH = readBasePath();
 
 function readBasePath(): string {
   const href = document.querySelector("base")?.getAttribute("href") ?? "/";
-  // "/rota/" becomes "/rota", and "/" becomes "". The trailing slash is right
+  // "/org/east/" becomes "/org/east", and "/" becomes "". The trailing slash is right
   // in the element, where every relative asset reference resolves against it,
   // and wrong everywhere below, where it would double against a leading slash.
   return href.replace(/\/+$/, "");

@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { useAuth } from "../auth-context";
+import { BASE_PATH } from "../basePath";
 import { ORGANISER_TABS, type OrganiserTab } from "./organiserTabs";
 import "./OrganiserPage.css";
 
@@ -27,7 +28,8 @@ export default function OrganiserPage({ tab }: { tab: OrganiserTab }) {
   if (level === null) {
     return (
       <p className="app-status">
-        This page is for organisers. <a href="/auth/login">Log in</a>
+        This page is for organisers.{" "}
+        <a href={`${BASE_PATH}/auth/login`}>Log in</a>
       </p>
     );
   }

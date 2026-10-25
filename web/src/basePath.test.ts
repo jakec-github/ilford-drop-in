@@ -21,25 +21,17 @@ afterEach(() => {
 });
 
 describe("BASE_PATH", () => {
-  test("is empty at the root of a domain, which is dev and every test", async () => {
+  test("is empty when the base tag is the root, as in every test", async () => {
     const { BASE_PATH } = await basePathWith("/");
     expect(BASE_PATH).toBe("");
   });
 
   test("is the path the server wrote into the base tag, without its trailing slash", async () => {
-    const { BASE_PATH } = await basePathWith("/rota/");
+    const { BASE_PATH } = await basePathWith("/org/east/");
     // The trailing slash belongs in the element, where relative asset
     // references resolve against it, and nowhere else — a URL built from it
     // must not double up.
-    expect(BASE_PATH).toBe("/rota");
-  });
-
-  test("keeps every segment when the site sits more than one level down", async () => {
-    // Nothing here splits the path up — wouter's router base and the two links
-    // that leave the app all take it whole — so depth costs nothing, and a
-    // deployment under an existing site's path needs it.
-    const { BASE_PATH } = await basePathWith("/ilford/rota/");
-    expect(BASE_PATH).toBe("/ilford/rota");
+    expect(BASE_PATH).toBe("/org/east");
   });
 
   test("is empty when there is no base element at all", async () => {
@@ -48,19 +40,21 @@ describe("BASE_PATH", () => {
   });
 });
 
-// The API and /auth stay at the root of the domain however the site is served,
-// and what keeps a request there is its leading slash: an absolute path resets
-// the path when the URL is resolved, so the <base> element never applies. Drop
-// the slash and the request silently starts resolving against the base instead
-// — which in dev, where the base is "/", still works, and under a base path
-// asks a page's directory for the API. api.ts is the one place requests are
-// made (views never call fetch), so this is the whole of the rule.
-test("every request in api.ts names a root-absolute path", async () => {
+// Each drop-in's API is under its own path, so every request names it through
+// BASE_PATH. A request at the root would reach no Organisation at all — the
+// server answers anything outside /org/<id>/ but /auth and /health with a 404 —
+// and one written relative to the page would resolve against the page's
+// directory rather than the Organisation's. Signing out is the one exception:
+// the session is the whole site's, so ending it is too. api.ts is the one place
+// requests are made (views never call fetch), so this is the whole of the rule.
+test("every request in api.ts is under the drop-in's own path", async () => {
   const source = await Bun.file(new URL("./api.ts", import.meta.url)).text();
 
   const paths = [...source.matchAll(/fetch\(\s*["'`]([^"'`]*)/g)].map(
     (m) => m[1],
   );
   expect(paths.length).toBeGreaterThan(0);
-  expect(paths.filter((p) => !p.startsWith("/"))).toEqual([]);
+  expect(
+    paths.filter((p) => !p.startsWith("${BASE_PATH}/") && p !== "/auth/logout"),
+  ).toEqual([]);
 });

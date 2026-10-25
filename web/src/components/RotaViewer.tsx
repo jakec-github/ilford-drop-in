@@ -12,6 +12,7 @@ import type {
   Volunteer,
 } from "../types";
 import { usePreallocations } from "../hooks/usePreallocations";
+import { useOrganisation } from "../hooks/useOrganisation";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
@@ -209,6 +210,7 @@ export default function RotaViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLDivElement>(null);
+  const organisation = useOrganisation();
 
   // Signed in at either level. Both may edit the rota — who is on a shift, who
   // is pinned to one — and see the rota in flight to do it.
@@ -737,7 +739,7 @@ export default function RotaViewer({
   return (
     <div className="rota-viewer">
       <div className="rota-heading">
-        <h1>Ilford Drop-in Rota</h1>
+        <h1>{organisation ? `${organisation.displayName} Rota` : "Rota"}</h1>
         {signedIn && (
           <Button
             size="small"

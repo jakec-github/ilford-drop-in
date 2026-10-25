@@ -27,6 +27,10 @@ const fetchDraftRotaAllocation = mock(async () => null);
 const fetchPreallocations = mock<() => Promise<Preallocation[]>>();
 
 mock.module("../api", () => ({
+  fetchOrganisation: mock(async () => ({
+    id: "test-org",
+    displayName: "Test Drop-In",
+  })),
   fetchRoles,
   createRole: mock(async () => {}),
   updateRole: mock(async () => {}),
@@ -243,6 +247,15 @@ describe("RotaViewer placement", () => {
     fetchDraftRotaAllocation.mockResolvedValue(null);
     fetchPreallocations.mockClear();
     fetchPreallocations.mockResolvedValue([]);
+  });
+
+  // One build serves every drop-in, so the rota is headed with the name the
+  // server gives it rather than one written into the page.
+  test("the rota is headed with the drop-in's own name", async () => {
+    await renderRota();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Test Drop-In Rota" }),
+    ).toBeTruthy();
   });
 
   // A switch never takes anybody anywhere, so it has no drag equivalent and the
