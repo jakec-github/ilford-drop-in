@@ -164,6 +164,14 @@ func (h *Handler) handleGmailConsent(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, err)
 		return
 	}
+	// Refused before the consent screen for the same reason, and sent back to
+	// the page rather than answered as an error: this one is not a malformed
+	// request but somebody else's send, which another tab can easily not know
+	// about.
+	if h.sends.running() {
+		http.Redirect(w, r, h.sendReturnURL()+"?sendError="+url.QueryEscape(errSendRunning), http.StatusFound)
+		return
+	}
 
 	// Dev mode has no Google to ask and no mailbox to send from. Skipping
 	// straight to the send keeps the whole flow — the deadline, the job, the
@@ -184,6 +192,9 @@ func (h *Handler) handleGmailConsent(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, h.auth.gmailAuthCodeURL(signed, owner), http.StatusFound)
 }
+
+// errSendRunning is what a send refused for overlapping another one says.
+const errSendRunning = "Another send is already running, so nothing was sent. Wait for it to finish, then send again."
 
 // validateSendState rejects an instruction that could not be carried out, before
 // anyone is asked to approve anything.
@@ -275,7 +286,10 @@ func (h *Handler) startSend(w http.ResponseWriter, r *http.Request, owner string
 	}
 
 	jobID := uuid.New().String()
-	h.sends.start(jobID, owner, state.Mode)
+	if !h.sends.start(jobID, owner, state.Mode) {
+		http.Redirect(w, r, h.sendReturnURL()+"?sendError="+url.QueryEscape(errSendRunning), http.StatusFound)
+		return
+	}
 
 	// Built from the request that started the send, not from the callback's
 	// context: this is the address the app answers on, and it is what the

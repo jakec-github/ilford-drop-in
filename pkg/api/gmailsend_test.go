@@ -166,6 +166,56 @@ func TestSendIsRefusedForAnUnknownMode(t *testing.T) {
 	assert.Empty(t, mailer.recipients())
 }
 
+// gatedMailer holds every email until it is released, so a test can act while a
+// send is still running.
+type gatedMailer struct {
+	recordingMailer
+	gate chan struct{}
+}
+
+func (m *gatedMailer) SendEmail(to, subject, body string) error {
+	<-m.gate
+	return m.recordingMailer.SendEmail(to, subject, body)
+}
+
+// startSendRefused returns the error a refused send redirected back with.
+func startSendRefused(t *testing.T, handler http.Handler, query string) string {
+	t.Helper()
+	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?"+query, "", organiserCookie())
+	require.Equal(t, http.StatusFound, rec.Code, rec.Body.String())
+
+	location, err := url.Parse(rec.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, sendReturnPath, location.Path)
+	assert.Empty(t, location.Query().Get("send"), "a refused send must not start a job")
+	return location.Query().Get("sendError")
+}
+
+// TestSecondSendIsRefusedWhileOneRuns: a send stamps each volunteer as their
+// email goes, so a second one started mid-run would mail again everyone the
+// first had not reached yet. It is refused — from this tab, another tab or
+// another Organiser — until the first has finished, and then sending works
+// again.
+func TestSecondSendIsRefusedWhileOneRuns(t *testing.T) {
+	mailer := &gatedMailer{gate: make(chan struct{})}
+	handler := newSendTestHandler(sendTestStore(), mailer)
+
+	first := startSendRequest(t, handler, "mode=round&deadline=Friday")
+
+	for _, query := range []string{"mode=round&deadline=Friday", "mode=reminder&deadline=Friday", "mode=resend&volunteerId=bob&deadline=Friday"} {
+		assert.Contains(t, startSendRefused(t, handler, query), "already", query)
+	}
+
+	close(mailer.gate)
+	resp := awaitSend(t, handler, first)
+	assert.Len(t, resp.Sent, 3)
+	assert.Len(t, mailer.recipients(), 3, "nobody may be mailed twice")
+
+	again := startSendRequest(t, handler, "mode=resend&volunteerId=bob&deadline=Friday")
+	awaitSend(t, handler, again)
+	assert.Len(t, mailer.recipients(), 4)
+}
+
 // TestResendMailsOneVolunteer: the answer to a bounced email, addressed at the
 // grain a request is minted at.
 func TestResendMailsOneVolunteer(t *testing.T) {

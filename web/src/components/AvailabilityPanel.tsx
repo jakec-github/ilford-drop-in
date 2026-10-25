@@ -166,6 +166,7 @@ export default function AvailabilityPanel() {
   const { round, error, mintState, mint, reload } = useAvailabilityRound();
   const {
     send,
+    running: sending,
     error: sendError,
     start,
     dismiss,
@@ -177,7 +178,9 @@ export default function AvailabilityPanel() {
 
   const members = round?.groups.flatMap((g) => g.members) ?? [];
   // What the two round-level sends would actually do, so each button can say so
-  // and disable itself when it would do nothing.
+  // and disable itself when it would do nothing. Both also wait out a send that
+  // is running: these counts are only refreshed once it finishes, so until then
+  // they still offer the very people it is mailing (issue #149).
   const unsent = members.filter((m) => m.sentAt === null).length;
   const toChase = round
     ? round.groups.filter(
@@ -253,14 +256,14 @@ export default function AvailabilityPanel() {
               <div className="round-actions">
                 <Button
                   size="small"
-                  disabled={unsent === 0}
+                  disabled={unsent === 0 || sending}
                   onClick={() => setPending({ mode: "round" })}
                 >
                   {unsent === 0 ? "All sent" : `Send round (${unsent})`}
                 </Button>
                 <Button
                   size="small"
-                  disabled={toChase === 0}
+                  disabled={toChase === 0 || sending}
                   onClick={() => setPending({ mode: "reminder" })}
                 >
                   {toChase === 0
@@ -289,6 +292,7 @@ export default function AvailabilityPanel() {
                 </h3>
                 <ResponseGrid
                   round={round}
+                  sending={sending}
                   onResend={(member) =>
                     setPending({
                       mode: "resend",

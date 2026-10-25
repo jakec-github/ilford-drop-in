@@ -65,10 +65,16 @@ func newSendJobs() *sendJobs {
 	return &sendJobs{jobs: make(map[string]*sendJob), now: time.Now}
 }
 
-// start registers a new job for Organiser and returns its id. Expired jobs are swept
-// on the way in: sends are rare and always arrive one at a time, so there is
-// nothing to gain from a timer doing it separately.
-func (s *sendJobs) start(id, owner string, mode services.SendMode) {
+// start registers a new job for Organiser, or refuses to while another send is
+// still running and reports false. Expired jobs are swept on the way in: sends
+// are rare, so there is nothing to gain from a timer doing it separately.
+//
+// One send at a time, whoever started it. A send stamps each volunteer as their
+// email goes, so a second one started mid-run would mail again everybody the
+// first had not reached yet (issue #149). The check and the registration share
+// the lock, so two sends arriving together cannot both get through. Not keyed by
+// rota: there is only ever one rota in flight to send for.
+func (s *sendJobs) start(id, owner string, mode services.SendMode) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -78,8 +84,30 @@ func (s *sendJobs) start(id, owner string, mode services.SendMode) {
 			delete(s.jobs, jobID)
 		}
 	}
+	if s.runningLocked() {
+		return false
+	}
 
 	s.jobs[id] = &sendJob{id: id, owner: owner, mode: mode, started: now}
+	return true
+}
+
+// running reports whether a send is under way. It is the early answer, asked
+// before anybody is sent to a consent screen; start asks again, because a send
+// can begin while somebody else is on Google's.
+func (s *sendJobs) running() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runningLocked()
+}
+
+func (s *sendJobs) runningLocked() bool {
+	for _, job := range s.jobs {
+		if !job.finished {
+			return true
+		}
+	}
+	return false
 }
 
 // progress records how far a running send has got.

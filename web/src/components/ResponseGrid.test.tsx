@@ -125,3 +125,28 @@ describe("ResponseGrid row order", () => {
     ]);
   });
 });
+
+// Issue #149: a send stamps each volunteer as their email goes, so a resend
+// started while one runs would mail somebody twice.
+describe("ResponseGrid resend", () => {
+  test("is disabled while a send is running", async () => {
+    const ann = member("ann", "Ann Lee");
+    const { rerender } = render(
+      <ResponseGrid round={round([group([ann])])} onResend={() => {}} />,
+    );
+    screen.getByRole("button", { name: "Links for Ann Lee" }).click();
+    const send = await screen.findByRole("button", { name: "Send" });
+    expect(send.hasAttribute("disabled")).toBe(false);
+
+    rerender(
+      <ResponseGrid
+        round={round([group([ann])])}
+        sending
+        onResend={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+});

@@ -11,6 +11,11 @@ const POLL_INTERVAL_MS = 2000;
 interface UseAvailabilitySend {
   // The send this page came back to, or null when it did not come back to one.
   send: AvailabilitySend | null;
+  // True from the moment a send is set going until it reports finished. Every
+  // way of starting another waits for it (issue #149). A send whose progress
+  // can no longer be read does not hold them: the server refuses an overlap
+  // anyway, and buttons stuck off for good would be worse than one refusal.
+  running: boolean;
   // Set when a send never started: the Organiser declined at the consent screen, or
   // Google refused. Distinct from a send that ran and failed on some addresses,
   // which is reported inside the send itself.
@@ -104,6 +109,7 @@ export function useAvailabilitySend(
 
   return {
     send: jobID === null ? null : send,
+    running: jobID !== null && pollError === null && !(send?.finished ?? false),
     error: consentError ?? (jobID === null ? null : pollError),
     start,
     dismiss,
