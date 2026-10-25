@@ -29,8 +29,9 @@ func (d *DB) GetDefaultShape(ctx context.Context) ([]DefaultShapeSeat, error) {
 		SELECT s.role_id, s.seats
 		FROM default_shape s
 		JOIN role r ON r.id = s.role_id
+		WHERE r.organisation_id = $1
 		ORDER BY r.priority, r.name
-	`)
+	`, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query default shape: %w", err)
 	}
@@ -69,16 +70,23 @@ func (d *DB) SaveDefaultShape(ctx context.Context, shape []DefaultShapeSeat) err
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, `DELETE FROM default_shape`); err != nil {
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM default_shape
+		WHERE role_id IN (SELECT id FROM role WHERE organisation_id = $1)
+	`, d.org()); err != nil {
 		return fmt.Errorf("failed to clear default shape: %w", err)
 	}
 
 	for _, seat := range shape {
-		if _, err := tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			INSERT INTO default_shape (role_id, seats)
-			VALUES ($1, $2)
-		`, seat.RoleID, seat.Seats); err != nil {
+			SELECT r.id, $2 FROM role r WHERE r.id = $1 AND r.organisation_id = $3
+		`, seat.RoleID, seat.Seats, d.org())
+		if err != nil {
 			return fmt.Errorf("failed to write %d seats of role %s: %w", seat.Seats, seat.RoleID, err)
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("failed to write %d seats: no role %s", seat.Seats, seat.RoleID)
 		}
 	}
 

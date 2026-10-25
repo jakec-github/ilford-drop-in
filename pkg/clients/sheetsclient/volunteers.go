@@ -40,9 +40,9 @@ const noGroupValue = "none"
 // ListVolunteers retrieves and parses volunteers from the configured
 // spreadsheet, keeping only the Roles named in the Roles table the caller read
 // from the database.
-func (c *Client) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
+func (c *Client) ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
 	// Get raw data from spreadsheet
-	values, err := c.GetValues(cfg.VolunteerSheetID, cfg.ServiceVolunteersTab)
+	values, err := c.GetValues(organisation.VolunteerSheetID, organisation.ServiceVolunteersTab)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get volunteer data: %w", err)
 	}

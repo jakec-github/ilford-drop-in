@@ -598,3 +598,11 @@ export interface NewStandingPreallocation {
   roleId: string;
   person: PersonRef;
 }
+
+// Organisation is the drop-in this site is, as GET /api/organisation reports it.
+// One server runs several, each under /org/<id>/, and each calls itself by its
+// own name.
+export interface Organisation {
+  id: string;
+  displayName: string;
+}

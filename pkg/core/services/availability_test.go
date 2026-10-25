@@ -147,7 +147,7 @@ func (m *mockAvailabilityStore) InsertAvailabilityResponse(_ context.Context, re
 // availabilityFixture is a rota of three weekly shifts with nobody minted into
 // it yet. The third date is shut, so every test runs against a round that has an
 // open/closed distinction to get wrong.
-func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
+func availabilityFixture() (*mockAvailabilityStore, *config.Organisation) {
 	store := &mockAvailabilityStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", End: "2026-08-16", ShiftCount: 3}},
 		shifts: []db.Shift{
@@ -159,7 +159,7 @@ func availabilityFixture() (*mockAvailabilityStore, *config.Config) {
 	}
 	// Nothing left for the config to say about these shifts: the Roles that
 	// exist are rows now, and so is each shift's closure.
-	return store, &config.Config{}
+	return store, &config.Organisation{}
 }
 
 // availabilityVolunteers is a roster with a two-person group (michael and emma),
@@ -175,9 +175,9 @@ func availabilityVolunteers() *mockVolunteerClient {
 	}
 }
 
-func mintRound(t *testing.T, store *mockAvailabilityStore, volunteers *mockVolunteerClient, cfg *config.Config) *AvailabilityRound {
+func mintRound(t *testing.T, store *mockAvailabilityStore, volunteers *mockVolunteerClient, organisation *config.Organisation) *AvailabilityRound {
 	t.Helper()
-	round, err := MintAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	round, err := MintAvailabilityRound(context.Background(), store, volunteers, organisation, zap.NewNop(), "")
 	require.NoError(t, err)
 	return round
 }
@@ -208,8 +208,8 @@ func tokenFor(t *testing.T, round *AvailabilityRound, volunteerID string) string
 // active roster, one request each, with distinct links. Someone who has stopped
 // volunteering is on the roster but not in the round.
 func TestMintAvailabilityRoundAsksEveryActiveVolunteer(t *testing.T) {
-	store, cfg := availabilityFixture()
-	round := mintRound(t, store, availabilityVolunteers(), cfg)
+	store, organisation := availabilityFixture()
+	round := mintRound(t, store, availabilityVolunteers(), organisation)
 
 	entries := roundEntries(round)
 	require.Len(t, entries, 3)
@@ -235,10 +235,10 @@ func TestMintAvailabilityRoundAsksEveryActiveVolunteer(t *testing.T) {
 // run keeps the links the first handed out, so anything already distributed
 // still works, and only tops the round up with volunteers who joined since.
 func TestMintAvailabilityRoundTwiceIsANoOp(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
 
-	first := mintRound(t, store, volunteers, cfg)
+	first := mintRound(t, store, volunteers, organisation)
 	michaelToken := tokenFor(t, first, "michael")
 
 	// A volunteer joins the roster between rounds.
@@ -246,7 +246,7 @@ func TestMintAvailabilityRoundTwiceIsANoOp(t *testing.T) {
 		ID: "nina", FirstName: "Nina", LastName: "Osei", DisplayName: "Nina", Status: "Active", Roles: []string{"Service volunteer"},
 	})
 
-	second := mintRound(t, store, volunteers, cfg)
+	second := mintRound(t, store, volunteers, organisation)
 	require.Len(t, roundEntries(second), 4)
 	assert.Equal(t, michaelToken, tokenFor(t, second, "michael"), "an existing link must survive a re-mint")
 	assert.NotEmpty(t, tokenFor(t, second, "nina"))
@@ -255,10 +255,10 @@ func TestMintAvailabilityRoundTwiceIsANoOp(t *testing.T) {
 // TestMintAvailabilityRoundRefusesAnAllocatedRota: links stop working at
 // allocation, so minting one then would hand out a link that is dead on arrival.
 func TestMintAvailabilityRoundRefusesAnAllocatedRota(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	store.rotations[0].AllocatedDatetime = "2026-07-30T09:00:00Z"
 
-	_, err := MintAvailabilityRound(context.Background(), store, availabilityVolunteers(), cfg, zap.NewNop(), "")
+	_, err := MintAvailabilityRound(context.Background(), store, availabilityVolunteers(), organisation, zap.NewNop(), "")
 	require.ErrorIs(t, err, ErrConflict)
 }
 
@@ -266,10 +266,10 @@ func TestMintAvailabilityRoundRefusesAnAllocatedRota(t *testing.T) {
 // volunteer opening their link for the first time finds every open shift already
 // ticked, and the closed one present but not among them.
 func TestAvailabilityFormLandsOptedIn(t *testing.T) {
-	store, cfg := availabilityFixture()
-	round := mintRound(t, store, availabilityVolunteers(), cfg)
+	store, organisation := availabilityFixture()
+	round := mintRound(t, store, availabilityVolunteers(), organisation)
 
-	form, err := GetAvailabilityForm(context.Background(), store, availabilityVolunteers(), cfg, zap.NewNop(),
+	form, err := GetAvailabilityForm(context.Background(), store, availabilityVolunteers(), organisation, zap.NewNop(),
 		tokenFor(t, round, "michael"))
 	require.NoError(t, err)
 
@@ -291,12 +291,12 @@ func TestAvailabilityFormLandsOptedIn(t *testing.T) {
 // roster nobody has updated, and their answer is worth having the moment that
 // is fixed.
 func TestAvailabilityFormSaysWhenAnAnswerCannotCount(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 	token := tokenFor(t, round, "michael")
 
-	form, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	form, err := GetAvailabilityForm(context.Background(), store, volunteers, organisation, zap.NewNop(), token)
 	require.NoError(t, err)
 	assert.True(t, form.Counts, "an active volunteer is told nothing")
 
@@ -306,7 +306,7 @@ func TestAvailabilityFormSaysWhenAnAnswerCannotCount(t *testing.T) {
 		}
 	}
 
-	stopped, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	stopped, err := GetAvailabilityForm(context.Background(), store, volunteers, organisation, zap.NewNop(), token)
 	require.NoError(t, err)
 	assert.False(t, stopped.Counts)
 	assert.Len(t, stopped.Shifts, 3, "the form still works — the warning is not a refusal")
@@ -317,14 +317,14 @@ func TestAvailabilityFormSaysWhenAnAnswerCannotCount(t *testing.T) {
 // reach a rota — so they are told the same thing rather than left with a form
 // that shows their id where their name should be and no hint why.
 func TestAvailabilityFormSaysSoForSomebodyOffTheRoster(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 	token := tokenFor(t, round, "aaliyah")
 
 	volunteers.volunteers = volunteers.volunteers[:2]
 
-	form, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	form, err := GetAvailabilityForm(context.Background(), store, volunteers, organisation, zap.NewNop(), token)
 	require.NoError(t, err)
 	assert.False(t, form.Counts)
 }
@@ -334,9 +334,9 @@ func TestAvailabilityFormSaysSoForSomebodyOffTheRoster(t *testing.T) {
 // moment an Organiser fixes the roster, and would do it at the one moment the
 // volunteer is paying attention.
 func TestSubmitStillAcceptsAnAnswerThatCannotCount(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 	token := tokenFor(t, round, "michael")
 
 	for i := range volunteers.volunteers {
@@ -345,7 +345,7 @@ func TestSubmitStillAcceptsAnAnswerThatCannotCount(t *testing.T) {
 		}
 	}
 
-	form, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(),
+	form, err := SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(),
 		token, []string{"shift-1"})
 	require.NoError(t, err)
 	assert.True(t, form.Submitted)
@@ -357,25 +357,25 @@ func TestSubmitStillAcceptsAnAnswerThatCannotCount(t *testing.T) {
 // offering the opt-out default again — which would read as an invitation to
 // overwrite an answer with a full set.
 func TestAvailabilityFormShowsTheSubmittedState(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 	token := tokenFor(t, round, "michael")
 
-	_, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(), token, []string{"shift-2"})
+	_, err := SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(), token, []string{"shift-2"})
 	require.NoError(t, err)
 
-	form, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	form, err := GetAvailabilityForm(context.Background(), store, volunteers, organisation, zap.NewNop(), token)
 	require.NoError(t, err)
 	assert.True(t, form.Submitted)
 	assert.False(t, form.SubmittedAt.IsZero())
 	assert.Equal(t, []string{"shift-2"}, form.SelectedShiftIDs)
 
 	// Resubmitting appends a generation and the latest wins wholesale.
-	_, err = SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(), token, []string{"shift-1"})
+	_, err = SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(), token, []string{"shift-1"})
 	require.NoError(t, err)
 
-	form, err = GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	form, err = GetAvailabilityForm(context.Background(), store, volunteers, organisation, zap.NewNop(), token)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"shift-1"}, form.SelectedShiftIDs)
 }
@@ -383,17 +383,17 @@ func TestAvailabilityFormShowsTheSubmittedState(t *testing.T) {
 // TestSubmitNothingIsAnAnswer: "I can't do any of these" is a reply, and must be
 // distinguishable from silence — the state the Forms encoding could not express.
 func TestSubmitNothingIsAnAnswer(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 	token := tokenFor(t, round, "michael")
 
-	form, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(), token, nil)
+	form, err := SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(), token, nil)
 	require.NoError(t, err)
 	assert.True(t, form.Submitted)
 	assert.Empty(t, form.SelectedShiftIDs)
 
-	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, organisation, zap.NewNop(), "")
 	require.NoError(t, err)
 	for _, e := range roundEntries(updated) {
 		if e.VolunteerID == "michael" {
@@ -407,12 +407,12 @@ func TestSubmitNothingIsAnAnswer(t *testing.T) {
 // from another rota, so a submission naming either is a broken client. Quietly
 // dropping it would record an answer the volunteer did not give.
 func TestSubmitRejectsShiftsNotOnOffer(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	token := tokenFor(t, mintRound(t, store, volunteers, cfg), "michael")
+	token := tokenFor(t, mintRound(t, store, volunteers, organisation), "michael")
 
 	for _, shiftID := range []string{"shift-3", "shift-elsewhere"} {
-		_, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(), token, []string{shiftID})
+		_, err := SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(), token, []string{shiftID})
 		require.ErrorIs(t, err, ErrInvalidInput, "shift %s must be refused", shiftID)
 	}
 }
@@ -420,16 +420,16 @@ func TestSubmitRejectsShiftsNotOnOffer(t *testing.T) {
 // TestAvailabilityLinkStopsAtAllocation: allocation, not any advertised
 // deadline, is the real cutoff, and it closes reading as well as writing.
 func TestAvailabilityLinkStopsAtAllocation(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	token := tokenFor(t, mintRound(t, store, volunteers, cfg), "michael")
+	token := tokenFor(t, mintRound(t, store, volunteers, organisation), "michael")
 
 	store.rotations[0].AllocatedDatetime = "2026-07-30T09:00:00Z"
 
-	_, err := GetAvailabilityForm(context.Background(), store, volunteers, cfg, zap.NewNop(), token)
+	_, err := GetAvailabilityForm(context.Background(), store, volunteers, organisation, zap.NewNop(), token)
 	require.ErrorIs(t, err, ErrGone)
 
-	_, err = SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(), token, []string{"shift-1"})
+	_, err = SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(), token, []string{"shift-1"})
 	require.ErrorIs(t, err, ErrGone)
 }
 
@@ -437,9 +437,9 @@ func TestAvailabilityLinkStopsAtAllocation(t *testing.T) {
 // from "you are too late", which is the difference between the two messages the
 // holder of a link can be given.
 func TestAvailabilityUnknownTokenIsNotFound(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 
-	_, err := GetAvailabilityForm(context.Background(), store, availabilityVolunteers(), cfg, zap.NewNop(), "not-a-token")
+	_, err := GetAvailabilityForm(context.Background(), store, availabilityVolunteers(), organisation, zap.NewNop(), "not-a-token")
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -447,15 +447,15 @@ func TestAvailabilityUnknownTokenIsNotFound(t *testing.T) {
 // partner has already replied is covered, not missing. Without this the roster
 // would send an Organiser chasing an answer it already has.
 func TestRoundReportsGroupCover(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 
-	_, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(),
+	_, err := SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(),
 		tokenFor(t, round, "emma"), []string{"shift-1"})
 	require.NoError(t, err)
 
-	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, organisation, zap.NewNop(), "")
 	require.NoError(t, err)
 
 	byVolunteer := map[string]AvailabilityEntry{}
@@ -479,13 +479,13 @@ func TestRoundReportsGroupCover(t *testing.T) {
 // coverage numbers underneath already refused to count, because they cannot be
 // allocated. The read is the one place that can tell.
 func TestRoundDropsAVolunteerWhoHasStopped(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	round := mintRound(t, store, volunteers, cfg)
+	round := mintRound(t, store, volunteers, organisation)
 	require.Len(t, roundEntries(round), 3)
 
 	// Aaliyah answers, and then stops volunteering.
-	_, err := SubmitAvailability(context.Background(), store, volunteers, cfg, zap.NewNop(),
+	_, err := SubmitAvailability(context.Background(), store, volunteers, organisation, zap.NewNop(),
 		tokenFor(t, round, "aaliyah"), []string{"shift-1"})
 	require.NoError(t, err)
 	for i := range volunteers.volunteers {
@@ -494,7 +494,7 @@ func TestRoundDropsAVolunteerWhoHasStopped(t *testing.T) {
 		}
 	}
 
-	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, organisation, zap.NewNop(), "")
 	require.NoError(t, err)
 
 	for _, e := range roundEntries(updated) {
@@ -509,9 +509,9 @@ func TestRoundDropsAVolunteerWhoHasStopped(t *testing.T) {
 // as one case — unknown or not active, they cannot be allocated — and the grid
 // now agrees with the numbers under it.
 func TestRoundDropsAVolunteerOffTheRoster(t *testing.T) {
-	store, cfg := availabilityFixture()
+	store, organisation := availabilityFixture()
 	volunteers := availabilityVolunteers()
-	require.Len(t, roundEntries(mintRound(t, store, volunteers, cfg)), 3)
+	require.Len(t, roundEntries(mintRound(t, store, volunteers, organisation)), 3)
 
 	kept := make([]model.Volunteer, 0, len(volunteers.volunteers))
 	for _, v := range volunteers.volunteers {
@@ -521,7 +521,7 @@ func TestRoundDropsAVolunteerOffTheRoster(t *testing.T) {
 	}
 	volunteers.volunteers = kept
 
-	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, cfg, zap.NewNop(), "")
+	updated, err := GetAvailabilityRound(context.Background(), store, volunteers, organisation, zap.NewNop(), "")
 	require.NoError(t, err)
 
 	for _, e := range roundEntries(updated) {

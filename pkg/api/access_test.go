@@ -52,7 +52,7 @@ var gatedRoutes = []gatedRoute{
 	{http.MethodGet, "/api/availability-rounds", LevelOrganiser},
 	{http.MethodGet, "/api/availability-sends/send1", LevelOrganiser},
 	{http.MethodGet, "/auth/gmail", LevelOrganiser},
-	{http.MethodPost, "/auth/sync", LevelOrganiser},
+	{http.MethodPost, "/api/sync", LevelOrganiser},
 }
 
 // Nobody without a session gets past any gate, whatever level it asks for.

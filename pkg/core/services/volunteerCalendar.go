@@ -24,11 +24,11 @@ const calendarRefreshInterval = "PT6H"
 // the clients that do honour them are the ones a volunteer is most likely to be
 // reading this on.
 var calendarReminders = []struct {
-	trigger     string
-	description string
+	trigger string
+	when    string
 }{
-	{trigger: "-P1D", description: "Ilford Drop-In shift tomorrow"},
-	{trigger: "-PT2H", description: "Ilford Drop-In shift in two hours"},
+	{trigger: "-P1D", when: "tomorrow"},
+	{trigger: "-PT2H", when: "in two hours"},
 }
 
 // BuildVolunteerCalendar renders the volunteer's shifts as a subscribable
@@ -46,14 +46,21 @@ var calendarReminders = []struct {
 // it, and a shift already minted keeps the hours it was planned for even after
 // an Organiser moves the drop-in's default times.
 //
-// rotaURL is where the rota lives, for the link on each event. Empty leaves the
-// link out rather than writing a broken one.
-func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, defaults model.RotaDefaults, rotaURL string) (string, error) {
+// displayName is the Organisation's, and names the calendar, each event and its
+// reminders. rotaURL is where the rota lives, for the link on each event. Empty
+// leaves the link out rather than writing a broken one.
+//
+// The UIDs keep the suffix they had before there were Organisations: changing
+// it would make every subscriber's calendar drop each event and add it again.
+// They stay unique across Organisations because a volunteer id is a row in one
+// Organisation's own roster sheet, and two rosters sharing an id would also
+// share one feed URL.
+func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, defaults model.RotaDefaults, displayName, rotaURL string) (string, error) {
 	cal := ics.NewCalendar()
 	cal.SetProductId("-//ilford-drop-in//EN")
 	cal.SetCalscale("GREGORIAN")
 	cal.SetMethod(ics.MethodPublish)
-	cal.SetXWRCalName("Ilford Drop-In — " + volunteer.DisplayName)
+	cal.SetXWRCalName(displayName + " — " + volunteer.DisplayName)
 	cal.SetXWRTimezone(defaults.Timezone())
 	cal.SetRefreshInterval(calendarRefreshInterval)
 	cal.SetXPublishedTTL(calendarRefreshInterval)
@@ -64,7 +71,7 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 		// shift *was* the uncapped Role and saying so would be noise; with no
 		// uncapped Role to be (issue #185) every job is worth naming, and an
 		// allocation whose Role the app does not recognise still says nothing.
-		summary := "Ilford Drop-In shift"
+		summary := displayName + " shift"
 		if role, named := ownRole(shift, volunteer, roles); named {
 			summary += " (" + role + ")"
 		}
@@ -81,7 +88,7 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 		if rotaURL != "" {
 			event.SetURL(rotaURL)
 		}
-		addReminders(event)
+		addReminders(event, displayName)
 		event.SetSequence(shift.AlterationCount)
 		// DTSTAMP must only churn when the shift actually changes; unaltered
 		// shifts fall back to their own start.
@@ -170,12 +177,12 @@ func shiftDescription(shift Shift, volunteer model.Volunteer, roles model.Roles,
 }
 
 // addReminders hangs the standard reminders off one event.
-func addReminders(event *ics.VEvent) {
+func addReminders(event *ics.VEvent, displayName string) {
 	for _, reminder := range calendarReminders {
 		alarm := event.AddAlarm()
 		alarm.SetAction(ics.ActionDisplay)
 		alarm.SetTrigger(reminder.trigger)
-		alarm.SetDescription(reminder.description)
+		alarm.SetDescription(displayName + " shift " + reminder.when)
 	}
 }
 

@@ -66,7 +66,7 @@ func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	volunteers, err := h.volunteers.ListVolunteers(h.cfg, roles)
+	volunteers, err := h.volunteers.ListVolunteers(h.org, roles)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return

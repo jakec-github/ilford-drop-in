@@ -24,7 +24,8 @@ func (d *DB) GetDraftRotaAllocation(ctx context.Context, rotaID string) (*DraftR
 		       inputs_changed_at, seats_asked, seats_filled
 		FROM draft_rota_allocation
 		WHERE rota_id = $1
-	`, rotaID).Scan(
+		  AND rota_id IN (SELECT id FROM rotation WHERE organisation_id = $2)
+	`, rotaID, d.org()).Scan(
 		&draft.RotaID,
 		&draft.SolvedAt,
 		&draft.Success,
@@ -64,7 +65,8 @@ func (d *DB) GetDraftAllocationsByShiftIDs(ctx context.Context, shiftIDs []strin
 		SELECT id, shift_id, role_id, volunteer_id, custom_entry
 		FROM draft_allocation
 		WHERE shift_id = ANY($1)
-	`, shiftIDs)
+		  AND shift_id IN (SELECT id FROM shift WHERE organisation_id = $2)
+	`, shiftIDs, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query draft allocations by shift: %w", err)
 	}
@@ -118,7 +120,7 @@ func (d *DB) ReplaceDraftRotaAllocation(ctx context.Context, draft DraftRotaAllo
 	// against that. The loser blocks until the allocation commits, then reads
 	// the stamp it set and refuses.
 	var allocatedAt *time.Time
-	if err := tx.QueryRow(ctx, `SELECT allocated_datetime FROM rotation WHERE id = $1 FOR UPDATE`, draft.RotaID).Scan(&allocatedAt); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT allocated_datetime FROM rotation WHERE id = $1 AND organisation_id = $2 FOR UPDATE`, draft.RotaID, d.org()).Scan(&allocatedAt); err != nil {
 		return fmt.Errorf("failed to lock rotation %s: %w", draft.RotaID, err)
 	}
 	if allocatedAt != nil {

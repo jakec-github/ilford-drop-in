@@ -15,11 +15,12 @@ var testFrontend = fstest.MapFS{
 	"chunk-abc.js": {Data: []byte("console.log(1)")},
 }
 
-// testIndex is what the stand-in build's index.html serves as at the root.
-const testIndex = `<html><head>` + baseTag + `</head>app</html>`
+// testIndex is what the stand-in build's index.html serves as for apiTestCfg's
+// Organisation, its base tag pointing at /org/test-org/.
+const testIndex = `<html><head><base href="/org/test-org/" /></head>app</html>`
 
 func TestFrontendHandlerServesFiles(t *testing.T) {
-	handler := frontendHandler(testFrontend, "")
+	handler := frontendHandler(testFrontend, organisationPath(apiTestCfg.ID))
 
 	tests := []struct {
 		name     string

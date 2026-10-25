@@ -66,7 +66,7 @@ func solveRotaInFlight(
 	ctx context.Context,
 	database SolveRotaStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	pythonFlag string,
 ) (*rotaSolve, error) {
@@ -132,7 +132,7 @@ func solveRotaInFlight(
 		return nil, err
 	}
 
-	allVolunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	allVolunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

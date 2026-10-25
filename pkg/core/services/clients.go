@@ -18,7 +18,7 @@ import (
 // database now (ADR 0006), so the caller reads them and passes them in rather
 // than the roster reader reaching for a store of its own.
 type VolunteerClient interface {
-	ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error)
+	ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error)
 }
 
 // GmailClient sends one email. The server builds one per send from the token an

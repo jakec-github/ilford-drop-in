@@ -31,10 +31,10 @@ const setTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
 // record carries only its shift_id; rota and date live on the shift. An empty
 // id set returns no rows without a query.
 func (d *DB) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Alteration, error) {
-	return getAlterationsByShiftIDs(ctx, d.pool, shiftIDs)
+	return getAlterationsByShiftIDs(ctx, d.pool, d.org(), shiftIDs)
 }
 
-func getAlterationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string) ([]Alteration, error) {
+func getAlterationsByShiftIDs(ctx context.Context, q querier, organisationID string, shiftIDs []string) ([]Alteration, error) {
 	if len(shiftIDs) == 0 {
 		return nil, nil
 	}
@@ -42,8 +42,9 @@ func getAlterationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string)
 		SELECT id, shift_id, direction, volunteer_id, custom_value, cover_id, set_time, role_id
 		FROM alteration
 		WHERE shift_id = ANY($1)
+		  AND shift_id IN (SELECT id FROM shift WHERE organisation_id = $2)
 		ORDER BY set_time ASC
-	`, shiftIDs)
+	`, shiftIDs, organisationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query alterations by shift: %w", err)
 	}

@@ -146,17 +146,22 @@ Create `env/test/drop_in_config.yaml` (also git-ignored). Every
 field below without an "optional" note is required:
 
 ```yaml
-# Google Sheet IDs (from the sheet URLs)
-volunteerSheetID: 'your-volunteer-sheet-id'
-rotaSheetID: 'your-rota-sheet-id'
-serviceVolunteersTab: 'volunteers'          # the tab name in the volunteer sheet
+# Each drop-in the server runs, served under /org/<id>/ (ADR 0011). One is
+# enough; add entries to run several side by side.
+organisations:
+  - id: 'my-drop-in'                         # its address: lowercase letters, digits, hyphens
+    displayName: 'My Drop-In'                # shown on the rota and in calendars
+    organiserEmails:                         # Google accounts allowed to log in as an Organiser
+      - 'your-email@gmail.com'
+    rotaEditorEmails:                        # optional: accounts that may only change who works a shift
+      - 'a-rota-editor@gmail.com'
+    # Google Sheet IDs (from the sheet URLs)
+    volunteerSheetID: 'your-volunteer-sheet-id'
+    serviceVolunteersTab: 'volunteers'       # the tab name in the volunteer sheet
+    rotaSheetID: 'your-rota-sheet-id'
 
 # Local Postgres (matches scripts/test-db.sh)
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
-
-# Gmail (only used by the availability/reminder flows)
-gmailUserID: 'me'
-gmailSender: 'your-email@gmail.com'          # optional
 
 # What the drop-in decides about itself is not configured here. The Roles
 # volunteers hold, the Rota Defaults (the default shift start, end and
@@ -172,11 +177,10 @@ gmailSender: 'your-email@gmail.com'          # optional
 server:
   port: 8080
   sessionSecret: 'change-me-min-16-chars'     # signs session cookies; ≥16 chars
-  organiserEmails:                             # Google accounts allowed to log in as an Organiser
-    - 'your-email@gmail.com'
-  rotaEditorEmails:                            # optional: accounts that may only change who works a shift
-    - 'a-rota-editor@gmail.com'
 ```
+
+The app is then at `http://localhost:5173/org/my-drop-in/`; `/` is a splash
+page that links nowhere.
 
 The `test` directory matches the `-e test` / `-env test` flag you pass at
 runtime: every file an environment needs lives in `env/<env>/`, and that is the
@@ -336,11 +340,11 @@ Run the full stack (Postgres + Go server + frontend dev server) with:
 scripts/dev.sh test
 ```
 
-- Frontend: <http://localhost:5173>
+- Frontend: <http://localhost:5173/org/my-drop-in/> — your Organisation's `id`
 - API/server: <http://localhost:8080>
 
 The rota page is public — no login needed to view it. Changing it needs a Google account on one of
-the allowlists, via the web OAuth client from step 2: `rotaEditorEmails` to make
+that Organisation's allowlists, via the web OAuth client from step 2: `rotaEditorEmails` to make
 alterations and preallocations, `organiserEmails` for those and everything else.
 
 To run the frontend alone (assuming the server is already up), see

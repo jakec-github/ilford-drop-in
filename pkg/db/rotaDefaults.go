@@ -58,7 +58,8 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 		       shift_timezone,
 		       allocation_settings::text
 		FROM rota_defaults
-	`).Scan(&start, &end, &timezone, &allocation)
+		WHERE organisation_id = $1
+	`, d.org()).Scan(&start, &end, &timezone, &allocation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RotaDefaults{}, nil
 	}
@@ -86,13 +87,13 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 // drop-in could plausibly be told to start at.
 func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error {
 	_, err := d.pool.Exec(ctx, `
-		INSERT INTO rota_defaults (id, shift_start_time, shift_end_time, shift_timezone)
-		VALUES (TRUE, NULLIF($1, '')::time, NULLIF($2, '')::time, NULLIF($3, ''))
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO rota_defaults (organisation_id, shift_start_time, shift_end_time, shift_timezone)
+		VALUES ($4, NULLIF($1, '')::time, NULLIF($2, '')::time, NULLIF($3, ''))
+		ON CONFLICT (organisation_id) DO UPDATE SET
 			shift_start_time = EXCLUDED.shift_start_time,
 			shift_end_time = EXCLUDED.shift_end_time,
 			shift_timezone = EXCLUDED.shift_timezone
-	`, defaults.ShiftStartTime, defaults.ShiftEndTime, defaults.ShiftTimezone)
+	`, defaults.ShiftStartTime, defaults.ShiftEndTime, defaults.ShiftTimezone, d.org())
 	if err != nil {
 		return fmt.Errorf("failed to save rota defaults: %w", err)
 	}
@@ -115,15 +116,15 @@ func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error 
 func (d *DB) SaveAllocationSettings(ctx context.Context, settings string) error {
 	return d.inTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO rota_defaults (id, allocation_settings)
-			VALUES (TRUE, NULLIF($1, '')::jsonb)
-			ON CONFLICT (id) DO UPDATE SET
+			INSERT INTO rota_defaults (organisation_id, allocation_settings)
+			VALUES ($2, NULLIF($1, '')::jsonb)
+			ON CONFLICT (organisation_id) DO UPDATE SET
 				allocation_settings = EXCLUDED.allocation_settings
-		`, settings)
+		`, settings, d.org())
 		if err != nil {
 			return fmt.Errorf("failed to save allocation settings: %w", err)
 		}
-		return markAllRotaInputsChanged(ctx, tx)
+		return markAllRotaInputsChanged(ctx, tx, d.org())
 	})
 }
 

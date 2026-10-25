@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,11 +15,18 @@ import (
 
 func testServerConfig() *config.ServerConfig {
 	return &config.ServerConfig{
-		Port:             8080,
-		SessionSecret:    string(testSecret),
+		Port:          8080,
+		SessionSecret: string(testSecret),
+	}
+}
+
+func testOrganisations() []config.Organisation {
+	return []config.Organisation{{
+		ID:               "test-org",
+		DisplayName:      "Test Drop-In",
 		OrganiserEmails:  []string{"organiser@example.com"},
 		RotaEditorEmails: []string{"editor@example.com"},
-	}
+	}}
 }
 
 func testDevModeConfig() *config.DevModeConfig {
@@ -31,23 +39,34 @@ func testDevModeConfig() *config.DevModeConfig {
 
 func testStubAuth(t *testing.T) *Authenticator {
 	t.Helper()
-	a, err := NewStubAuthenticator(testDevModeConfig(), testServerConfig(), zap.NewNop(), nil)
+	a, err := NewStubAuthenticator(testDevModeConfig(), testServerConfig(), testOrganisations(), zap.NewNop())
 	require.NoError(t, err)
 	return a
 }
 
-// stubLogin logs in through the stub and returns the /auth/me body the session
-// it minted answers with.
-func stubLogin(t *testing.T, a *Authenticator, target string) string {
+// stubServer is the whole server around a, with its one Organisation mounted.
+func stubServer(a *Authenticator) http.Handler {
+	orgs := testOrganisations()
+	h := NewHandler(&mockStore{}, testVolunteers(), &orgs[0], a, nil, nil, nil, nil, zap.NewNop())
+	return Mount(a, []*Handler{h}, pingerFunc(func(context.Context) error { return nil }), zap.NewNop())
+}
+
+// stubLogin logs in through the Organisation's login link, follows it to the
+// shared stub login, and returns the /api/me body the session it minted
+// answers with.
+func stubLogin(t *testing.T, a *Authenticator, query string) string {
 	t.Helper()
-	mux := http.NewServeMux()
-	a.registerRoutes(mux)
+	server := stubServer(a)
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
-
+	server.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/org/test-org/auth/login"+query, nil))
 	require.Equal(t, http.StatusFound, rec.Code)
-	assert.Equal(t, "/", rec.Header().Get("Location"), "stub login must not leave the app")
+	login := redirectTarget(t, rec.Result())
+
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, login, nil))
+	require.Equal(t, http.StatusFound, rec.Code)
+	assert.Equal(t, "/org/test-org/", rec.Header().Get("Location"), "stub login should come back to the drop-in it set out from")
 
 	var session *http.Cookie
 	for _, c := range rec.Result().Cookies() {
@@ -61,27 +80,35 @@ func stubLogin(t *testing.T, a *Authenticator, target string) string {
 
 	// The minted cookie is a real session: it satisfies the same gate every
 	// protected route uses.
-	me := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	me := httptest.NewRequest(http.MethodGet, "/org/test-org/api/me", nil)
 	me.AddCookie(session)
 	meRec := httptest.NewRecorder()
-	mux.ServeHTTP(meRec, me)
+	server.ServeHTTP(meRec, me)
 
 	require.Equal(t, http.StatusOK, meRec.Code)
 	return meRec.Body.String()
+}
+
+// redirectTarget is the redirect a response sends the browser to.
+func redirectTarget(t *testing.T, res *http.Response) string {
+	t.Helper()
+	location := res.Header.Get("Location")
+	require.NotEmpty(t, location)
+	return location
 }
 
 // The stub's whole purpose: a session with no Google round-trip. Login must be
 // a single request that comes back with a cookie the rest of the app accepts.
 // Plain login is an Organiser, who can reach every screen.
 func TestStubAuthenticator_LoginMintsOrganiserSession(t *testing.T) {
-	body := stubLogin(t, testStubAuth(t), "/auth/login")
+	body := stubLogin(t, testStubAuth(t), "")
 	assert.JSONEq(t, `{"email":"organiser@example.com","level":"organiser"}`, body)
 }
 
 // The dev stack can sign in at either level, so the Rota Editor's narrower UI
 // can be driven as well as the Organiser's.
 func TestStubAuthenticator_LoginAsRotaEditor(t *testing.T) {
-	body := stubLogin(t, testStubAuth(t), "/auth/login?level=rotaEditor")
+	body := stubLogin(t, testStubAuth(t), "?level=rotaEditor")
 	assert.JSONEq(t, `{"email":"editor@example.com","level":"rotaEditor"}`, body)
 }
 
@@ -102,7 +129,7 @@ func TestStubAuthenticator_LoginRefusesAnUnknownLevel(t *testing.T) {
 func TestStubAuthenticator_LoginAsRotaEditorWithNoneConfigured(t *testing.T) {
 	dev := testDevModeConfig()
 	dev.RotaEditorEmail = ""
-	a, err := NewStubAuthenticator(dev, testServerConfig(), zap.NewNop(), nil)
+	a, err := NewStubAuthenticator(dev, testServerConfig(), testOrganisations(), zap.NewNop())
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
@@ -115,14 +142,27 @@ func TestStubAuthenticator_LoginAsRotaEditorWithNoneConfigured(t *testing.T) {
 	assert.Empty(t, rec.Result().Cookies())
 }
 
+// The stub checks levels per Organisation: an Organiser of one and a Rota
+// Editor of another is fine, but a Rota Editor anywhere who is an Organiser
+// somewhere would be shown an Organiser's screens there.
+func TestNewStubAuthenticator_LevelsAreAcrossOrganisations(t *testing.T) {
+	orgs := []config.Organisation{
+		{ID: "east", OrganiserEmails: []string{"organiser@example.com"}},
+		{ID: "west", OrganiserEmails: []string{"west@example.com"}, RotaEditorEmails: []string{"editor@example.com"}},
+	}
+	_, err := NewStubAuthenticator(testDevModeConfig(), testServerConfig(), orgs, zap.NewNop())
+	require.NoError(t, err)
+
+	orgs[0].OrganiserEmails = append(orgs[0].OrganiserEmails, "editor@example.com")
+	_, err = NewStubAuthenticator(testDevModeConfig(), testServerConfig(), orgs, zap.NewNop())
+	require.Error(t, err)
+}
+
 // Nothing about the stub weakens the gate itself: an unauthenticated request is
 // still refused, so a snapshot of the logged-out UI is honest.
 func TestStubAuthenticator_StillRejectsSessionlessRequests(t *testing.T) {
-	a := testStubAuth(t)
 	rec := httptest.NewRecorder()
-	a.requireLevel(LevelRotaEditor, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Error("wrapped handler should not run")
-	})).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/protected", nil))
+	stubServer(testStubAuth(t)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/org/test-org/api/me", nil))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
@@ -150,28 +190,28 @@ func TestNewStubAuthenticator_RequiresEachEmailAtItsLevel(t *testing.T) {
 	}{
 		"organiser off every list": {
 			dev:  func(d *config.DevModeConfig) { d.OrganiserEmail = "stranger@example.com" },
-			want: []string{"stranger@example.com", "organiserEmails"},
+			want: []string{"stranger@example.com", "devMode.organiserEmail"},
 		},
 		"organiser only a rota editor": {
 			dev:  func(d *config.DevModeConfig) { d.OrganiserEmail = "editor@example.com" },
-			want: []string{"editor@example.com", "organiserEmails"},
+			want: []string{"editor@example.com", "devMode.organiserEmail"},
 		},
 		"rota editor off every list": {
 			dev:  func(d *config.DevModeConfig) { d.RotaEditorEmail = "stranger@example.com" },
-			want: []string{"stranger@example.com", "rotaEditorEmails"},
+			want: []string{"stranger@example.com", "devMode.rotaEditorEmail"},
 		},
 		// An Organiser would sign in with more than a Rota Editor may do, and
 		// the screens being checked would not be the Rota Editor's.
 		"rota editor actually an organiser": {
 			dev:  func(d *config.DevModeConfig) { d.RotaEditorEmail = "organiser@example.com" },
-			want: []string{"organiser@example.com", "rotaEditorEmails"},
+			want: []string{"organiser@example.com", "devMode.rotaEditorEmail"},
 		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			dev := testDevModeConfig()
 			tc.dev(dev)
-			_, err := NewStubAuthenticator(dev, testServerConfig(), zap.NewNop(), nil)
+			_, err := NewStubAuthenticator(dev, testServerConfig(), testOrganisations(), zap.NewNop())
 
 			require.Error(t, err)
 			for _, want := range tc.want {
@@ -184,15 +224,12 @@ func TestNewStubAuthenticator_RequiresEachEmailAtItsLevel(t *testing.T) {
 // The allowlist folds Gmail-equivalent addresses; the stub email is checked
 // against the same folding, so the two configs cannot disagree over a dot.
 func TestNewStubAuthenticator_FoldsGmailVariants(t *testing.T) {
-	srv := testServerConfig()
-	srv.OrganiserEmails = []string{"jake.chorley@googlemail.com"}
+	orgs := testOrganisations()
+	orgs[0].OrganiserEmails = []string{"jake.chorley@googlemail.com"}
 	dev := testDevModeConfig()
 	dev.OrganiserEmail = "jakechorley@gmail.com"
 
-	a, err := NewStubAuthenticator(dev, srv, zap.NewNop(), nil)
+	_, err := NewStubAuthenticator(dev, testServerConfig(), orgs, zap.NewNop())
 
 	require.NoError(t, err)
-	level, ok := a.levelOf("jakechorley@gmail.com")
-	assert.True(t, ok)
-	assert.Equal(t, LevelOrganiser, level)
 }

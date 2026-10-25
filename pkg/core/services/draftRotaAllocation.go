@@ -138,13 +138,13 @@ func SolveDraftRotaAllocation(
 	ctx context.Context,
 	database DraftRotaAllocationStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	pythonFlag string,
 ) (*DraftRotaAllocationStatus, error) {
 	logger.Debug("Solving the draft rota allocation")
 
-	solve, err := solveRotaInFlight(ctx, database, volunteerClient, cfg, logger, pythonFlag)
+	solve, err := solveRotaInFlight(ctx, database, volunteerClient, organisation, logger, pythonFlag)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func DraftRotaAllocationInFlight(
 	ctx context.Context,
 	database DraftRotaAllocationStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 ) (*DraftRotaAllocationStatus, error) {
 	rota, err := database.GetRotaInFlight(ctx)
@@ -355,7 +355,7 @@ func DraftRotaAllocationInFlight(
 	if err != nil {
 		return nil, err
 	}
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

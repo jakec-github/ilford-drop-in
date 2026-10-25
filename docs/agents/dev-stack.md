@@ -42,13 +42,20 @@ current run.
 
 ## Log in
 
+The dev config's one Organisation is `dev-org`, so the app is at
+`http://localhost:8080/org/dev-org/` and its API under
+`/org/dev-org/api/`. Paths below written without a host — `GET /api/shifts` —
+are under that prefix. `/` is a splash page that links nowhere, and `/health`
+and `/auth` are at the root ([ADR 0011](../adr/0011-one-server-many-organisations.md)).
+
 ```bash
-curl -i -c cookies.txt localhost:8080/auth/login                    # an Organiser
-curl -i -c cookies.txt 'localhost:8080/auth/login?level=rotaEditor' # a Rota Editor
+curl -i -c cookies.txt localhost:8080/org/dev-org/auth/login                    # an Organiser
+curl -i -c cookies.txt 'localhost:8080/org/dev-org/auth/login?level=rotaEditor' # a Rota Editor
 ```
 
-`GET /auth/login` mints a signed Organiser session for `devMode.organiserEmail`
-and redirects to `/`; `?level=rotaEditor` mints a Rota Editor's for
+`GET /org/dev-org/auth/login` hands over to the shared `/auth/login?org=dev-org`,
+which mints a signed Organiser session for `devMode.organiserEmail` and
+redirects back to `/org/dev-org/`; `?level=rotaEditor` mints a Rota Editor's for
 `devMode.rotaEditorEmail` instead, to check what that narrower level is shown.
 No Google, no consent screen, no browser interaction — a `curl` or a headless
 browser hitting that URL comes back logged in. Log out before switching levels
@@ -57,8 +64,9 @@ in a browser, or just log in again: the new cookie replaces the old.
 Only the *identity provider* is stubbed. The cookie is signed, expired and
 re-checked exactly as in production, `requireLevel` still refuses requests
 without it (401) or at too junior a level (403), and the address is still
-re-checked against `server.organiserEmails` and `server.rotaEditorEmails` on
-every request. What you are looking at is the real gate, not an open door.
+re-checked against the Organisation's `organiserEmails` and `rotaEditorEmails`
+on every request. The session is identity only: one cookie covers every
+Organisation, and each checks its own lists. What you are looking at is the real gate, not an open door.
 `GET /auth/callback` 404s, since there is no OAuth exchange to complete.
 
 ## Define a rota
@@ -69,8 +77,8 @@ and what each asks for are the Rota Defaults, which defining spends (issue
 #176):
 
 ```bash
-curl -b cookies.txt localhost:8080/api/rotations/proposed
-curl -b cookies.txt -X POST localhost:8080/api/rotations -d '{
+curl -b cookies.txt localhost:8080/org/dev-org/api/rotations/proposed
+curl -b cookies.txt -X POST localhost:8080/org/dev-org/api/rotations -d '{
   "shiftCount": 6,
   "startDate": "2026-09-06"
 }'
@@ -102,8 +110,8 @@ rotas any more. To start over, discard the one you have — that deletes it, its
 shifts, their Shapes, its pins and its whole availability round in one go:
 
 ```bash
-curl -b cookies.txt localhost:8080/api/rotations/in-flight   # what is in flight
-curl -b cookies.txt -X DELETE localhost:8080/api/rotations/<rota-id>
+curl -b cookies.txt localhost:8080/org/dev-org/api/rotations/in-flight   # what is in flight
+curl -b cookies.txt -X DELETE localhost:8080/org/dev-org/api/rotations/<rota-id>
 ```
 
 Reach for that rather than emptying tables by hand: it is the same path the
@@ -119,11 +127,11 @@ handed out. Minting is Organiser-only and the roster needs a session; the volunt
 which is the point of it.
 
 ```bash
-curl -b cookies.txt -X POST localhost:8080/api/availability-rounds -d '{}'
-curl -b cookies.txt localhost:8080/api/availability-rounds    # who has answered
-curl localhost:8080/api/availability/<token>
+curl -b cookies.txt -X POST localhost:8080/org/dev-org/api/availability-rounds -d '{}'
+curl -b cookies.txt localhost:8080/org/dev-org/api/availability-rounds    # who has answered
+curl localhost:8080/org/dev-org/api/availability/<token>
 curl -H 'Content-Type: application/json' \
-     -X POST localhost:8080/api/availability/<token> -d '{"shiftIds":["<id>"]}'
+     -X POST localhost:8080/org/dev-org/api/availability/<token> -d '{"shiftIds":["<id>"]}'
 ```
 
 The token is the last path segment of the `link` on each roster entry. Minting
@@ -170,10 +178,10 @@ through the browser, copy the `session` cookie out of devtools (it is HttpOnly,
 so the Application tab, not the console) and hand it over:
 
 ```bash
-scripts/fake-availability.py --api-url https://<host> --session '<cookie>' --dry-run
+scripts/fake-availability.py --api-url https://<host>/org/<id> --session '<cookie>' --dry-run
 ```
 
-It checks the session against `/auth/me` before writing anything and prints the
+It checks the session against `/api/me` before writing anything and prints the
 person it is acting as. A rejected session is reported as such rather than
 surfacing later as a bare 401 — though the server cannot distinguish an expired
 cookie from an address missing off that environment's allowlists, so
@@ -188,12 +196,12 @@ whole flow works with no credentials — **the emails are written to the log
 instead of being sent**.
 
 ```bash
-curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=round&deadline=Friday+28+August'
-curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=reminder&deadline=Friday+28+August'
-curl -b cookies.txt -L 'localhost:8080/auth/gmail?mode=resend&volunteerId=<id>&deadline=Friday+28+August'
+curl -b cookies.txt -L 'localhost:8080/org/dev-org/auth/gmail?mode=round&deadline=Friday+28+August'
+curl -b cookies.txt -L 'localhost:8080/org/dev-org/auth/gmail?mode=reminder&deadline=Friday+28+August'
+curl -b cookies.txt -L 'localhost:8080/org/dev-org/auth/gmail?mode=resend&volunteerId=<id>&deadline=Friday+28+August'
 ```
 
-Each redirects to `/organiser/allocation?send=<job id>` and the emails go out
+Each redirects to `/org/dev-org/organiser/allocation?send=<job id>` and the emails go out
 behind it — a send is a background job, not the body of the request, because
 thirty of them at Gmail's three-second throttle takes about ninety seconds.
 `GET /api/availability-sends/<job id>` reports how far it has got and, once it
@@ -220,7 +228,7 @@ working then, so every email would carry a dead one.
 
 `.mcp.json` in the repo root configures `playwright-mcp` — headless, isolated
 profile, output to `logs/playwright/`. Navigate to
-`http://localhost:8080/auth/login` first and the session carries through
+`http://localhost:8080/org/dev-org/auth/login` first and the session carries through
 everything after it.
 
 It is pinned to `--browser chromium`, Playwright's own build, rather than the
@@ -287,7 +295,6 @@ one (#144). The whole journey is reachable here, end to end. So:
 | Does not | |
 | --- | --- |
 | The rota page | Renders empty until you define a rota. After that anyone signed in sees the minted shifts flagged as unallocated, and the public sees nothing until the rota is allocated, which the web server does not expose |
-| Deep-linking an Organiser tab | `http://localhost:8081/organiser/volunteers` typed straight into the address bar renders blank: the build emits relative asset paths, so a nested route asks for `/organiser/chunk-*.js` and the SPA fallback answers with `index.html`. Reach the tab by loading `/` and clicking through. |
 | Sync copy | The Volunteers tab's sync caption says "the Google Sheet" — in dev mode it is the CSV. |
 | Anything Sheets, Forms or Gmail | Never reached in dev mode |
 
@@ -308,8 +315,9 @@ environment but `dev`. Gating on the name rather than on "not prod" means a new
 environment is credential-backed unless someone deliberately calls it `dev`;
 failing rather than ignoring means nobody is left believing a gate they set is
 off when it is on. `pkg/api.NewStubAuthenticator` is unreachable without that
-block, and refuses to build if `devMode.organiserEmail` is not an Organiser in
-`server.organiserEmails`, or `devMode.rotaEditorEmail` is not only a Rota Editor.
+block, and refuses to build if `devMode.organiserEmail` is not an Organiser of a
+configured Organisation, or `devMode.rotaEditorEmail` is a Rota Editor of none
+or an Organiser of any.
 
 The server also logs a `DEV MODE` warning at startup and again on every stub
 login, so a stack running with the stubs on says so in its own log.

@@ -23,12 +23,13 @@ const apiPort = process.env.API_PORT ?? "8080";
 // WEB_PORT lets a second checkout (a git worktree, say) serve on its own port
 // without colliding with the primary one. See docs/agents/worktrees.md.
 const webPort = process.env.WEB_PORT ?? "5173";
-// Every path the Go server owns: the API under its prefix, plus the three
-// endpoints that deliberately sit outside it (see pkg/api/api.go). Anything
-// missing here is not proxied — it falls through to the SPA fallback below and
-// the caller gets index.html with a 200, which surfaces as "Unexpected token
-// '<'" when it tries to parse it as JSON.
-const apiPrefixes = ["/api", "/auth", "/calendars", "/health"];
+// Each drop-in is served under /org/<id>/ (ADR 0011). Under it, these are the
+// Go server's; everything else is the SPA, served from ./dist here so a change
+// shows up on reload. Anything missing here is not proxied — it falls through to
+// the SPA fallback below and the caller gets index.html with a 200, which
+// surfaces as "Unexpected token '<'" when it tries to parse it as JSON.
+const organisationAPIPrefixes = ["/api", "/auth", "/calendars"];
+const organisationPath = /^\/org\/([a-z0-9][a-z0-9-]*)(\/.*)?$/;
 
 // How long a proxied request may take before this server gives up on it.
 //
@@ -49,9 +50,7 @@ const server = Bun.serve({
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    if (
-      apiPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-    ) {
+    const proxy = () =>
       // redirect: "manual" so the 302 from /auth/login to Google reaches the
       // browser instead of being followed server-side here.
       //
@@ -61,24 +60,55 @@ const server = Bun.serve({
       // caller leave: r.Context() stays live, the solve runs to completion and
       // stores its draft for a request nobody is waiting on, holding the solve
       // slot the next reader queues behind (issue #197).
-      return fetch(`http://localhost:${apiPort}${pathname}${url.search}`, {
+      fetch(`http://localhost:${apiPort}${pathname}${url.search}`, {
         method: req.method,
         headers: req.headers,
         body: req.body,
         redirect: "manual",
         signal: req.signal,
       });
+
+    // Outside every Organisation — the splash page, /auth, /health, and the 404
+    // for everything else — the Go server answers exactly as it does in prod.
+    const match = organisationPath.exec(pathname);
+    if (!match) return proxy();
+
+    const [, id, rest] = match;
+    // The bare /org/<id> is the server's redirect to /org/<id>/.
+    if (rest === undefined) return proxy();
+    if (
+      organisationAPIPrefixes.some(
+        (p) => rest === p || rest.startsWith(`${p}/`),
+      )
+    ) {
+      return proxy();
     }
 
-    const resolved = pathname === "/" ? "/index.html" : pathname;
+    const resolved = rest === "/" ? "/index.html" : rest;
 
     const distFile = Bun.file(`./dist${resolved}`);
-    if (await distFile.exists()) return new Response(distFile);
+    if (resolved !== "/index.html" && (await distFile.exists())) {
+      return new Response(distFile);
+    }
 
     const publicFile = Bun.file(`./public${resolved}`);
     if (await publicFile.exists()) return new Response(publicFile);
 
-    return new Response(Bun.file("./dist/index.html"));
+    // An id the server does not run is its plain 404, as in prod, rather than
+    // an app shell whose every request then fails.
+    const known = await fetch(
+      `http://localhost:${apiPort}/org/${id}/api/organisation`,
+      { signal: req.signal },
+    );
+    if (!known.ok) return proxy();
+
+    // The server rewrites index.html's <base> to the Organisation's path as it
+    // serves it (pkg/api/frontend.go); this does the same to the dev build.
+    const index = await Bun.file("./dist/index.html").text();
+    return new Response(
+      index.replace('<base href="/" />', `<base href="/org/${id}/" />`),
+      { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    );
   },
 });
 

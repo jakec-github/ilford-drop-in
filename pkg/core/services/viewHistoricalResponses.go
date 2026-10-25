@@ -53,7 +53,7 @@ func ViewHistoricalResponses(
 	ctx context.Context,
 	database ViewHistoricalResponsesStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	count int,
 	volunteerIDs []string,
@@ -111,7 +111,7 @@ func ViewHistoricalResponses(
 	if err != nil {
 		return nil, err
 	}
-	allVolunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	allVolunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}

@@ -98,7 +98,7 @@ type draftShiftResponse struct {
 // a speculative rota to the volunteers who subscribe to the rota page and its
 // calendar feed (ADR 0008).
 func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Request) {
-	status, err := services.DraftRotaAllocationInFlight(r.Context(), h.store, h.volunteers, h.cfg, h.logger)
+	status, err := services.DraftRotaAllocationInFlight(r.Context(), h.store, h.volunteers, h.org, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -120,7 +120,7 @@ func (h *Handler) handleGetDraftRotaAllocation(w http.ResponseWriter, r *http.Re
 
 	// Read again, now that this request is the one solving. What was dirty when
 	// this reader arrived may have been answered by the solve it queued behind.
-	status, err = services.DraftRotaAllocationInFlight(r.Context(), h.store, h.volunteers, h.cfg, h.logger)
+	status, err = services.DraftRotaAllocationInFlight(r.Context(), h.store, h.volunteers, h.org, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -206,7 +206,7 @@ const solveCeiling = 60 * time.Second
 func (h *Handler) solveDraftRotaAllocation(r *http.Request) (*services.DraftRotaAllocationStatus, error) {
 	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
 	defer cancel()
-	return services.SolveDraftRotaAllocation(ctx, h.store, h.volunteers, h.cfg, h.logger, h.solverPython)
+	return services.SolveDraftRotaAllocation(ctx, h.store, h.volunteers, h.org, h.logger, h.solverPython)
 }
 
 // draftStatus is the wire form of a draft's state, from either handler. One

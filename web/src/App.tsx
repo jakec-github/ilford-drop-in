@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { Link, Redirect, Route, Router, Switch, useLocation } from "wouter";
 import RotaViewer from "./components/RotaViewer";
 import OrganiserPage from "./components/OrganiserPage";
 import AvailabilityForm from "./components/AvailabilityForm";
 import { ORGANISER_TABS } from "./components/organiserTabs";
+import { useOrganisation } from "./hooks/useOrganisation";
 import { useRota } from "./hooks/useRota";
 import { useAuth } from "./auth-context";
 import Button from "./ui/Button";
@@ -11,7 +13,8 @@ import { BASE_PATH } from "./basePath";
 // AuthStatus shows a login link when logged out, or the signed-in email plus a
 // logout button when logged in. It reads the global auth state so login status
 // is shared with the rest of the UI. The whole OAuth dance is server-side
-// redirects, so login is a plain link.
+// redirects, so login is a plain link — this drop-in's own, which says where to
+// come back to.
 function AuthStatus() {
   const { email, loading, logout } = useAuth();
 
@@ -21,7 +24,7 @@ function AuthStatus() {
 
   if (email === null) {
     return (
-      <a className="auth-status" href="/auth/login">
+      <a className="auth-status" href={`${BASE_PATH}/auth/login`}>
         Log in
       </a>
     );
@@ -86,6 +89,14 @@ function HomeView() {
 }
 
 function App() {
+  // The tab says which drop-in it is, on every page — a volunteer's form
+  // included. index.html's own title is the generic one, since one build serves
+  // every Organisation.
+  const organisation = useOrganisation();
+  useEffect(() => {
+    if (organisation) document.title = `${organisation.displayName} Rota`;
+  }, [organisation]);
+
   return (
     // Every client route is relative to the path the site is served under, so
     // the router is told once and nothing below it — no <Link>, no <Route> —

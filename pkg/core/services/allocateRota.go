@@ -57,7 +57,7 @@ func AllocateRotaInFlight(
 	ctx context.Context,
 	database AllocateRotaStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	confirmedHash string,
 	pythonFlag string,
@@ -88,7 +88,7 @@ func AllocateRotaInFlight(
 		return nil, wrapf(ErrConflict, "rota %s has not been drafted yet - solve a draft and read it before allocating", rota.ID)
 	}
 
-	solve, err := solveRotaInFlight(ctx, database, volunteerClient, cfg, logger, pythonFlag)
+	solve, err := solveRotaInFlight(ctx, database, volunteerClient, organisation, logger, pythonFlag)
 	if err != nil {
 		return nil, err
 	}

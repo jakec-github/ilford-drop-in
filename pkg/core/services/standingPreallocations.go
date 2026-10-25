@@ -72,7 +72,7 @@ func ListStandingPreallocations(
 	ctx context.Context,
 	store StandingPreallocationStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 ) ([]StandingPreallocationView, error) {
 	roles, err := RoleTable(ctx, store)
@@ -88,7 +88,7 @@ func ListStandingPreallocations(
 		return nil, nil
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -125,7 +125,7 @@ func AddStandingPreallocation(
 	ctx context.Context,
 	store StandingPreallocationStore,
 	volunteerClient VolunteerClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	params AddStandingPreallocationParams,
 	logger *zap.Logger,
 ) (*StandingPreallocationView, error) {
@@ -152,7 +152,7 @@ func AddStandingPreallocation(
 
 	name := strings.TrimSpace(params.Custom)
 	if params.VolunteerID != "" {
-		volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+		volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 		}

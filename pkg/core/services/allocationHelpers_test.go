@@ -305,7 +305,7 @@ type mockVolClient struct {
 	listErr    error
 }
 
-func (m *mockVolClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
+func (m *mockVolClient) ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}

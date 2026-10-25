@@ -27,7 +27,7 @@ step-by-step walkthrough is in **[`docs/local-setup.md`](docs/local-setup.md)**.
 To just look at the app, skip all of that:
 
 ```bash
-scripts/dev-stack.sh start    # no credentials → http://localhost:8080
+scripts/dev-stack.sh start    # no credentials → http://localhost:8080/org/dev-org/
 ```
 
 The `dev` environment reads its roster from a CSV and logs you in without

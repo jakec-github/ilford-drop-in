@@ -28,6 +28,11 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 			}
 
 			volunteerIDs, _ := cmd.Flags().GetStringSlice("volunteers")
+			orgID, _ := cmd.Flags().GetString("org")
+			organisation, err := app.Organisation(orgID)
+			if err != nil {
+				return err
+			}
 
 			app.Logger.Debug("viewHistoricalResponses command",
 				zap.Int("count", count),
@@ -35,9 +40,9 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 
 			result, err := services.ViewHistoricalResponses(
 				app.Ctx,
-				app.Database,
+				app.Database.ForOrganisation(organisation.ID),
 				app.SheetsClient,
-				app.Cfg,
+				organisation,
 				app.Logger,
 				count,
 				volunteerIDs,
@@ -139,6 +144,7 @@ func ViewHistoricalResponsesCmd(app *AppContext) *cobra.Command {
 	}
 
 	cmd.Flags().StringSlice("volunteers", nil, "Comma-separated list of volunteer IDs to filter by")
+	cmd.Flags().String("org", "", "Organisation id (required when the config lists more than one)")
 
 	return cmd
 }

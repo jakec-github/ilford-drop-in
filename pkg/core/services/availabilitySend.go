@@ -91,7 +91,7 @@ func SendAvailabilityEmails(
 	database AvailabilityStore,
 	volunteerClient VolunteerClient,
 	mailer GmailClient,
-	cfg *config.Config,
+	organisation *config.Organisation,
 	logger *zap.Logger,
 	params SendParams,
 ) (*SendReport, error) {
@@ -121,7 +121,7 @@ func SendAvailabilityEmails(
 		return nil, err
 	}
 
-	volunteers, err := volunteerClient.ListVolunteers(cfg, roles)
+	volunteers, err := volunteerClient.ListVolunteers(organisation, roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch volunteers: %w", err)
 	}
@@ -172,7 +172,7 @@ func SendAvailabilityEmails(
 		}
 
 		link := params.Link(r.request.Token)
-		subject, body := composeEmail(params.Mode, r.volunteer.FirstName, link, params.Deadline)
+		subject, body := composeEmail(params.Mode, organisation.DisplayName, r.volunteer.FirstName, link, params.Deadline)
 
 		if err := mailer.SendEmail(r.volunteer.Email, subject, body); err != nil {
 			logger.Warn("Failed to send availability email",
@@ -337,13 +337,15 @@ func groupsThatHaveAnswered(
 // composeEmail writes the email for a mode. A reminder differs only in saying it
 // is one — the link, the deadline and the promise that answers can be changed
 // are the same message either way.
-func composeEmail(mode SendMode, firstName, link, deadline string) (subject, body string) {
+//
+// displayName is the Organisation's, which the subject and the sign-off name.
+func composeEmail(mode SendMode, displayName, firstName, link, deadline string) (subject, body string) {
 	if mode == SendModeReminder {
-		return fmt.Sprintf("Reminder: Ilford drop-in availability (please complete by %s)", deadline),
-			fmt.Sprintf("Hey %s\n\nThis is a reminder to please let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
-				firstName, link, deadline)
+		return fmt.Sprintf("Reminder: %s availability (please complete by %s)", displayName, deadline),
+			fmt.Sprintf("Hey %s\n\nThis is a reminder to please let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe %s team\n",
+				firstName, link, deadline, displayName)
 	}
-	return fmt.Sprintf("Ilford drop-in availability (please complete by %s)", deadline),
-		fmt.Sprintf("Hey %s\n\nPlease use this link to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe Ilford drop-in team\n",
-			firstName, link, deadline)
+	return fmt.Sprintf("%s availability (please complete by %s)", displayName, deadline),
+		fmt.Sprintf("Hey %s\n\nPlease use this link to let us know your availability.\n%s\n\nDeadline for responses is %s when we will create the rota.\nYou can change your response as many times as you like before the deadline.\n\nThanks\nThe %s team\n",
+			firstName, link, deadline, displayName)
 }

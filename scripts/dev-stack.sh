@@ -71,6 +71,14 @@ config_db_name() {
     awk -F/ '/^databaseURL:/ { sub(/\?.*/, "", $NF); gsub(/['\''"]/, "", $NF); print $NF; exit }' "$CONFIG_FILE"
 }
 
+# The first Organisation's id, for the URLs the banner prints: every page and the
+# API are under /org/<id>/ (docs/adr/0011-one-server-many-organisations.md).
+config_first_org() {
+    awk '/^organisations:/ { in_orgs = 1; next }
+         /^[^[:space:]#]/ { in_orgs = 0 }
+         in_orgs && $1 == "-" && $2 == "id:" { gsub(/['\''"]/, "", $3); print $3; exit }' "$CONFIG_FILE"
+}
+
 require_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo "Missing ${CONFIG_FILE}" >&2
@@ -181,10 +189,12 @@ wait_for_ready() {
         if health_ok; then
             echo ""
             echo "Stack ready (pid ${pid})"
-            echo "  app:    http://localhost:${PORT}/"
+            local org
+            org="http://localhost:${PORT}/org/$(config_first_org)"
+            echo "  app:    ${org}/"
             echo "  health: http://localhost:${PORT}/health"
-            echo "  login:  http://localhost:${PORT}/auth/login  (mints an Organiser session, no Google)"
-            echo "          http://localhost:${PORT}/auth/login?level=rotaEditor  (a Rota Editor's)"
+            echo "  login:  ${org}/auth/login  (mints an Organiser session, no Google)"
+            echo "          ${org}/auth/login?level=rotaEditor  (a Rota Editor's)"
             echo "  logs:   $0 logs"
             return
         fi

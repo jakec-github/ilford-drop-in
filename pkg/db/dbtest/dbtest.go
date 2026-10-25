@@ -18,11 +18,19 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+// Organisation is the one Organisation New binds its store to (ADR 0011). A
+// test about keeping two apart binds a second with Other.
+const Organisation = "test-org"
+
+// OtherOrganisation is a second Organisation, for tests that prove one cannot
+// see or touch another's rows.
+const OtherOrganisation = "other-org"
+
 // defaultAdminURL matches scripts/test-db.sh. Override with TEST_DATABASE_URL.
 const defaultAdminURL = "postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable"
 
 // New creates a fresh database on the test Postgres server, runs all
-// migrations, and returns a connected *db.DB plus the database's connection
+// migrations, and returns a connected *db.DB bound to Organisation plus the database's connection
 // URL (for tests that need a raw connection alongside the store). The
 // database is dropped on test cleanup. Skips the test when the server is
 // unreachable — run `scripts/test-db.sh start` to enable these tests, or set
@@ -77,6 +85,9 @@ func New(t *testing.T) (*db.DB, string) {
 	if err := database.RunMigrations(ctx); err != nil {
 		t.Fatalf("failed to run migrations on test database %s: %v", name, err)
 	}
+	if _, err := database.SyncOrganisations(ctx, []string{Organisation, OtherOrganisation}); err != nil {
+		t.Fatalf("failed to add the test organisations to %s: %v", name, err)
+	}
 
-	return database, testURL
+	return database.ForOrganisation(Organisation), testURL
 }

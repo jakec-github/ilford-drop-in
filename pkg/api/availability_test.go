@@ -82,5 +82,5 @@ func TestAvailabilityRoundLinksAreAbsolute(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	require.NotEmpty(t, store.availabilityRequests)
-	assert.Contains(t, rec.Body.String(), "http://example.com/availability/"+store.availabilityRequests[0].Token)
+	assert.Contains(t, rec.Body.String(), "http://example.com/org/test-org/availability/"+store.availabilityRequests[0].Token)
 }

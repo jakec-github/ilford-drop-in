@@ -7,7 +7,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// volunteerStore holds the volunteer roster in memory. The roster is populated
+// volunteerStore holds one Organisation's volunteer roster in memory. The roster is populated
 // from the volunteer sheet using the server's service account (see sync.go and
 // cmd/server/main.go): once at startup and again on each Organiser-triggered sync,
 // and served verbatim in between. It never fetches on its own, so between syncs
@@ -27,10 +27,10 @@ func NewVolunteerStore() *volunteerStore {
 
 // ListVolunteers returns the roster loaded by the last sync (or the startup
 // populate). Before either has run it returns an empty slice (not an error):
-// read paths degrade to no volunteers rather than failing. The cfg and roles
-// arguments are unused — kept to satisfy services.VolunteerClient, and the
+// read paths degrade to no volunteers rather than failing. The organisation
+// and roles arguments are unused — kept to satisfy services.VolunteerClient, and the
 // Roles a volunteer holds were resolved by the sync that filled this cache.
-func (s *volunteerStore) ListVolunteers(_ *config.Config, _ model.Roles) ([]model.Volunteer, error) {
+func (s *volunteerStore) ListVolunteers(_ *config.Organisation, _ model.Roles) ([]model.Volunteer, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.cached, nil

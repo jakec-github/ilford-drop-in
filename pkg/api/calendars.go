@@ -24,7 +24,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	volunteers, err := h.volunteers.ListVolunteers(h.cfg, roles)
+	volunteers, err := h.volunteers.ListVolunteers(h.org, roles)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -39,7 +39,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shifts, err := services.ListShifts(r.Context(), h.store, h.volunteers, h.cfg, services.ListShiftsParams{}, h.logger)
+	shifts, err := services.ListShifts(r.Context(), h.store, h.volunteers, h.org, services.ListShiftsParams{}, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -60,6 +60,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		*volunteer,
 		roles,
 		defaults,
+		h.org.DisplayName,
 		h.siteURL(r),
 	)
 	if err != nil {

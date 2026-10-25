@@ -61,7 +61,7 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := services.DefineRota(r.Context(), h.store, h.volunteers, h.cfg, h.logger, services.DefineRotaParams{
+	result, err := services.DefineRota(r.Context(), h.store, h.volunteers, h.org, h.logger, services.DefineRotaParams{
 		ShiftCount: req.ShiftCount,
 		StartDate:  req.StartDate,
 	})

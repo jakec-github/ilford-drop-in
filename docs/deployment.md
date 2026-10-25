@@ -115,8 +115,8 @@ disk. Each deploy removes the images no container uses (see
 - Point the domain's A record (host `@`) at the IP **before** first boot of
   the stack — Caddy's certificate issuance needs the name to resolve.
 - Write the domain into `/opt/dropin/site.env` on the box. It is not in the
-  repo — see [The site's domain](#the-sites-domain). The site itself may sit
-  under a path below that host — see [Base path](#base-path).
+  repo — see [The site's domain](#the-sites-domain). Each drop-in sits under
+  `/org/<id>/` on that host — see [Organisations](#organisations).
 
 ### 2. Provision the box
 
@@ -158,8 +158,8 @@ scp env/prod/oauthClientWeb.json env/prod/serviceAccount.json root@<ip>:/opt/dro
 
 Check that `oauthClientWeb.json` lists the production redirect URI
 (`https://<domain>/auth/callback`) and that it is also registered on the Google
-web client. It stays at the root of the domain even when the site itself sits
-under a path — see [Base path](#base-path).
+web client. It stays at the root of the domain, shared by every Organisation — see
+[Organisations](#organisations).
 
 The service account reads the volunteer sheet and writes the rota sheet, so
 share both with its `client_email`: the volunteer sheet as a **Viewer**, the rota
@@ -282,48 +282,82 @@ wildcard address with no certificate:
   site address as "unrecognized global option: reverse_proxy" — loud, but about
   the wrong thing.
 
-## Base path
+## Organisations
 
-`server.basePath` in the environment's config puts the site's own pages under a
-single path segment — `/<path>/` rather than `/`. It is optional and absent in
-dev, where the site is at the root.
+One server runs any number of drop-ins — Organisations — each listed under
+`organisations:` in the environment's config with its own `id`, `displayName`,
+allowlists and sheets ([ADR 0011](adr/0011-one-server-many-organisations.md)).
+The `id` is the Organisation's address: everything it has lives under
+`/org/<id>/`.
 
-The value belongs to the deployment and is deliberately not in this repo: it is
-one key in `env/<env>/drop_in_config.yaml`, and the app derives everything else from
-it. A leading slash, one or more URL-safe segments, no trailing slash; anything
-else fails at startup. Depth is not restricted — `/rota` and `/ilford/rota` work
-the same way, because nothing ever splits the path up.
+```yaml
+organisations:
+  - id: <org-id>                    # lowercase letters, digits and hyphens
+    displayName: <Name shown on the rota and in calendars>
+    organiserEmails: [<organiser@example.com>]
+    rotaEditorEmails: []
+    volunteerSheetID: <sheet-id>
+    serviceVolunteersTab: <tab-name>
+    rotaSheetID: <sheet-id>
+```
 
-What moves is what leaves the app and cannot be corrected afterwards:
+What lives under `/org/<id>/` is what leaves the app and cannot be corrected
+afterwards, along with the API the pages call:
 
-- **The site's own pages** — the rota, the Organiser screens, the availability
-  form. They are bookmarked, and the availability form's URL is emailed.
-- **`/calendars/{filename}`**, the calendar feeds. Once a volunteer subscribes,
-  the URL lives in their calendar app and fails silently if it moves.
-
-`/` redirects to the base path, temporarily — the root may one day belong to
-something else.
+- **The Organisation's own pages** — the rota, the Organiser screens, the
+  availability form. They are bookmarked, and the availability form's URL is
+  emailed.
+- **`/org/<id>/calendars/{filename}`**, the calendar feeds. Once a volunteer
+  subscribes, the URL lives in their calendar app and fails silently if it
+  moves.
+- **`/org/<id>/api`**, which only the pages' own JavaScript calls.
 
 What stays at the root of the domain:
 
-- **`/api`.** Its only caller is the page's own JavaScript, which ships with the
-  server, so it can be pointed anywhere later at no cost.
-- **`/auth`.** Better off at the root, not merely cheaper: the callback URI is
-  registered by hand in the Google console, so one shared `/auth/callback` is a
-  one-time step however many sites a server ends up serving. **Nothing about
-  the Google web client changes when you set a base path.**
+- **`/`**, a splash page that names and links to no Organisation. An
+  Organisation's address is the only way in, and an unknown id is a plain 404.
+- **`/auth`.** The callback URI is registered by hand in the Google console, so
+  one shared `/auth/callback` is a one-time step however many Organisations a
+  server runs. **Adding an Organisation changes nothing about the Google web
+  client.** The session it sets is identity only: whether that person may do
+  anything is checked against each Organisation's own allowlists.
 - **`/health`**, which the deploy workflow, `scripts/deploy-config.sh` and
   `scripts/dev-stack.sh` all poll.
 
-Caddy is not involved either way: it keeps proxying everything to `app:8080` and
-knows nothing about the path. So rolling a base path out is one step — set the
-key and run `scripts/deploy-config.sh`.
+Caddy is not involved: it keeps proxying everything to `app:8080` and knows
+nothing about the paths.
 
-Changing it afterwards breaks every link already handed out, and two kinds of
-link are out of reach once sent: a subscribed calendar feed lives in a
-volunteer's calendar app and fails silently, and an availability link has been
-emailed. That is why the path was set before go-live rather than after
-(issue #201).
+An `id` is permanent. Changing it breaks every link already handed out, and two
+kinds are out of reach once sent: a subscribed calendar feed and an emailed
+availability link.
+
+### Adding an Organisation
+
+Add an entry to `organisations:` and run `scripts/deploy-config.sh`. On start
+the server inserts any id the database has not seen; it never deletes one, so
+an entry dropped from config keeps its rows.
+
+### Moving a single-site config across
+
+A config from before Organisations — `server.basePath`, top-level
+`volunteerSheetID`, `server.organiserEmails` and the like — is refused at
+startup by name. To move one across, and keep its existing links working:
+
+1. Write one `organisations:` entry whose `id` is the last segment of the old
+   `server.basePath`. Old links keep working only where the old base path was
+   already `/org/<id>`; any other moves. Move the old sheet ids, tab name and
+   allowlists into it, and add a `displayName`.
+2. Delete `server.basePath`, the moved keys, `gmailUserID` and `gmailSender`
+   (the last two are no longer read, and only warn).
+3. Validate with `go run ./cmd/cli -e <env> validate-config <path>`, then run
+   `scripts/deploy-config.sh <env>` once the new image is out. Between the
+   deploy and the config the server refuses to start, so expect downtime.
+
+Migration 030 gives every existing row a placeholder Organisation. On the first
+start with a config naming exactly one id the database has not seen, the server
+renames the placeholder to that id, carrying every row with it, and logs that
+it did. With two or more new ids it refuses to start rather than guess whose
+the rota was — add the others in a later rollout.
 
 ## Config rollout
 
@@ -405,8 +439,8 @@ before it reaches anyone, so it shares nothing with prod but the box and the
 image:
 
 - **Its own host**, `PREPROD_DOMAIN` in `site.env` — conventionally
-  `preprod.<domain>`. Not a path under prod's: `/api`, `/auth` and `/health`
-  sit at the root of a host (see [Base path](#base-path)). No basic auth;
+  `preprod.<domain>`. Not a path under prod's: `/`, `/auth` and `/health`
+  sit at the root of a host (see [Organisations](#organisations)). No basic auth;
   Organiser screens need a Google login, as in prod.
 - **Its own database**, a separate Neon project — not a branch of prod's.
 - **Its own synthetic roster and rota sheets.** Never a copy of prod's

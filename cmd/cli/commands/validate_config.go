@@ -65,6 +65,11 @@ devMode block is only permitted under "dev".`,
 			// the Settings screen and read from the database (ADR 0006) — so
 			// this command, which opens the file and nothing else, cannot report
 			// them and should not pretend to. What is left is the deployment.
+			for _, org := range cfg.Organisations {
+				fmt.Fprintf(out, "  org:        %s (%s) — %s, %s\n", org.ID, org.DisplayName,
+					plural(len(org.OrganiserEmails), "organiser"),
+					plural(len(org.RotaEditorEmails), "rota editor"))
+			}
 			fmt.Fprintf(out, "  server:     %s\n", describeServer(cfg))
 			if cfg.DevMode != nil {
 				fmt.Fprintf(out, "  devMode:    ON — roster from %s, login as %s\n",
@@ -88,9 +93,7 @@ func describeServer(cfg *config.Config) string {
 	if cfg.Server == nil {
 		return "not configured — the CLI runs, the web server does not"
 	}
-	return fmt.Sprintf("port %d, %s, %s", cfg.Server.Port,
-		plural(len(cfg.Server.OrganiserEmails), "organiser"),
-		plural(len(cfg.Server.RotaEditorEmails), "rota editor"))
+	return fmt.Sprintf("port %d", cfg.Server.Port)
 }
 
 func plural(n int, noun string) string {

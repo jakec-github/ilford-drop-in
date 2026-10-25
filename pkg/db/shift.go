@@ -60,9 +60,9 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 	rows, err := d.pool.Query(ctx, `
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
 		FROM shift s
-		WHERE s.rota_id = $1
+		WHERE s.rota_id = $1 AND s.organisation_id = $2
 		ORDER BY `+shiftDateExpr+`
-	`, rotaID)
+	`, rotaID, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts for rota %s: %w", rotaID, err)
 	}
@@ -101,7 +101,7 @@ type ShiftInRange struct {
 // leaves that bound open, mirroring GetAllocationsInRange. Each shift carries
 // its rota's allocated state, joined from rotation.allocated_datetime.
 func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
-	where, args := shiftDateWhere(from, to)
+	where, args := shiftDateWhere(d.org(), from, to)
 	rows, err := d.pool.Query(ctx, `
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
@@ -133,12 +133,12 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 	return shifts, nil
 }
 
-// shiftDateWhere builds a WHERE clause bounding the shift's date (aliased s),
-// with zero times leaving the corresponding bound open. Its sole remaining user
-// is GetShiftsInRange.
-func shiftDateWhere(from, to time.Time) (string, []any) {
-	var conds []string
-	var args []any
+// shiftDateWhere builds a WHERE clause keeping one Organisation's shifts
+// (aliased s) and bounding their date, with zero times leaving the
+// corresponding bound open. Its sole remaining user is GetShiftsInRange.
+func shiftDateWhere(organisationID string, from, to time.Time) (string, []any) {
+	args := []any{organisationID}
+	conds := []string{"s.organisation_id = $1"}
 	if !from.IsZero() {
 		args = append(args, from)
 		conds = append(conds, fmt.Sprintf("%s >= $%d", shiftDateExpr, len(args)))
@@ -146,9 +146,6 @@ func shiftDateWhere(from, to time.Time) (string, []any) {
 	if !to.IsZero() {
 		args = append(args, to)
 		conds = append(conds, fmt.Sprintf("%s <= $%d", shiftDateExpr, len(args)))
-	}
-	if len(conds) == 0 {
-		return "", nil
 	}
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
@@ -162,8 +159,8 @@ func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error)
 	err := d.pool.QueryRow(ctx, `
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
 		FROM shift s
-		WHERE `+shiftDateExpr+` = $1
-	`, date).Scan(&s.ID, &d0, &s.RotaID, &s.Closed, &startAt, &endAt)
+		WHERE `+shiftDateExpr+` = $1 AND s.organisation_id = $2
+	`, date, d.org()).Scan(&s.ID, &d0, &s.RotaID, &s.Closed, &startAt, &endAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -186,8 +183,8 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at, r.allocated_datetime IS NOT NULL
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
-		WHERE s.id = $1
-	`, id).Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt, &s.Allocated)
+		WHERE s.id = $1 AND s.organisation_id = $2
+	`, id, d.org()).Scan(&s.ID, &date, &s.RotaID, &s.Closed, &startAt, &endAt, &s.Allocated)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -207,8 +204,8 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 // is stamped stale. Closing a Shift that was already closed stamps it too: the
 // alternative is a read-before-write to find out, and the cost of being wrong
 // is one re-solve.
-func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (bool, error) {
-	tag, err := q.Exec(ctx, `UPDATE shift SET closed = $2 WHERE id = $1`, id, closed)
+func setShiftClosed(ctx context.Context, q querier, organisationID, id string, closed bool) (bool, error) {
+	tag, err := q.Exec(ctx, `UPDATE shift SET closed = $2 WHERE id = $1 AND organisation_id = $3`, id, closed, organisationID)
 	if err != nil {
 		return false, fmt.Errorf("failed to set closed on shift %s: %w", id, err)
 	}
@@ -241,23 +238,24 @@ func setShiftClosed(ctx context.Context, q querier, id string, closed bool) (boo
 // volunteers are free for it. The stamp goes first, while the old start is still
 // there to compare against; if the write below is then refused, the whole
 // transaction goes with it.
-func setShiftTimes(ctx context.Context, q querier, id, startAt, endAt string) (bool, error) {
+func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, endAt string) (bool, error) {
 	if _, err := q.Exec(ctx, `
 		UPDATE rotation SET inputs_changed_at = now()
 		WHERE allocated_datetime IS NULL
 		  AND id = (
 			SELECT s.rota_id FROM shift s
-			WHERE s.id = $1 AND `+shiftDateExpr+` IS DISTINCT FROM ($2::timestamp)::date
+			WHERE s.id = $1 AND s.organisation_id = $3
+			  AND `+shiftDateExpr+` IS DISTINCT FROM ($2::timestamp)::date
 		  )
-	`, id, startAt); err != nil {
+	`, id, startAt, organisationID); err != nil {
 		return false, fmt.Errorf("failed to mark the inputs of the rota holding shift %s as changed: %w", id, err)
 	}
 
 	tag, err := q.Exec(ctx, `
 		UPDATE shift
 		SET start_at = $2::timestamp, end_at = $3::timestamp
-		WHERE id = $1
-	`, id, startAt, endAt)
+		WHERE id = $1 AND organisation_id = $4
+	`, id, startAt, endAt, organisationID)
 	if isShiftDateTaken(err) {
 		return false, ErrShiftDateTaken
 	}
@@ -294,9 +292,9 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	// The rotation row is now identity plus allocated_datetime; start and shift
 	// count are derived from its shifts by GetRotations (ADR 0001).
 	_, err = tx.Exec(ctx, `
-		INSERT INTO rotation (id)
-		VALUES ($1)
-	`, rotation.ID)
+		INSERT INTO rotation (id, organisation_id)
+		VALUES ($1, $2)
+	`, rotation.ID, d.org())
 	if err != nil {
 		return fmt.Errorf("failed to insert rotation: %w", err)
 	}
@@ -309,9 +307,9 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 		// and refused by the NOT NULL, which is the loudest place for "nobody
 		// said when this runs" to surface.
 		batch.Queue(`
-			INSERT INTO shift (id, rota_id, closed, start_at, end_at)
-			VALUES ($1, $2, $3, NULLIF($4, '')::timestamp, NULLIF($5, '')::timestamp)
-		`, s.ID, s.RotaID, s.Closed, s.StartAt, s.EndAt)
+			INSERT INTO shift (id, rota_id, organisation_id, closed, start_at, end_at)
+			VALUES ($1, $2, $3, $4, NULLIF($5, '')::timestamp, NULLIF($6, '')::timestamp)
+		`, s.ID, s.RotaID, d.org(), s.Closed, s.StartAt, s.EndAt)
 	}
 	results := tx.SendBatch(ctx, batch)
 	for range shifts {
@@ -334,7 +332,7 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 
 	// A handful of Seats per Shift, so one at a time and named on failure for
 	// the same reason the pins below are.
-	if err := insertShiftRequirements(ctx, tx, requirements); err != nil {
+	if err := insertShiftRequirements(ctx, tx, d.org(), requirements); err != nil {
 		return err
 	}
 
@@ -342,7 +340,7 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	// and the shift_id foreign key means a mistake in the seeding is worth
 	// naming the row it came from.
 	for _, p := range preallocations {
-		if err := insertPreallocation(ctx, tx, p); err != nil {
+		if err := insertPreallocation(ctx, tx, d.org(), p); err != nil {
 			return err
 		}
 	}

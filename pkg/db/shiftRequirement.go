@@ -28,11 +28,11 @@ type ShiftRequirement struct {
 // empty: there is one way to say "this Shift asks for nothing", and it is the
 // zero value a lookup already returns. Asking about no Shifts is not a query.
 func (d *DB) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]ShiftRequirement, error) {
-	return getShiftShapes(ctx, d.pool, shiftIDs)
+	return getShiftShapes(ctx, d.pool, d.org(), shiftIDs)
 }
 
 // getShiftShapes is GetShiftShapes against any querier.
-func getShiftShapes(ctx context.Context, q querier, shiftIDs []string) (map[string][]ShiftRequirement, error) {
+func getShiftShapes(ctx context.Context, q querier, organisationID string, shiftIDs []string) (map[string][]ShiftRequirement, error) {
 	if len(shiftIDs) == 0 {
 		return map[string][]ShiftRequirement{}, nil
 	}
@@ -41,9 +41,9 @@ func getShiftShapes(ctx context.Context, q querier, shiftIDs []string) (map[stri
 		SELECT sr.shift_id, sr.role_id, sr.seats
 		FROM shift_requirement sr
 		JOIN role r ON r.id = sr.role_id
-		WHERE sr.shift_id = ANY($1)
+		WHERE sr.shift_id = ANY($1) AND r.organisation_id = $2
 		ORDER BY r.priority, r.name
-	`, shiftIDs)
+	`, shiftIDs, organisationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shift shapes: %w", err)
 	}
@@ -69,13 +69,19 @@ func getShiftShapes(ctx context.Context, q querier, shiftIDs []string) (map[stri
 // ever written alongside something else — its Shift, when the rota is defined
 // (InsertDefinedRota), or the Shape it replaces (setShiftShape) — and a Shape
 // arriving without its Shift is the state this table must never be in.
-func insertShiftRequirements(ctx context.Context, q querier, requirements []ShiftRequirement) error {
+func insertShiftRequirements(ctx context.Context, q querier, organisationID string, requirements []ShiftRequirement) error {
 	for _, seat := range requirements {
-		if _, err := q.Exec(ctx, `
+		// Selected from the Role, so a Role of another Organisation writes
+		// nothing rather than a Seat this drop-in cannot fill.
+		tag, err := q.Exec(ctx, `
 			INSERT INTO shift_requirement (shift_id, role_id, seats)
-			VALUES ($1, $2, $3)
-		`, seat.ShiftID, seat.RoleID, seat.Seats); err != nil {
+			SELECT $1, r.id, $3 FROM role r WHERE r.id = $2 AND r.organisation_id = $4
+		`, seat.ShiftID, seat.RoleID, seat.Seats, organisationID)
+		if err != nil {
 			return fmt.Errorf("failed to write %d seats of role %s on shift %s: %w", seat.Seats, seat.RoleID, seat.ShiftID, err)
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("failed to write %d seats on shift %s: no role %s", seat.Seats, seat.ShiftID, seat.RoleID)
 		}
 	}
 	return nil
@@ -93,9 +99,9 @@ func insertShiftRequirements(ctx context.Context, q querier, requirements []Shif
 // it: a Shift with no Seats and a Shift that does not exist both delete nought
 // rows, and only one of them is a caller's mistake. It runs inside the caller's
 // locking transaction, so nothing can remove the Shift between the two.
-func setShiftShape(ctx context.Context, q querier, shiftID string, seats []ShiftRequirement) (bool, error) {
+func setShiftShape(ctx context.Context, q querier, organisationID, shiftID string, seats []ShiftRequirement) (bool, error) {
 	var exists bool
-	if err := q.QueryRow(ctx, `SELECT true FROM shift WHERE id = $1`, shiftID).Scan(&exists); err != nil {
+	if err := q.QueryRow(ctx, `SELECT true FROM shift WHERE id = $1 AND organisation_id = $2`, shiftID, organisationID).Scan(&exists); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
@@ -106,7 +112,7 @@ func setShiftShape(ctx context.Context, q querier, shiftID string, seats []Shift
 		return false, fmt.Errorf("failed to clear the shape of shift %s: %w", shiftID, err)
 	}
 
-	if err := insertShiftRequirements(ctx, q, seats); err != nil {
+	if err := insertShiftRequirements(ctx, q, organisationID, seats); err != nil {
 		return false, err
 	}
 

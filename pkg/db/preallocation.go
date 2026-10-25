@@ -15,10 +15,10 @@ import (
 // 0001); each record carries only its shift_id, with rota and date living on the
 // shift. An empty id set returns no rows without a query.
 func (d *DB) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error) {
-	return getPreallocationsByShiftIDs(ctx, d.pool, shiftIDs)
+	return getPreallocationsByShiftIDs(ctx, d.pool, d.org(), shiftIDs)
 }
 
-func getPreallocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []string) ([]Preallocation, error) {
+func getPreallocationsByShiftIDs(ctx context.Context, q querier, organisationID string, shiftIDs []string) ([]Preallocation, error) {
 	if len(shiftIDs) == 0 {
 		return nil, nil
 	}
@@ -26,7 +26,8 @@ func getPreallocationsByShiftIDs(ctx context.Context, q querier, shiftIDs []stri
 		SELECT id, shift_id, role_id, volunteer_id, custom_value
 		FROM preallocation
 		WHERE shift_id = ANY($1)
-	`, shiftIDs)
+		  AND shift_id IN (SELECT id FROM shift WHERE organisation_id = $2)
+	`, shiftIDs, organisationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query preallocations by shift: %w", err)
 	}
@@ -73,8 +74,8 @@ func (d *DB) GetPreallocationByID(ctx context.Context, id string) (*Preallocatio
 		       `+shiftDateExpr+`, s.rota_id
 		FROM preallocation mp
 		JOIN shift s ON s.id = mp.shift_id
-		WHERE mp.id = $1
-	`, id).Scan(&mp.ID, &mp.ShiftID, &mp.RoleID, &volunteerID, &customValue, &date, &s.RotaID)
+		WHERE mp.id = $1 AND s.organisation_id = $2
+	`, id, d.org()).Scan(&mp.ID, &mp.ShiftID, &mp.RoleID, &volunteerID, &customValue, &date, &s.RotaID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, nil
 	}
@@ -95,7 +96,7 @@ func (d *DB) GetPreallocationByID(ctx context.Context, id string) (*Preallocatio
 // insertPreallocation writes a single preallocation row. The
 // nullable volunteer_id / custom_value follow the allocation pattern: an empty
 // string is stored as NULL. An unknown shift_id trips the FK and fails loudly.
-func insertPreallocation(ctx context.Context, q querier, mp Preallocation) error {
+func insertPreallocation(ctx context.Context, q querier, organisationID string, mp Preallocation) error {
 	var volunteerID, customValue *string
 	if mp.VolunteerID != "" {
 		volunteerID = &mp.VolunteerID
@@ -103,12 +104,19 @@ func insertPreallocation(ctx context.Context, q querier, mp Preallocation) error
 	if mp.CustomValue != "" {
 		customValue = &mp.CustomValue
 	}
-	_, err := q.Exec(ctx, `
+	// Selected from the Shift rather than written as VALUES, so a Shift of
+	// another Organisation inserts nothing rather than a pin on its rota.
+	tag, err := q.Exec(ctx, `
 		INSERT INTO preallocation (id, shift_id, role_id, volunteer_id, custom_value)
-		VALUES ($1, $2, $3, $4, $5)
-	`, mp.ID, mp.ShiftID, mp.RoleID, volunteerID, customValue)
+		SELECT $1, s.id, $3, $4, $5
+		FROM shift s
+		WHERE s.id = $2 AND s.organisation_id = $6
+	`, mp.ID, mp.ShiftID, mp.RoleID, volunteerID, customValue, organisationID)
 	if err != nil {
 		return fmt.Errorf("failed to insert preallocation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("failed to insert preallocation: no shift %s", mp.ShiftID)
 	}
 	// A pin is an allocator input twice over — it fills a Seat and it grants the
 	// Role it names (issue #109) — so the rota's draft is stale for it.
@@ -122,9 +130,13 @@ func insertPreallocation(ctx context.Context, q querier, mp Preallocation) error
 // The shift comes back with it so the rota's draft can be stamped stale:
 // unpinning changes the problem exactly as pinning does, and after the delete
 // there is no row left to ask which Shift it was on.
-func deletePreallocationByID(ctx context.Context, q querier, id string) (bool, error) {
+func deletePreallocationByID(ctx context.Context, q querier, organisationID, id string) (bool, error) {
 	var shiftID string
-	err := q.QueryRow(ctx, `DELETE FROM preallocation WHERE id = $1 RETURNING shift_id`, id).Scan(&shiftID)
+	err := q.QueryRow(ctx, `
+		DELETE FROM preallocation
+		WHERE id = $1 AND shift_id IN (SELECT id FROM shift WHERE organisation_id = $2)
+		RETURNING shift_id
+	`, id, organisationID).Scan(&shiftID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -140,11 +152,11 @@ func deletePreallocationByID(ctx context.Context, q querier, id string) (bool, e
 // rotaAllocated reports whether the rotation has been allocated (its
 // allocated_datetime is set). Callers run this against a rotation row already
 // locked FOR UPDATE so the answer cannot change under them.
-func rotaAllocated(ctx context.Context, q querier, rotaID string) (bool, error) {
+func rotaAllocated(ctx context.Context, q querier, organisationID, rotaID string) (bool, error) {
 	var allocated bool
 	err := q.QueryRow(ctx, `
-		SELECT allocated_datetime IS NOT NULL FROM rotation WHERE id = $1
-	`, rotaID).Scan(&allocated)
+		SELECT allocated_datetime IS NOT NULL FROM rotation WHERE id = $1 AND organisation_id = $2
+	`, rotaID, organisationID).Scan(&allocated)
 	if err != nil {
 		return false, fmt.Errorf("failed to read allocation state for rotation %s: %w", rotaID, err)
 	}

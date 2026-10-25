@@ -95,7 +95,7 @@ func (h *Handler) handleAllocateRotaInFlight(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), solveCeiling)
 	defer cancel()
 
-	outcome, err := services.AllocateRotaInFlight(ctx, h.store, h.volunteers, h.cfg, h.logger, req.DraftHash, h.solverPython)
+	outcome, err := services.AllocateRotaInFlight(ctx, h.store, h.volunteers, h.org, h.logger, req.DraftHash, h.solverPython)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return

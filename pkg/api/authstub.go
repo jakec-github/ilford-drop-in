@@ -21,30 +21,38 @@ import (
 // requests without it, so what an agent sees is the real gate rather than an
 // open door. Reaching this constructor needs a devMode block in config, which
 // only the dev environment may carry (internal/config.checkDevMode).
-func NewStubAuthenticator(dev *config.DevModeConfig, srv *config.ServerConfig, logger *zap.Logger, syncVolunteers VolunteerSyncFunc) (*Authenticator, error) {
+func NewStubAuthenticator(dev *config.DevModeConfig, srv *config.ServerConfig, organisations []config.Organisation, logger *zap.Logger) (*Authenticator, error) {
 	a := &Authenticator{
-		secret:           []byte(srv.SessionSecret),
-		organiserEmails:  allowlist(srv.OrganiserEmails),
-		rotaEditorEmails: allowlist(srv.RotaEditorEmails),
+		secret: []byte(srv.SessionSecret),
 		// Dev runs over plain HTTP: a Secure cookie would be set and never sent back.
 		secure:         false,
 		logger:         logger,
-		syncVolunteers: syncVolunteers,
 		stubEmail:      dev.OrganiserEmail,
 		stubRotaEditor: dev.RotaEditorEmail,
-		basePath:       srv.BasePath,
 	}
 
 	// A session for an address that does not hold the level it is signed in
 	// for carries the wrong authority, so login would appear to work and the
 	// screens would be the wrong person's. Refuse to start rather than hand
-	// over that puzzle.
-	if level, ok := a.levelOf(dev.OrganiserEmail); !ok || level != LevelOrganiser {
-		return nil, fmt.Errorf("devMode.organiserEmail %q is not in server.organiserEmails, so the session it mints would not be an Organiser's", dev.OrganiserEmail)
+	// over that puzzle. The levels are per Organisation, so the organiser must
+	// be one somewhere, and the Rota Editor must be one somewhere and an
+	// Organiser nowhere — or some Organisation would show them an Organiser's
+	// screens.
+	levels := func(email string) map[Level]bool {
+		held := make(map[Level]bool)
+		for i := range organisations {
+			if level, ok := accessFor(&organisations[i]).levelOf(email); ok {
+				held[level] = true
+			}
+		}
+		return held
+	}
+	if !levels(dev.OrganiserEmail)[LevelOrganiser] {
+		return nil, fmt.Errorf("devMode.organiserEmail %q is not an Organiser of any organisation, so the session it mints would not be an Organiser's", dev.OrganiserEmail)
 	}
 	if dev.RotaEditorEmail != "" {
-		if level, ok := a.levelOf(dev.RotaEditorEmail); !ok || level != LevelRotaEditor {
-			return nil, fmt.Errorf("devMode.rotaEditorEmail %q must be in server.rotaEditorEmails and not an Organiser, so the session it mints is a Rota Editor's", dev.RotaEditorEmail)
+		if held := levels(dev.RotaEditorEmail); !held[LevelRotaEditor] || held[LevelOrganiser] {
+			return nil, fmt.Errorf("devMode.rotaEditorEmail %q must be a Rota Editor of some organisation and an Organiser of none, so the session it mints is a Rota Editor's", dev.RotaEditorEmail)
 		}
 	}
 
@@ -106,5 +114,5 @@ func (a *Authenticator) handleStubLogin(w http.ResponseWriter, r *http.Request) 
 	a.setSessionCookie(w, email)
 	a.logger.Warn("Dev mode: issued a session without verifying identity",
 		zap.String("email", email))
-	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
+	http.Redirect(w, r, returnTo(r.URL.Query().Get("org")), http.StatusFound)
 }

@@ -48,8 +48,9 @@ func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.allocated_datetime, r.inputs_changed_at
 		FROM rotation r
 		JOIN shift s ON s.rota_id = r.id
+		WHERE r.organisation_id = $1
 		GROUP BY r.id
-	`)
+	`, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query rotations: %w", err)
 	}
@@ -98,11 +99,11 @@ func (d *DB) GetRotaInFlight(ctx context.Context) (*RotaInFlight, error) {
 		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.inputs_changed_at
 		FROM rotation r
 		JOIN shift s ON s.rota_id = r.id
-		WHERE r.allocated_datetime IS NULL
+		WHERE r.allocated_datetime IS NULL AND r.organisation_id = $1
 		GROUP BY r.id
 		ORDER BY MIN(`+shiftDateExpr+`)
 		LIMIT 1
-	`).Scan(&inFlight.ID, &start, &end, &inFlight.ShiftCount, &inputsChangedAt)
+	`, d.org()).Scan(&inFlight.ID, &start, &end, &inFlight.ShiftCount, &inputsChangedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -150,6 +151,10 @@ func (d *DB) GetRotaInFlight(ctx context.Context) (*RotaInFlight, error) {
 // decided.
 
 // markRotaInputsChanged stamps one Rotation, named directly.
+//
+// It and markRotaInputsChangedForShift take no Organisation: they only ever
+// follow a write that has already been scoped, to a rota or Shift that write
+// just touched.
 func markRotaInputsChanged(ctx context.Context, q querier, rotaID string) error {
 	if _, err := q.Exec(ctx, `
 		UPDATE rotation SET inputs_changed_at = now()
@@ -174,16 +179,16 @@ func markRotaInputsChangedForShift(ctx context.Context, q querier, shiftID strin
 	return nil
 }
 
-// markAllRotaInputsChanged stamps every unallocated Rotation, for the inputs
-// that belong to no single rota — the Roles and the Allocation Settings, which
-// are how the whole drop-in runs rather than facts about one rota. There is at
-// most one unallocated Rotation anyway (issue #139); the statement does not rely
-// on that.
-func markAllRotaInputsChanged(ctx context.Context, q querier) error {
+// markAllRotaInputsChanged stamps every unallocated Rotation of one
+// Organisation, for the inputs that belong to no single rota — the Roles and the
+// Allocation Settings, which are how the whole drop-in runs rather than facts
+// about one rota. There is at most one unallocated Rotation anyway (issue #139);
+// the statement does not rely on that.
+func markAllRotaInputsChanged(ctx context.Context, q querier, organisationID string) error {
 	if _, err := q.Exec(ctx, `
 		UPDATE rotation SET inputs_changed_at = now()
-		WHERE allocated_datetime IS NULL
-	`); err != nil {
+		WHERE allocated_datetime IS NULL AND organisation_id = $1
+	`, organisationID); err != nil {
 		return fmt.Errorf("failed to mark the inputs of the rota in flight as changed: %w", err)
 	}
 	return nil
@@ -249,8 +254,8 @@ func (d *DB) DiscardRota(ctx context.Context, rotaID string) (bool, error) {
 
 	var allocatedDatetime *time.Time
 	err = tx.QueryRow(ctx, `
-		SELECT allocated_datetime FROM rotation WHERE id = $1 FOR UPDATE
-	`, rotaID).Scan(&allocatedDatetime)
+		SELECT allocated_datetime FROM rotation WHERE id = $1 AND organisation_id = $2 FOR UPDATE
+	`, rotaID, d.org()).Scan(&allocatedDatetime)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

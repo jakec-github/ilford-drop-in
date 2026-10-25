@@ -14,9 +14,35 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// DB provides database operations using PostgreSQL
+// DB provides database operations using PostgreSQL.
+//
+// Every query about a drop-in's rota is about one Organisation's, so a DB is
+// bound to one before it runs any (ADR 0011). NewDB returns an unbound DB, which
+// can migrate, ping and sync the Organisation list and nothing else;
+// ForOrganisation hands out the bound copies the rest of the server uses. The
+// binding is a field rather than an argument to every method so that no query
+// can forget it: an unbound DB panics on the first scoped query, which is a bug
+// to find in a test rather than a leak to find in production.
 type DB struct {
 	pool *pgxpool.Pool
+	// organisationID is the Organisation every scoped query is filtered by, ""
+	// for an unbound DB.
+	organisationID string
+}
+
+// ForOrganisation returns a DB bound to one Organisation, sharing this one's
+// connection pool. Closing either closes both.
+func (d *DB) ForOrganisation(id string) *DB {
+	return &DB{pool: d.pool, organisationID: id}
+}
+
+// org is the Organisation this DB is bound to. It panics when unbound: a scoped
+// query run without an Organisation would read or write every drop-in's rows.
+func (d *DB) org() string {
+	if d.organisationID == "" {
+		panic("db: scoped query on a DB not bound to an Organisation; use ForOrganisation")
+	}
+	return d.organisationID
 }
 
 // NewDB creates a new PostgreSQL database connection

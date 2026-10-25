@@ -50,7 +50,7 @@ func (h *Handler) handleCreatePreallocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	view, err := services.AddPreallocation(r.Context(), h.store, h.volunteers, h.cfg, services.AddPreallocationParams{
+	view, err := services.AddPreallocation(r.Context(), h.store, h.volunteers, h.org, services.AddPreallocationParams{
 		Date:        req.Date,
 		VolunteerID: req.VolunteerID,
 		Custom:      req.Custom,
@@ -79,7 +79,7 @@ func (h *Handler) handleDeletePreallocation(w http.ResponseWriter, r *http.Reque
 // from/to date range. Behind a session: it names people against dates the rota has not
 // published yet.
 func (h *Handler) handleListPreallocations(w http.ResponseWriter, r *http.Request) {
-	views, err := services.ListPreallocations(r.Context(), h.store, h.volunteers, h.cfg, services.ListPreallocationsParams{
+	views, err := services.ListPreallocations(r.Context(), h.store, h.volunteers, h.org, services.ListPreallocationsParams{
 		From: r.URL.Query().Get("from"),
 		To:   r.URL.Query().Get("to"),
 	}, h.logger)

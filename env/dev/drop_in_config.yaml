@@ -8,14 +8,22 @@
 # dependency, and internal/config.checkDevMode refuses to load this block under
 # any environment but "dev", so none of this can leak into test or prod.
 
-# Placeholders. Nothing reads a sheet in dev mode — the roster comes from
-# devMode.volunteersCSV — but the fields are required, so they are filled with
-# obviously-fake values rather than left out.
-volunteerSheetID: 'dev-no-sheet'
-serviceVolunteersTab: 'volunteers'
-rotaSheetID: 'dev-no-sheet'
-gmailUserID: 'dev@example.com'
-gmailSender: 'dev@example.com'
+# One Organisation, served under /org/dev-org/ (ADR 0011). Add another entry
+# to drive two drop-ins side by side; each gets its own Roles and Rota
+# Defaults seeded at startup.
+organisations:
+  - id: 'dev-org'
+    displayName: 'Dev Drop-In'
+    organiserEmails:
+      - 'agent@example.com'
+    rotaEditorEmails:
+      - 'rota-editor@example.com'
+    # Placeholders. Nothing reads a sheet in dev mode — the roster comes from
+    # devMode.volunteersCSV — but the fields are required, so they are filled
+    # with obviously-fake values rather than left out.
+    volunteerSheetID: 'dev-no-sheet'
+    serviceVolunteersTab: 'volunteers'
+    rotaSheetID: 'dev-no-sheet'
 
 # A database of its own, deliberately not ilford_dropin_test: that one is the
 # golden template git worktrees clone from, and Postgres refuses to clone a
@@ -29,21 +37,16 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_dev?sslm
 
 server:
   port: 8080
-  basePath: '/org/dev-org'
   # Not a secret: it signs sessions for a server that has already decided to
   # mint a session for anyone who asks. Real environments use a real one.
   sessionSecret: 'dev-only-not-a-secret'
-  organiserEmails:
-    - 'agent@example.com'
-  rotaEditorEmails:
-    - 'rota-editor@example.com'
 
 devMode:
   # /auth/login signs in as this address without contacting Google. It must be
-  # in server.organiserEmails above, or the server refuses to start.
+  # an Organiser of an Organisation above, or the server refuses to start.
   organiserEmail: 'agent@example.com'
-  # /auth/login?level=rotaEditor signs in as this one instead. It must be in
-  # server.rotaEditorEmails and not an Organiser.
+  # /auth/login?level=rotaEditor signs in as this one instead. It must be a
+  # Rota Editor of an Organisation above and an Organiser of none.
   rotaEditorEmail: 'rota-editor@example.com'
   # A CSV export of the volunteer sheet — same header row, same columns.
   volunteersCSV: 'test_data/volunteers.csv'
