@@ -51,7 +51,7 @@ var gatedRoutes = []gatedRoute{
 	{http.MethodPost, "/api/availability-rounds", LevelOrganiser},
 	{http.MethodGet, "/api/availability-rounds", LevelOrganiser},
 	{http.MethodGet, "/api/availability-sends/send1", LevelOrganiser},
-	{http.MethodGet, "/auth/gmail", LevelOrganiser},
+	{http.MethodPost, "/auth/gmail", LevelOrganiser},
 	{http.MethodPost, "/api/sync", LevelOrganiser},
 }
 

@@ -283,7 +283,13 @@ func (h *Handler) Routes() http.Handler {
 	// OAuth endpoint that happens to start a send, not a data endpoint. Under
 	// the Organisation rather than at the root, because which drop-in's round
 	// it sends is the whole of what it is asked.
-	site.Handle("GET /auth/gmail", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGmailConsent)))
+	//
+	// POST, submitted as a form, because it mails every volunteer: a GET would
+	// let any other site start a send with a link, since a top-level
+	// navigation carries the session cookie and Google approves a scope it has
+	// granted before without asking. As a POST it is a write like any other, and
+	// Mount's cross-origin protection turns away one started from elsewhere.
+	site.Handle("POST /auth/gmail", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGmailConsent)))
 	// Subscribed to from a volunteer's calendar app, so its address can never
 	// move: it is where it was when the Organisation was the whole site.
 	site.HandleFunc("GET /calendars/{filename}", h.handleCalendar)

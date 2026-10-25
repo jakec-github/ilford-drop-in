@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { fetchSend, sendUrl } from "../api";
+import { fetchSend, startSend } from "../api";
 import type { AvailabilitySend, SendMode } from "../types";
 
 // How often a running send is asked how far it has got. A send moves once every
@@ -96,7 +96,7 @@ export function useAvailabilitySend(
     (mode: SendMode, deadline: string, volunteerId?: string) => {
       // A hard navigation, not a wouter one: the target is a server redirect out
       // to Google, which the SPA router has no way of following.
-      window.location.assign(sendUrl(mode, deadline, volunteerId));
+      startSend(mode, deadline, volunteerId);
     },
     [],
   );

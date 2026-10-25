@@ -49,6 +49,9 @@ type Pinger interface {
 //
 // An Organisation id that is not configured falls through to that same 404
 // page as any other missing path, byte for byte, so ids cannot be probed for.
+//
+// All of it sits behind harden: cross-origin protection, a body limit and the
+// security headers, for every request alike.
 func Mount(auth *Authenticator, organisations []*Handler, frontend fs.FS, health Pinger, logger *zap.Logger) http.Handler {
 	root := http.NewServeMux()
 	root.Handle("GET /health", healthHandler(health, logger))
@@ -67,5 +70,5 @@ func Mount(auth *Authenticator, organisations []*Handler, frontend fs.FS, health
 		root.Handle(base, http.RedirectHandler(base+"/", http.StatusMovedPermanently))
 	}
 
-	return root
+	return harden(root, auth.secure)
 }

@@ -152,13 +152,16 @@ func (a *Authenticator) gmailOAuthConfig() *oauth2.Config {
 func (h *Handler) handleGmailConsent(w http.ResponseWriter, r *http.Request) {
 	owner := sessionEmail(r.Context())
 
+	// The form's body only, never the query string: a send is started by
+	// submitting the page's form, and nothing that arrives on the URL is the
+	// Organiser's instruction.
 	state := gmailSendState{
 		Organisation: h.org.ID,
 		Email:        owner,
-		Mode:         services.SendMode(r.URL.Query().Get("mode")),
-		RotaID:       r.URL.Query().Get("rotaId"),
-		Deadline:     r.URL.Query().Get("deadline"),
-		VolunteerID:  r.URL.Query().Get("volunteerId"),
+		Mode:         services.SendMode(r.PostFormValue("mode")),
+		RotaID:       r.PostFormValue("rotaId"),
+		Deadline:     strings.TrimSpace(r.PostFormValue("deadline")),
+		VolunteerID:  r.PostFormValue("volunteerId"),
 		Expiry:       time.Now().Add(gmailStateMaxAge).Unix(),
 	}
 
@@ -213,10 +216,7 @@ func validateSendState(state gmailSendState) error {
 	default:
 		return wrapInvalid("unknown send mode " + string(state.Mode))
 	}
-	if strings.TrimSpace(state.Deadline) == "" {
-		return wrapInvalid("a deadline is required: it is quoted in the subject and the body of every email")
-	}
-	return nil
+	return services.ValidateDeadline(state.Deadline)
 }
 
 // wrapInvalid classifies a rejected send instruction so writeServiceError gives

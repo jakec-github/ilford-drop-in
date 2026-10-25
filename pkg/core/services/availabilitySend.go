@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"unicode"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -30,6 +32,30 @@ const (
 	// case rather than a reason to refuse.
 	SendModeResend SendMode = "resend"
 )
+
+// maxDeadlineLength bounds the deadline in runes. It is a date as somebody
+// would write it — "Friday 14 November" — and room for a few words more.
+const maxDeadlineLength = 100
+
+// ValidateDeadline refuses a deadline that cannot go into an email as it is.
+// The deadline is free text, quoted in the Subject header as well as the body,
+// so a line break in it would end the header and start another — a Bcc, or a
+// body of someone else's choosing. A control character has no business in a
+// date either, so all of them are refused rather than only CR and LF.
+func ValidateDeadline(deadline string) error {
+	if deadline == "" {
+		return wrapf(ErrInvalidInput, "a deadline is required: it is quoted in the subject and the body of every email")
+	}
+	if utf8.RuneCountInString(deadline) > maxDeadlineLength {
+		return wrapf(ErrInvalidInput, "the deadline is longer than %d characters", maxDeadlineLength)
+	}
+	for _, r := range deadline {
+		if unicode.IsControl(r) {
+			return wrapf(ErrInvalidInput, "the deadline must be one line of text")
+		}
+	}
+	return nil
+}
 
 // SendParams is one send. Deadline is the date the email quotes and nothing
 // else: it is not stored, not shown on the site, and not enforced — allocation
@@ -95,8 +121,8 @@ func SendAvailabilityEmails(
 	logger *zap.Logger,
 	params SendParams,
 ) (*SendReport, error) {
-	if params.Deadline == "" {
-		return nil, wrapf(ErrInvalidInput, "a deadline is required: it is quoted in the subject and the body of every email")
+	if err := ValidateDeadline(params.Deadline); err != nil {
+		return nil, err
 	}
 	if params.Link == nil {
 		return nil, fmt.Errorf("send params carry no link builder")
