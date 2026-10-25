@@ -70,7 +70,7 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 		UserEmail: sessionEmail(r.Context()),
 	}
 
-	result, err := services.ChangeRota(r.Context(), h.store, h.volunteers, h.cfg, params, h.logger)
+	result, err := services.ChangeRota(r.Context(), h.store, h.volunteers, h.org, params, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return

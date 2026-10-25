@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -51,23 +50,22 @@ type Session struct {
 	Level Level  `json:"level"`
 }
 
-// Authenticator handles the OIDC login flow and session cookies. It proves
-// identity via a signed cookie and re-checks the allowlists from config on
-// every request, so the cookie carries identity, not authority — which is also
-// why a level is never stored in the cookie: moving someone between lists takes
-// effect on their next request.
+// Authenticator handles the OIDC login flow and session cookies, for every
+// Organisation the server runs. It proves identity and nothing more: the
+// signed cookie carries an email, and what that person may do is decided per
+// request by the Organisation in the path, from its own allowlists (ADR 0011).
+// That is also why a level is never stored in the cookie: moving someone
+// between lists takes effect on their next request.
 type Authenticator struct {
-	oauth2Config     *oauth2.Config
-	verifier         *oidc.IDTokenVerifier
-	secret           []byte
-	organiserEmails  map[string]struct{} // folded allowlist
-	rotaEditorEmails map[string]struct{} // folded allowlist
-	secure           bool                // set the cookie Secure flag (prod only)
-	logger           *zap.Logger
-	// syncVolunteers runs an Organiser-triggered volunteer sync using the server's
-	// own service account credential. Injected by the composition root; nil
-	// disables the sync endpoint.
-	syncVolunteers VolunteerSyncFunc
+	oauth2Config *oauth2.Config
+	verifier     *oidc.IDTokenVerifier
+	secret       []byte
+	secure       bool // set the cookie Secure flag (prod only)
+	logger       *zap.Logger
+	// organisations is each Organisation's allowlists and the way to finish a
+	// send it started, keyed by id. Filled by NewHandler, one entry per
+	// Organisation, before the server serves anything.
+	organisations map[string]registeredOrganisation
 	// stubEmail, when non-empty, replaces the Google round-trip: login mints a
 	// session for this address directly. Set only by NewStubAuthenticator, which
 	// the dev environment alone can reach (see authstub.go).
@@ -75,23 +73,56 @@ type Authenticator struct {
 	// stubRotaEditor is the address stub login signs in as when asked for a
 	// Rota Editor. Empty when dev mode names none.
 	stubRotaEditor string
-	// completeSend finishes an incremental gmail.send grant arriving at the
-	// shared callback. Set by NewHandler, because the send needs the store and
-	// the roster and this type has neither; nil means no sending is wired up.
-	completeSend http.HandlerFunc
-	// basePath is the path the site's own pages are served under, or "" for the
-	// root of the domain (issue #201). The OAuth endpoints themselves stay at
-	// the root — their callback URI is registered by hand in the Google console
-	// and is better off shared — so this is needed for one thing only: knowing
-	// where to send a browser once it has logged in.
-	basePath string
 }
 
-// siteRoot is the app's home page as a browser must ask for it, which is where
-// a completed login lands. The only thing this type needs the base path for.
-func (a *Authenticator) siteRoot() string {
-	return a.basePath + "/"
+// registeredOrganisation is what the shared /auth endpoints need to know about
+// one Organisation: who may sign in for it, and how to finish a send it started.
+type registeredOrganisation struct {
+	access access
+	// completeSend finishes an incremental gmail.send grant arriving at the
+	// shared callback. It is the Organisation's Handler's, because the send
+	// needs its store and its roster and this type has neither.
+	completeSend http.HandlerFunc
 }
+
+// register makes an Organisation known to the shared endpoints. Called by
+// NewHandler, at startup.
+func (a *Authenticator) register(id string, acc access, completeSend http.HandlerFunc) {
+	if a.organisations == nil {
+		a.organisations = make(map[string]registeredOrganisation)
+	}
+	a.organisations[id] = registeredOrganisation{access: acc, completeSend: completeSend}
+}
+
+// onAnyAllowlist reports whether email may act for some Organisation, which is
+// all login asks: a session is identity, and each Organisation decides for
+// itself what it allows (ADR 0011).
+func (a *Authenticator) onAnyAllowlist(email string) bool {
+	for _, org := range a.organisations {
+		if _, ok := org.access.levelOf(email); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// returnTo is where a browser lands once it has signed in: the Organisation it
+// set out from, or the root when it named none.
+//
+// The id is only checked to be shaped like one, never looked up: an id that
+// names no Organisation lands on the same 404 as any other unknown address, so
+// login cannot be used to find out which ids exist. The shape is what keeps the
+// redirect on this site.
+func returnTo(organisationID string) string {
+	if !validOrganisationID.MatchString(organisationID) {
+		return "/"
+	}
+	return organisationPath(organisationID) + "/"
+}
+
+// returnCookieName carries the Organisation a login set out from through
+// Google and back, alongside the state.
+const returnCookieName = "oauth_return"
 
 // isStubbed reports whether the Google round-trip has been replaced, which is
 // dev mode and nothing else.
@@ -106,9 +137,8 @@ func (a *Authenticator) samePerson(x, y string) bool {
 }
 
 // NewAuthenticator builds an Authenticator. It performs OIDC provider discovery
-// against Google, so it makes a network call and can fail. syncVolunteers is
-// invoked by the sync endpoint to repopulate the roster from the sheet.
-func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, srv *config.ServerConfig, env string, logger *zap.Logger, syncVolunteers VolunteerSyncFunc) (*Authenticator, error) {
+// against Google, so it makes a network call and can fail.
+func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, srv *config.ServerConfig, env string, logger *zap.Logger) (*Authenticator, error) {
 	provider, err := oidc.NewProvider(ctx, googleIssuer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover OIDC provider: %w", err)
@@ -128,42 +158,29 @@ func NewAuthenticator(ctx context.Context, webCfg *config.OAuthClientWebConfig, 
 	}
 
 	return &Authenticator{
-		oauth2Config:     oauth2Config,
-		verifier:         provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
-		secret:           []byte(srv.SessionSecret),
-		organiserEmails:  allowlist(srv.OrganiserEmails),
-		rotaEditorEmails: allowlist(srv.RotaEditorEmails),
-		secure:           config.Hosted(env),
-		logger:           logger,
-		syncVolunteers:   syncVolunteers,
-		basePath:         srv.BasePath,
+		oauth2Config: oauth2Config,
+		verifier:     provider.Verifier(&oidc.Config{ClientID: webCfg.Web.ClientID}),
+		secret:       []byte(srv.SessionSecret),
+		secure:       config.Hosted(env),
+		logger:       logger,
 	}, nil
 }
 
-// allowlist folds configured addresses into the lookup set levelOf checks.
-func allowlist(emails []string) map[string]struct{} {
-	folded := make(map[string]struct{}, len(emails))
-	for _, e := range emails {
-		folded[normaliseEmail(e)] = struct{}{}
-	}
-	return folded
-}
-
-// registerRoutes attaches the /auth endpoints to mux.
+// registerRoutes attaches the shared /auth endpoints to mux. What a signed-in
+// person is, and anything they may do, is under each Organisation's own path;
+// these only prove who they are.
 func (a *Authenticator) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/login", a.handleLogin)
 	mux.HandleFunc("GET /auth/callback", a.handleCallback)
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
-	mux.HandleFunc("GET /auth/me", a.handleMe)
-	// Syncing repopulates the roster from the sheet with the server's service
-	// account; it requires an Organiser but no OAuth round-trip, so it is a
-	// plain POST rather than a redirect dance.
-	mux.Handle("POST /auth/sync", a.requireLevel(LevelOrganiser, http.HandlerFunc(a.handleSync)))
 }
 
 // handleLogin starts the OIDC flow: stash a random state in a short-lived cookie
 // and redirect to Google's consent screen for identity scopes only. In dev mode
 // there is no consent screen to visit, so it signs the stub account in on the spot.
+//
+// ?org= names the Organisation to land on afterwards. Each Organisation's
+// pages link to their own /org/<id>/auth/login, which adds it.
 func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if a.stubEmail != "" {
 		a.handleStubLogin(w, r)
@@ -186,6 +203,15 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   a.secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     returnCookieName,
+		Value:    r.URL.Query().Get("org"),
+		Path:     "/auth",
+		MaxAge:   int(stateCookieMaxAge.Seconds()),
+		HttpOnly: true,
+		Secure:   a.secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	http.Redirect(w, r, a.oauth2Config.AuthCodeURL(state), http.StatusFound)
 }
@@ -201,11 +227,20 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 // no state cookie to check against.
 func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if isGmailState(r.URL.Query().Get("state")) {
-		if a.completeSend == nil {
+		// The Organisation the send belongs to is in the signed state, which is
+		// the only thing that comes back from Google to say which one it was.
+		state, err := verifyGmailState(a.secret, r.URL.Query().Get("state"), time.Now())
+		if err != nil {
+			a.logger.Warn("Rejected an availability send with an invalid state", zap.Error(err))
+			http.Error(w, "invalid OAuth state", http.StatusBadRequest)
+			return
+		}
+		org, ok := a.organisations[state.Organisation]
+		if !ok || org.completeSend == nil {
 			http.Error(w, "sending is not available on this server", http.StatusNotFound)
 			return
 		}
-		a.completeSend(w, r)
+		org.completeSend(w, r)
 		return
 	}
 
@@ -223,6 +258,11 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	// The state is single-use; clear it regardless of what follows.
 	a.clearCookie(w, stateCookieName, "/auth")
+	var organisationID string
+	if c, err := r.Cookie(returnCookieName); err == nil {
+		organisationID = c.Value
+	}
+	a.clearCookie(w, returnCookieName, "/auth")
 
 	oauth2Token, err := a.oauth2Config.Exchange(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
@@ -255,10 +295,10 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, allowed := a.levelOf(claims.Email); !claims.EmailVerified || !allowed {
-		// On neither list: no session is created. A session existing means an
-		// Organiser or a Rota Editor.
-		a.logger.Warn("Rejected login from someone on neither allowlist",
+	if !claims.EmailVerified || !a.onAnyAllowlist(claims.Email) {
+		// On no Organisation's lists: no session is created. A session existing
+		// means an Organiser or a Rota Editor of somewhere.
+		a.logger.Warn("Rejected login from someone on no allowlist",
 			zap.String("email", claims.Email),
 			zap.Bool("email_verified", claims.EmailVerified))
 		http.Error(w, "not authorised", http.StatusForbidden)
@@ -267,7 +307,7 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	a.setSessionCookie(w, claims.Email)
 
-	http.Redirect(w, r, a.siteRoot(), http.StatusFound)
+	http.Redirect(w, r, returnTo(organisationID), http.StatusFound)
 }
 
 // setSessionCookie issues the signed session for email.
@@ -275,7 +315,7 @@ func (a *Authenticator) setSessionCookie(w http.ResponseWriter, email string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName,
 		// Store the address the identity provider asserted, not the folded form,
-		// so /auth/me shows the email they recognise. Authority is re-checked by
+		// so /api/me shows the email they recognise. Authority is re-checked by
 		// levelOf, which folds both sides, so the stored form need not be
 		// canonical.
 		Value:    signSession(a.secret, email, time.Now().Add(sessionDuration)),
@@ -293,87 +333,19 @@ func (a *Authenticator) handleLogout(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleMe reports who is logged in and at what level, or 401 if there is no
-// valid session. Used by the frontend to show logged-in state and to decide
-// which screens and controls to offer.
-func (a *Authenticator) handleMe(w http.ResponseWriter, r *http.Request) {
-	session, ok := a.sessionFromRequest(r)
-	if !ok {
-		http.Error(w, "not authenticated", http.StatusUnauthorized)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(session); err != nil {
-		a.logger.Error("Failed to encode /auth/me response", zap.Error(err))
-	}
-}
-
-// sessionEmailContextKey keys the verified email stashed in a request's context
-// by requireLevel. Unexported so only this package can set or read it.
-type sessionEmailContextKey struct{}
-
-// requireLevel wraps a handler, allowing it through only for a valid session at
-// min or above. No session is a 401; a session too junior for the route is a
-// 403, because the person is known and simply may not. It re-checks the
-// allowlists on every request, so removing someone from config — or moving them
-// from one list to the other — takes effect on their still-valid cookie on the
-// next request after reload. The verified email is stashed in the request
-// context so gated handlers can attribute the action without re-parsing the
-// cookie.
-func (a *Authenticator) requireLevel(min Level, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, ok := a.sessionFromRequest(r)
-		if !ok {
-			http.Error(w, "not authorised", http.StatusUnauthorized)
-			return
-		}
-		if !session.Level.atLeast(min) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		ctx := context.WithValue(r.Context(), sessionEmailContextKey{}, session.Email)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// sessionEmail returns the verified email requireLevel stashed in ctx. It is
-// only present on requests that passed through requireLevel; the empty string
-// means the handler was not gated.
-func sessionEmail(ctx context.Context) string {
-	email, _ := ctx.Value(sessionEmailContextKey{}).(string)
-	return email
-}
-
-// sessionFromRequest returns the valid session on the request, if any. It
-// checks both cookie integrity (identity) and allowlist membership (authority).
-func (a *Authenticator) sessionFromRequest(r *http.Request) (Session, bool) {
+// emailFromRequest returns the identity a valid session cookie proves, if any.
+// It says nothing about what that person may do: that is each Organisation's
+// to decide (Handler.session).
+func (a *Authenticator) emailFromRequest(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		return Session{}, false
+		return "", false
 	}
 	email, err := verifySession(a.secret, cookie.Value, time.Now())
 	if err != nil {
-		return Session{}, false
+		return "", false
 	}
-	level, ok := a.levelOf(email)
-	if !ok {
-		return Session{}, false
-	}
-	return Session{Email: email, Level: level}, true
-}
-
-// levelOf reports the level email holds (case-insensitive), and false when it
-// is on neither allowlist. Someone on both is an Organiser: that list already
-// allows everything the other does.
-func (a *Authenticator) levelOf(email string) (Level, bool) {
-	folded := normaliseEmail(email)
-	if _, ok := a.organiserEmails[folded]; ok {
-		return LevelOrganiser, true
-	}
-	if _, ok := a.rotaEditorEmails[folded]; ok {
-		return LevelRotaEditor, true
-	}
-	return "", false
+	return email, true
 }
 
 // clearCookie expires the named cookie at path.

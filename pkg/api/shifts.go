@@ -63,7 +63,7 @@ func (h *Handler) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		To:   r.URL.Query().Get("to"),
 	}
 
-	shifts, err := services.ListShifts(r.Context(), h.store, h.volunteers, h.cfg, params, h.logger)
+	shifts, err := services.ListShifts(r.Context(), h.store, h.volunteers, h.org, params, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return

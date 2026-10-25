@@ -24,7 +24,7 @@ type recordingPublisher struct{ triggers atomic.Int32 }
 func (p *recordingPublisher) Trigger() { p.triggers.Add(1) }
 
 func handlerPublishingTo(store *mockStore, publisher RotaPublisher) *Handler {
-	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, publisher, zap.NewNop())
+	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, publisher, nil, zap.NewNop())
 }
 
 // stubSolver writes an executable standing in for pyallocator that answers

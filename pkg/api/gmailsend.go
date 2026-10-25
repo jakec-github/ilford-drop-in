@@ -53,12 +53,15 @@ func (h *Handler) sendReturnURL() string {
 // Nothing here is secret — it is the Organiser's own instruction coming back to
 // them — but every field is authority, so all of it is covered by the signature.
 type gmailSendState struct {
-	Email       string            `json:"email"`
-	Mode        services.SendMode `json:"mode"`
-	RotaID      string            `json:"rotaId,omitempty"`
-	Deadline    string            `json:"deadline"`
-	VolunteerID string            `json:"volunteerId,omitempty"`
-	Expiry      int64             `json:"exp"`
+	// Organisation is whose round it is. The callback is shared, so this is
+	// what routes the grant back to the right one (Authenticator.handleCallback).
+	Organisation string            `json:"org"`
+	Email        string            `json:"email"`
+	Mode         services.SendMode `json:"mode"`
+	RotaID       string            `json:"rotaId,omitempty"`
+	Deadline     string            `json:"deadline"`
+	VolunteerID  string            `json:"volunteerId,omitempty"`
+	Expiry       int64             `json:"exp"`
 }
 
 // signGmailState encodes a pending send as an OAuth state parameter.
@@ -142,19 +145,21 @@ func (a *Authenticator) gmailOAuthConfig() *oauth2.Config {
 // Requesting the scope here rather than at login is the point of the design. The
 // session cookie carries identity, not authority, and re-checks the allowlist on
 // every request; a login-time grant would have the server holding a live Google
-// credential for sixty days that removing someone from organiserEmails would not
+// credential for sixty days that removing someone from an Organisation's
+// organiserEmails would not
 // revoke. It would also demand Gmail permission from an Organiser who only signed in
 // to look at a shift.
 func (h *Handler) handleGmailConsent(w http.ResponseWriter, r *http.Request) {
 	owner := sessionEmail(r.Context())
 
 	state := gmailSendState{
-		Email:       owner,
-		Mode:        services.SendMode(r.URL.Query().Get("mode")),
-		RotaID:      r.URL.Query().Get("rotaId"),
-		Deadline:    r.URL.Query().Get("deadline"),
-		VolunteerID: r.URL.Query().Get("volunteerId"),
-		Expiry:      time.Now().Add(gmailStateMaxAge).Unix(),
+		Organisation: h.org.ID,
+		Email:        owner,
+		Mode:         services.SendMode(r.URL.Query().Get("mode")),
+		RotaID:       r.URL.Query().Get("rotaId"),
+		Deadline:     r.URL.Query().Get("deadline"),
+		VolunteerID:  r.URL.Query().Get("volunteerId"),
+		Expiry:       time.Now().Add(gmailStateMaxAge).Unix(),
 	}
 
 	// Rejected here rather than after the consent screen: sending someone to
@@ -235,7 +240,7 @@ func (h *Handler) completeGmailSend(w http.ResponseWriter, r *http.Request) {
 	// level is checked again here because this is not behind requireLevel: it
 	// arrives at the login callback, and someone demoted to Rota Editor between
 	// starting a send and finishing it may no longer send.
-	session, ok := h.auth.sessionFromRequest(r)
+	session, ok := h.session(r)
 	if !ok {
 		http.Error(w, "not authorised", http.StatusUnauthorized)
 		return
@@ -246,7 +251,7 @@ func (h *Handler) completeGmailSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state, err := verifyGmailState(h.auth.secret, r.URL.Query().Get("state"), time.Now())
-	if err != nil || !h.auth.samePerson(state.Email, session.Email) {
+	if err != nil || state.Organisation != h.org.ID || !h.auth.samePerson(state.Email, session.Email) {
 		h.auth.logger.Warn("Rejected an availability send with an invalid state", zap.Error(err))
 		http.Error(w, "invalid OAuth state", http.StatusBadRequest)
 		return
@@ -314,7 +319,7 @@ func (h *Handler) startSend(w http.ResponseWriter, r *http.Request, owner string
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Minute)
 		defer cancel()
 
-		report, err := services.SendAvailabilityEmails(ctx, h.store, h.volunteers, mailer, h.cfg, h.logger, params)
+		report, err := services.SendAvailabilityEmails(ctx, h.store, h.volunteers, mailer, h.org, h.logger, params)
 		if err != nil {
 			h.logger.Error("Availability send failed", zap.String("job", jobID), zap.Error(err))
 		}

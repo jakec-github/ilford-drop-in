@@ -17,11 +17,15 @@ import (
 // port nothing listens on. Every test here loads it, so a run that passes is
 // also proof the command never opened the database it names.
 const prodConfigYAML = `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
+organisations:
+  - id: "east"
+    displayName: "East Drop-In"
+    organiserEmails:
+      - "organiser@example.com"
+    volunteerSheetID: "sheet123"
+    serviceVolunteersTab: "Volunteers"
+    rotaSheetID: "rota456"
 databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
-gmailUserID: "user@example.com"
 `
 
 // runValidateConfig executes the command the way main.go wires it: under a root
@@ -139,8 +143,6 @@ func TestValidateConfigCmd_DevModeRejectedForProd(t *testing.T) {
 server:
   port: 8080
   sessionSecret: "sixteen-characters-long"
-  organiserEmails:
-    - "organiser@example.com"
 devMode:
   organiserEmail: "organiser@example.com"
   volunteersCSV: "test_data/volunteers.csv"
@@ -151,39 +153,56 @@ devMode:
 	assert.Contains(t, err.Error(), "devMode")
 }
 
-// The summary counts each level: deploy-config.sh prints it before a config
-// ships, which is the moment to notice a list that is not what was meant.
-func TestValidateConfigCmd_SummarisesAccessLevels(t *testing.T) {
+// The summary names each Organisation and counts each level: deploy-config.sh
+// prints it before a config ships, which is the moment to notice a list that is
+// not what was meant.
+func TestValidateConfigCmd_SummarisesOrganisations(t *testing.T) {
+	path := writeConfig(t, `
+organisations:
+  - id: "east"
+    displayName: "East Drop-In"
+    organiserEmails:
+      - "organiser@example.com"
+    volunteerSheetID: "sheet123"
+    serviceVolunteersTab: "Volunteers"
+    rotaSheetID: "rota456"
+  - id: "west"
+    displayName: "West Drop-In"
+    organiserEmails:
+      - "a@example.com"
+      - "b@example.com"
+    rotaEditorEmails:
+      - "c@example.com"
+    volunteerSheetID: "sheet789"
+    serviceVolunteersTab: "Volunteers"
+    rotaSheetID: "rota012"
+databaseURL: "postgres://nobody:nobody@127.0.0.1:1/unreachable?sslmode=disable"
+server:
+  port: 8080
+  sessionSecret: "sixteen-characters-long"
+`)
+
+	out, err := runValidateConfig(t, "-e", "prod", path)
+	require.NoError(t, err)
+	assert.Contains(t, out, "east (East Drop-In) — 1 organiser, 0 rota editors")
+	assert.Contains(t, out, "west (West Drop-In) — 2 organisers, 1 rota editor")
+	assert.Contains(t, out, "port 8080")
+}
+
+// A file still in the single-drop-in shape is refused before it ships, naming
+// the keys that have to move (ADR 0011).
+func TestValidateConfigCmd_RejectsSingleOrganisationKeys(t *testing.T) {
 	path := writeConfig(t, prodConfigYAML+`
 server:
   port: 8080
   sessionSecret: "sixteen-characters-long"
   organiserEmails:
     - "a@example.com"
-    - "b@example.com"
-  rotaEditorEmails:
-    - "c@example.com"
-`)
-
-	out, err := runValidateConfig(t, "-e", "prod", path)
-	require.NoError(t, err)
-	assert.Contains(t, out, "port 8080, 2 organisers, 1 rota editor")
-}
-
-// adminEmails was replaced outright by organiserEmails (#204). A file still
-// carrying only the old key is refused before it ships, naming the key it needs.
-func TestValidateConfigCmd_RejectsAdminEmailsAlone(t *testing.T) {
-	path := writeConfig(t, prodConfigYAML+`
-server:
-  port: 8080
-  sessionSecret: "sixteen-characters-long"
-  adminEmails:
-    - "a@example.com"
 `)
 
 	_, err := runValidateConfig(t, "-e", "prod", path)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "OrganiserEmails")
+	assert.Contains(t, err.Error(), "server.organiserEmails")
 }
 
 func TestValidateConfigCmd_RequiresEnv(t *testing.T) {

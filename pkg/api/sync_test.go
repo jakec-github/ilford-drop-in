@@ -10,68 +10,55 @@ import (
 	"go.uber.org/zap"
 )
 
-// newSyncTestAuthenticator builds an Authenticator wired for the sync path: the
-// Organiser allowlist and session secret used by organiserCookie, plus the injected
-// sync function. No OAuth config is needed — sync no longer runs an OAuth
-// round-trip.
-func newSyncTestAuthenticator(syncFn VolunteerSyncFunc) *Authenticator {
-	return &Authenticator{
-		secret:          testSecret,
-		organiserEmails: map[string]struct{}{testOrganiserEmail: {}},
-		logger:          zap.NewNop(),
-		syncVolunteers:  syncFn,
-	}
-}
-
-func syncTestHandler(a *Authenticator) http.Handler {
-	mux := http.NewServeMux()
-	a.registerRoutes(mux)
-	return mux
+// syncTestHandler is an Organisation's routes with syncFn as its roster sync.
+// No OAuth config is needed — sync runs on the server's own service account.
+func syncTestHandler(syncFn VolunteerSyncFunc) http.Handler {
+	return NewHandler(&mockStore{}, testVolunteers(), apiTestCfg, newTestAuthenticator(), nil, nil, nil, syncFn, zap.NewNop()).Routes()
 }
 
 func TestSync_RequiresAnOrganiser(t *testing.T) {
 	called := false
-	a := newSyncTestAuthenticator(func(context.Context) error {
+	syncFn := VolunteerSyncFunc(func(context.Context) error {
 		called = true
 		return nil
 	})
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "")
+	rec := doRequest(t, syncTestHandler(syncFn), http.MethodPost, "/api/sync", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code, "syncing without an Organiser session must be rejected")
 	assert.False(t, called, "sync must not run without a verified Organiser session")
 }
 
 func TestSync_Success(t *testing.T) {
 	called := false
-	a := newSyncTestAuthenticator(func(context.Context) error {
+	syncFn := VolunteerSyncFunc(func(context.Context) error {
 		called = true
 		return nil
 	})
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
+	rec := doRequest(t, syncTestHandler(syncFn), http.MethodPost, "/api/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 	assert.True(t, called, "an Organiser sync must run the sync function")
 }
 
 func TestSync_Failure(t *testing.T) {
-	a := newSyncTestAuthenticator(func(context.Context) error {
+	syncFn := VolunteerSyncFunc(func(context.Context) error {
 		return errors.New("sheets access denied")
 	})
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
+	rec := doRequest(t, syncTestHandler(syncFn), http.MethodPost, "/api/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusBadGateway, rec.Code, "a failed sheet fetch must surface as an upstream error")
 }
 
 func TestSync_NotConfigured(t *testing.T) {
-	a := newSyncTestAuthenticator(nil)
+	var syncFn VolunteerSyncFunc
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodPost, "/auth/sync", "", organiserCookie())
+	rec := doRequest(t, syncTestHandler(syncFn), http.MethodPost, "/api/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "with no sync function wired the endpoint is unavailable")
 }
 
 func TestSync_RejectsGet(t *testing.T) {
-	a := newSyncTestAuthenticator(func(context.Context) error { return nil })
+	syncFn := VolunteerSyncFunc(func(context.Context) error { return nil })
 
-	rec := doRequest(t, syncTestHandler(a), http.MethodGet, "/auth/sync", "", organiserCookie())
+	rec := doRequest(t, syncTestHandler(syncFn), http.MethodGet, "/api/sync", "", organiserCookie())
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code, "sync mutates state, so only POST is allowed")
 }

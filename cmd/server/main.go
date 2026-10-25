@@ -78,140 +78,55 @@ func run(env string, portOverride int) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	volunteers := api.NewVolunteerStore()
+	// The organisation table must hold every configured id before anything is
+	// written under one. On the first start after migration 030 this is also
+	// where the rows from before Organisations existed are given to theirs.
+	ids := make([]string, len(cfg.Organisations))
+	for i, org := range cfg.Organisations {
+		ids[i] = org.ID
+	}
+	adopted, err := database.SyncOrganisations(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("failed to sync organisations: %w", err)
+	}
+	if adopted != "" {
+		logger.Info("Existing rota adopted into an organisation", zap.String("organisation", adopted))
+	}
 
 	// Dev mode replaces every part of the Google dependency — the roster fetch,
 	// the identity provider and outbound mail — so the server runs on a checkout
 	// with no credentials at all. Config keeps it to the dev environment; this
-	// branch is the only place it changes what gets built.
-	var syncVolunteers api.VolunteerSyncFunc
+	// branch and the one in newOrganisation are the only places it changes what
+	// gets built.
+	var shared sharedDeps
 	var authenticator *api.Authenticator
-	var newMailer api.MailerFunc
-	// Nil in dev mode: there is no sheet to publish to, and Trigger on a nil
-	// publisher does nothing.
-	var publisher *api.SheetPublisher
 	if cfg.DevMode != nil {
 		logger.Warn("DEV MODE: Google is stubbed out — the roster comes from a file and login issues a session without verifying identity",
 			zap.String("volunteersCSV", cfg.DevMode.VolunteersCSV),
 			zap.String("organiserEmail", cfg.DevMode.OrganiserEmail),
 			zap.String("rotaEditorEmail", cfg.DevMode.RotaEditorEmail))
 
-		// Nothing else creates Roles yet, and the roster below is read against
-		// them, so the seed has to run before the first sync.
-		seeded, err := devmode.SeedRoles(ctx, database)
-		if err != nil {
-			return fmt.Errorf("failed to seed dev roles: %w", err)
-		}
-		if seeded > 0 {
-			logger.Info("DEV MODE: seeded roles", zap.Int("count", seeded))
-		}
-
-		// What those Roles are asked for, which is the other half of a rota the
-		// dev stack can allocate. It runs after the Roles because a Seat names
-		// one by id.
-		seededShape, err := devmode.SeedDefaultShape(ctx, database)
-		if err != nil {
-			return fmt.Errorf("failed to seed the dev default shape: %w", err)
-		}
-		if seededShape {
-			logger.Info("DEV MODE: seeded the default shape")
-		}
-
-		// Same reason as the Roles: nothing else sets them, and a dev stack
-		// that cannot allocate a rota is not the usable app it promises.
-		seededDefaults, err := devmode.SeedRotaDefaults(ctx, database)
-		if err != nil {
-			return fmt.Errorf("failed to seed dev rota defaults: %w", err)
-		}
-		if seededDefaults {
-			logger.Info("DEV MODE: seeded rota defaults")
-		}
-
-		syncVolunteers = func(ctx context.Context) error {
-			roles, err := services.RoleTable(ctx, database)
-			if err != nil {
-				return err
-			}
-			fetched, err := devmode.LoadVolunteers(cfg.DevMode.VolunteersCSV, roles)
-			if err != nil {
-				return err
-			}
-			volunteers.Replace(fetched)
-			logger.Info("Volunteer roster loaded from CSV", zap.Int("count", len(fetched)))
-			return nil
-		}
-
-		// Unlike a Sheets outage this is a local file that either exists or does
-		// not, so an unreadable roster is a misconfiguration worth failing on
-		// rather than something a later sync might fix.
-		if err := syncVolunteers(ctx); err != nil {
-			return fmt.Errorf("failed to load the dev volunteer roster: %w", err)
-		}
-
-		authenticator, err = api.NewStubAuthenticator(cfg.DevMode, cfg.Server, logger, syncVolunteers)
+		authenticator, err = api.NewStubAuthenticator(cfg.DevMode, cfg.Server, cfg.Organisations, logger)
 		if err != nil {
 			return fmt.Errorf("failed to create stub authenticator: %w", err)
 		}
-		newMailer = api.NewStubMailer(logger)
+		shared.newMailer = api.NewStubMailer(logger)
 	} else {
 		webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
 		if err != nil {
 			return fmt.Errorf("failed to load web OAuth client config: %w", err)
 		}
 
-		// The volunteer roster is fetched from the sheet with the server's own
-		// service account: once at startup (below) and again on each Organiser sync. The
-		// Organiser only triggers the refetch — no token is taken from them.
+		// Every Organisation's roster is fetched, and its rota sheet written,
+		// with the server's own service account. The Organiser only triggers the
+		// refetch — no token is taken from them.
 		serviceAccount, err := config.LoadServiceAccountWithEnv(env)
 		if err != nil {
 			return fmt.Errorf("failed to load service account: %w", err)
 		}
+		shared.serviceAccountJSON = serviceAccount.JSON
 
-		syncVolunteers = func(ctx context.Context) error {
-			client, err := sheetsclient.NewClientFromServiceAccount(ctx, serviceAccount.JSON)
-			if err != nil {
-				return fmt.Errorf("failed to build sheets client for sync: %w", err)
-			}
-			roles, err := services.RoleTable(ctx, database)
-			if err != nil {
-				return err
-			}
-			fetched, err := client.ListVolunteers(cfg, roles)
-			if err != nil {
-				return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
-			}
-			volunteers.Replace(fetched)
-			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
-			// The sheet shows display names, and the roster is where they
-			// come from. On the startup sync this is the startup publish,
-			// which puts right a change made while the server was down or
-			// one whose publish failed — and it waits for the roster, since
-			// publishing needs one.
-			publisher.Trigger()
-			return nil
-		}
-
-		// The rota sheet is written with the same service account, which must
-		// be an editor of it. A publish is of the latest allocated rota as it
-		// stands, so each builds its own client rather than keeping one.
-		publisher = api.NewSheetPublisher(ctx, func(ctx context.Context) error {
-			client, err := sheetsclient.NewWriterFromServiceAccount(ctx, serviceAccount.JSON)
-			if err != nil {
-				return fmt.Errorf("failed to build sheets client for publishing: %w", err)
-			}
-			_, err = services.PublishRota(ctx, database, client, volunteers, cfg, logger)
-			return err
-		}, logger)
-
-		// Populate the roster at startup so reads work before any Organiser syncs. A
-		// failure here (transient Sheets outage, say) is not fatal: the server boots
-		// with an empty roster and an Organiser can retry via the sync button, matching
-		// the store's "degrade to no volunteers" behaviour.
-		if err := syncVolunteers(ctx); err != nil {
-			logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
-		}
-
-		authenticator, err = api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger, syncVolunteers)
+		authenticator, err = api.NewAuthenticator(ctx, webOAuthCfg, cfg.Server, env, logger)
 		if err != nil {
 			return fmt.Errorf("failed to create authenticator: %w", err)
 		}
@@ -220,26 +135,23 @@ func run(env string, portOverride int) error {
 		// gmail.send token they grant per send and the server never stores.
 		// There is nothing to build here beyond the token itself — the client
 		// is constructed inside the send and discarded with it.
-		newMailer = func(ctx context.Context, token *oauth2.Token) (services.GmailClient, error) {
+		shared.newMailer = func(ctx context.Context, token *oauth2.Token) (services.GmailClient, error) {
 			return gmailclient.NewClientFromToken(ctx, token)
 		}
 	}
 
-	// A server with no Roles starts and serves, but nobody holds a Role, so
-	// nothing can be allocated. That is the state a deployment is in between
-	// this ticket's migration and someone creating its Roles, and it is quiet
-	// enough to be worth saying out loud.
-	if roles, err := services.RoleTable(ctx, database); err != nil {
-		logger.Warn("Failed to read roles at startup", zap.Error(err))
-	} else if len(roles.ByPriority()) == 0 {
-		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the Organiser settings screen")
+	handlers := make([]*api.Handler, 0, len(cfg.Organisations))
+	for i := range cfg.Organisations {
+		handler, err := newOrganisation(ctx, &cfg.Organisations[i], cfg.DevMode, database, authenticator, shared, logger)
+		if err != nil {
+			return err
+		}
+		handlers = append(handlers, handler)
 	}
-
-	handler := api.NewHandler(database, volunteers, cfg, authenticator, web.Dist(), newMailer, publisher, logger)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:           handler.Routes(),
+		Handler:           api.Mount(authenticator, handlers, database, logger),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -264,4 +176,144 @@ func run(env string, portOverride int) error {
 
 	logger.Info("Server stopped")
 	return nil
+}
+
+// sharedDeps is what every Organisation's handler is built from in common: the
+// credentials are the deployment's, not any one drop-in's.
+type sharedDeps struct {
+	// serviceAccountJSON is empty in dev mode, where nothing reaches Google.
+	serviceAccountJSON []byte
+	newMailer          api.MailerFunc
+}
+
+// newOrganisation builds one Organisation's handler: its own bound store, its
+// own roster cache, roster sync and rota publisher, so nothing one drop-in
+// does reaches another's (ADR 0011).
+func newOrganisation(
+	ctx context.Context,
+	org *config.Organisation,
+	dev *config.DevModeConfig,
+	database *db.DB,
+	authenticator *api.Authenticator,
+	shared sharedDeps,
+	logger *zap.Logger,
+) (*api.Handler, error) {
+	store := database.ForOrganisation(org.ID)
+	volunteers := api.NewVolunteerStore()
+	baseLogger := logger
+	logger = logger.With(zap.String("organisation", org.ID))
+
+	var syncVolunteers api.VolunteerSyncFunc
+	// Nil in dev mode: there is no sheet to publish to, and Trigger on a nil
+	// publisher does nothing.
+	var publisher *api.SheetPublisher
+	if dev != nil {
+		// Nothing else creates Roles yet, and the roster below is read against
+		// them, so the seed has to run before the first sync.
+		seeded, err := devmode.SeedRoles(ctx, store)
+		if err != nil {
+			return nil, fmt.Errorf("failed to seed dev roles for %s: %w", org.ID, err)
+		}
+		if seeded > 0 {
+			logger.Info("DEV MODE: seeded roles", zap.Int("count", seeded))
+		}
+
+		// What those Roles are asked for, which is the other half of a rota the
+		// dev stack can allocate. It runs after the Roles because a Seat names
+		// one by id.
+		seededShape, err := devmode.SeedDefaultShape(ctx, store)
+		if err != nil {
+			return nil, fmt.Errorf("failed to seed the dev default shape for %s: %w", org.ID, err)
+		}
+		if seededShape {
+			logger.Info("DEV MODE: seeded the default shape")
+		}
+
+		// Same reason as the Roles: nothing else sets them, and a dev stack
+		// that cannot allocate a rota is not the usable app it promises.
+		seededDefaults, err := devmode.SeedRotaDefaults(ctx, store)
+		if err != nil {
+			return nil, fmt.Errorf("failed to seed dev rota defaults for %s: %w", org.ID, err)
+		}
+		if seededDefaults {
+			logger.Info("DEV MODE: seeded rota defaults")
+		}
+
+		syncVolunteers = func(ctx context.Context) error {
+			roles, err := services.RoleTable(ctx, store)
+			if err != nil {
+				return err
+			}
+			fetched, err := devmode.LoadVolunteers(dev.VolunteersCSV, roles)
+			if err != nil {
+				return err
+			}
+			volunteers.Replace(fetched)
+			logger.Info("Volunteer roster loaded from CSV", zap.Int("count", len(fetched)))
+			return nil
+		}
+
+		// Unlike a Sheets outage this is a local file that either exists or does
+		// not, so an unreadable roster is a misconfiguration worth failing on
+		// rather than something a later sync might fix.
+		if err := syncVolunteers(ctx); err != nil {
+			return nil, fmt.Errorf("failed to load the dev volunteer roster for %s: %w", org.ID, err)
+		}
+	} else {
+		syncVolunteers = func(ctx context.Context) error {
+			client, err := sheetsclient.NewClientFromServiceAccount(ctx, shared.serviceAccountJSON)
+			if err != nil {
+				return fmt.Errorf("failed to build sheets client for sync: %w", err)
+			}
+			roles, err := services.RoleTable(ctx, store)
+			if err != nil {
+				return err
+			}
+			fetched, err := client.ListVolunteers(org, roles)
+			if err != nil {
+				return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
+			}
+			volunteers.Replace(fetched)
+			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
+			// The sheet shows display names, and the roster is where they
+			// come from. On the startup sync this is the startup publish,
+			// which puts right a change made while the server was down or
+			// one whose publish failed — and it waits for the roster, since
+			// publishing needs one.
+			publisher.Trigger()
+			return nil
+		}
+
+		// The rota sheet is written with the same service account, which must
+		// be an editor of it. A publish is of the latest allocated rota as it
+		// stands, so each builds its own client rather than keeping one.
+		publisher = api.NewSheetPublisher(ctx, func(ctx context.Context) error {
+			client, err := sheetsclient.NewWriterFromServiceAccount(ctx, shared.serviceAccountJSON)
+			if err != nil {
+				return fmt.Errorf("failed to build sheets client for publishing: %w", err)
+			}
+			_, err = services.PublishRota(ctx, store, client, volunteers, org, logger)
+			return err
+		}, logger)
+
+		// Populate the roster at startup so reads work before any Organiser syncs. A
+		// failure here (transient Sheets outage, say) is not fatal: the server boots
+		// with an empty roster and an Organiser can retry via the sync button, matching
+		// the store's "degrade to no volunteers" behaviour.
+		if err := syncVolunteers(ctx); err != nil {
+			logger.Warn("Failed to populate volunteer roster at startup; starting empty", zap.Error(err))
+		}
+	}
+
+	// A drop-in with no Roles starts and serves, but nobody holds a Role, so
+	// nothing can be allocated. That is the state a new Organisation is in until
+	// someone creates its Roles, and it is quiet enough to be worth saying out
+	// loud.
+	if roles, err := services.RoleTable(ctx, store); err != nil {
+		logger.Warn("Failed to read roles at startup", zap.Error(err))
+	} else if len(roles.ByPriority()) == 0 {
+		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the Organiser settings screen")
+	}
+
+	return api.NewHandler(store, volunteers, org, authenticator, web.Dist(), shared.newMailer, publisher, syncVolunteers, baseLogger), nil
 }

@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 
+	"github.com/jakechorley/ilford-drop-in/internal/config"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -69,7 +70,7 @@ func newSendTestHandler(store *mockStore, mailer services.GmailClient) http.Hand
 	}
 
 	newMailer := func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }
-	return NewHandler(store, volunteers, apiTestCfg, auth, nil, newMailer, nil, zap.NewNop()).Routes()
+	return NewHandler(store, volunteers, apiTestCfg, auth, nil, newMailer, nil, nil, zap.NewNop()).Routes()
 }
 
 // startSendRequest returns the job id a started send redirected to.
@@ -80,7 +81,7 @@ func startSendRequest(t *testing.T, handler http.Handler, query string) string {
 
 	location, err := url.Parse(rec.Header().Get("Location"))
 	require.NoError(t, err)
-	assert.Equal(t, sendReturnPath, location.Path)
+	assert.Equal(t, "/org/test-org"+sendReturnPath, location.Path)
 
 	jobID := location.Query().Get("send")
 	require.NotEmpty(t, jobID, "the redirect must name the job to watch: %s", rec.Header().Get("Location"))
@@ -186,7 +187,7 @@ func startSendRefused(t *testing.T, handler http.Handler, query string) string {
 
 	location, err := url.Parse(rec.Header().Get("Location"))
 	require.NoError(t, err)
-	assert.Equal(t, sendReturnPath, location.Path)
+	assert.Equal(t, "/org/test-org"+sendReturnPath, location.Path)
 	assert.Empty(t, location.Query().Get("send"), "a refused send must not start a job")
 	return location.Query().Get("sendError")
 }
@@ -237,10 +238,9 @@ func TestResendMailsOneVolunteer(t *testing.T) {
 func TestSendResultIsReadableOnlyByTheOrganiserWhoStartedIt(t *testing.T) {
 	auth := newTestAuthenticator()
 	auth.stubEmail = testOrganiserEmail
-	auth.organiserEmails["other@example.com"] = struct{}{}
 
-	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return &recordingMailer{}, nil }, nil,
+	handler := NewHandler(sendTestStore(), testVolunteers(), withOrganiser(apiTestCfg, "other@example.com"), auth, nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return &recordingMailer{}, nil }, nil, nil,
 		zap.NewNop()).Routes()
 
 	jobID := startSendRequest(t, handler, "mode=round&deadline=Friday")
@@ -270,12 +270,13 @@ func TestUnknownSendIsNotFound(t *testing.T) {
 // parameter at all.
 func TestGmailStateRoundTrips(t *testing.T) {
 	want := gmailSendState{
-		Email:       testOrganiserEmail,
-		Mode:        services.SendModeResend,
-		RotaID:      "rota-1",
-		Deadline:    "Friday 7 August",
-		VolunteerID: "bob",
-		Expiry:      time.Now().Add(time.Minute).Unix(),
+		Organisation: "test-org",
+		Email:        testOrganiserEmail,
+		Mode:         services.SendModeResend,
+		RotaID:       "rota-1",
+		Deadline:     "Friday 7 August",
+		VolunteerID:  "bob",
+		Expiry:       time.Now().Add(time.Minute).Unix(),
 	}
 
 	signed, err := signGmailState(testSecret, want)
@@ -292,10 +293,11 @@ func TestGmailStateRoundTrips(t *testing.T) {
 // or a resend re-pointed at somebody else.
 func TestGmailStateRejectsTamperingAndAge(t *testing.T) {
 	state := gmailSendState{
-		Email:    testOrganiserEmail,
-		Mode:     services.SendModeRound,
-		Deadline: "Friday",
-		Expiry:   time.Now().Add(time.Minute).Unix(),
+		Organisation: "test-org",
+		Email:        testOrganiserEmail,
+		Mode:         services.SendModeRound,
+		Deadline:     "Friday",
+		Expiry:       time.Now().Add(time.Minute).Unix(),
 	}
 	signed, err := signGmailState(testSecret, state)
 	require.NoError(t, err)
@@ -324,7 +326,7 @@ func TestGmailConsentAsksOnlyForTheSendScope(t *testing.T) {
 		Endpoint:    oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/auth"},
 		Scopes:      []string{"openid", "email", "profile"},
 	}
-	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil, nil, nil, zap.NewNop()).Routes()
+	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil, nil, nil, nil, zap.NewNop()).Routes()
 
 	rec := doRequest(t, handler, http.MethodGet, "/auth/gmail?mode=round&deadline=Friday", "", organiserCookie())
 	require.Equal(t, http.StatusFound, rec.Code)
@@ -346,17 +348,17 @@ func TestGmailConsentAsksOnlyForTheSendScope(t *testing.T) {
 // from one Organiser must not run in another's browser, under their Gmail account.
 func TestSendCallbackRejectsAStateForAnotherOrganiser(t *testing.T) {
 	auth := newTestAuthenticator()
-	auth.organiserEmails["other@example.com"] = struct{}{}
 	mailer := &recordingMailer{}
-	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, auth, nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil,
-		zap.NewNop()).Routes()
+	handler := sendCallbackServer(NewHandler(sendTestStore(), testVolunteers(), withOrganiser(apiTestCfg, "other@example.com"), auth, nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil, nil,
+		zap.NewNop()))
 
 	signed, err := signGmailState(testSecret, gmailSendState{
-		Email:    "other@example.com",
-		Mode:     services.SendModeRound,
-		Deadline: "Friday",
-		Expiry:   time.Now().Add(time.Minute).Unix(),
+		Organisation: "test-org",
+		Email:        "other@example.com",
+		Mode:         services.SendModeRound,
+		Deadline:     "Friday",
+		Expiry:       time.Now().Add(time.Minute).Unix(),
 	})
 	require.NoError(t, err)
 
@@ -370,15 +372,16 @@ func TestSendCallbackRejectsAStateForAnotherOrganiser(t *testing.T) {
 // who captured one out of a browser's history must not be able to replay it.
 func TestSendCallbackRequiresASession(t *testing.T) {
 	mailer := &recordingMailer{}
-	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil,
-		zap.NewNop()).Routes()
+	handler := sendCallbackServer(NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil, nil,
+		zap.NewNop()))
 
 	signed, err := signGmailState(testSecret, gmailSendState{
-		Email:    testOrganiserEmail,
-		Mode:     services.SendModeRound,
-		Deadline: "Friday",
-		Expiry:   time.Now().Add(time.Minute).Unix(),
+		Organisation: "test-org",
+		Email:        testOrganiserEmail,
+		Mode:         services.SendModeRound,
+		Deadline:     "Friday",
+		Expiry:       time.Now().Add(time.Minute).Unix(),
 	})
 	require.NoError(t, err)
 
@@ -406,15 +409,16 @@ func TestSendKeepsNoCredentialOnTheSession(t *testing.T) {
 // state signed for them.
 func TestSendCallbackRequiresAnOrganiser(t *testing.T) {
 	mailer := &recordingMailer{}
-	handler := NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
-		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil,
-		zap.NewNop()).Routes()
+	handler := sendCallbackServer(NewHandler(sendTestStore(), testVolunteers(), apiTestCfg, newTestAuthenticator(), nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return mailer, nil }, nil, nil,
+		zap.NewNop()))
 
 	signed, err := signGmailState(testSecret, gmailSendState{
-		Email:    testRotaEditorEmail,
-		Mode:     services.SendModeRound,
-		Deadline: "Friday",
-		Expiry:   time.Now().Add(time.Minute).Unix(),
+		Organisation: "test-org",
+		Email:        testRotaEditorEmail,
+		Mode:         services.SendModeRound,
+		Deadline:     "Friday",
+		Expiry:       time.Now().Add(time.Minute).Unix(),
 	})
 	require.NoError(t, err)
 
@@ -422,4 +426,51 @@ func TestSendCallbackRequiresAnOrganiser(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Empty(t, mailer.recipients())
+}
+
+// withOrganiser is org with email added to its Organisers.
+func withOrganiser(org *config.Organisation, email string) *config.Organisation {
+	copied := *org
+	copied.OrganiserEmails = append(append([]string(nil), org.OrganiserEmails...), email)
+	return &copied
+}
+
+// sendCallbackServer mounts h the way the server does, because a send finishes
+// at the shared /auth/callback rather than under the Organisation.
+func sendCallbackServer(h *Handler) http.Handler {
+	return Mount(h.auth, []*Handler{h}, databaseUp, zap.NewNop())
+}
+
+// TestSendCallbackGoesToTheOrganisationInTheState: the callback is shared, so
+// the signed state is what says whose send it is — and that Organisation's own
+// allowlist decides. An Organiser of one drop-in cannot finish a send for
+// another, and a state naming no drop-in this server runs sends nothing.
+func TestSendCallbackGoesToTheOrganisationInTheState(t *testing.T) {
+	auth := newTestAuthenticator()
+	eastMailer, westMailer := &recordingMailer{}, &recordingMailer{}
+	east := NewHandler(sendTestStore(), testVolunteers(), eastOrganisation, auth, nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return eastMailer, nil }, nil, nil, zap.NewNop())
+	west := NewHandler(sendTestStore(), testVolunteers(), westOrganisation, auth, nil,
+		func(context.Context, *oauth2.Token) (services.GmailClient, error) { return westMailer, nil }, nil, nil, zap.NewNop())
+	server := Mount(auth, []*Handler{east, west}, databaseUp, zap.NewNop())
+	eastOrganiser := sessionCookieFor(auth, "east@example.com")
+
+	for organisation, want := range map[string]int{
+		"west":  http.StatusUnauthorized,
+		"north": http.StatusNotFound,
+	} {
+		signed, err := signGmailState(testSecret, gmailSendState{
+			Organisation: organisation,
+			Email:        "east@example.com",
+			Mode:         services.SendModeRound,
+			Deadline:     "Friday",
+			Expiry:       time.Now().Add(time.Minute).Unix(),
+		})
+		require.NoError(t, err)
+
+		rec := doRequest(t, server, http.MethodGet, "/auth/callback?code=x&state="+url.QueryEscape(signed), "", eastOrganiser)
+		assert.Equal(t, want, rec.Code, organisation)
+	}
+	assert.Empty(t, eastMailer.recipients())
+	assert.Empty(t, westMailer.recipients())
 }

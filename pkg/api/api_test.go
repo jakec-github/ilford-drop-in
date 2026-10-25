@@ -700,7 +700,7 @@ type mockVolunteerClient struct {
 	calls      int
 }
 
-func (m *mockVolunteerClient) ListVolunteers(cfg *config.Config, roles model.Roles) ([]model.Volunteer, error) {
+func (m *mockVolunteerClient) ListVolunteers(_ *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
 	m.calls++
 	return m.volunteers, m.err
 }
@@ -827,7 +827,14 @@ var apiTestDefaultShape = []db.DefaultShapeSeat{
 	{RoleID: "role-service-volunteer", Seats: 4},
 }
 
-var apiTestCfg = &config.Config{}
+// apiTestCfg is the Organisation every handler test serves, with one person at
+// each level on its allowlists.
+var apiTestCfg = &config.Organisation{
+	ID:               "test-org",
+	DisplayName:      "Test Drop-In",
+	OrganiserEmails:  []string{testOrganiserEmail},
+	RotaEditorEmails: []string{testRotaEditorEmail},
+}
 
 func testVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
@@ -842,17 +849,17 @@ func testVolunteers() *mockVolunteerClient {
 // newTestAuthenticator builds an Authenticator with only the fields the
 // non-OAuth paths need. oauth2Config and verifier stay nil: the login and
 // callback endpoints are exercised via the live round-trip, not these tests.
+// Who may do what is each Handler's, registered as it is built.
 func newTestAuthenticator() *Authenticator {
 	return &Authenticator{
-		secret:           testSecret,
-		organiserEmails:  map[string]struct{}{testOrganiserEmail: {}},
-		rotaEditorEmails: map[string]struct{}{testRotaEditorEmail: {}},
-		logger:           zap.NewNop(),
+		secret:        testSecret,
+		logger:        zap.NewNop(),
+		organisations: map[string]registeredOrganisation{},
 	}
 }
 
 // testOrganiserEmail and testRotaEditorEmail are the allowlisted people
-// newTestAuthenticator recognises, one at each level.
+// apiTestCfg recognises, one at each level.
 const (
 	testOrganiserEmail  = "organiser@example.com"
 	testRotaEditorEmail = "editor@example.com"
@@ -865,8 +872,8 @@ func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Hand
 // newTestHandlerWithConfig is newTestHandler for the endpoints whose answer
 // depends on the config — chiefly the rota overrides, which are where config
 // preallocations and closed dates come from.
-func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient, cfg *config.Config) http.Handler {
-	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, nil, zap.NewNop()).Routes()
+func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient, cfg *config.Organisation) http.Handler {
+	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, nil, nil, zap.NewNop()).Routes()
 }
 
 // sessionCookie is a validly signed session cookie for email, signed with the
@@ -1367,7 +1374,7 @@ func TestCalendarEndpoint(t *testing.T) {
 
 	body := rec.Body.String()
 	assert.Contains(t, body, "UID:alice-2026-01-11@ilford-drop-in")
-	assert.Contains(t, body, "SUMMARY:Ilford Drop-In shift (Team lead)")
+	assert.Contains(t, body, "SUMMARY:Test Drop-In shift (Team lead)")
 	// Only alice's shifts appear
 	assert.NotContains(t, body, "2026-01-18")
 }
@@ -1406,7 +1413,7 @@ func TestMethodNotAllowed(t *testing.T) {
 // newFullStackHandler is the handler as it is deployed: API and frontend in one
 // process, which is the only configuration where the two namespaces can collide.
 func newFullStackHandler(store *mockStore) http.Handler {
-	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, nil, zap.NewNop()).Routes()
+	return NewHandler(store, testVolunteers(), apiTestCfg, newTestAuthenticator(), testFrontend, nil, nil, nil, zap.NewNop()).Routes()
 }
 
 // TestUnknownAPIPathIsAJSONNotFound: an endpoint that does not exist has to fail
@@ -1440,10 +1447,9 @@ func TestFrontendOwnsEverythingOutsideTheAPI(t *testing.T) {
 	}
 }
 
-// TestUnprefixedRoutesStayPutBehindTheFrontend: three paths deliberately did not
-// move — /health is polled by the deploy tooling, /auth is a browser redirect
-// flow tied to a registered OAuth URI, and calendar URLs are subscribed to from
-// outside the app. Each has to keep answering rather than fall to the SPA.
+// TestUnprefixedRoutesStayPutBehindTheFrontend: calendar URLs are subscribed to
+// from outside the app and an Organisation's login link is followed from its
+// pages, so each has to keep answering rather than fall to the SPA.
 func TestUnprefixedRoutesStayPutBehindTheFrontend(t *testing.T) {
 	store := &mockStore{
 		allocations: []db.Allocation{
@@ -1452,14 +1458,13 @@ func TestUnprefixedRoutesStayPutBehindTheFrontend(t *testing.T) {
 	}
 	handler := newFullStackHandler(store)
 
-	rec := doRequest(t, handler, http.MethodGet, "/health", "")
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
-
-	rec = doRequest(t, handler, http.MethodGet, "/calendars/alice.ics", "")
+	rec := doRequest(t, handler, http.MethodGet, "/calendars/alice.ics", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "text/calendar")
 
-	rec = doRequest(t, handler, http.MethodGet, "/auth/me", "")
+	rec = doRequest(t, handler, http.MethodGet, "/auth/login", "")
+	assert.Equal(t, http.StatusFound, rec.Code)
+
+	rec = doRequest(t, handler, http.MethodGet, "/api/me", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }

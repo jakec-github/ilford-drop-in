@@ -21,79 +21,112 @@ type ServerConfig struct {
 	// SessionSecret signs session cookies (HMAC). Keep it secret and stable;
 	// rotating it invalidates all live sessions.
 	SessionSecret string `yaml:"sessionSecret" validate:"required,min=16"`
-	// OrganiserEmails is the allowlist of Google accounts permitted to log in as
-	// an Organiser, who can make every edit the app offers. At least one is
-	// required: without an Organiser nobody can set the app up. Compared
-	// case-insensitively and re-checked on every request, like RotaEditorEmails.
-	//
-	// It replaced adminEmails outright (#204). A config still carrying only the
-	// old key names no Organiser, so it fails to load here rather than warning
-	// and booting a server nobody can log in to.
-	OrganiserEmails []string `yaml:"organiserEmails" validate:"required,min=1,dive,email"`
-	// RotaEditorEmails is the allowlist of Google accounts permitted to log in as
-	// a Rota Editor, who can change shifts and nothing else. Optional. Someone on
-	// both lists is an Organiser.
-	RotaEditorEmails []string `yaml:"rotaEditorEmails,omitempty" validate:"omitempty,dive,email"`
 	// RedirectURI names which of the OAuth client's registered redirect URIs to
 	// use for the login flow. Optional: when empty the server picks one by
 	// locality. Set it where the default guess is wrong — chiefly a git worktree,
 	// whose frontend runs on its own port (see docs/agents/worktrees.md).
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
-	// BasePath is the path the site's own pages are served under, such as
-	// "/rota" or "/ilford/rota". Optional: empty — dev, every test, and any
-	// deployment that has not set one — serves the site at the root of its
-	// domain, exactly as before.
-	//
-	// One or more segments, leading slash, no trailing slash. The value itself
-	// is a deployment's business and never appears in this repo; see
-	// checkBasePath for why the shape is enforced at load, and why its depth
-	// is not.
-	//
-	// It moves the pages and the calendar feeds, and deliberately not /api,
-	// /auth or /health — pkg/api.mountSite has the reasoning.
-	BasePath string `yaml:"basePath,omitempty"`
 }
 
-// basePathSegment is what one segment of a base path may hold: at least one
-// unreserved URL character, so nothing needing escaping ever reaches a link.
-var basePathSegment = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+// Organisation is one drop-in the server runs a rota for (ADR 0011): who may
+// organise it, which sheets it reads and writes, and what it is called. It is
+// served under /org/<ID>/, and its rows in the database carry ID.
+type Organisation struct {
+	// ID names the Organisation in its URL and in the database. Lower-case
+	// letters, digits and hyphens. It is permanent: calendar subscriptions and
+	// emailed links carry it, and they cannot be corrected once sent.
+	ID string `yaml:"id" validate:"required"`
+	// DisplayName is what the Organisation is called on its pages, in its
+	// calendar feeds and in the emails it sends.
+	DisplayName string `yaml:"displayName" validate:"required"`
+	// OrganiserEmails is the allowlist of Google accounts permitted to act as
+	// this Organisation's Organiser, who can make every edit the app offers. At
+	// least one is required: without an Organiser nobody can set it up.
+	// Compared case-insensitively and re-checked on every request, like
+	// RotaEditorEmails.
+	OrganiserEmails []string `yaml:"organiserEmails" validate:"required,min=1,dive,email"`
+	// RotaEditorEmails is the allowlist of Google accounts permitted to act as
+	// this Organisation's Rota Editor, who can change shifts and nothing else.
+	// Optional. Someone on both lists is an Organiser.
+	RotaEditorEmails     []string `yaml:"rotaEditorEmails,omitempty" validate:"omitempty,dive,email"`
+	VolunteerSheetID     string   `yaml:"volunteerSheetID" validate:"required"`
+	ServiceVolunteersTab string   `yaml:"serviceVolunteersTab" validate:"required"`
+	RotaSheetID          string   `yaml:"rotaSheetID" validate:"required"`
+}
 
-// checkBasePath rejects a malformed server.basePath.
-//
-// Depth is deliberately not restricted: "/rota" and "/ilford/rota" are both
-// fine. Every piece of the machinery treats the path as an opaque prefix —
-// http.StripPrefix, the mux pattern, the <base> element, wouter's router base —
-// so nothing gains from it being a single segment, and a deployment that wants
-// to sit under an existing site's path needs more than one.
-//
-// The shape is checked at load rather than left to whatever the router makes of
-// it, because every way of getting it wrong fails quietly and late: a trailing
-// slash doubles into "//" in every minted link, a missing leading slash makes
-// the mux pattern relative and matches nothing, and a "." or ".." segment means
-// the path the config states and the path the browser asks for are different
-// strings. None of those surface until a volunteer's calendar stops refreshing
-// or a page cannot find its own assets. Startup is the one place they can still
-// be a typo.
-func checkBasePath(srv *ServerConfig) error {
-	if srv == nil || srv.BasePath == "" {
-		return nil
-	}
+// organisationID is what an Organisation id may be: the same rule the
+// organisation table's CHECK holds it to, so a bad id fails here, at load,
+// rather than at the first insert.
+var organisationID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-	malformed := func() error {
-		return fmt.Errorf("server.basePath %q is not one or more URL-safe path segments with a leading slash and no trailing slash, such as \"/rota\" or \"/ilford/rota\"", srv.BasePath)
-	}
-
-	if !strings.HasPrefix(srv.BasePath, "/") || strings.HasSuffix(srv.BasePath, "/") {
-		return malformed()
-	}
-	for _, segment := range strings.Split(strings.TrimPrefix(srv.BasePath, "/"), "/") {
-		// "." and ".." are made of URL-safe characters but are not usable
-		// segments: the
-		// browser resolves them away, so the site would answer on a path the
-		// config never states.
-		if segment == "." || segment == ".." || !basePathSegment.MatchString(segment) {
-			return malformed()
+// checkOrganisations enforces what the tags cannot: every id well-formed and
+// unique, since two entries with one id would share one URL and one set of rows.
+func checkOrganisations(orgs []Organisation) error {
+	seen := make(map[string]bool, len(orgs))
+	for _, org := range orgs {
+		if !organisationID.MatchString(org.ID) {
+			return fmt.Errorf("organisation id %q must be lower-case letters, digits and hyphens, starting with a letter or digit", org.ID)
 		}
+		if seen[org.ID] {
+			return fmt.Errorf("organisation id %q is listed twice", org.ID)
+		}
+		seen[org.ID] = true
+	}
+	return nil
+}
+
+// Organisation returns the configured Organisation with this id.
+func (c *Config) Organisation(id string) (*Organisation, bool) {
+	for i := range c.Organisations {
+		if c.Organisations[i].ID == id {
+			return &c.Organisations[i], true
+		}
+	}
+	return nil, false
+}
+
+// retiredKeys are keys that configured one drop-in before there could be
+// several, and are refused by name rather than warned about (ADR 0011). Each
+// now lives on an entry in organisations, and ignoring one would be worse than
+// an outage: a server that ignored the allowlists would boot with nobody able
+// to sign in, and one that ignored the base path would move every calendar
+// feed.
+var retiredKeys = []struct{ section, key string }{
+	{"", "volunteerSheetID"},
+	{"", "serviceVolunteersTab"},
+	{"", "rotaSheetID"},
+	{"server", "basePath"},
+	{"server", "organiserEmails"},
+	{"server", "rotaEditorEmails"},
+}
+
+// checkRetiredKeys refuses a config still carrying any of retiredKeys.
+func checkRetiredKeys(data []byte) error {
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil // the real decode reports a malformed document
+	}
+
+	var found []string
+	for _, retired := range retiredKeys {
+		section := doc
+		if retired.section != "" {
+			nested, ok := doc[retired.section].(map[string]any)
+			if !ok {
+				continue
+			}
+			section = nested
+		}
+		if _, ok := section[retired.key]; ok {
+			name := retired.key
+			if retired.section != "" {
+				name = retired.section + "." + retired.key
+			}
+			found = append(found, name)
+		}
+	}
+	if len(found) > 0 {
+		return fmt.Errorf("config still carries %s, which moved onto each entry in organisations (ADR 0011): move them there, with the id taken from the last segment of the old server.basePath", strings.Join(found, ", "))
 	}
 	return nil
 }
@@ -109,14 +142,14 @@ const DevEnv = "dev"
 // env/dev/drop_in_config.yaml — see checkDevMode. Omit the block entirely for a
 // normal, Google-backed server.
 type DevModeConfig struct {
-	// OrganiserEmail is the account login signs in as. It must also be an
-	// Organiser in server.organiserEmails, or the session it mints carries the
+	// OrganiserEmail is the account login signs in as. It must be an
+	// Organiser of some Organisation, or the session it mints carries the
 	// wrong authority.
 	OrganiserEmail string `yaml:"organiserEmail" validate:"required,email"`
 	// RotaEditorEmail is the account /auth/login?level=rotaEditor signs in as,
 	// so the Rota Editor's narrower screens can be driven too. Optional; when
-	// set it must be a Rota Editor in server.rotaEditorEmails and not also an
-	// Organiser.
+	// set it must be a Rota Editor of some Organisation and an Organiser of
+	// none.
 	RotaEditorEmail string `yaml:"rotaEditorEmail,omitempty" validate:"omitempty,email"`
 	// VolunteersCSV is a CSV export of the volunteer sheet — same header row,
 	// same columns — read at startup and on each Organiser's sync. Relative paths
@@ -126,14 +159,16 @@ type DevModeConfig struct {
 
 // Config represents the application configuration
 type Config struct {
-	VolunteerSheetID     string         `yaml:"volunteerSheetID" validate:"required"`
-	ServiceVolunteersTab string         `yaml:"serviceVolunteersTab" validate:"required"`
-	RotaSheetID          string         `yaml:"rotaSheetID" validate:"required"`
-	DatabaseURL          string         `yaml:"databaseURL" validate:"required"`
-	GmailUserID          string         `yaml:"gmailUserID" validate:"required"`
-	GmailSender          string         `yaml:"gmailSender,omitempty"`
-	Server               *ServerConfig  `yaml:"server,omitempty"`
-	DevMode              *DevModeConfig `yaml:"devMode,omitempty"`
+	// Organisations are the drop-ins this server runs, each under /org/<id>/
+	// (ADR 0011). At least one.
+	Organisations []Organisation `yaml:"organisations" validate:"required,min=1,dive"`
+	DatabaseURL   string         `yaml:"databaseURL" validate:"required"`
+	Server        *ServerConfig  `yaml:"server,omitempty"`
+	DevMode       *DevModeConfig `yaml:"devMode,omitempty"`
+	// gmailUserID and gmailSender are gone too (#256). Nothing had read them
+	// since mail began to be sent as the signed-in Organiser, through the
+	// gmail.send grant they give when they send a round.
+	//
 	// shiftStartTime, shiftEndTime and shiftTimezone used to live here, and so
 	// did maxAllocationFrequency, requiresMale and defaultShiftSize. They are
 	// all settings now, edited on the Settings screen (ADR 0006, #128, #129 and
@@ -157,8 +192,8 @@ type Config struct {
 	// is comes from the default Shape (#129). It was a list of recurrence rules
 	// because there was no screen to state any of that on; there is one now.
 	//
-	// What is left is deployment: which sheets to read, which database to talk
-	// to, which mailbox to send from, and how to run the server. Those are an
+	// What is left is deployment: which drop-ins to serve and which sheets each
+	// reads, which database to talk to, and how to run the server. Those are an
 	// operator's, and a redeploy is the right way to change them.
 	//
 	// A config file still carrying any of the departed keys warns and is
@@ -236,6 +271,10 @@ func LoadFromPath(path string) (*Config, error) {
 			return nil, fmt.Errorf("config file %s is empty", path)
 		}
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	if err := checkRetiredKeys(data); err != nil {
+		return nil, err
 	}
 
 	for _, unknown := range unknownKeys(data) {
@@ -347,13 +386,12 @@ func unknownKeys(data []byte) []UnknownKey {
 	return unknown
 }
 
-// Validate checks the configuration struct against its field tags, plus the one
-// rule a tag cannot express: the shape of server.basePath.
+// Validate checks the configuration struct against its field tags, plus the
+// rules a tag cannot express: every Organisation id well-formed and unique.
 //
 // It used to parse the rrule on every rota override as well, but overrides went
 // in #136 along with the rest of the domain settings. What remains is
-// deployment keys, and every one but the base path is described completely by
-// its own tag.
+// deployment keys.
 //
 // It deliberately touches nothing but the config it was handed:
 // scripts/deploy-config.sh runs it from a laptop against a production config,
@@ -363,5 +401,5 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
-	return checkBasePath(cfg.Server)
+	return checkOrganisations(cfg.Organisations)
 }

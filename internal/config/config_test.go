@@ -18,59 +18,55 @@ func intPtr(i int) *int { return &i }
 // minimalConfigYAML is every required field and nothing else — the smallest
 // file LoadFromPath accepts. Tests that care about one addition append it.
 const minimalConfigYAML = `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
+organisations:
+  - id: "test-org"
+    displayName: "Test Drop-In"
+    organiserEmails:
+      - "organiser@example.com"
+    volunteerSheetID: "sheet123"
+    serviceVolunteersTab: "Volunteers"
+    rotaSheetID: "rota456"
 databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
 `
 
-// baseConfig is a valid config the role tests vary one field of.
-func baseConfig() *Config {
-	return &Config{
+// testOrganisation is a valid Organisation the tests vary one field of.
+func testOrganisation() Organisation {
+	return Organisation{
+		ID:                   "test-org",
+		DisplayName:          "Test Drop-In",
+		OrganiserEmails:      []string{"organiser@example.com"},
+		RotaEditorEmails:     []string{"editor@example.com"},
 		VolunteerSheetID:     "sheet123",
 		ServiceVolunteersTab: "Volunteers",
 		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
+	}
+}
+
+// baseConfig is a valid config the tests vary one field of.
+func baseConfig() *Config {
+	return &Config{
+		Organisations: []Organisation{testOrganisation()},
+		DatabaseURL:   "postgres://localhost:5432/test",
 	}
 }
 
 func TestValidate_ValidConfig(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-		GmailSender:          "sender@example.com",
-	}
+	cfg := baseConfig()
 
 	err := Validate(cfg)
 	assert.NoError(t, err)
 }
 
 func TestValidate_MinimalConfig(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-	}
+	cfg := baseConfig()
 
 	err := Validate(cfg)
 	assert.NoError(t, err)
 }
 
 func TestValidate_MissingRequiredField(t *testing.T) {
-	cfg := &Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		// Missing DatabaseURL
-		GmailUserID: "user@example.com",
-	}
+	cfg := baseConfig()
+	cfg.DatabaseURL = ""
 
 	err := Validate(cfg)
 	assert.Error(t, err)
@@ -82,12 +78,24 @@ func TestLoadFromPath_ValidConfig(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test_config.yaml")
 
 	validConfig := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
+organisations:
+  - id: "east"
+    displayName: "East Drop-In"
+    organiserEmails:
+      - "organiser@example.com"
+    rotaEditorEmails:
+      - "editor@example.com"
+    volunteerSheetID: "sheet123"
+    serviceVolunteersTab: "Volunteers"
+    rotaSheetID: "rota456"
+  - id: "west-2"
+    displayName: "West Drop-In"
+    organiserEmails:
+      - "other@example.com"
+    volunteerSheetID: "sheet789"
+    serviceVolunteersTab: "Roster"
+    rotaSheetID: "rota012"
 databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
-gmailSender: "sender@example.com"
 `
 
 	err := os.WriteFile(configPath, []byte(validConfig), 0644)
@@ -96,13 +104,23 @@ gmailSender: "sender@example.com"
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
 
-	// Verify required fields
-	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
-	assert.Equal(t, "Volunteers", cfg.ServiceVolunteersTab)
-	assert.Equal(t, "rota456", cfg.RotaSheetID)
 	assert.Equal(t, "postgres://localhost:5432/test", cfg.DatabaseURL)
-	assert.Equal(t, "user@example.com", cfg.GmailUserID)
-	assert.Equal(t, "sender@example.com", cfg.GmailSender)
+	require.Len(t, cfg.Organisations, 2)
+	assert.Equal(t, Organisation{
+		ID:                   "east",
+		DisplayName:          "East Drop-In",
+		OrganiserEmails:      []string{"organiser@example.com"},
+		RotaEditorEmails:     []string{"editor@example.com"},
+		VolunteerSheetID:     "sheet123",
+		ServiceVolunteersTab: "Volunteers",
+		RotaSheetID:          "rota456",
+	}, cfg.Organisations[0])
+
+	west, ok := cfg.Organisation("west-2")
+	require.True(t, ok)
+	assert.Equal(t, "sheet789", west.VolunteerSheetID)
+	_, ok = cfg.Organisation("north")
+	assert.False(t, ok)
 }
 
 func TestLoadFromPath_MinimalConfig(t *testing.T) {
@@ -115,21 +133,15 @@ func TestLoadFromPath_MinimalConfig(t *testing.T) {
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
-	assert.Empty(t, cfg.GmailSender)
+	assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
+	assert.Empty(t, cfg.Organisations[0].RotaEditorEmails)
 }
 
 func TestLoadFromPath_MissingRequiredField(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "invalid_config.yaml")
 
-	invalidConfig := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-# Missing databaseURL
-gmailUserID: "user@example.com"
-`
+	invalidConfig := strings.Replace(minimalConfigYAML, `databaseURL: "postgres://localhost:5432/test"`, "# Missing databaseURL", 1)
 
 	err := os.WriteFile(configPath, []byte(invalidConfig), 0644)
 	require.NoError(t, err)
@@ -144,9 +156,9 @@ func TestLoadFromPath_InvalidYAML(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "invalid_yaml.yaml")
 
 	invalidYAML := `
-volunteerSheetID: "sheet123"
+databaseURL: "postgres://localhost:5432/test"
   invalid indentation
-rotaSheetID: "rota456"
+organisations: []
 `
 
 	err := os.WriteFile(configPath, []byte(invalidYAML), 0644)
@@ -190,7 +202,7 @@ func TestLoadFromPath_UnknownKey(t *testing.T) {
 		},
 		{
 			name:    "inside a nested block",
-			extra:   "server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  organiserEmails:\n    - 'organiser@example.com'\n  tlsCertPath: '/etc/ssl/cert.pem'\n",
+			extra:   "server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  tlsCertPath: '/etc/ssl/cert.pem'\n",
 			wantKey: "tlsCertPath",
 		},
 	}
@@ -205,7 +217,7 @@ func TestLoadFromPath_UnknownKey(t *testing.T) {
 			cfg, err := LoadFromPath(configPath)
 			require.NoError(t, err)
 			// The keys either side of the unknown one still configure what they say.
-			assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+			assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 
 			assert.Contains(t, logged.String(), tt.wantKey)
 		})
@@ -234,7 +246,7 @@ func TestLoadFromPath_RolesKeyIsIgnoredNotRejected(t *testing.T) {
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+	assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 	assert.Contains(t, logged.String(), "roles")
 }
 
@@ -254,7 +266,7 @@ shiftTimezone: "Europe/London"
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+	assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 	for _, key := range []string{"shiftStartTime", "shiftEndTime", "shiftTimezone"} {
 		assert.Contains(t, logged.String(), key)
 	}
@@ -290,7 +302,7 @@ requiresMale: true
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+	assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 	for _, key := range []string{"maxAllocationFrequency", "requiresMale"} {
 		assert.Contains(t, logged.String(), key)
 	}
@@ -370,27 +382,19 @@ func TestLoadFromPath_RotaOverridesKeyIsIgnoredNotRejected(t *testing.T) {
 
 			cfg, err := LoadFromPath(configPath)
 			require.NoError(t, err)
-			assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+			assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 			assert.Contains(t, logged.String(), "rotaOverrides")
 		})
 	}
 }
 
 func TestValidate_ServerConfig(t *testing.T) {
-	base := Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-	}
+	base := *baseConfig()
 
 	validServer := func() *ServerConfig {
 		return &ServerConfig{
-			Port:             8080,
-			SessionSecret:    "a-sufficiently-long-secret",
-			OrganiserEmails:  []string{"organiser@example.com"},
-			RotaEditorEmails: []string{"editor@example.com"},
+			Port:          8080,
+			SessionSecret: "a-sufficiently-long-secret",
 		}
 	}
 
@@ -408,64 +412,103 @@ func TestValidate_ServerConfig(t *testing.T) {
 	missingSecret.Server.SessionSecret = ""
 	assert.Error(t, Validate(&missingSecret))
 
-	// Nobody could set the app up: every screen that states a rota is an
-	// Organiser's.
-	noOrganisers := base
-	noOrganisers.Server = validServer()
-	noOrganisers.Server.OrganiserEmails = nil
-	err := Validate(&noOrganisers)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "OrganiserEmails")
-
-	// Rota Editors are optional: an app run by its Organisers alone is fine.
-	noRotaEditors := base
-	noRotaEditors.Server = validServer()
-	noRotaEditors.Server.RotaEditorEmails = nil
-	assert.NoError(t, Validate(&noRotaEditors))
-
-	badOrganiserEmail := base
-	badOrganiserEmail.Server = validServer()
-	badOrganiserEmail.Server.OrganiserEmails = []string{"not-an-email"}
-	assert.Error(t, Validate(&badOrganiserEmail))
-
-	badRotaEditorEmail := base
-	badRotaEditorEmail.Server = validServer()
-	badRotaEditorEmail.Server.RotaEditorEmails = []string{"not-an-email"}
-	assert.Error(t, Validate(&badRotaEditorEmail))
-
 }
 
-// adminEmails is gone, not deprecated (#204): a config still naming only it
-// names no Organiser, and fails to load saying which key it needs, rather than
-// booting a server nobody can log in to.
-func TestLoadFromPath_AdminEmailsAloneIsRejected(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(`
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
-server:
-  port: 8080
-  sessionSecret: "a-sufficiently-long-secret"
-  adminEmails:
-    - "organiser@example.com"
-`), 0644))
+func TestValidate_Organisations(t *testing.T) {
+	withOrganisations := func(orgs ...Organisation) *Config {
+		cfg := baseConfig()
+		cfg.Organisations = orgs
+		return cfg
+	}
+	vary := func(change func(*Organisation)) Organisation {
+		org := testOrganisation()
+		change(&org)
+		return org
+	}
 
-	_, err := LoadFromPath(configPath)
+	assert.NoError(t, Validate(withOrganisations(testOrganisation())))
+
+	second := vary(func(o *Organisation) { o.ID = "second-org-2" })
+	assert.NoError(t, Validate(withOrganisations(testOrganisation(), second)))
+
+	// A server with no drop-in to serve has nothing to do.
+	assert.Error(t, Validate(withOrganisations()))
+
+	// Two entries with one id would share a URL and a set of rows.
+	err := Validate(withOrganisations(testOrganisation(), testOrganisation()))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "listed twice")
+
+	// The id is a URL segment and a database key, held to the same rule as the
+	// organisation table's CHECK.
+	for _, bad := range []string{"", "Upper", "-leading", "has space", "a/b", "dots.too", "under_score"} {
+		assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.ID = bad }))), "expected id %q to be rejected", bad)
+	}
+
+	// Nobody could set it up: every screen that states a rota is an Organiser's.
+	err = Validate(withOrganisations(vary(func(o *Organisation) { o.OrganiserEmails = nil })))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "OrganiserEmails")
+
+	// Rota Editors are optional: a drop-in run by its Organisers alone is fine.
+	assert.NoError(t, Validate(withOrganisations(vary(func(o *Organisation) { o.RotaEditorEmails = nil }))))
+
+	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.OrganiserEmails = []string{"not-an-email"} }))))
+	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.RotaEditorEmails = []string{"not-an-email"} }))))
+	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.DisplayName = "" }))))
+	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.VolunteerSheetID = "" }))))
+	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.ServiceVolunteersTab = "" }))))
+	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.RotaSheetID = "" }))))
+}
+
+// The keys that configured the one drop-in before there could be several are
+// refused by name, not warned about like other departed keys (ADR 0011): a
+// server that ignored the allowlists would boot with nobody able to sign in, and
+// one that ignored the base path would move every calendar feed.
+func TestLoadFromPath_RetiredSingleOrganisationKeysAreRejected(t *testing.T) {
+	tests := []struct {
+		extra   string
+		wantKey string
+	}{
+		{"volunteerSheetID: 'sheet123'\n", "volunteerSheetID"},
+		{"serviceVolunteersTab: 'Volunteers'\n", "serviceVolunteersTab"},
+		{"rotaSheetID: 'rota456'\n", "rotaSheetID"},
+		{"server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  basePath: '/org/x'\n", "server.basePath"},
+		{"server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  organiserEmails:\n    - 'a@example.com'\n", "server.organiserEmails"},
+		{"server:\n  port: 8080\n  sessionSecret: 'a-sufficiently-long-secret'\n  rotaEditorEmails:\n    - 'a@example.com'\n", "server.rotaEditorEmails"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.wantKey, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+tt.extra), 0644))
+
+			_, err := LoadFromPath(configPath)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantKey)
+			assert.Contains(t, err.Error(), "organisations")
+		})
+	}
+}
+
+// gmailUserID and gmailSender configured nothing once mail was sent as the
+// signed-in Organiser, so they leave like any other departed key: warned
+// about, not refused.
+func TestLoadFromPath_GmailKeysAreIgnoredNotRejected(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	extra := "gmailUserID: 'user@example.com'\ngmailSender: 'sender@example.com'\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(minimalConfigYAML+extra), 0644))
+
+	logged := captureWarnings(t)
+
+	_, err := LoadFromPath(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, logged.String(), "gmailUserID")
+	assert.Contains(t, logged.String(), "gmailSender")
 }
 
 func TestValidate_DevMode(t *testing.T) {
-	base := Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-	}
+	base := *baseConfig()
 
 	validDevMode := func() *DevModeConfig {
 		return &DevModeConfig{
@@ -533,17 +576,10 @@ func TestCheckDevMode_OnlyPermittedInDevEnv(t *testing.T) {
 // not just on the helper underneath it.
 func TestLoadWithEnv_RejectsDevModeInProd(t *testing.T) {
 	dir := t.TempDir()
-	cfg := `
-volunteerSheetID: "sheet123"
-serviceVolunteersTab: "Volunteers"
-rotaSheetID: "rota456"
-databaseURL: "postgres://localhost:5432/test"
-gmailUserID: "user@example.com"
+	cfg := minimalConfigYAML + `
 server:
   port: 8080
   sessionSecret: "a-sufficiently-long-secret"
-  organiserEmails:
-    - "agent@example.com"
 devMode:
   organiserEmail: "agent@example.com"
   volunteersCSV: "test_data/volunteers.csv"
@@ -578,52 +614,6 @@ func TestLoadFromPath_ShiftSizeKeyIsIgnoredNotRejected(t *testing.T) {
 
 	cfg, err := LoadFromPath(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, "sheet123", cfg.VolunteerSheetID)
+	assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 	assert.Contains(t, logged.String(), "defaultShiftSize")
-}
-
-func TestValidate_BasePath(t *testing.T) {
-	base := Config{
-		VolunteerSheetID:     "sheet123",
-		ServiceVolunteersTab: "Volunteers",
-		RotaSheetID:          "rota456",
-		DatabaseURL:          "postgres://localhost:5432/test",
-		GmailUserID:          "user@example.com",
-	}
-
-	withBasePath := func(path string) *Config {
-		cfg := base
-		cfg.Server = &ServerConfig{
-			Port:            8080,
-			SessionSecret:   "a-sufficiently-long-secret",
-			OrganiserEmails: []string{"organiser@example.com"},
-			BasePath:        path,
-		}
-		return &cfg
-	}
-
-	// Absent is the default everywhere but the deployed environments.
-	assert.NoError(t, Validate(withBasePath("")))
-	assert.NoError(t, Validate(withBasePath("/rota")))
-	assert.NoError(t, Validate(withBasePath("/ilford-drop-in")))
-	// Depth is not restricted: the path is only ever a prefix, and a deployment
-	// sitting under an existing site's path needs more than one segment.
-	assert.NoError(t, Validate(withBasePath("/ilford/rota")))
-	assert.NoError(t, Validate(withBasePath("/a/b/c")))
-
-	for _, bad := range []string{
-		"rota",       // no leading slash
-		"/rota/",     // trailing slash
-		"/",          // the root is not a base path
-		"/rota path", // not URL-safe
-		"//rota",     // empty first segment
-		"/a//b",      // empty middle segment
-		"/rota?x=1",  // query
-		"/rota#frag", // fragment
-		"/../rota",   // traversal
-		"/ilford/..", // traversal in the last segment
-		"/./rota",    // a "." segment resolves away
-	} {
-		assert.Error(t, Validate(withBasePath(bad)), "expected %q to be rejected", bad)
-	}
 }

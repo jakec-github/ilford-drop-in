@@ -40,7 +40,7 @@ type listStandingPreallocationsResponse struct {
 // handleListStandingPreallocations returns the Standing Preallocations, in the
 // order the settings screen lists them.
 func (h *Handler) handleListStandingPreallocations(w http.ResponseWriter, r *http.Request) {
-	views, err := services.ListStandingPreallocations(r.Context(), h.store, h.volunteers, h.cfg, h.logger)
+	views, err := services.ListStandingPreallocations(r.Context(), h.store, h.volunteers, h.org, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -66,7 +66,7 @@ func (h *Handler) handleCreateStandingPreallocation(w http.ResponseWriter, r *ht
 		return
 	}
 
-	view, err := services.AddStandingPreallocation(r.Context(), h.store, h.volunteers, h.cfg, services.AddStandingPreallocationParams{
+	view, err := services.AddStandingPreallocation(r.Context(), h.store, h.volunteers, h.org, services.AddStandingPreallocationParams{
 		RRule:       req.RRule,
 		RoleID:      req.RoleID,
 		VolunteerID: req.VolunteerID,

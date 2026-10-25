@@ -77,7 +77,7 @@ func sendStore() *mockAvailabilityStore {
 
 // sendTestCfg closes no dates: which shifts are open is the form's business,
 // not the email's, so these tests have no use for overrides.
-var sendTestCfg = &config.Organisation{}
+var sendTestCfg = &config.Organisation{ID: "test-org", DisplayName: "Test Drop-In"}
 
 func sendParams(mode SendMode) SendParams {
 	return SendParams{
@@ -118,6 +118,10 @@ func TestSendRoundEmailsEveryUnsentRequest(t *testing.T) {
 		assert.Contains(t, mail.subject, "Friday 7 August")
 		assert.Contains(t, mail.body, "https://drop-in.example/availability/tok-")
 		assert.Contains(t, mail.body, "Friday 7 August")
+		// The Organisation sending is the one named, not a drop-in hard-coded
+		// into the app.
+		assert.Contains(t, mail.subject, "Test Drop-In")
+		assert.Contains(t, mail.body, "The Test Drop-In team")
 	}
 }
 

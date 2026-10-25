@@ -130,7 +130,7 @@ func (h *Handler) handleMintAvailabilityRound(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	round, err := services.MintAvailabilityRound(r.Context(), h.store, h.volunteers, h.cfg, h.logger, req.RotaID)
+	round, err := services.MintAvailabilityRound(r.Context(), h.store, h.volunteers, h.org, h.logger, req.RotaID)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -143,7 +143,7 @@ func (h *Handler) handleMintAvailabilityRound(w http.ResponseWriter, r *http.Req
 // their link, and who has answered. Organiser-gated — it exposes every volunteer's
 // bearer link.
 func (h *Handler) handleGetAvailabilityRound(w http.ResponseWriter, r *http.Request) {
-	round, err := services.GetAvailabilityRound(r.Context(), h.store, h.volunteers, h.cfg, h.logger, r.URL.Query().Get("rotaId"))
+	round, err := services.GetAvailabilityRound(r.Context(), h.store, h.volunteers, h.org, h.logger, r.URL.Query().Get("rotaId"))
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -160,7 +160,7 @@ func (h *Handler) handleGetAvailabilityRound(w http.ResponseWriter, r *http.Requ
 // concept, two URLs, and no guessing from an Accept header which of them a
 // caller meant.
 func (h *Handler) handleAvailabilityForm(w http.ResponseWriter, r *http.Request) {
-	form, err := services.GetAvailabilityForm(r.Context(), h.store, h.volunteers, h.cfg, h.logger, r.PathValue("token"))
+	form, err := services.GetAvailabilityForm(r.Context(), h.store, h.volunteers, h.org, h.logger, r.PathValue("token"))
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -184,7 +184,7 @@ func (h *Handler) handleSubmitAvailability(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	form, err := services.SubmitAvailability(r.Context(), h.store, h.volunteers, h.cfg, h.logger, r.PathValue("token"), req.ShiftIDs)
+	form, err := services.SubmitAvailability(r.Context(), h.store, h.volunteers, h.org, h.logger, r.PathValue("token"), req.ShiftIDs)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -201,17 +201,16 @@ func (h *Handler) availabilityLink(r *http.Request, token string) string {
 	return h.siteURL(r) + "/availability/" + token
 }
 
-// siteURL is where this site is being read from, as an absolute URL with no
-// trailing slash: the origin the request arrived on, plus the base path the
-// site is served under.
+// siteURL is where this Organisation is being read from, as an absolute URL
+// with no trailing slash: the origin the request arrived on, plus the path the
+// Organisation is served under.
 //
 // The origin is taken from the request rather than from configuration because
 // it is only ever wanted to hand back a link to whoever is asking, and the host
 // they asked on is the host that works for them — behind the proxy the
-// forwarded scheme is what says https. The path cannot come from the request:
-// these links are minted by API handlers, and the API is not under the base
-// path (mountSite), so the request that asks for a link never carries one. It
-// comes from config, which is where the router got it too.
+// forwarded scheme is what says https. The path is not read back off the
+// request, whose prefix Mount has already stripped, but rebuilt from the id,
+// which is where the router got it too.
 //
 // Both the links this builds outlive the app's reach — an availability link is
 // emailed, and a calendar feed's rotaURL sits in a volunteer's calendar app —

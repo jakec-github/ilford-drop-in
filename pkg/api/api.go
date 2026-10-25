@@ -33,8 +33,6 @@ type Store interface {
 	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
 	services.StandingPreallocationStore
-	// Ping reports whether the database is reachable, for GET /health.
-	Ping(ctx context.Context) error
 }
 
 // MailerFunc builds a mail client from an Organiser's freshly-granted Gmail access
@@ -46,14 +44,20 @@ type Store interface {
 // and discarded. It is nil in dev mode, where nothing granted anything.
 type MailerFunc func(ctx context.Context, token *oauth2.Token) (services.GmailClient, error)
 
-// Handler serves the HTTP API
+// Handler serves one Organisation: its pages, its API and its calendar feeds,
+// everything under /org/<id>/ (ADR 0011). Each Organisation has its own, with
+// a store bound to it, its own roster, its own sends and its own solve slot, so
+// nothing one does is visible to or held up by another.
 type Handler struct {
 	store      Store
 	volunteers services.VolunteerClient
-	cfg        *config.Config
-	auth       *Authenticator
-	frontend   fs.FS
-	logger     *zap.Logger
+	org        *config.Organisation
+	// access is the Organisation's allowlists, which every gate checks the
+	// signed-in identity against.
+	access   access
+	auth     *Authenticator
+	frontend fs.FS
+	logger   *zap.Logger
 	// newMailer builds the client a send mails through. Never nil: NewHandler
 	// substitutes one that refuses, so a server wired without mail says so on
 	// the first send rather than panicking.
@@ -72,6 +76,9 @@ type Handler struct {
 	// publisher keeps the rota sheet in step with every change that could show
 	// on it. Never nil: NewHandler substitutes one that does nothing.
 	publisher RotaPublisher
+	// syncVolunteers repopulates the roster from the Organisation's sheet; nil
+	// disables the sync endpoint.
+	syncVolunteers VolunteerSyncFunc
 }
 
 // RotaPublisher is told whenever something that could show on the rota sheet has
@@ -87,13 +94,17 @@ type noPublisher struct{}
 
 func (noPublisher) Trigger() {}
 
-// NewHandler creates an API handler with its dependencies. frontend is the
+// NewHandler creates one Organisation's handler with its dependencies. store
+// must be bound to the Organisation (db.DB.ForOrganisation). frontend is the
 // embedded frontend build; pass nil (or a build-less placeholder) to serve the
 // API only. newMailer is how availability sends reach Gmail; nil disables
 // sending rather than failing at startup, because everything else works without
 // it. publisher is told of every change that could show on the rota sheet; nil
-// leaves the sheet alone.
-func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Config, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, publisher RotaPublisher, logger *zap.Logger) *Handler {
+// leaves the sheet alone. syncVolunteers refetches the roster; nil disables it.
+//
+// It also registers the Organisation with auth, which is how the shared login
+// learns whose allowlists exist and where a finished send belongs.
+func NewHandler(store Store, volunteers services.VolunteerClient, org *config.Organisation, auth *Authenticator, frontend fs.FS, newMailer MailerFunc, publisher RotaPublisher, syncVolunteers VolunteerSyncFunc, logger *zap.Logger) *Handler {
 	if publisher == nil {
 		publisher = noPublisher{}
 	}
@@ -104,22 +115,24 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 	}
 
 	h := &Handler{
-		store:      store,
-		volunteers: volunteers,
-		cfg:        cfg,
-		auth:       auth,
-		frontend:   frontend,
-		logger:     logger,
-		newMailer:  newMailer,
-		sends:      newSendJobs(),
-		drafts:     newDraftSolves(),
-		publisher:  publisher,
+		store:          store,
+		volunteers:     volunteers,
+		org:            org,
+		access:         accessFor(org),
+		auth:           auth,
+		frontend:       frontend,
+		logger:         logger.With(zap.String("organisation", org.ID)),
+		newMailer:      newMailer,
+		sends:          newSendJobs(),
+		drafts:         newDraftSolves(),
+		publisher:      publisher,
+		syncVolunteers: syncVolunteers,
 	}
 
 	// The gmail.send grant comes back through the login callback, which the
 	// Authenticator owns, but completing it needs the store and the roster,
 	// which only the Handler has. This is the join between the two.
-	auth.completeSend = h.completeGmailSend
+	auth.register(org.ID, h.access, h.completeGmailSend)
 
 	return h
 }
@@ -128,51 +141,50 @@ func NewHandler(store Store, volunteers services.VolunteerClient, cfg *config.Co
 // the frontend, so the two can name things freely without colliding.
 const apiPrefix = "/api"
 
-// basePath is the path the site's own URLs are served under, or "" for a site
-// at the root of its domain — dev, every test, and any deployment that has not
-// set one. It is opaque here: one segment or several, it is only ever a prefix
-// to strip and re-add. Configuration rather than a constant because the value
-// belongs to the deployment and never appears in this repo (issue #201). Which
-// URLs it applies to, and why not all of them, is mountSite's doc.
+// basePath is the path this Organisation is served under, as a browser asks
+// for it: /org/<id>. Every link that leaves the app — an emailed availability
+// form, a calendar feed's rota link, where a send returns to — is built on it.
 func (h *Handler) basePath() string {
-	if h.cfg == nil || h.cfg.Server == nil {
-		return ""
-	}
-	return h.cfg.Server.BasePath
+	return organisationPath(h.org.ID)
 }
 
-// Routes returns the API's route table.
+// Routes returns the Organisation's route table, relative to /org/<id> — Mount
+// puts it there.
 //
 // The data endpoints live under /api and the frontend gets everything else,
 // which is what makes a mistyped endpoint a 404 rather than index.html with a
-// 200. A page and its payload once shared a name on both sides of that line —
-// /availability/{token} and /api/availability/{token} — and they no longer do,
-// because the page moved under the base path and the endpoint did not. The
-// token is globally unique, so the endpoint never needs to know which site
-// asked; the symmetry was a convenience rather than a rule.
-//
-// What the base path moves, and what it leaves alone, is the whole of
-// mountSite's job — see there for why the line falls where it does.
+// 200. A page and its payload share a name on both sides of that line —
+// /availability/{token} and /api/availability/{token} — and the prefix is what
+// keeps them apart.
 func (h *Handler) Routes() http.Handler {
 	api := http.NewServeMux()
+	// Who this is, for the page's header and title. Public: the page it serves
+	// is, and anyone who can ask already holds the address.
+	api.HandleFunc("GET /organisation", h.handleOrganisation)
+	// Who is signed in, and at what level here.
+	api.HandleFunc("GET /me", h.handleMe)
+	// Syncing repopulates the roster from the sheet with the server's service
+	// account; it requires an Organiser but no OAuth round-trip, so it is a
+	// plain POST rather than a redirect dance.
+	api.Handle("POST /sync", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSync)))
 	api.HandleFunc("GET /shifts", h.handleListShifts)
 	// Editing a Shift is Organiser-only, and Organiser-only for a reason the listing is
 	// not: closing one is an allocator input, and the rota is solved around it.
-	api.Handle("PATCH /shifts/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateShift)))
+	api.Handle("PATCH /shifts/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateShift)))
 	// A Shape is its own resource under the Shift rather than another field of
 	// the PATCH above, because it is written whole: a Role left out is a Role
 	// the Shift no longer asks for, which a patch of the Shift could not say
 	// without "an absent field means unchanged" and "an absent Role means gone"
 	// meaning opposite things in one body.
-	api.Handle("PUT /shifts/{id}/shape", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftShape)))
+	api.Handle("PUT /shifts/{id}/shape", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftShape)))
 	// Public alongside the rota: it is what tells a client which Roles exist
 	// and what each is drawn in, and the rota names Roles on every chip. The
 	// writes beside it are Organiser-only — which Roles exist is a decision about
 	// how the drop-in runs — and there is no DELETE, because a Role is
 	// permanent (ADR 0006).
 	api.HandleFunc("GET /roles", h.handleListRoles)
-	api.Handle("POST /roles", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateRole)))
-	api.Handle("PUT /roles/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateRole)))
+	api.Handle("POST /roles", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateRole)))
+	api.Handle("PUT /roles/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateRole)))
 	// The settings record, Organiser-only throughout. Unlike the Roles beside it on
 	// the same screen, nothing a logged-out visitor sees needs it: the shift
 	// times already reach the public on GET /shifts, and the sections joining
@@ -184,27 +196,27 @@ func (h *Handler) Routes() http.Handler {
 	// list — but the record is not, because a save of one section must not
 	// blank another, and a single PUT on the record would be exactly the
 	// endpoint that could.
-	api.Handle("GET /rota-defaults", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaDefaults)))
-	api.Handle("PUT /rota-defaults/shift-times", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
-	api.Handle("PUT /rota-defaults/shape", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveDefaultShape)))
-	api.Handle("PUT /rota-defaults/allocation-settings", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveAllocationSettings)))
+	api.Handle("GET /rota-defaults", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaDefaults)))
+	api.Handle("PUT /rota-defaults/shift-times", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
+	api.Handle("PUT /rota-defaults/shape", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveDefaultShape)))
+	api.Handle("PUT /rota-defaults/allocation-settings", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveAllocationSettings)))
 	// The rota's own lifecycle. One rota is in flight at a time, so the read is
 	// a singleton at a fixed path rather than a listing: there is nothing to
 	// pick between, which is the whole point of the rule (issue #139). It does
 	// not collide with the DELETE below — the two differ in method, so no
 	// request matches both, and there is no GET /rotations/{id} for "in-flight"
 	// to be mistaken for an id under.
-	api.Handle("POST /rotations", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDefineRota)))
-	api.Handle("GET /rotations/in-flight", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleGetRotaInFlight)))
+	api.Handle("POST /rotations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDefineRota)))
+	api.Handle("GET /rotations/in-flight", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleGetRotaInFlight)))
 	// What defining one right now would produce: the two states of the define
 	// screen read one of these each (issue #140).
-	api.Handle("GET /rotations/proposed", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaProposal)))
-	api.Handle("DELETE /rotations/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDiscardRota)))
+	api.Handle("GET /rotations/proposed", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaProposal)))
+	api.Handle("DELETE /rotations/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDiscardRota)))
 	// Allocating: the act that turns the rota in flight into the rota, and the
 	// end of its lifecycle. Under the rota rather than under the draft beside
 	// it, because what it changes is the Rotation — the draft is what it
 	// confirms, not what it writes.
-	api.Handle("POST /rotations/in-flight/allocation", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAllocateRotaInFlight)))
+	api.Handle("POST /rotations/in-flight/allocation", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAllocateRotaInFlight)))
 	// The rota in flight's Draft Rota Allocation. Organiser-only, and the gate is
 	// the point: a draft names people against Shifts on a rota nobody has
 	// decided yet, and it is replaced wholesale every time an input moves.
@@ -224,9 +236,9 @@ func (h *Handler) Routes() http.Handler {
 	// do, so it should be the endpoint plainly about the draft that does it.
 	// The POST re-solves whether or not anything moved, for the changes no
 	// stamp can catch: the roster is a Google Sheet.
-	api.Handle("GET /draft-rota-allocation", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetDraftRotaAllocation)))
-	api.Handle("POST /draft-rota-allocation", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
-	api.Handle("POST /alterations", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreateAlteration)))
+	api.Handle("GET /draft-rota-allocation", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetDraftRotaAllocation)))
+	api.Handle("POST /draft-rota-allocation", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSolveDraftRotaAllocation)))
+	api.Handle("POST /alterations", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreateAlteration)))
 	// Reading pins is gated alongside writing them: a listing names people
 	// against dates whose rota has not been allocated, let alone published, and
 	// nothing a logged-out visitor sees has any use for it. Pins are a Rota
@@ -237,37 +249,39 @@ func (h *Handler) Routes() http.Handler {
 	// defined. Organiser-only throughout, like the settings screen they live on.
 	// There is no PUT — a promise is made or it is not, and editing one is
 	// removing it and making the one that was meant.
-	api.Handle("GET /standing-preallocations", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListStandingPreallocations)))
-	api.Handle("POST /standing-preallocations", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateStandingPreallocation)))
-	api.Handle("DELETE /standing-preallocations/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDeleteStandingPreallocation)))
-	api.Handle("GET /preallocations", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListPreallocations)))
-	api.Handle("POST /preallocations", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePreallocation)))
-	api.Handle("DELETE /preallocations/{id}", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePreallocation)))
-	api.Handle("GET /volunteers", h.auth.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListVolunteers)))
+	api.Handle("GET /standing-preallocations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListStandingPreallocations)))
+	api.Handle("POST /standing-preallocations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateStandingPreallocation)))
+	api.Handle("DELETE /standing-preallocations/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDeleteStandingPreallocation)))
+	api.Handle("GET /preallocations", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListPreallocations)))
+	api.Handle("POST /preallocations", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePreallocation)))
+	api.Handle("DELETE /preallocations/{id}", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePreallocation)))
+	api.Handle("GET /volunteers", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListVolunteers)))
 	// Rounds are Organiser-only: the roster hands out every volunteer's link, which
 	// is a bearer credential for their availability.
-	api.Handle("POST /availability-rounds", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleMintAvailabilityRound)))
-	api.Handle("GET /availability-rounds", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetAvailabilityRound)))
+	api.Handle("POST /availability-rounds", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleMintAvailabilityRound)))
+	api.Handle("GET /availability-rounds", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetAvailabilityRound)))
 	// A send is watched, never started, from under /api: starting one is a
 	// browser redirect to Google for the gmail.send grant, which lives at
-	// /auth/gmail alongside the rest of the OAuth flow.
-	api.Handle("GET /availability-sends/{id}", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetSend)))
+	// /auth/gmail.
+	api.Handle("GET /availability-sends/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetSend)))
 	// The volunteer's own link, public by design — the link is the identity and
 	// volunteers never log in. Registered under a separate prefix from the
 	// Organiser rounds above so neither path can shadow the other.
 	api.HandleFunc("GET /availability/{token}", h.handleAvailabilityForm)
 	api.HandleFunc("POST /availability/{token}", h.handleSubmitAvailability)
 
-	root := http.NewServeMux()
-	root.Handle(apiPrefix+"/", http.StripPrefix(apiPrefix, h.apiRouter(api)))
-	root.HandleFunc("GET /health", h.handleHealth)
-	h.auth.registerRoutes(root)
-	// Sits under /auth rather than /api because it is the same browser redirect
-	// dance as login and shares its registered callback URI — it is an OAuth
-	// endpoint that happens to start a send, not a data endpoint.
-	root.Handle("GET /auth/gmail", h.auth.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGmailConsent)))
-
 	site := http.NewServeMux()
+	site.Handle(apiPrefix+"/", http.StripPrefix(apiPrefix, h.apiRouter(api)))
+	// The page's way in to the shared login, which adds the way back here.
+	site.HandleFunc("GET /auth/login", h.handleLogin)
+	// Under /auth rather than /api because it is the same browser redirect
+	// dance as login and comes back to its registered callback URI — it is an
+	// OAuth endpoint that happens to start a send, not a data endpoint. Under
+	// the Organisation rather than at the root, because which drop-in's round
+	// it sends is the whole of what it is asked.
+	site.Handle("GET /auth/gmail", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGmailConsent)))
+	// Subscribed to from a volunteer's calendar app, so its address can never
+	// move: it is where it was when the Organisation was the whole site.
 	site.HandleFunc("GET /calendars/{filename}", h.handleCalendar)
 	if hasFrontend(h.frontend) {
 		// Registered without a method: a pattern matching fewer methods than
@@ -278,59 +292,7 @@ func (h *Handler) Routes() http.Handler {
 		h.logger.Info("No frontend build embedded; serving API only")
 	}
 
-	return h.mountSite(root, site)
-}
-
-// mountSite puts under the base path the URLs that have to be at their final
-// address now, and leaves the rest at the root of the domain.
-//
-// The line is reach. A URL nobody but this app's own JavaScript ever asks for
-// can move whenever we like, because the client and the server ship together.
-// A URL that has left the building cannot be corrected at all. So:
-//
-//   - The SPA's own routes move. They are bookmarked, and the availability
-//     form's URL is emailed.
-//   - /calendars/{filename} moves. It is subscribed to from a volunteer's
-//     calendar app, fails silently when it breaks, and is keyed by a volunteer
-//     ID that comes from each organisation's own sheet — so the IDs are that
-//     organisation's, and two organisations could pick the same one. This is
-//     the URL where guessing wrong is unfixable.
-//   - /api stays at the root. Its only caller is the page's own JS. When a
-//     shared server has to serve more than one organisation the API will need
-//     to be told which one from somewhere, and choosing that then costs
-//     nothing.
-//   - /auth stays at the root, where it is strictly better off. The callback
-//     URI is registered by hand in the Google console, so one shared
-//     /auth/callback is a one-time step however many organisations there are;
-//     a per-organisation callback would be a console change each time, forever.
-//   - /health stays at the root because it is infrastructure, not site: the
-//     deploy workflow, scripts/deploy-config.sh and scripts/dev-stack.sh all
-//     poll it, and none of them should have to learn a path that differs per
-//     environment and is not in this repo.
-//
-// With no base path configured the site is simply the rest of the server, which
-// is dev and every test (issue #201).
-func (h *Handler) mountSite(root *http.ServeMux, site http.Handler) http.Handler {
-	base := h.basePath()
-	if base == "" {
-		root.Handle("/", site)
-		return root
-	}
-
-	root.Handle(base+"/", http.StripPrefix(base, site))
-	// The bare base path and the base path with its slash are the same page,
-	// and the second is what every relative asset reference in index.html
-	// resolves against. Permanent: base+"/" is where the site lives for as long
-	// as the base path is what it is.
-	root.Handle(base, http.RedirectHandler(base+"/", http.StatusMovedPermanently))
-	// The root of the domain does something sensible rather than 404ing, but
-	// only temporarily: the point of the base path is that the root may one day
-	// belong to nobody, or to a page that picks between organisations, and a
-	// permanent redirect cached in a volunteer's browser would outlive that.
-	// Exactly "/" — anything else out here is not ours and should say so.
-	root.Handle("GET /{$}", http.RedirectHandler(base+"/", http.StatusFound))
-
-	return root
+	return site
 }
 
 // apiRouter serves the API mux, answering anything it does not route in JSON.
@@ -368,6 +330,11 @@ func allowedMethods(api *http.ServeMux, r *http.Request) []string {
 		}
 	}
 	return allowed
+}
+
+// handleOrganisation says which Organisation this is.
+func (h *Handler) handleOrganisation(w http.ResponseWriter, _ *http.Request) {
+	h.writeJSON(w, http.StatusOK, map[string]string{"id": h.org.ID, "displayName": h.org.DisplayName})
 }
 
 // writeJSON writes v as a JSON response with the given status
