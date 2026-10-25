@@ -606,3 +606,39 @@ export interface Organisation {
   id: string;
   displayName: string;
 }
+
+// AvailabilityBand is how much of one past rota a volunteer offered, as at its
+// allocation. The lines between low, ok and good are the server's: fractions
+// of the rota's open shifts, so they hold for any rota length.
+export type AvailabilityBand =
+  "not_sent" | "no_response" | "unavailable" | "low" | "ok" | "good";
+
+// HistoryEntry is one volunteer on one past rota. given is the allocation as it
+// went out; attended is the rota as it finally stood after alterations.
+export interface HistoryEntry {
+  availability: AvailabilityBand;
+  available: number;
+  openShifts: number;
+  given: number;
+  attended: number;
+}
+
+export interface HistoryRota {
+  id: string;
+  start: string;
+  end: string;
+}
+
+// HistoryVolunteer's history has one entry per rota, in VolunteerHistory.rotations' order.
+export interface HistoryVolunteer {
+  id: string;
+  name: string;
+  fullName: string;
+  active: boolean;
+  history: HistoryEntry[];
+}
+
+export interface VolunteerHistory {
+  rotations: HistoryRota[];
+  volunteers: HistoryVolunteer[];
+}

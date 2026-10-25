@@ -32,6 +32,7 @@ type Store interface {
 	services.RotaDefaultsWriteStore
 	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
+	services.VolunteerHistoryStore
 	services.StandingPreallocationStore
 }
 
@@ -256,6 +257,9 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("POST /preallocations", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePreallocation)))
 	api.Handle("DELETE /preallocations/{id}", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePreallocation)))
 	api.Handle("GET /volunteers", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListVolunteers)))
+	// Organiser-only: it ranks people by how little they offer and how little
+	// they turn up for.
+	api.Handle("GET /volunteer-history", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleVolunteerHistory)))
 	// Rounds are Organiser-only: the roster hands out every volunteer's link, which
 	// is a bearer credential for their availability.
 	api.Handle("POST /availability-rounds", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleMintAvailabilityRound)))

@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import OrganiserAllocation from "./OrganiserAllocation";
+import OrganiserHistory from "./OrganiserHistory";
 import OrganiserSettings from "./OrganiserSettings";
 import OrganiserVolunteers from "./OrganiserVolunteers";
 
@@ -36,6 +37,12 @@ export const ORGANISER_TABS: OrganiserTab[] = [
     path: "/organiser/allocation",
     label: "Allocation",
     Panel: OrganiserAllocation,
+    wide: true,
+  },
+  {
+    path: "/organiser/history",
+    label: "History",
+    Panel: OrganiserHistory,
     wide: true,
   },
 ];
