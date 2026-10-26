@@ -296,6 +296,8 @@ echo "  .worktree.env: written"
 echo ""
 echo "Installing frontend dependencies..."
 (cd "$REPO_ROOT/web" && bun install)
+# The repo's hooks (.githooks/), shared by every checkout of this repo.
+git -C "$REPO_ROOT" config core.hooksPath .githooks
 
 # --- database ----------------------------------------------------------------
 

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Typecheck and lint the frontend when a commit touches it, so a broken rule
+# (react-hooks/refs, an unused import) fails as it is made rather than at
+# scripts/check.sh or in CI. Skips commits that leave web/ alone. Bypass a
+# work-in-progress commit with --no-verify.
+set -euo pipefail
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '^web/'; then
+    exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)/web"
+echo "pre-commit: typecheck and lint web/"
+bun --bun x tsc -b
+bun --bun run lint
