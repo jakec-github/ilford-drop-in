@@ -17,7 +17,7 @@ Agent tracker/PR actions authenticate as the `jakec-agent` machine account (via
 `GH_TOKEN`); reviews are done by `jakec-github`, and the approval is the merge.
 Shipping code follows the **PR workflow in `CLAUDE.md`** — branch per ticket,
 PR with `Closes #<n>`, review requested from `jakec-github`, auto-merge armed
-with `scripts/arm-auto-merge.sh` once CI is green. The agent never merges by
+with `gh pr merge <n> --auto --merge` once CI is green. The agent never merges by
 hand.
 
 ## Pull requests as a triage surface

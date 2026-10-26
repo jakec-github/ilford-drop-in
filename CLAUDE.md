@@ -104,18 +104,18 @@ does not apply to you.
   not the inner loop — one deliberate wait at the end, catching what differs
   from your machine (uncommitted files, locally-skipped tests, accumulated
   state). Fix anything it catches before handing over.
-- Once the checks are green, arm auto-merge: `scripts/arm-auto-merge.sh <n>`.
+- Once the checks are green, arm auto-merge: `gh pr merge <n> --auto --merge`.
   The PR then lands as a merge commit the moment `jakec-github` approves it,
-  with nobody coming back to press the button. Not `gh pr merge --auto`, which
-  fails on the agent token's missing `read:org`; the script says why. Arm only
-  after CI is green — the ruleset requires an approval but no status checks.
+  with nobody coming back to press the button. It works with the agent token
+  as it is. Arm only after CI is green — the ruleset requires an approval but
+  no status checks.
 - Do not arm a PR that needs a manual step after it merges (prod config, a
   one-off prod command, anything the reviewer must run): say in the PR body
   that it is deliberately not armed, and why.
 - Pushing to an armed PR dismisses the approval (the ruleset dismisses stale
   reviews), so review fixes are approved again before they land. Arming
-  survives the push; re-run the script only if `gh pr view <n> --json
-  autoMergeRequest` shows it was disabled — a merge conflict does that.
+  survives the push; if `gh pr view <n> --json autoMergeRequest` shows it was
+  disabled, arm it again.
 - Once the checks are green switch back to `main` (unless on a worktree)
 - To address review feedback: read the PR conversation (`gh pr view <n>
 --comments`), the inline review threads (`gh api
