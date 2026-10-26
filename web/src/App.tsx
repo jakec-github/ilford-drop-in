@@ -7,6 +7,8 @@ import { ORGANISER_TABS } from "./components/organiserTabs";
 import { useOrganisation } from "./hooks/useOrganisation";
 import { useRota } from "./hooks/useRota";
 import { useAuth } from "./auth-context";
+import Logo from "./components/Logo";
+import Loading from "./components/Loading";
 import Button from "./ui/Button";
 import { BASE_PATH } from "./basePath";
 
@@ -32,7 +34,7 @@ function AuthStatus() {
 
   return (
     <span className="auth-status">
-      {email}
+      <span className="auth-email">{email}</span>
       <Button size="small" onClick={logout}>
         Log out
       </Button>
@@ -40,8 +42,10 @@ function AuthStatus() {
   );
 }
 
-// Header carries the shared auth state plus the one link that moves between the
-// rota and the Organiser area — whichever of the two you are not currently on.
+// Header is the band across the top of every page in the shell: the mark, which
+// is the way home to the rota, then the shared auth state plus the one link that
+// moves between the rota and the Organiser area — whichever of the two you are
+// not currently on.
 // Only an Organiser is offered the way in: a Rota Editor's work is all on the
 // rota page, and nothing in the Organiser area is theirs.
 function Header() {
@@ -51,14 +55,20 @@ function Header() {
 
   return (
     <header className="app-header">
-      <nav className="app-nav">
-        {onOrganiser ? (
-          <Link href="/">Rota</Link>
-        ) : (
-          level === "organiser" && <Link href="/organiser">Organiser</Link>
-        )}
-      </nav>
-      <AuthStatus />
+      <Link href="/" className="app-brand" aria-label="Rota Wise">
+        <Logo size={26} />
+        Rota Wise
+      </Link>
+      <div className="app-header-end">
+        <nav className="app-nav">
+          {onOrganiser ? (
+            <Link href="/">Rota</Link>
+          ) : (
+            level === "organiser" && <Link href="/organiser">Organiser</Link>
+          )}
+        </nav>
+        <AuthStatus />
+      </div>
     </header>
   );
 }
@@ -74,7 +84,7 @@ function HomeView() {
     return <p className="app-status">Could not load the rota: {error}</p>;
   }
   if (shifts === null) {
-    return <p className="app-status">Loading rota…</p>;
+    return <Loading>Loading rota…</Loading>;
   }
   return (
     <RotaViewer

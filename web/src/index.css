@@ -1,10 +1,30 @@
+/* The theme is the logo blown up (issue #273). Its dark green calendar top is
+   the header band and the current tab; its body green is the accent; and the
+   page is tinted towards it, so that what sits on the page — a panel, a list of
+   shifts — reads as a card laid on it.
+
+   --page is that tint and --bg is the card. Only --text, --text-h and --accent
+   are verified against --page; the Role palette, --positive and --warning are
+   only ever drawn on --bg, which is why every container they appear in has a
+   background of its own. */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
+  --text: #56625d;
+  --text-h: #0f1a16;
+  --page: #eef3f0;
   --bg: #fff;
-  --border: #e5e4e7;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
+  --border: #dce5e0;
+  --accent: #2f6f5e;
+  --accent-bg: rgba(47, 111, 94, 0.1);
+
+  /* The header band and the other places the logo's dark top is drawn: the
+     current tab, a filled button. Text on it is --band-text, at 9:1. */
+  --band: #1f4f42;
+  --band-text: #fff;
+  --band-link: #cfe8dd;
+
+  /* What a card lifts off the page with, as well as its border. */
+  --card-shadow:
+    0 1px 2px rgba(15, 42, 35, 0.06), 0 4px 14px rgba(15, 42, 35, 0.06);
 
   /* The Role palette: the colour a person wears on a shift. A Role names one
      of these tokens in the server's config, and the API reports the token —
@@ -41,18 +61,25 @@
   font: 16px/1.5 var(--sans);
   color-scheme: light dark;
   color: var(--text);
-  background: var(--bg);
+  background: var(--page);
   -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
+    --text: #9fb0a8;
+    --text-h: #eef3f0;
+    --page: #0d1210;
+    --bg: #151c19;
+    --border: #24302b;
+    --accent: #6cc4a6;
+    --accent-bg: rgba(108, 196, 166, 0.13);
+
+    /* A shade between the page and the light theme's band: dark enough to
+       still be the logo's top, light enough to stand off a near-black page. */
+    --band: #17382f;
+    --band-link: #cfe8dd;
+    --card-shadow: none;
 
     --role-violet: #c084fc;
     --role-teal: #2dd4a7;
@@ -119,9 +146,14 @@ body {
   margin: 0;
 }
 
+/* A link nobody has styled is the theme's green, not the browser's blue. */
+a {
+  color: var(--accent);
+}
+
 h1,
 h2 {
-  font-weight: 500;
+  font-weight: 700;
   color: var(--text-h);
 }
 
@@ -130,12 +162,40 @@ h2 {
   padding: 3rem 1rem;
 }
 
+/* The band: the logo's dark top, across the page. One line on a phone — this
+   sits above the rota a volunteer opens to read, and every pixel of it is a
+   pixel of rota pushed down. */
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  padding: 0.625rem 1rem;
+  color: var(--band-text);
+  background: var(--band);
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* The mark's body and the band are near the same green; a hairline keeps it a
+   shape rather than a hole in the band. */
+.app-brand svg {
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.app-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .app-nav {
@@ -149,11 +209,45 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
   font-size: 0.875rem;
 }
 
-.auth-status a,
+/* An email address is the one thing in the band that can be any length. On a
+   phone it gives way first, cut short rather than wrapped, so the band stays
+   one line. */
+.auth-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-header a {
-  color: var(--accent);
+  color: var(--band-link);
   text-decoration: none;
+}
+
+.app-header a.app-brand {
+  color: var(--band-text);
+}
+
+.app-header a:hover {
+  color: var(--band-text);
+}
+
+.app-header .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--band-text);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.app-header .button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.app-header :focus-visible {
+  outline: 2px solid var(--band-text);
+  outline-offset: 2px;
 }

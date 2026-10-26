@@ -1,5 +1,6 @@
 // Logo is the Rota Wise mark: a calendar whose columns are shifts, filled to
-// different levels. web/favicon.svg is the same drawing; change both together.
+// different levels. web/favicon.svg is the same drawing, and Loading.tsx is it
+// moving; change the three together.
 export default function Logo({ size = 32 }: { size?: number }) {
   return (
     <svg

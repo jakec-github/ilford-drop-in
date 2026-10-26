@@ -12,12 +12,16 @@
    full shift look like a problem. So the list takes the width its widest row
    wants, floored at the 40rem column and capped by the shell around it — on the
    rota page, which is narrower than the floor, that is no change at all. */
+/* A card of its own, because on the rota page it sits straight on the tinted
+   page, and the Role palette is only verified against --bg. */
 .shift-list {
   width: fit-content;
   min-width: min(100%, 40rem);
   max-width: 100%;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: var(--card-shadow);
   overflow: hidden;
 }
 
