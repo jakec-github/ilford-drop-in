@@ -3,33 +3,37 @@
 Add new constraint modules here.
 
 FUNDAMENTAL_CONSTRAINTS are what makes a rota a rota. They always apply and
-nothing can switch them off.
+nothing can remove them.
 
-SWITCHABLE_CONSTRAINTS are the optional rules an Organiser chooses in the
-Allocation Settings. This list is the **authority on which toggles exist**
-(ADR 0006): the settings record stores answers keyed by the names here, and
-Go offers an Organiser exactly these. A rule arriving or leaving is an edit to
-this list and nothing else — no migration, and no default list anywhere but
-here.
+RULE_KINDS are the Allocation Rules an Organiser adds from the Rule Library
+(ADR 0012): each kind builds the constraint for one rule, from that rule's
+value and the volunteers its Scope covers. This registry is the **authority on
+what a kind does**; Go's model.RuleLibrary is what an Organiser is offered,
+and a test on each side pins the two to the same ids.
+
+Every kind here can be satisfied by leaving Seats empty, and exempts pins
+(ADR 0010), so no set of rules can make a solve infeasible. A kind that
+demands something of a Shift must carry an escape before it may join.
 
 Tests inject subsets via model_builder.build().
 """
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Callable, Iterable
 
+from ..domain import Rule
 from . import (
     availability,
     closed_shifts,
     grouping,
     male_required,
     max_frequency,
-    no_back_to_back,
+    monthly_cap,
     no_duplicate_allocation,
-    one_shift_per_month,
     preallocations,
     seat_capacity,
+    shift_gap,
 )
 from .base import Constraint, Vars
 
@@ -42,35 +46,34 @@ FUNDAMENTAL_CONSTRAINTS: list[Constraint] = [
     preallocations.CONSTRAINT,
 ]
 
-SWITCHABLE_CONSTRAINTS: list[Constraint] = [
-    max_frequency.CONSTRAINT,
-    male_required.CONSTRAINT,
-    no_back_to_back.CONSTRAINT,
-    one_shift_per_month.CONSTRAINT,
-]
+RULE_KINDS: dict[str, Callable[[Rule], Constraint]] = {
+    "max_frequency": max_frequency.MaxFrequencyConstraint,
+    "shift_gap": shift_gap.ShiftGapConstraint,
+    "monthly_cap": monthly_cap.MonthlyCapConstraint,
+    "male_required": male_required.for_rule,
+}
 
 
-def constraints_for(enabled: Iterable[str]) -> list[Constraint]:
-    """The constraint list for one run: the fundamentals, plus the switchable
-    rules named in `enabled`, in registry order.
+def rule_constraints(rules: Iterable[Rule]) -> list[Constraint]:
+    """One constraint per rule, in the order the rules arrived.
 
-    A name this build does not know selects nothing, and is not an error.
-    Stored answers outlive any one deploy, and a rule that has since been
-    withdrawn must not be able to stop a rota being allocated (ADR 0006).
-
-    Registry order rather than the caller's, so the model is built the same
-    way whatever order the answers arrive in.
+    A kind this build does not have makes nothing, and is not an error.
+    Stored rules outlive any one deploy, and one this build cannot apply
+    must not be able to stop a rota being allocated (ADR 0006).
     """
-    wanted = set(enabled)
-    return FUNDAMENTAL_CONSTRAINTS + [
-        c for c in SWITCHABLE_CONSTRAINTS if c.name in wanted
-    ]
+    return [RULE_KINDS[r.kind](r) for r in rules if r.kind in RULE_KINDS]
+
+
+def constraints_for(rules: Iterable[Rule]) -> list[Constraint]:
+    """The constraint list for one run: the fundamentals, then the rules'."""
+    return FUNDAMENTAL_CONSTRAINTS + rule_constraints(rules)
 
 
 __all__ = [
     "Constraint",
     "FUNDAMENTAL_CONSTRAINTS",
-    "SWITCHABLE_CONSTRAINTS",
+    "RULE_KINDS",
     "Vars",
     "constraints_for",
+    "rule_constraints",
 ]

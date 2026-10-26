@@ -25,18 +25,16 @@ to refuse — and a pin is a decision an Organiser has already made, so the
 pin wins. That is the one case the rule could make infeasible: with any
 Seat not pinned, the solver can always leave it open.
 
-The rule is optional: it applies when an Organiser has switched male cover on
-in the Allocation Settings, which is said by this constraint being in the
-run's list at all. It used to be said twice — a `requiresMale` config key
-*and* membership of the default constraint list — which were two halves of
-one idea in two places (issue #130).
+The rule is a Shift Rule (ADR 0012): it applies to every shift when an
+Organiser has added it, and carries no Scope and no value. Adding it twice
+asks for nothing more than adding it once.
 """
 
 from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
-from ..domain import ShiftSpec
+from ..domain import Rule, ShiftSpec
 from ..problem import Problem
 from .base import Vars
 
@@ -92,3 +90,8 @@ def _chosen(
 
 
 CONSTRAINT = MaleRequiredConstraint()
+
+
+def for_rule(rule: Rule) -> MaleRequiredConstraint:
+    """The constraint a male_required rule makes: there is only the one."""
+    return CONSTRAINT

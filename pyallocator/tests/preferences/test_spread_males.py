@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import make_group, make_input, make_member, make_shift, solve_with
-from pyallocator.constraints import max_frequency
+from conftest import make_group, make_input, make_member, make_shift, rules_of, solve_with
 from pyallocator.preferences import spread_males
 
 PREFS = [spread_males.PREFERENCE]
@@ -33,9 +32,9 @@ def test_males_spread_one_per_shift():
     inp = make_input(
         groups=[_male("m1", [0, 1]), _male("m2", [0, 1])],
         shifts=[make_shift(0), make_shift(1)],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
-    out = solve_with(inp, [max_frequency.CONSTRAINT], preferences=PREFS)
+    out = solve_with(inp, rules_of(inp), preferences=PREFS)
     assert out.success
     assert _males_per_shift(inp, out) == {0: 1, 1: 1}
 

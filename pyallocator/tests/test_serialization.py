@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 
 from pyallocator.domain import (
@@ -9,16 +11,19 @@ from pyallocator.domain import (
     Assignment,
     Diagnostics,
     OutputShift,
+    Rule,
 )
 from pyallocator.serialization import InputError, output_to_dict, parse_input
 
 VALID_INPUT = {
-    "max_allocation_count": 4,
     "roles": [
         {"name": "Team lead", "priority": 1},
         {"name": "Service volunteer", "priority": 2},
     ],
-    "enabled_constraints": ["male_required"],
+    "rules": [
+        {"kind": "male_required", "volunteer_ids": [], "value": 0},
+        {"kind": "shift_gap", "volunteer_ids": ["vol-1"], "value": 2},
+    ],
     "shifts": [
         {
             "index": 0,
@@ -75,8 +80,10 @@ VALID_INPUT = {
 
 def test_parse_valid_input():
     parsed = parse_input(VALID_INPUT)
-    assert parsed.max_allocation_count == 4
-    assert parsed.enabled_constraints == ("male_required",)
+    assert parsed.rules == (
+        Rule(kind="male_required", volunteer_ids=(), value=0),
+        Rule(kind="shift_gap", volunteer_ids=("vol-1",), value=2),
+    )
     assert [r.name for r in parsed.roles] == ["Team lead", "Service volunteer"]
     assert len(parsed.shifts) == 2
     shift0 = parsed.shifts[0]
@@ -102,10 +109,27 @@ def test_parse_valid_input():
     assert parsed.historical_shifts[0].group_keys == ("couple_x",)
 
 
+# A rule's kind is not checked here. A kind this build does not know is
+# ignored by the solve rather than refused (ADR 0006), and so is a Volunteer
+# Rule naming nobody in the problem.
+def test_rules_are_optional_and_any_kind_parses():
+    data = copy.deepcopy(VALID_INPUT)
+    data.pop("rules")
+    assert parse_input(data).rules == ()
+
+    data["rules"] = [{"kind": "phase_of_the_moon", "volunteer_ids": ["nobody"]}]
+    assert parse_input(data).rules == (
+        Rule(kind="phase_of_the_moon", volunteer_ids=("nobody",), value=0),
+    )
+
+
 @pytest.mark.parametrize(
     "mutate,fragment",
     [
-        (lambda d: d.pop("max_allocation_count"), "max_allocation_count"),
+        (lambda d: d["rules"][1].pop("kind"), "kind"),
+        (lambda d: d["rules"][1].update(value="2"), "expected int"),
+        (lambda d: d["rules"][1].update(volunteer_ids=[3]), "expected str"),
+        (lambda d: d.update(rules={}), "expected list"),
         (lambda d: d.pop("shifts"), "shifts"),
         (lambda d: d["shifts"][0].pop("index"), "index"),
         (lambda d: d["shifts"][0].update(index=5), "out of order"),
@@ -120,7 +144,6 @@ def test_parse_valid_input():
             lambda d: d["groups"].append(dict(d["groups"][0])),
             "duplicate group_key",
         ),
-        (lambda d: d.update(max_allocation_count="4"), "expected int"),
         (lambda d: d.pop("roles"), "roles"),
         (
             lambda d: d["roles"].append({"name": "Team lead", "priority": 3}),
@@ -145,8 +168,6 @@ def test_parse_valid_input():
     ],
 )
 def test_parse_rejects_bad_input(mutate, fragment):
-    import copy
-
     data = copy.deepcopy(VALID_INPUT)
     mutate(data)
     with pytest.raises(InputError, match=fragment):

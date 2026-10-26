@@ -1,5 +1,4 @@
 {
-  "max_allocation_count": 1,
   "roles": [
     {
       "name": "Team lead",
@@ -10,8 +9,19 @@
       "priority": 2
     }
   ],
-  "enabled_constraints": [
-    "male_required"
+  "rules": [
+    {
+      "kind": "max_frequency",
+      "volunteer_ids": [
+        "v1"
+      ],
+      "value": 1
+    },
+    {
+      "kind": "male_required",
+      "volunteer_ids": [],
+      "value": 0
+    }
   ],
   "shifts": [
     {

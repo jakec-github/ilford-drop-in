@@ -12,11 +12,12 @@ from conftest import (
     make_input,
     make_member,
     make_shift,
+    rules_of,
     solve_with,
     team_lead_id,
     volunteer_ids,
 )
-from pyallocator.constraints import max_frequency, seat_capacity
+from pyallocator.constraints import seat_capacity
 from pyallocator.domain import Seat
 from pyallocator.preferences import even_fill
 
@@ -29,9 +30,9 @@ def test_scarce_volunteers_spread_across_shifts():
     inp = make_input(
         groups=[make_group(f"g{i}", available=[0, 1]) for i in range(3)],
         shifts=[make_shift(0, size=4), make_shift(1, size=4)],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
-    out = solve_with(inp, [max_frequency.CONSTRAINT], preferences=PREFS)
+    out = solve_with(inp, rules_of(inp), preferences=PREFS)
     assert out.success
     by_shift = allocations_by_shift(out)
     assert sorted(len(keys) for keys in by_shift.values()) == [1, 2]
@@ -47,9 +48,9 @@ def test_custom_preallocations_count_as_early_seats():
             make_shift(0, size=2, custom_preallocations=["external"]),
             make_shift(1, size=2),
         ],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
-    out = solve_with(inp, [max_frequency.CONSTRAINT], preferences=PREFS)
+    out = solve_with(inp, rules_of(inp), preferences=PREFS)
     assert out.success
     assert allocations_by_shift(out)[1] == ("g1",)
 
@@ -86,10 +87,10 @@ def test_a_priority_band_outranks_every_seat_below_it():
                 make_shift(1), shape=(Seat(role=SERVICE_VOLUNTEER, count=4),)
             ),
         ],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
     out = solve_with(
-        inp, [seat_capacity.CONSTRAINT, max_frequency.CONSTRAINT], preferences=PREFS
+        inp, [seat_capacity.CONSTRAINT, *rules_of(inp)], preferences=PREFS
     )
     assert out.success
     assert team_lead_id(out.shifts[0]) == "lead"
@@ -116,10 +117,10 @@ def test_every_role_spreads_across_shifts_not_just_the_biggest():
             dataclasses.replace(make_shift(0, size=0), shape=two_leads),
             dataclasses.replace(make_shift(1, size=0), shape=two_leads),
         ],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
     out = solve_with(
-        inp, [seat_capacity.CONSTRAINT, max_frequency.CONSTRAINT], preferences=PREFS
+        inp, [seat_capacity.CONSTRAINT, *rules_of(inp)], preferences=PREFS
     )
     assert out.success
     by_shift = allocations_by_shift(out)

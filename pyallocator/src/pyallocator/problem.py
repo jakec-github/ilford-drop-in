@@ -58,7 +58,6 @@ class Problem:
         shifts: the input shift specs, index order.
         roles: the configured Roles, priority order.
         role_by_name: {name: Role}.
-        max_allocation_count: Go-computed cap on allocations per volunteer.
         preallocated_roles: {(volunteer_id, shift_index): role} the pinned
             person must fill — and, through may_fill, may fill there even
             if they do not hold the Role. A pin pins this one person (ADR
@@ -70,17 +69,16 @@ class Problem:
             group-mate of a pinned volunteer who is not pinned there
             themselves, canonical order. The solve keeps as many of them
             with their pinned member as the rules allow (solver.py).
-        last_historical_group_keys: group keys present on the most recent
-            historical shift (back-to-back boundary with the previous rota).
-        historical_group_months: {group_key: frozenset of YYYY-MM months} the
-            group already worked in history (the one-shift-per-month rule bars a
-            group from any current shift in a month it already worked).
+        historical_group_keys: the group keys present on each historical
+            shift, most recent first — position k is k + 1 shifts before this
+            rota's first (a shift gap's boundary with the previous rota).
+        historical_month_counts: {group_key: {YYYY-MM: shifts worked}} in
+            history (a monthly cap counts what the month has already had).
     """
 
     def __init__(self, input_: AllocationInput) -> None:
         self.input = input_
         self.shifts: tuple[ShiftSpec, ...] = input_.shifts
-        self.max_allocation_count: int = input_.max_allocation_count
         self.groups: tuple[Group, ...] = input_.groups
         self.group_by_key: dict[str, Group] = {g.group_key: g for g in self.groups}
 
@@ -128,19 +126,17 @@ class Problem:
             and (v.id, shift.index) not in self.preallocated_roles
         )
 
-        self.last_historical_group_keys: frozenset[str] = frozenset(
-            input_.historical_shifts[-1].group_keys if input_.historical_shifts else ()
+        self.historical_group_keys: tuple[frozenset[str], ...] = tuple(
+            frozenset(hs.group_keys) for hs in reversed(input_.historical_shifts)
         )
 
-        # group_key -> months (YYYY-MM) that group already worked in history.
-        months: dict[str, set[str]] = {}
+        counts: dict[str, dict[str, int]] = {}
         for hs in input_.historical_shifts:
             month = hs.date[:7]
             for group_key in hs.group_keys:
-                months.setdefault(group_key, set()).add(month)
-        self.historical_group_months: dict[str, frozenset[str]] = {
-            k: frozenset(v) for k, v in months.items()
-        }
+                by_month = counts.setdefault(group_key, {})
+                by_month[month] = by_month.get(month, 0) + 1
+        self.historical_month_counts: dict[str, dict[str, int]] = counts
 
     def may_fill(self, volunteer: VolunteerView, shift_index: int, role: str) -> bool:
         """Whether this volunteer may take a Seat in this Role on this shift.
