@@ -3,7 +3,7 @@
     "ortools": "9.15.6755",
     "platform": "darwin-x86_64"
   },
-  "objective_value": 1924,
+  "objective_value": 2013,
   "shifts": {
     "0": {
       "customs": [],
@@ -11,15 +11,15 @@
       "volunteers": [
         "larry",
         "oliver",
-        "steve"
+        "paula"
       ]
     },
     "1": {
       "customs": [],
       "team_lead": "george",
       "volunteers": [
-        "helen",
-        "quinn"
+        "diana",
+        "helen"
       ]
     },
     "2": {
@@ -27,7 +27,7 @@
       "team_lead": "alice",
       "volunteers": [
         "bob",
-        "victor"
+        "judy"
       ]
     },
     "3": {
@@ -40,10 +40,10 @@
     },
     "4": {
       "customs": [],
-      "team_lead": "alice",
+      "team_lead": "karen",
       "volunteers": [
-        "bob",
-        "charlie"
+        "charlie",
+        "larry"
       ]
     },
     "5": {
@@ -55,9 +55,9 @@
       "customs": [
         "external_john"
       ],
-      "team_lead": "george",
+      "team_lead": "alice",
       "volunteers": [
-        "helen"
+        "bob"
       ]
     }
   }

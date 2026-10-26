@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# The only gender string with semantics (mirrors allocator.GenderMale in Go).
+# The gender strings with semantics (Male mirrors allocator.GenderMale in
+# Go); any other gender, or none, is counted by neither.
 GENDER_MALE = "Male"
+GENDER_FEMALE = "Female"
 
 
 @dataclass(frozen=True)
