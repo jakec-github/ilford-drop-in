@@ -2,6 +2,9 @@
 
 Status: accepted. Amended 2026-10-04 (#222): every stored reference to a Role
 is by id — see "Roles get an identity separate from their name".
+Partly superseded by [ADR 0012](0012-allocation-rules-added-from-a-library.md)
+(proposed): optional allocator rules are added from a library rather than
+switched on and off. What this ADR says about where settings live still holds.
 
 Everything an admin decides about how the drop-in runs — the Roles that exist,
 the default Shape, shift times, which optional allocator rules apply, the
