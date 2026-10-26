@@ -34,7 +34,7 @@ var seedRotaDefaults = db.RotaDefaults{
 var seedAllocationSettings = model.AllocationSettings{Rules: []model.AllocationRule{
 	{ID: "seed-max-frequency", Kind: model.MaxFrequencyKind, Value: 34},
 	{ID: "seed-shift-gap", Kind: model.ShiftGapKind, Value: 1},
-	{ID: "seed-male-required", Kind: model.MaleRequiredKind},
+	{ID: "seed-shift-requires", Kind: model.ShiftRequiresKind, Option: "Male"},
 }}
 
 // SeedRotaDefaults gives a dev database its shift times and its allocation

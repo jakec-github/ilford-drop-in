@@ -45,9 +45,15 @@ type ruleKindResponse struct {
 	Description string `json:"description"`
 	// ValueLabel names the one value a rule of this kind carries, empty for a
 	// kind that carries none; MinValue and MaxValue bound it, inclusive.
-	ValueLabel string `json:"valueLabel,omitempty"`
-	MinValue   int    `json:"minValue,omitempty"`
-	MaxValue   int    `json:"maxValue,omitempty"`
+	ValueLabel   string `json:"valueLabel,omitempty"`
+	MinValue     int    `json:"minValue,omitempty"`
+	MaxValue     int    `json:"maxValue,omitempty"`
+	DefaultValue int    `json:"defaultValue,omitempty"`
+	Input        string `json:"input,omitempty"`
+	// OptionLabel names the one choice a rule of this kind carries, empty for
+	// a kind that carries none; Options is every choice it accepts.
+	OptionLabel string   `json:"optionLabel,omitempty"`
+	Options     []string `json:"options,omitempty"`
 }
 
 // scopeBody is a Scope on the wire, both ways. The lists are never null on the
@@ -67,6 +73,7 @@ type allocationRuleResponse struct {
 	ID      string    `json:"id"`
 	Kind    string    `json:"kind"`
 	Value   int       `json:"value"`
+	Option  string    `json:"option"`
 	Scope   scopeBody `json:"scope"`
 	Note    string    `json:"note"`
 	Ignored bool      `json:"ignored"`
@@ -74,18 +81,20 @@ type allocationRuleResponse struct {
 
 // addAllocationRuleRequest is a rule from the library with its values filled in.
 type addAllocationRuleRequest struct {
-	Kind  string    `json:"kind"`
-	Value int       `json:"value"`
-	Scope scopeBody `json:"scope"`
-	Note  string    `json:"note"`
+	Kind   string    `json:"kind"`
+	Value  int       `json:"value"`
+	Option string    `json:"option"`
+	Scope  scopeBody `json:"scope"`
+	Note   string    `json:"note"`
 }
 
 // editAllocationRuleRequest is what can change about a rule in place. Its kind
 // is what it is: a different kind is a different rule.
 type editAllocationRuleRequest struct {
-	Value int       `json:"value"`
-	Scope scopeBody `json:"scope"`
-	Note  string    `json:"note"`
+	Value  int       `json:"value"`
+	Option string    `json:"option"`
+	Scope  scopeBody `json:"scope"`
+	Note   string    `json:"note"`
 }
 
 // seatResponse is one line of a Shape: this many of this Role.
@@ -230,22 +239,27 @@ func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rota
 	library := make([]ruleKindResponse, 0, len(model.RuleLibrary))
 	for _, k := range model.RuleLibrary {
 		library = append(library, ruleKindResponse{
-			ID:          k.ID,
-			Family:      string(k.Family),
-			Label:       k.Label,
-			Description: k.Description,
-			ValueLabel:  k.ValueLabel,
-			MinValue:    k.MinValue,
-			MaxValue:    k.MaxValue,
+			ID:           k.ID,
+			Family:       string(k.Family),
+			Label:        k.Label,
+			Description:  k.Description,
+			ValueLabel:   k.ValueLabel,
+			MinValue:     k.MinValue,
+			MaxValue:     k.MaxValue,
+			DefaultValue: k.DefaultValue,
+			Input:        string(k.Input),
+			OptionLabel:  k.OptionLabel,
+			Options:      k.Options,
 		})
 	}
 
 	rules := make([]allocationRuleResponse, 0, len(defaults.AllocationSettings.Rules))
 	for _, r := range defaults.AllocationSettings.Rules {
 		rules = append(rules, allocationRuleResponse{
-			ID:    r.ID,
-			Kind:  r.Kind,
-			Value: r.Value,
+			ID:     r.ID,
+			Kind:   r.Kind,
+			Value:  r.Value,
+			Option: r.Option,
 			Scope: scopeBody{
 				Include: emptyIfNil(r.Scope.Include),
 				Exclude: emptyIfNil(r.Scope.Exclude),
@@ -283,10 +297,11 @@ func (h *Handler) handleAddAllocationRule(w http.ResponseWriter, r *http.Request
 	}
 
 	if _, err := services.AddAllocationRule(r.Context(), h.store, model.AllocationRule{
-		Kind:  req.Kind,
-		Value: req.Value,
-		Scope: model.Scope{Include: req.Scope.Include, Exclude: req.Scope.Exclude},
-		Note:  req.Note,
+		Kind:   req.Kind,
+		Value:  req.Value,
+		Option: req.Option,
+		Scope:  model.Scope{Include: req.Scope.Include, Exclude: req.Scope.Exclude},
+		Note:   req.Note,
 	}, h.logger); err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -295,7 +310,7 @@ func (h *Handler) handleAddAllocationRule(w http.ResponseWriter, r *http.Request
 	h.writeCurrentSettings(w, r)
 }
 
-// handleEditAllocationRule changes a rule's value, Scope and note in place.
+// handleEditAllocationRule changes a rule's value, choice, Scope and note in place.
 func (h *Handler) handleEditAllocationRule(w http.ResponseWriter, r *http.Request) {
 	var req editAllocationRuleRequest
 	if err := decodeStrict(r, &req); err != nil {
@@ -304,9 +319,10 @@ func (h *Handler) handleEditAllocationRule(w http.ResponseWriter, r *http.Reques
 	}
 
 	if _, err := services.EditAllocationRule(r.Context(), h.store, r.PathValue("id"), model.AllocationRule{
-		Value: req.Value,
-		Scope: model.Scope{Include: req.Scope.Include, Exclude: req.Scope.Exclude},
-		Note:  req.Note,
+		Value:  req.Value,
+		Option: req.Option,
+		Scope:  model.Scope{Include: req.Scope.Include, Exclude: req.Scope.Exclude},
+		Note:   req.Note,
 	}, h.logger); err != nil {
 		h.writeServiceError(w, err)
 		return

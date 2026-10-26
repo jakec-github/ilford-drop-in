@@ -269,7 +269,7 @@ func TestAddAllocationRuleRejectsBadInput(t *testing.T) {
 		"an unknown kind":         `{"kind":"phase_of_the_moon"}`,
 		"a value out of range":    `{"kind":"max_frequency","value":400}`,
 		"including and excluding": `{"kind":"shift_gap","value":1,"scope":{"include":["a"],"exclude":["b"]}}`,
-		"an unknown field":        `{"kind":"male_required","colour":"blue"}`,
+		"an unknown field":        `{"kind":"shift_requires","option":"Male","colour":"blue"}`,
 		"not json":                `nonsense`,
 	}
 

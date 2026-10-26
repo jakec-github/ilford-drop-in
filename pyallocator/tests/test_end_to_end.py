@@ -59,7 +59,7 @@ GOLDEN_PATH = Path(__file__).parent / "testdata" / "e2e_rota.json"
 # the golden rota below is the same rota it was before rules existed. No
 # monthly cap, as one_shift_per_month was off when it sat unused in
 # STRICT_CONSTRAINTS.
-E2E_RULES = (("male_required", 0), ("shift_gap", 1))
+E2E_RULES = (("shift_requires", 0), ("shift_gap", 1))
 
 # Every day-one kind, a monthly cap of one being one_shift_per_month.
 EVERY_RULE = E2E_RULES + (("monthly_cap", 1),)
@@ -344,7 +344,7 @@ def test_end_to_end_scenario():
         "availability",
         "max_frequency",
         "seat_capacity",
-        "male_required",
+        "shift_requires",
         "shift_gap",
         "closed_shifts",
         "preallocations",

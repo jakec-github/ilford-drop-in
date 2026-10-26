@@ -1,7 +1,13 @@
 import { describe, expect, mock, test } from "bun:test";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { AllocationRuleList, ScopePicker } from "./AllocationRules";
-import type { AllocationRule, RuleKind, Scope, Volunteer } from "../types";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { AllocationRuleCards } from "./AllocationRules";
+import type {
+  AllocationRule,
+  AllocationRuleEdit,
+  RuleKind,
+  Scope,
+  Volunteer,
+} from "../types";
 
 // Kinds as the server's library describes them. The screen draws whatever it
 // is sent, so these are worded unlike the real library on purpose.
@@ -13,16 +19,48 @@ const GAP: RuleKind = {
   valueLabel: "Shifts off",
   minValue: 1,
   maxValue: 52,
+  input: "stepper",
+};
+const SHARE: RuleKind = {
+  id: "max_frequency",
+  family: "volunteer",
+  label: "Share of shifts",
+  description: "At most this share.",
+  valueLabel: "Share",
+  minValue: 1,
+  maxValue: 100,
+  input: "percent",
+};
+const MONTHLY: RuleKind = {
+  id: "monthly_cap",
+  family: "volunteer",
+  label: "Shifts a month",
+  description: "At most this many a month.",
+  valueLabel: "Most a month",
+  minValue: 1,
+  maxValue: 31,
+  input: "count",
 };
 const COVER: RuleKind = {
-  id: "male_required",
+  id: "shift_requires",
   family: "shift",
   label: "Cover on every shift",
   description: "Every shift has cover.",
+  optionLabel: "Kind of cover",
+  options: ["Day", "Night"],
 };
-const LIBRARY = [GAP, COVER];
+const LIBRARY = [GAP, SHARE, MONTHLY, COVER];
 
-function volunteer(id: string, fullName: string, extra: Partial<Volunteer> = {}): Volunteer {
+// Long enough for a card to stop waiting for more movement and save.
+const SAVED = 700;
+const wait = (ms: number) =>
+  act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+function volunteer(
+  id: string,
+  fullName: string,
+  extra: Partial<Volunteer> = {},
+): Volunteer {
   return {
     id,
     name: fullName.split(" ")[0],
@@ -36,14 +74,20 @@ function volunteer(id: string, fullName: string, extra: Partial<Volunteer> = {})
 }
 
 const grace = volunteer("grace", "Grace Hopper");
+const alan = volunteer("alan", "Alan Turing");
 const ada = volunteer("ada", "Ada Lovelace", { active: false });
-const ROSTER = [grace, ada];
+const ROSTER = [grace, alan, ada];
 
-function rule(id: string, scope: Partial<Scope>, extra: Partial<AllocationRule> = {}): AllocationRule {
+function rule(
+  id: string,
+  scope: Partial<Scope> = {},
+  extra: Partial<AllocationRule> = {},
+): AllocationRule {
   return {
     id,
     kind: GAP.id,
     value: 2,
+    option: "",
     scope: { include: [], exclude: [], ...scope },
     note: "",
     ignored: false,
@@ -51,126 +95,195 @@ function rule(id: string, scope: Partial<Scope>, extra: Partial<AllocationRule> 
   };
 }
 
-function renderList(rules: AllocationRule[]) {
-  const onEdit = mock(() => {});
-  const onRemove = mock(async () => {});
+function renderCards(rules: AllocationRule[]) {
+  const onSave = mock<(id: string, edit: AllocationRuleEdit) => Promise<void>>(
+    async () => {},
+  );
+  const onRemove = mock<(id: string) => Promise<void>>(async () => {});
   render(
-    <AllocationRuleList
+    <AllocationRuleCards
       rules={rules}
       library={LIBRARY}
       volunteers={ROSTER}
-      onEdit={onEdit}
+      onSave={onSave}
       onRemove={onRemove}
     />,
   );
-  return { onEdit, onRemove };
+  return { onSave, onRemove };
 }
 
-describe("AllocationRuleList", () => {
-  test("names who a rule covers, and that an empty Scope is everyone", () => {
-    renderList([
-      rule("everyone", {}),
-      rule("only", { include: ["grace"] }),
-      rule("except", { exclude: ["ada"] }),
+const card = (name: string) => screen.getByRole("listitem", { name });
+
+describe("a rule card", () => {
+  test("names who it covers as chips, and how many that is", () => {
+    renderCards([
+      rule("everyone"),
+      rule("except", { exclude: ["grace"] }, { kind: SHARE.id, value: 50 }),
     ]);
 
-    const rows = screen.getAllByRole("listitem");
-    expect(rows[0].textContent).toContain("Everyone");
-    expect(within(rows[1]).getByText(/^Only/)).toBeTruthy();
-    expect(within(rows[1]).getByText("Grace Hopper")).toBeTruthy();
-    expect(within(rows[2]).getByText(/^Everyone except/)).toBeTruthy();
-    expect(within(rows[2]).getByText("Ada Lovelace (not active)")).toBeTruthy();
+    expect(
+      within(card("Rest between shifts")).getByText(
+        "Covers every active volunteer",
+      ),
+    ).toBeTruthy();
+
+    const except = card("Share of shifts");
+    expect(within(except).getByText("Grace Hopper")).toBeTruthy();
+    expect(
+      within(except)
+        .getByRole("radio", { name: "Everyone except" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      within(except).getByText("Covers 1 of 2 active volunteers"),
+    ).toBeTruthy();
   });
 
-  // A volunteer who has left the roster stays on the rule, said as such, with
-  // the id so an Organiser can tell two leavers apart.
-  test("flags a volunteer no longer on the roster", () => {
-    renderList([rule("stale", { exclude: ["gone-1"] })]);
+  test("saves a change once the control stops moving, as one write", async () => {
+    const { onSave } = renderCards([rule("gap")]);
+    const more = screen.getByRole("button", { name: "More: Shifts off" });
 
-    const stale = screen.getByText(/Volunteer no longer on the roster/);
-    expect(stale.textContent).toContain("gone-1");
-    expect(screen.queryByText("Covers nobody")).toBeNull();
-  });
+    fireEvent.click(more);
+    fireEvent.click(more);
+    expect(onSave).not.toHaveBeenCalled();
 
-  // An include list of leavers covers nobody — not everyone — and that is the
-  // surprise worth saying out loud.
-  test("flags an include list whose every volunteer has left as covering nobody", () => {
-    renderList([
-      rule("nobody", { include: ["gone-1", "gone-2"] }),
-      rule("somebody", { include: ["gone-1", "grace"] }),
+    await wait(SAVED);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]).toEqual([
+      "gap",
+      { value: 4, option: "", scope: { include: [], exclude: [] }, note: "" },
     ]);
-
-    const rows = screen.getAllByRole("listitem");
-    expect(within(rows[0]).getByText("Covers nobody")).toBeTruthy();
-    expect(within(rows[1]).queryByText("Covers nobody")).toBeNull();
   });
 
-  // A rule this build cannot apply is shown, said to be ignored, and can be
-  // removed — but not edited, since there is no form for a kind it lacks.
-  test("shows an ignored rule as not applied, removable only", () => {
-    const { onRemove } = renderList([
+  test("keeps a typed value within what the kind accepts", async () => {
+    const { onSave } = renderCards([rule("gap")]);
+    const figure = screen.getByRole("textbox", { name: "Shifts off" });
+
+    fireEvent.focus(figure);
+    fireEvent.change(figure, { target: { value: "999" } });
+    fireEvent.blur(figure);
+
+    await wait(SAVED);
+    expect(onSave.mock.calls[0][1].value).toBe(52);
+  });
+
+  test("moves the percentage ring from the keyboard", async () => {
+    const { onSave } = renderCards([
+      rule("share", {}, { kind: SHARE.id, value: 50 }),
+    ]);
+    const ring = screen.getByRole("slider", { name: "Share" });
+
+    fireEvent.keyDown(ring, { key: "ArrowUp" });
+    fireEvent.keyDown(ring, { key: "PageUp" });
+    expect(ring.getAttribute("aria-valuenow")).toBe("61");
+
+    await wait(SAVED);
+    expect(onSave.mock.calls[0][1].value).toBe(61);
+  });
+
+  test("grows the slider's scale when its end is reached", () => {
+    renderCards([rule("monthly", {}, { kind: MONTHLY.id, value: 2 })]);
+    const slider = screen.getByRole("slider", { name: "Most a month, slider" });
+    expect(slider.getAttribute("max")).toBe("8");
+
+    fireEvent.change(slider, { target: { value: "8" } });
+    expect(slider.getAttribute("max")).toBe("16");
+
+    // And shrinks back once the value is well inside the smaller scale.
+    fireEvent.change(slider, { target: { value: "3" } });
+    expect(slider.getAttribute("max")).toBe("8");
+  });
+
+  test("sets a kind's choice from the options it offers", async () => {
+    const { onSave } = renderCards([
+      rule("cover", {}, { kind: COVER.id, value: 0, option: "Day" }),
+    ]);
+    const cover = card("Cover on every shift");
+    // A Shift Rule has no Scope to show.
+    expect(within(cover).queryByText(/Covers/)).toBeNull();
+
+    fireEvent.click(within(cover).getByRole("radio", { name: "Night" }));
+    await wait(SAVED);
+    expect(onSave.mock.calls[0][1].option).toBe("Night");
+  });
+
+  test("flipping who it covers takes the names across", async () => {
+    const { onSave } = renderCards([rule("gap", { exclude: ["grace"] })]);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Only" }));
+    await wait(SAVED);
+    expect(onSave.mock.calls[0][1].scope).toEqual({
+      include: ["grace"],
+      exclude: [],
+    });
+  });
+
+  test("offers inactive volunteers too, and adds the one picked", async () => {
+    const { onSave } = renderCards([rule("gap")]);
+    const add = screen.getByRole("combobox", { name: "Everyone except" });
+    expect(
+      within(add).getByRole("option", { name: "Ada Lovelace (not active)" }),
+    ).toBeTruthy();
+
+    fireEvent.change(add, { target: { value: "alan" } });
+    await wait(SAVED);
+    expect(onSave.mock.calls[0][1].scope).toEqual({
+      include: [],
+      exclude: ["alan"],
+    });
+  });
+
+  test("warns before the last name off an include list widens it to everyone", async () => {
+    const { onSave } = renderCards([rule("gap", { include: ["grace"] })]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Grace Hopper" }),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("cover everyone");
+    await wait(SAVED);
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Remove and cover everyone/ }),
+    );
+    await wait(SAVED);
+    expect(onSave.mock.calls[0][1].scope).toEqual({ include: [], exclude: [] });
+  });
+
+  test("asks on the card before removing it", async () => {
+    const { onRemove } = renderCards([rule("gap")]);
+    const gap = card("Rest between shifts");
+
+    fireEvent.click(
+      within(gap).getByRole("button", { name: "Remove Rest between shifts" }),
+    );
+    fireEvent.click(within(gap).getByRole("button", { name: "Keep" }));
+    expect(onRemove).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(gap).getByRole("button", { name: "Remove Rest between shifts" }),
+    );
+    fireEvent.click(within(gap).getByRole("button", { name: "Remove" }));
+    expect(onRemove).toHaveBeenCalledWith("gap");
+  });
+
+  // A kind this build does not have is drawn so it can be seen and removed —
+  // but not edited, since nothing here knows what its value means.
+  test("draws a rule of an unknown kind with nothing to edit", () => {
+    renderCards([
       rule("unknown", {}, { kind: "phase_of_the_moon", ignored: true }),
     ]);
+    const unknown = card("Unknown rule “phase_of_the_moon”");
 
-    const unknown = screen.getAllByRole("listitem")[0];
     expect(within(unknown).getByText(/Not applied/)).toBeTruthy();
-    expect(within(unknown).queryByRole("button", { name: /Edit/ })).toBeNull();
-    fireEvent.click(within(unknown).getByRole("button", { name: /Remove/ }));
-    expect(onRemove).toHaveBeenCalledWith("unknown");
+    expect(within(unknown).queryByRole("textbox")).toBeNull();
+    expect(
+      within(unknown).getByRole("button", { name: /Remove/ }),
+    ).toBeTruthy();
   });
 
-  test("shows a Shift Rule without a Scope", () => {
-    renderList([rule("cover", {}, { kind: COVER.id, value: 0 })]);
-
-    const cover = screen.getAllByRole("listitem")[0];
-    expect(within(cover).getByText(COVER.label)).toBeTruthy();
-    expect(within(cover).queryByText(/Everyone/)).toBeNull();
-  });
-});
-
-describe("ScopePicker", () => {
-  function renderPicker(scope: Scope) {
-    const onChange = mock<(scope: Scope) => void>(() => {});
-    render(<ScopePicker scope={scope} volunteers={ROSTER} onChange={onChange} />);
-    return onChange;
-  }
-
-  // A name can go on one list only while the other is empty.
-  test("offers only the list in use once somebody is named", () => {
-    renderPicker({ include: ["grace"], exclude: [] });
-
-    const include = screen.getByRole("combobox", { name: /Only/ });
-    const exclude = screen.getByRole("combobox", { name: /Everyone except/ });
-    expect((include as HTMLSelectElement).disabled).toBe(false);
-    expect((exclude as HTMLSelectElement).disabled).toBe(true);
-  });
-
-  test("offers the whole roster, inactive volunteers included", () => {
-    const onChange = renderPicker({ include: [], exclude: [] });
-
-    const exclude = screen.getByRole("combobox", { name: /Everyone except/ });
-    expect(within(exclude).getByRole("option", { name: "Ada Lovelace (not active)" })).toBeTruthy();
-    fireEvent.change(exclude, { target: { value: "ada" } });
-    expect(onChange).toHaveBeenCalledWith({ include: [], exclude: ["ada"] });
-  });
-
-  // Emptying an include list widens the rule to everyone, which is the
-  // opposite of what removing somebody looks like it does — so it asks first.
-  test("asks before removing the last included volunteer widens the rule", () => {
-    const onChange = renderPicker({ include: ["grace"], exclude: [] });
-
-    fireEvent.click(screen.getByRole("button", { name: "Remove Grace Hopper" }));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert").textContent).toMatch(/cover everyone/);
-
-    fireEvent.click(screen.getByRole("button", { name: /Remove and cover everyone/ }));
-    expect(onChange).toHaveBeenCalledWith({ include: [], exclude: [] });
-  });
-
-  test("removes from an exclude list without asking", () => {
-    const onChange = renderPicker({ include: [], exclude: ["grace"] });
-
-    fireEvent.click(screen.getByRole("button", { name: "Remove Grace Hopper" }));
-    expect(onChange).toHaveBeenCalledWith({ include: [], exclude: [] });
+  test("says when it covers nobody because everyone named has left", () => {
+    renderCards([rule("gap", { include: ["gone"] })]);
+    expect(screen.getByText(/Covers nobody/)).toBeTruthy();
   });
 });

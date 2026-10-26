@@ -84,3 +84,33 @@
     flex-wrap: wrap;
   }
 }
+
+/* The draft and the rules it is solved under, side by side on a desk. The
+   rules keep a fixed column; the draft takes the rest. Below 56rem there is
+   not room for both, and the rules follow the draft down the page. */
+.draft-with-rules {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 19rem;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  align-items: start;
+}
+
+.draft-with-rules > .organiser-panel {
+  margin-top: 0;
+}
+
+.draft-with-rules .draft-rules {
+  position: sticky;
+  top: 1rem;
+}
+
+@media (max-width: 56rem) {
+  .draft-with-rules {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .draft-with-rules .draft-rules {
+    position: static;
+  }
+}

@@ -21,7 +21,7 @@ VALID_INPUT = {
         {"name": "Service volunteer", "priority": 2},
     ],
     "rules": [
-        {"kind": "male_required", "volunteer_ids": [], "value": 0},
+        {"kind": "shift_requires", "volunteer_ids": [], "value": 0, "option": "Male"},
         {"kind": "shift_gap", "volunteer_ids": ["vol-1"], "value": 2},
     ],
     "shifts": [
@@ -81,7 +81,7 @@ VALID_INPUT = {
 def test_parse_valid_input():
     parsed = parse_input(VALID_INPUT)
     assert parsed.rules == (
-        Rule(kind="male_required", volunteer_ids=(), value=0),
+        Rule(kind="shift_requires", volunteer_ids=(), value=0, option="Male"),
         Rule(kind="shift_gap", volunteer_ids=("vol-1",), value=2),
     )
     assert [r.name for r in parsed.roles] == ["Team lead", "Service volunteer"]

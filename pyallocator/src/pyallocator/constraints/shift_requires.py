@@ -1,21 +1,17 @@
-"""Ensures every shift can end up with a male volunteer: a shift with no
-male allocated must leave a Seat open — whichever Role that Seat belongs
-to — so the rota creator can manually add a male into it after finding a
-suitable volunteer.
+"""Ensures every shift can end up with a volunteer of the gender a
+shift_requires rule names: a shift without one allocated must leave a Seat
+open — whichever Role that Seat belongs to — so the rota creator can add
+one manually after finding a suitable volunteer.
 
 Per open shift, at least one of:
-  1. a male is allocated, whatever Seat they are in;
+  1. a volunteer of the gender is allocated, whatever Seat they are in;
   2. some Role's Seats are not all taken.
 
-Before Roles that second escape was two, "no team lead is allocated" and
-"an ordinary seat is unfilled", which were the same statement about two
-hardcoded Roles. A Team lead Seat and a Service volunteer Seat are both
-just Seats, and a Role whose Seats nobody available can fill is one of
-the open ones — that is where the old "no team lead allocated" escape
-comes from now.
+The gender is matched against the roster's text exactly. "Male" is the
+rule as it began (male_required, issue #281 generalised it).
 
 Custom (free-text) preallocations have unknown gender: they occupy Seats
-but never satisfy the male requirement, so they narrow the escape. Pinned
+but never satisfy the requirement, so they narrow the escape. Pinned
 volunteers narrow it too, and a Role its pins have overfilled offers no
 escape — but frees none in another Role either (ADR 0010).
 
@@ -26,8 +22,8 @@ pin wins. That is the one case the rule could make infeasible: with any
 Seat not pinned, the solver can always leave it open.
 
 The rule is a Shift Rule (ADR 0012): it applies to every shift when an
-Organiser has added it, and carries no Scope and no value. Adding it twice
-asks for nothing more than adding it once.
+Organiser has added it, and carries no Scope and no value. Two rules naming
+different genders ask for both.
 """
 
 from __future__ import annotations
@@ -39,33 +35,39 @@ from ..problem import Problem
 from .base import Vars
 
 
-class MaleRequiredConstraint:
-    name = "male_required"
-    description = (
-        "a shift without a male keeps a Seat open so one can be added manually"
-    )
+class ShiftRequiresConstraint:
+    name = "shift_requires"
+
+    def __init__(self, gender: str) -> None:
+        self.gender = gender
+        self.description = (
+            f"a shift without a {gender.lower()} volunteer keeps a Seat open "
+            "so one can be added manually"
+        )
 
     def apply(self, model: cp_model.CpModel, x: Vars, problem: Problem) -> None:
         for shift in problem.shifts:
             if shift.closed or problem.pins_fill_every_seat(shift):
                 continue
 
-            male_sum = cp_model.LinearExpr.Sum(
+            present = cp_model.LinearExpr.Sum(
                 [
                     x.attend[(v.id, shift.index)]
                     for v in problem.volunteers
-                    if v.is_male
+                    if v.member.gender == self.gender
                 ]
             )
-            has_male = model.NewBoolVar(f"male_present_{shift.index}")
-            model.Add(male_sum >= 1).OnlyEnforceIf(has_male)
-            escapes = [has_male]
+            has_one = model.NewBoolVar(f"{self.gender}_present_{shift.index}")
+            model.Add(present >= 1).OnlyEnforceIf(has_one)
+            escapes = [has_one]
 
             for role in problem.roles:
                 room = problem.room_for(shift, role.name)
                 if room < 1:
-                    continue  # no Seat here that a male could be added to
-                seat_open = model.NewBoolVar(f"seat_open_{shift.index}_{role.name}")
+                    continue  # no Seat here that anybody could be added to
+                seat_open = model.NewBoolVar(
+                    f"{self.gender}_seat_open_{shift.index}_{role.name}"
+                )
                 model.Add(
                     _chosen(x, problem, shift, role.name) <= room - 1
                 ).OnlyEnforceIf(seat_open)
@@ -89,9 +91,6 @@ def _chosen(
     )
 
 
-CONSTRAINT = MaleRequiredConstraint()
-
-
-def for_rule(rule: Rule) -> MaleRequiredConstraint:
-    """The constraint a male_required rule makes: there is only the one."""
-    return CONSTRAINT
+def for_rule(rule: Rule) -> ShiftRequiresConstraint:
+    """The constraint a shift_requires rule makes, for the gender it names."""
+    return ShiftRequiresConstraint(rule.option)

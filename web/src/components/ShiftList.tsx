@@ -23,6 +23,7 @@ import {
   type RoleGroup,
 } from "./shifts";
 import { formatShiftTimes } from "./shiftTimes";
+import "../ui/Chip.css";
 import "./ShiftList.css";
 
 // Whether a shift can have people moved about on it. A closed shift has nobody
@@ -195,7 +196,7 @@ function Chip({
 }) {
   const cls = [
     "chip",
-    assignee.custom ? "custom" : "volunteer",
+    assignee.custom ? "chip--tag" : "chip--pill",
     assignee.group ? "has-group" : "",
     selected ? "selected" : "",
     disabled ? "chip-inert" : "",
@@ -441,7 +442,7 @@ function PlannedList({
         entry.kind === "pin" ? (
           <li
             key={entry.pin.id}
-            className={`chip pinned ${entry.pin.custom ? "custom" : "volunteer"}`}
+            className={`chip pinned ${entry.pin.custom ? "chip--tag" : "chip--pill"}`}
             data-role-colour={colourOf(entry.pin.roleId) ?? undefined}
             title={pinTitle(entry.pin)}
           >
@@ -449,7 +450,7 @@ function PlannedList({
             {onUnpin && (
               <button
                 type="button"
-                className="chip-unpin"
+                className="chip-remove"
                 // The date is in the label because the button is a bare cross:
                 // read out of the row's context, "Remove" alone does not say
                 // which pin, and the rows all look alike.
@@ -475,7 +476,7 @@ function PlannedList({
         ) : (
           <li
             key={chipKey(date, entry.assignee, i)}
-            className={`chip draft ${entry.assignee.custom ? "custom" : "volunteer"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
+            className={`chip draft ${entry.assignee.custom ? "chip--tag" : "chip--pill"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
             data-role-colour={colourOf(entry.assignee.roleId) ?? undefined}
             title={draftTitle(entry.assignee)}
           >

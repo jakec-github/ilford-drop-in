@@ -34,7 +34,7 @@ NUM_SHIFTS = 12
 # Every day-one kind but max_frequency, whose cap the input sets: a gap of one
 # and a monthly cap of one are what no_back_to_back and one_shift_per_month
 # were.
-EVERY_RULE = (("male_required", 0), ("shift_gap", 1), ("monthly_cap", 1))
+EVERY_RULE = (("shift_requires", 0), ("shift_gap", 1), ("monthly_cap", 1))
 NUM_VOLUNTEERS = 40
 
 

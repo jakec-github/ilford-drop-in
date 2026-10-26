@@ -83,6 +83,9 @@ type CpsatRule struct {
 	Kind         string   `json:"kind"`
 	VolunteerIDs []string `json:"volunteer_ids"`
 	Value        int      `json:"value"`
+	// Option is the kind's one choice — the gender "shift_requires" asks for —
+	// and empty for a kind that has none.
+	Option string `json:"option,omitempty"`
 }
 
 // CpsatInput is the full problem sent to Python on stdin.
@@ -257,7 +260,7 @@ func contractRules(settings model.AllocationSettings, groups []*VolunteerGroup, 
 			value = model.MaxAllocationCount(rule.Value, shiftCount)
 		}
 
-		rules = append(rules, CpsatRule{Kind: rule.Kind, VolunteerIDs: covered, Value: value})
+		rules = append(rules, CpsatRule{Kind: rule.Kind, VolunteerIDs: covered, Value: value, Option: rule.Option})
 	}
 	return rules
 }

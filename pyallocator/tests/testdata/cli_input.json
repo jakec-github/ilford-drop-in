@@ -18,9 +18,10 @@
       "value": 1
     },
     {
-      "kind": "male_required",
+      "kind": "shift_requires",
       "volunteer_ids": [],
-      "value": 0
+      "value": 0,
+      "option": "Male"
     }
   ],
   "shifts": [

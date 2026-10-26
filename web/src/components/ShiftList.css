@@ -295,33 +295,6 @@
   list-style: none;
 }
 
-/* Sits inside the pin it removes, so it needs no label of its own on screen.
-   Padded out to a touch target the chip's own text size would not give it —
-   this is the primary way a pin comes off, and the rota page is mobile first.
-   The negative margin keeps it from making the chip taller than its
-   neighbours. */
-.chip-unpin {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin: -4px -5px -4px 0;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  opacity: 0.7;
-}
-
-.chip-unpin:hover,
-.chip-unpin:focus-visible {
-  opacity: 1;
-  background: color-mix(in srgb, var(--chip) 18%, transparent);
-}
-
 /* The unallocated row stacks its parts vertically, but the things it can do sit
    side by side: they are alternatives, not steps. */
 .shift-actions {
@@ -335,55 +308,26 @@
   align-self: flex-start;
 }
 
-/* Chips: colour = role held on this shift. Outlined by default, light fill on
-   hover, solid fill when selected. Buttons rather than spans — they are
-   clickable on the public rota and are the handle for every edit on the Organiser
-   one, so they have to be reachable by keyboard either way. */
+/* Chips: colour = role held on this shift. The chip itself — outline, hover,
+   selected, pill or tag — is ui/Chip.css; this sets the colour it wears.
+   Buttons rather than spans — they are clickable on the public rota and are
+   the handle for every edit on the Organiser one, so they have to be reachable
+   by keyboard either way. */
 .chip {
   /* The Role's colour comes from the server as a palette token, which
      index.css turns into --role-colour. The fallback is what a chip wears when
      no token reached it: the roles are still loading, or the rota names a Role
      the config no longer does. */
   --chip: var(--role-colour, var(--role-slate));
-  position: relative;
-  display: inline-block;
-  padding: 3px 10px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  border: 1.5px solid var(--chip);
-  color: var(--chip);
-  background: var(--bg);
-  cursor: pointer;
   /* The drag handle is the chip itself; without this a drag starts by
      selecting the name instead. */
   user-select: none;
-}
-
-/* Volunteers are rounded pills; custom (manual) entries are squared tags. */
-.chip.volunteer {
-  border-radius: 12px;
-}
-
-.chip.custom {
-  border-radius: 3px;
-  font-style: italic;
 }
 
 /* Square the corner the group dot sits in so the dot tucks into a right angle
    rather than floating off a rounded pill. */
 .chip.has-group {
   border-top-right-radius: 3px;
-}
-
-.chip:hover:not(.selected) {
-  background: color-mix(in srgb, var(--chip) 14%, transparent);
-}
-
-.chip.selected {
-  background: var(--chip);
-  color: #fff;
 }
 
 /* A pinned name (organiser-only, unallocated shifts). A .chip like every other name

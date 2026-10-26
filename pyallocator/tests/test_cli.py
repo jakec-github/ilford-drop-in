@@ -25,7 +25,7 @@ def shape(size: int) -> list[dict]:
 
 
 # One shift, one volunteer. The volunteer is Male so the default
-# male_required constraint lets a one-volunteer shift fill. It lives in a file
+# shift_requires constraint lets a one-volunteer shift fill. It lives in a file
 # because scripts/image-smoke.sh feeds the same input to the solver inside the
 # built server image: this test keeps it a valid, solvable input.
 VALID_INPUT = json.loads(
@@ -82,7 +82,7 @@ def test_no_groups_solves_with_every_seat_unfilled(tmp_path):
     # Every kind, naming nobody: with no groups there is nobody to cover.
     payload["rules"] = [
         {"kind": "max_frequency", "volunteer_ids": [], "value": 1},
-        {"kind": "male_required", "volunteer_ids": [], "value": 0},
+        {"kind": "shift_requires", "volunteer_ids": [], "value": 0, "option": "Male"},
         {"kind": "shift_gap", "volunteer_ids": [], "value": 1},
         {"kind": "monthly_cap", "volunteer_ids": [], "value": 1},
     ]

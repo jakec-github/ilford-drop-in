@@ -2,7 +2,7 @@
 first male on a shift is worth much more than the second, so the
 solver distributes males one-per-shift before doubling up anywhere.
 
-Complements the male_required CONSTRAINT (no all-female shift): the
+Complements a shift_requires rule for "Male" (no all-female shift): the
 constraint forbids the worst case, this preference shapes everything
 above it. Team leads count as males like everyone else, matching the
 Go allocator's group MaleCount.

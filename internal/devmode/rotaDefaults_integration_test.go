@@ -36,7 +36,7 @@ func TestSeedRotaDefaults(t *testing.T) {
 	assert.JSONEq(t, `{"rules": [
 		{"id": "seed-max-frequency", "kind": "max_frequency", "value": 34, "scope": {}},
 		{"id": "seed-shift-gap", "kind": "shift_gap", "value": 1, "scope": {}},
-		{"id": "seed-male-required", "kind": "male_required", "scope": {}}
+		{"id": "seed-shift-requires", "kind": "shift_requires", "option": "Male", "scope": {}}
 	]}`, defaults.AllocationSettings)
 }
 

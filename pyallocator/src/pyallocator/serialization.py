@@ -169,6 +169,7 @@ def _parse_rule(d: dict[str, Any], where: str) -> Rule:
         kind=_require(d, "kind", str, where),
         volunteer_ids=_str_tuple(d, "volunteer_ids", where),
         value=_optional(d, "value", int, 0, where),
+        option=_optional(d, "option", str, "", where),
     )
 
 
