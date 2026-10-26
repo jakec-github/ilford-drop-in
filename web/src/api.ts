@@ -2,7 +2,8 @@ import type { Session } from "./auth-context";
 import type {
   Organisation,
   AllocateOutcome,
-  AllocationSettings,
+  AllocationRuleDraft,
+  AllocationRuleEdit,
   Assignee,
   AvailabilityEntry,
   AvailabilityFormState,
@@ -308,29 +309,53 @@ export async function saveDefaultShape(
   return (await res.json()) as RotaDefaults;
 }
 
-// saveAllocationSettings writes which optional allocator rules apply. Its own
-// endpoint, because the settings screen is sections and saving one must not
-// blank another.
-//
-// Resolves with the section as the server now holds it, which is not always
-// what was sent: an answer naming a rule this server does not have is dropped.
-export async function saveAllocationSettings(
-  settings: AllocationSettings,
-): Promise<AllocationSettings> {
+// addAllocationRule adds one Allocation Rule from the library. Rules have an
+// endpoint each rather than one for the whole list, so two Organisers editing
+// different rules at once both land (ADR 0012). Like every settings write it
+// resolves with the whole record.
+export async function addAllocationRule(
+  draft: AllocationRuleDraft,
+): Promise<RotaDefaults> {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/allocation-rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to add the rule"));
+  }
+  return (await res.json()) as RotaDefaults;
+}
+
+// editAllocationRule replaces one rule's value, Scope and note. Its kind is not
+// sent: a rule keeps the kind it was added as.
+export async function editAllocationRule(
+  id: string,
+  edit: AllocationRuleEdit,
+): Promise<RotaDefaults> {
   const res = await fetch(
-    `${BASE_PATH}/api/rota-defaults/allocation-settings`,
+    `${BASE_PATH}/api/rota-defaults/allocation-rules/${encodeURIComponent(id)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
+      body: JSON.stringify(edit),
     },
   );
   if (!res.ok) {
-    throw new Error(
-      await errorMessage(res, "Failed to save the allocation rules"),
-    );
+    throw new Error(await errorMessage(res, "Failed to save the rule"));
   }
-  return (await res.json()) as AllocationSettings;
+  return (await res.json()) as RotaDefaults;
+}
+
+export async function removeAllocationRule(id: string): Promise<RotaDefaults> {
+  const res = await fetch(
+    `${BASE_PATH}/api/rota-defaults/allocation-rules/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to remove the rule"));
+  }
+  return (await res.json()) as RotaDefaults;
 }
 
 interface ApiPreallocation {

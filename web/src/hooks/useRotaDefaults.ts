@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  addAllocationRule,
+  editAllocationRule,
   fetchRotaDefaults,
-  saveAllocationSettings,
+  removeAllocationRule,
   saveDefaultShape,
   saveShiftTimeDefaults,
 } from "../api";
-import type { AllocationSettings, RotaDefaults, ShiftTimes } from "../types";
+import type {
+  AllocationRuleDraft,
+  AllocationRuleEdit,
+  RotaDefaults,
+  ShiftTimes,
+} from "../types";
 
 interface UseRotaDefaults {
   // null while the first load is still in flight. A loaded record with empty
@@ -19,10 +26,11 @@ interface UseRotaDefaults {
   // Writes the Shape whole: the Seats given here are the Seats a shift asks
   // for, and a Role left out is one it no longer asks for.
   saveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
-  // Writes which optional allocator rules apply and holds what the server
-  // stored — which is not always what was sent, since an answer naming a rule
-  // this server does not have is dropped.
-  saveAllocationRules: (settings: AllocationSettings) => Promise<void>;
+  // Add, edit and remove one Allocation Rule each, rejecting with the server's
+  // own message when it refuses.
+  addRule: (draft: AllocationRuleDraft) => Promise<void>;
+  editRule: (id: string, edit: AllocationRuleEdit) => Promise<void>;
+  removeRule: (id: string) => Promise<void>;
 }
 
 // useRotaDefaults owns the settings an Organiser keeps for the drop-in as a whole.
@@ -51,35 +59,46 @@ export function useRotaDefaults(): UseRotaDefaults {
     };
   }, []);
 
-  // Holds the answer rather than re-reading: the write returns the whole record
-  // as it now stands, so a second round trip would only confirm what is already
-  // in hand. A refusal changes nothing on the server, so what is held stays
-  // right, and the caller re-throws to say why.
-  const saveShiftTimes = useCallback(async (next: ShiftTimes) => {
-    const saved = await saveShiftTimeDefaults(next);
+  // Every write holds its answer rather than re-reading: each returns the whole
+  // record as it now stands, so a second round trip would only confirm what is
+  // already in hand. A refusal changes nothing on the server, so what is held
+  // stays right, and the caller re-throws to say why.
+  const hold = useCallback(async (write: Promise<RotaDefaults>) => {
+    const saved = await write;
     setDefaults(saved);
     setError(null);
   }, []);
 
+  const saveShiftTimes = useCallback(
+    (next: ShiftTimes) => hold(saveShiftTimeDefaults(next)),
+    [hold],
+  );
   const saveShape = useCallback(
-    async (seats: { roleId: string; count: number }[]) => {
-      const saved = await saveDefaultShape(seats);
-      setDefaults(saved);
-      setError(null);
-    },
-    [],
+    (seats: { roleId: string; count: number }[]) =>
+      hold(saveDefaultShape(seats)),
+    [hold],
+  );
+  const addRule = useCallback(
+    (draft: AllocationRuleDraft) => hold(addAllocationRule(draft)),
+    [hold],
+  );
+  const editRule = useCallback(
+    (id: string, edit: AllocationRuleEdit) =>
+      hold(editAllocationRule(id, edit)),
+    [hold],
+  );
+  const removeRule = useCallback(
+    (id: string) => hold(removeAllocationRule(id)),
+    [hold],
   );
 
-  // The allocation-settings write answers with its own section rather than the
-  // whole record, so this one merges instead of replacing. The rest of the
-  // record is untouched by it, which is the point of saving sections apart.
-  const saveAllocationRules = useCallback(async (next: AllocationSettings) => {
-    const saved = await saveAllocationSettings(next);
-    setDefaults((current) =>
-      current === null ? current : { ...current, allocationSettings: saved },
-    );
-    setError(null);
-  }, []);
-
-  return { defaults, error, saveShiftTimes, saveShape, saveAllocationRules };
+  return {
+    defaults,
+    error,
+    saveShiftTimes,
+    saveShape,
+    addRule,
+    editRule,
+    removeRule,
+  };
 }

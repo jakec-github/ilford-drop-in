@@ -115,6 +115,22 @@ func TestSaveRotaDefaultsEndpoint(t *testing.T) {
 	assert.Equal(t, "UTC", body.ShiftTimezone)
 }
 
+// Saving the times answers with the whole record, rules and all, so the screen
+// does not lose the rules it is showing by holding the answer.
+func TestSaveShiftTimesAnswersWithTheRules(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{
+		AllocationSettings: `{"rules":[{"id":"a","kind":"shift_gap","value":1,"scope":{}}]}`,
+	}}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
+		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, organiserCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	body := rulesOf(t, rec)
+	require.Len(t, body.AllocationRules, 1)
+	assert.Equal(t, "a", body.AllocationRules[0].ID)
+}
+
 // The answer carries the zone that was filled in for an Organiser who left the
 // field blank, so the form shows what was actually stored rather than what was
 // typed.

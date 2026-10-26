@@ -757,6 +757,11 @@ func (m *mockStore) SaveRotaDefaults(_ context.Context, defaults db.RotaDefaults
 		return m.rotaDefaultsWriteErr
 	}
 	m.savedRotaDefaults = append(m.savedRotaDefaults, defaults)
+	// The shift times only, as the real write: the Allocation Settings are
+	// UpdateAllocationSettings' to change.
+	if m.rotaDefaults != nil {
+		defaults.AllocationSettings = m.rotaDefaults.AllocationSettings
+	}
 	m.rotaDefaults = &defaults
 	return nil
 }

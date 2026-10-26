@@ -162,7 +162,7 @@ func (h *Handler) handleSaveShiftTimeDefaults(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	defaults, err := services.SaveShiftTimeDefaults(r.Context(), h.store, services.ShiftTimeParams{
+	_, err := services.SaveShiftTimeDefaults(r.Context(), h.store, services.ShiftTimeParams{
 		Start:    req.ShiftStartTime,
 		End:      req.ShiftEndTime,
 		Timezone: req.ShiftTimezone,
@@ -172,7 +172,9 @@ func (h *Handler) handleSaveShiftTimeDefaults(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	h.writeSettings(w, r, defaults)
+	// Re-read, as the Shape's save does: this wrote the times alone, and the
+	// answer is the whole record, Allocation Rules included.
+	h.writeCurrentSettings(w, r)
 }
 
 // handleSaveDefaultShape writes the Shape every Shift starts from and answers

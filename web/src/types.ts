@@ -109,39 +109,66 @@ export interface ShapeSeat {
   count: number;
 }
 
-// SwitchableConstraint is one optional allocator rule, as the server offers it.
-// The list comes down with the settings rather than being written here: the
-// registry in Go is the only one, so a rule arriving or leaving is one edit
-// (ADR 0006).
-export interface SwitchableConstraint {
-  // The key this rule is answered under in AllocationSettings.enabled.
-  name: string;
+// RuleKind is one entry in the Rule Library: a kind of Allocation Rule an
+// Organiser can add, any number of times (ADR 0012). The library comes down with
+// the settings rather than being written here — Go holds it, beside the ids the
+// solver knows — so a kind arriving or leaving needs no change on this side.
+export interface RuleKind {
+  id: string;
+  // "volunteer" rules apply to the volunteers their Scope covers; "shift"
+  // rules apply to every shift and have no Scope.
+  family: "volunteer" | "shift";
   label: string;
   description: string;
-  // Set only on a rule that needs an answer beyond on-or-off, which today is
-  // only the frequency cap. Its presence is what tells the screen to ask.
+  // Set only on a kind whose rules carry a value, with the bounds the server
+  // accepts it within, inclusive.
   valueLabel?: string;
+  minValue?: number;
+  maxValue?: number;
 }
 
-// AllocationSettings is which optional allocator rules an Organiser has switched
-// on. `enabled` carries an answer for every rule the server knows, so nothing
-// here has to know that a missing one means off.
-export interface AllocationSettings {
-  enabled: Record<string, boolean>;
-  // The share of a rota one volunteer may work, 0 to 1. Only read when the
-  // max_frequency rule is on.
-  maxFrequency: number;
+// Scope is which volunteers a Volunteer Rule covers: an include list and an
+// exclude list, at most one naming anybody. Both empty covers everyone. Ids are
+// roster ids, and one that has left the roster stays until somebody removes it.
+export interface Scope {
+  include: string[];
+  exclude: string[];
 }
 
-// The settings record as the screen reads it: the answers, plus the rules the
-// allocation answers are about.
+// AllocationRule is one rule an Organiser added: a kind, its value and, for a
+// Volunteer Rule, its Scope.
+export interface AllocationRule {
+  id: string;
+  kind: string;
+  // 0 for a kind that carries none.
+  value: number;
+  scope: Scope;
+  note: string;
+  // Stored but not applied: a kind this build does not have, or a value it no
+  // longer accepts. Shown so it can be removed, never silently dropped.
+  ignored: boolean;
+}
+
+// AllocationRuleDraft is what adding a rule sends. An edit sends the same less
+// the kind, which a rule keeps for life.
+export interface AllocationRuleDraft {
+  kind: string;
+  value: number;
+  scope: Scope;
+  note: string;
+}
+
+export type AllocationRuleEdit = Omit<AllocationRuleDraft, "kind">;
+
+// The settings record as the screen reads it: the answers, plus the library
+// the Allocation Rules are added from.
 export interface RotaDefaults extends ShiftTimes {
   // What every shift asks for, in the order its Seats are filled. Empty means
   // an Organiser has not stated one — the state every deployment starts in, and the
   // one thing that stops a rota being allocated without saying anything else.
   defaultShape: ShapeSeat[];
-  allocationSettings: AllocationSettings;
-  switchableConstraints: SwitchableConstraint[];
+  allocationRules: AllocationRule[];
+  ruleLibrary: RuleKind[];
 }
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
