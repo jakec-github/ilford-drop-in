@@ -4,56 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/oauth2"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
-
-	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/utils"
 )
 
 // Client wraps the Google Sheets API client
 type Client struct {
 	service *sheets.Service
-	token   *oauth2.Token
 	ctx     context.Context
 }
 
-// NewClient creates a new Sheets client using OAuth credentials and performs OAuth flow if needed
-// Requests all necessary scopes upfront (sheets, forms, gmail) so the token can be shared across clients
-// Tokens are persisted to disk for the given environment
-func NewClient(ctx context.Context, oauthCfg *config.OAuthClientConfig, env string) (*Client, error) {
-	// Get OAuth config with all required scopes for the application
-	oauthConfig, err := utils.GetOAuthConfig(oauthCfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get oauth config: %w", err)
-	}
-
-	// Get token (will perform OAuth flow if needed, tokens are persisted to disk)
-	token, err := utils.GetTokenWithFlow(ctx, oauthConfig, env)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get oauth token: %w", err)
-	}
-
-	// Create HTTP client with token
-	httpClient := oauthConfig.Client(ctx, token)
-
-	// Create sheets service
-	service, err := sheets.NewService(ctx, option.WithHTTPClient(httpClient))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sheets service: %w", err)
-	}
-
-	return &Client{
-		service: service,
-		token:   token,
-		ctx:     ctx,
-	}, nil
-}
-
 // NewClientFromServiceAccount builds a read-only Sheets client authenticated as
-// a service account with access to the volunteer sheet, skipping the
-// installed-app authorization flow NewClient runs. keyJSON is the verbatim
+// a service account with access to the volunteer sheet. keyJSON is the verbatim
 // service account key; the Google client libraries parse it and mint their own
 // tokens, so no interactive flow or token persistence is involved. The client
 // requests the read-only Sheets scope only — sync only reads.
@@ -95,11 +57,6 @@ func NewWriterFromServiceAccount(ctx context.Context, keyJSON []byte) (*Client, 
 // Service returns the underlying sheets service for direct API access
 func (c *Client) Service() *sheets.Service {
 	return c.service
-}
-
-// Token returns the OAuth token used by this client
-func (c *Client) Token() *oauth2.Token {
-	return c.token
 }
 
 // GetValues reads values from a spreadsheet range

@@ -308,7 +308,7 @@ func (u UnknownKey) String() string {
 
 // UnknownKeys reports the keys in the config file at path that this build does
 // not know. Loading warns about them; this is for callers that want to show
-// them, chiefly `cli validate-config`.
+// them, chiefly the server's `-validate-config`.
 //
 // A file that cannot be read has no keys to report and no error to raise here —
 // loading it is what says so.

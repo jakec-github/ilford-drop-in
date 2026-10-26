@@ -7,7 +7,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// This file defines the JSON contract between the Go CLI and the Python
+// This file defines the JSON contract between the Go server and the Python
 // CP-SAT allocator (pyallocator/README.md documents the same contract on
 // the Python side), plus the conversions to and from allocator types.
 //

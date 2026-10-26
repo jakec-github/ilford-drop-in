@@ -12,9 +12,7 @@ provides food and support to vulnerable community members.
 
 It is a **Go web server + React frontend** (`cmd/server`, `web/`) that serves
 the public rota page and every Organiser tool — defining a rota, asking volunteers
-for their availability, allocating it and changing it afterwards. A small
-**Go CLI** (`cmd/cli`) is left over from before the app; see
-[CLI commands](#cli-commands).
+for their availability, allocating it and changing it afterwards.
 
 The volunteer roster lives in Google Sheets; scheduling data lives in Postgres;
 allocation is solved by a Python CP-SAT service (`pyallocator/`). The server
@@ -56,38 +54,9 @@ Google. The database starts empty, so the rota page does too — see
 | [`web/README.md`](web/README.md) | Frontend details. |
 | [`pyallocator/README.md`](pyallocator/README.md) | The allocation service. |
 
-## CLI commands
-
-The CLI is on its way out ([#220](https://github.com/jakec-github/ilford-drop-in/issues/220)).
-The whole life of a rota is in the app now — defining it, preparing its shifts,
-asking volunteers, allocating and changing it afterwards all happen on Organiser →
-Allocation and the rota page. Allocating in particular could never be a command:
-it re-solves and commits only the rota the Organiser was shown, and a command that
-solved and committed in one step could not honour that (ADR 0008).
-
-The roster is on Organiser → Volunteers, and the rota sheet republishes itself
-after every change. To republish by hand, press **Sync** on that tab: it re-reads
-the roster and publishes again.
-
-What is left takes `-e`/`--env` to pick the environment, whose files are read
-from `env/<env>/` (`env/test/drop_in_config.yaml` and so on):
-
-```bash
-go run ./cmd/cli -e test <command> [args]
-go run ./cmd/cli --help
-```
-
-| Command | Description |
-| --- | --- |
-| `validate-config <path>` | Check a config file and print what it configures, without connecting to anything. `scripts/deploy-config.sh` runs it before shipping a config. |
-| `viewHistoricalResponses <count>` | How each volunteer answered the availability requests for the last `count` allocated rotas. |
-
-`viewHistoricalResponses` signs in to Google on every run; see
-[`docs/local-setup.md`](docs/local-setup.md) for what that needs.
-
 ## Requirements
 
-Go ≥ 1.25, Docker, and [Bun](https://bun.sh/) for the frontend. See
+Go ≥ 1.26, Docker, and [Bun](https://bun.sh/) for the frontend. See
 [`docs/local-setup.md`](docs/local-setup.md) for the rest.
 
 ## Licence

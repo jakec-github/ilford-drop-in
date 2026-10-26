@@ -16,7 +16,6 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
-	"github.com/jakechorley/ilford-drop-in/pkg/utils"
 )
 
 // gmailStatePrefix marks an OAuth state as belonging to the incremental
@@ -129,12 +128,16 @@ func (a *Authenticator) gmailAuthCodeURL(state, email string) string {
 	)
 }
 
+// gmailSendScope is asked for by incremental consent at send time and the
+// token discarded afterwards, so it is never part of a standing grant (ADR 0004).
+const gmailSendScope = "https://www.googleapis.com/auth/gmail.send"
+
 // gmailOAuthConfig is the login config with the send scope in place of the
 // identity ones. Same client and same redirect URI — only the scope differs,
 // which is the whole point of asking for it separately.
 func (a *Authenticator) gmailOAuthConfig() *oauth2.Config {
 	cfg := *a.oauth2Config
-	cfg.Scopes = []string{utils.ScopeGmailSend}
+	cfg.Scopes = []string{gmailSendScope}
 	return &cfg
 }
 

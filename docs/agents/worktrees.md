@@ -7,9 +7,8 @@ modules, ports and the database.
 
 Worktrees live inside the primary checkout, under a gitignored `.worktrees/`,
 so the whole project stays in one directory rather than scattering siblings
-across `~/code/projects`. Docker, Postgres, the Go module cache, the OAuth token
-cache and the CP-SAT venv are all **shared**; everything below is what is
-**not**.
+across `~/code/projects`. Docker, Postgres, the Go module cache and the CP-SAT
+venv are all **shared**; everything below is what is **not**.
 
 Nesting a checkout inside a checkout is safe here, and deliberately so:
 
@@ -36,7 +35,7 @@ scripts/worktree-init.sh
 
 | Step | What it does |
 | --- | --- |
-| Credentials | Symlinks `env/test/serviceAccount.json`, `env/test/oauthClientWeb.json`, `env/test/oauthClient.json` and `.claude/settings.local.json` from the primary checkout. Without the last one the agent has no `GH_TOKEN` and cannot reach the issue tracker. |
+| Credentials | Symlinks `env/test/serviceAccount.json`, `env/test/oauthClientWeb.json` and `.claude/settings.local.json` from the primary checkout. Without the last one the agent has no `GH_TOKEN` and cannot reach the issue tracker. |
 | Config | Copies `env/test/drop_in_config.yaml` and rewrites `databaseURL`, `server.port` and `server.redirectURI` for this worktree. |
 | Ports | Claims the lowest unused offset (1–5) and records it in `.worktree.env`. |
 | Dependencies | Runs `bun install` in `web/`. |

@@ -17,10 +17,10 @@ frontend can run against a locally-populated database.
 
 | Path | What lives here |
 | --- | --- |
-| `cmd/` | CLI (`cmd/cli`) and web server (`cmd/server`) entry points. |
+| `cmd/server/` | The web server's entry point, and its `-validate-config` check. |
 | `pkg/core/` | Domain logic: services, models, the allocator contract. |
 | `pkg/db/` | Postgres access and SQL migrations. |
-| `pkg/clients/` | Google Sheets/Forms/Gmail clients. |
+| `pkg/clients/` | Google Sheets and Gmail clients. |
 | `pkg/api/` | HTTP handlers, auth, volunteer cache. |
 | `internal/config/` | Config and credential loading. |
 | `env/<env>/` | Each environment's config and credentials, all git-ignored but `env/dev/drop_in_config.yaml`. |

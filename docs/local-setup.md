@@ -2,9 +2,9 @@
 
 This guide gets a new contributor from a fresh clone to a running rota page,
 using the system exactly as it works today. It is deliberately faithful to the
-current design: the app reads its volunteer roster from Google Sheets, and the
-CLI authenticates with Google on startup, so **you will need your own Google
-Cloud project** for the path this guide describes.
+current design: the app reads its volunteer roster from Google Sheets, and
+Organisers log in with Google, so **you will need your own Google Cloud
+project** for the path this guide describes.
 
 > **Just want to look at the app?** There is now a Google-free `dev`
 > environment: `scripts/dev-stack.sh start` boots the whole stack on
@@ -14,19 +14,17 @@ Cloud project** for the path this guide describes.
 > renders empty — everything else works. See
 > [`docs/agents/dev-stack.md`](agents/dev-stack.md). The rest of this guide is
 > the real, Sheets-backed path, and is what you need to develop against actual
-> data or to use the CLI.
+> data.
 
-> **Scope.** Production and the sheet-backed CLI command
-> (`viewHistoricalResponses`) are **not** expected to work for outside
-> contributors — they need real Sheets wired up and, for prod, infrastructure
-> access. This guide covers everything needed to run the app, view the rota, and
+> **Scope.** Production is **not** expected to work for outside contributors —
+> it needs real Sheets wired up and infrastructure access. This guide covers everything needed to run the app, view the rota, and
 > develop against it locally.
 
 ## 1. Prerequisites
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| [Go](https://go.dev/dl/) | ≥ 1.26 | Builds the CLI and server. |
+| [Go](https://go.dev/dl/) | ≥ 1.26 | Builds the server. |
 | [Docker](https://www.docker.com/) | any recent | Runs the local Postgres. |
 | [Bun](https://bun.sh/) | latest | Frontend runtime/bundler: `curl -fsSL https://bun.sh/install \| bash`. |
 
@@ -35,27 +33,15 @@ required for the Google Cloud steps below.
 
 ## 2. Google Cloud project
 
-The app talks to Google through **three separate credentials**, each used by a
-different part of the system. Set up all three for the `test` environment.
+The server talks to Google through **two separate credentials**, each for a
+different job. Set up both for the `test` environment.
 
 1. **Create a project** in the [Google Cloud Console](https://console.cloud.google.com/)
    and enable these APIs (APIs & Services → Library):
    - Google Sheets API
    - Gmail API
 
-2. **Desktop OAuth client** — used by the **CLI**.
-   - APIs & Services → Credentials → Create credentials → OAuth client ID →
-     **Desktop app**.
-   - Download the JSON and save it as `env/test/oauthClient.json`.
-   - On first CLI run this opens a browser to authorise two scopes: Sheets, to
-     read the volunteer roster, and email, to record who ran the command. The
-     resulting token is cached at
-     `~/.ilford-drop-in/tokens/token-test.json` — delete that file to force
-     re-authorisation.
-   - The Google account you authorise **must have access to the sheets** in
-     step 3.
-
-3. **Web OAuth client** — used by the **server** for Organiser and Rota Editor login.
+2. **Web OAuth client** — used by the **server** for Organiser and Rota Editor login.
    - Create credentials → OAuth client ID → **Web application**.
    - Add `http://localhost:5173/auth/callback` as an authorised redirect URI.
      That is the **frontend** dev server, not the Go server on 8080: locally you
@@ -65,7 +51,7 @@ different part of the system. Set up all three for the `test` environment.
      app's own domain (see [`docs/deployment.md`](deployment.md)).
    - Download the JSON and save it as `env/test/oauthClientWeb.json`.
 
-4. **Service account** — used by the **server** to read the volunteer roster
+3. **Service account** — used by the **server** to read the volunteer roster
    and to publish the rota to the rota sheet.
    - IAM & Admin → Service Accounts → create one → add a JSON key → download.
    - Save it as `env/test/serviceAccount.json`.
@@ -73,7 +59,7 @@ different part of the system. Set up all three for the `test` environment.
      `name@project.iam.gserviceaccount.com`) — you'll share both sheets with it
      in the next step.
 
-All three files are git-ignored, so they never get committed. See the
+Both files are git-ignored, so they never get committed. See the
 [credentials reference](#credentials-reference) at the bottom for which part of
 the code loads each one.
 
@@ -96,8 +82,6 @@ Note each spreadsheet's ID from its URL
 - Share the **rota sheet** with the same `client_email` as an **Editor** so the
   server can publish to it. Without it the app works as normal and each
   publish logs a warning.
-- Make sure the **Google account you authorise in the CLI** can also read both
-  sheets.
 
 ### Volunteer sheet format
 
@@ -284,11 +268,11 @@ gets read by whatever build is running, so a key that only some versions know
 must not stop the app starting. To check a file without starting anything:
 
 ```bash
-go run ./cmd/cli -e test validate-config env/test/drop_in_config.yaml
+go run ./cmd/server -env test -validate-config env/test/drop_in_config.yaml
 ```
 
-That reads the file and nothing else — no database, no Google — and prints what
-the config configures, which is worth a glance: a config can be perfectly valid
+That reads the file and nothing else — no database, no Google — and exits
+before the server starts. It prints what the config configures, which is worth a glance: a config can be perfectly valid
 and still not say what you meant.
 
 ## 5. Local database
@@ -304,35 +288,10 @@ scripts/test-db.sh reset     # wipe and recreate (destroys data)
 
 It listens on `localhost:5432` with database `ilford_dropin_test`
 (user/password `postgres`/`postgres`), matching the `databaseURL` above.
-Migrations run automatically the first time the CLI or server connects — there
+Migrations run automatically the first time the server connects — there
 is no separate migrate step.
 
-## 6. Build the CLI
-
-Build:
-
-```bash
-go build -o cli ./cmd/cli
-```
-
-The rota page reads shifts from the database, which starts empty. Filling it is
-a job for the app rather than the CLI: log in as an Organiser, fill in the Rota
-Defaults on Organiser → Settings, and define the first rota on Organiser → Allocation.
-
-The CLI authenticates with Google on **every** command, so the first run opens a
-browser for the OAuth flow (step 2's desktop client). After that the token is
-cached and subsequent commands are quiet.
-
-Commands to explore:
-
-```bash
-./cli -e test viewHistoricalResponses 4   # who answered the last four rotas' requests
-./cli --help                              # all commands
-```
-
-The roster itself is on Organiser → Volunteers once the app is running (§7).
-
-## 7. Run the app
+## 6. Run the app
 
 Run the full stack (Postgres + Go server + frontend dev server) with:
 
@@ -342,6 +301,11 @@ scripts/dev.sh test
 
 - Frontend: <http://localhost:5173/org/my-drop-in/> — your Organisation's `id`
 - API/server: <http://localhost:8080>
+
+The rota page reads shifts from the database, which starts empty. To fill it,
+log in as an Organiser, fill in the Rota Defaults on Organiser → Settings, and
+define the first rota on Organiser → Allocation. The roster is on Organiser →
+Volunteers.
 
 The rota page is public — no login needed to view it. Changing it needs a Google account on one of
 that Organisation's allowlists, via the web OAuth client from step 2: `rotaEditorEmails` to make
@@ -372,7 +336,7 @@ Copying needs nothing else connected to `ilford_dropin_test`, so stop any other
 `dev.sh test` first. The PR still talks to the test environment's real Google
 sheets, like any `dev.sh test` run.
 
-## 8. Run the tests
+## 7. Run the tests
 
 ```bash
 scripts/check.sh                     # build, vet, tests, solver tests, frontend typecheck + lint
@@ -406,7 +370,6 @@ building `pyallocator/.venv` first if it is not there yet.
 | Nobody gets allocated to a role | Check the `Roles` column actually names it — a role nobody holds has no one to fill its seats. |
 | Empty rota page | No rota has been defined yet — do it on Organiser → Allocation, after filling in Organiser → Settings. |
 | Empty roster / `failed to fetch volunteers` | Share the volunteer sheet with the service account email; check `volunteerSheetID` and `serviceVolunteersTab`. |
-| OAuth loops or missing scopes | Delete `~/.ilford-drop-in/tokens/token-test.json` and re-run to re-authorise. |
 | `redirect_uri_mismatch` on login | The web OAuth client needs `http://localhost:5173/auth/callback` registered ([§2](#2-google-cloud-project)) — the frontend's port, not the server's. |
 | Postgres unreachable | `scripts/test-db.sh start` (Docker must be running). |
 
@@ -414,15 +377,14 @@ building `pyallocator/.venv` first if it is not there yet.
 
 | File (git-ignored) | Loaded by | Purpose |
 | --- | --- | --- |
-| `env/test/oauthClient.json` | CLI (`internal/config/oauth.go`) | Desktop OAuth; Sheets/Forms/Gmail access for CLI commands. Token cached in `~/.ilford-drop-in/tokens/`. |
 | `env/test/oauthClientWeb.json` | Server (`internal/config/oauthweb.go`) | Web OAuth; Organiser and Rota Editor login (OIDC). |
 | `env/test/serviceAccount.json` | Server (`internal/config/serviceaccount.go`) | Reads the volunteer sheet to sync the roster at startup and on an Organiser's sync. |
-| `env/test/drop_in_config.yaml` | Both (`internal/config/config.go`) | Sheet IDs, DB URL, shift/allocation settings, server config. |
+| `env/test/drop_in_config.yaml` | Server (`internal/config/config.go`) | Sheet IDs, DB URL, shift/allocation settings, server config. |
 
 Each `env/<env>/` directory is committed with only a `.keep` in it, so a fresh
 clone shows where the files go. `env/dev/drop_in_config.yaml` is the one
 exception: it **is** committed, holds no
-secrets, and needs none of the three credential files above — it turns on the
+secrets, and needs neither credential file above — it turns on the
 stubs described in [`docs/agents/dev-stack.md`](agents/dev-stack.md).
 `internal/config.checkDevMode` refuses to load its `devMode` block under any
 environment but `dev`, so it cannot affect `test` or `prod`.
