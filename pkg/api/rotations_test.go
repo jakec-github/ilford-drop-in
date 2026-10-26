@@ -236,7 +236,7 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 		},
 		{
-			name: "a date the drop-in already runs on",
+			name: "a date the organisation already runs on",
 			body: defineBody(6, "2026-08-02"),
 			store: func() *mockStore {
 				s := &mockStore{}

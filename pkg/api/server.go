@@ -10,7 +10,7 @@ import (
 )
 
 // organisationPrefix is where every Organisation is served: /org/<id>/. It was
-// the shape of the single drop-in's base path before there could be several,
+// the shape of the single Organisation's base path before there could be several,
 // and calendar subscriptions and emailed links already point under it, so it
 // is permanent (ADR 0011).
 const organisationPrefix = "/org/"

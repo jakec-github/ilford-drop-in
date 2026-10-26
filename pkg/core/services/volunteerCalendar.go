@@ -44,7 +44,7 @@ var calendarReminders = []struct {
 // between (ADR 0007). The settings supply the zone those hours are read in, so
 // a subscriber in another country sees the evening at their own reckoning of
 // it, and a shift already minted keeps the hours it was planned for even after
-// an Organiser moves the drop-in's default times.
+// an Organiser moves the Organisation's default times.
 //
 // displayName is the Organisation's, and names the calendar, each event and its
 // reminders. rotaURL is where the rota lives, for the link on each event. Empty
@@ -190,7 +190,7 @@ func addReminders(event *ics.VEvent, displayName string) {
 // back to for an unaltered shift.
 //
 // This is the one place in the app that turns a Shift's wall-clock times into
-// instants, which is exactly what ADR 0007 said would happen: the drop-in
+// instants, which is exactly what ADR 0007 said would happen: the Organisation
 // happens in one place, so a Shift's start is a fact about Ilford, and the zone
 // is applied where somebody outside Ilford is going to read it.
 func setEventDates(event *ics.VEvent, shift Shift, defaults model.RotaDefaults) (time.Time, error) {

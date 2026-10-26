@@ -9,7 +9,7 @@ import (
 )
 
 // rotaDefaultsResponse is the settings record: what an Organiser has decided about
-// how the drop-in as a whole runs: the shift times, the default Shape and the
+// how the Organisation as a whole runs: the shift times, the default Shape and the
 // Allocation Rules.
 //
 // Times are the same "19:30" the database and the form field spell, not
@@ -20,7 +20,7 @@ import (
 //
 // Timezone is the one an Organiser chose, or the default when they have not chosen.
 // The fallback is resolved here rather than in the client so there is one answer
-// to what zone the drop-in runs in.
+// to what zone the Organisation runs in.
 type rotaDefaultsResponse struct {
 	ShiftStartTime string `json:"shiftStartTime"`
 	ShiftEndTime   string `json:"shiftEndTime"`

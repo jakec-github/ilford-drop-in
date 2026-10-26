@@ -190,7 +190,7 @@ func TestOnlyTheDayOfAShiftIsAnInput(t *testing.T) {
 		require.True(t, written)
 		return nil
 	}))
-	assert.True(t, inputsChangedAt(t, database).IsZero(), "the drop-in still runs on the second of August")
+	assert.True(t, inputsChangedAt(t, database).IsZero(), "the organisation still runs on the second of August")
 
 	// The following Sunday — a different question for every volunteer.
 	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {

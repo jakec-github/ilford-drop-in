@@ -191,7 +191,7 @@ func run(env string, portOverride int) error {
 }
 
 // sharedDeps is what every Organisation's handler is built from in common: the
-// credentials are the deployment's, not any one drop-in's.
+// credentials are the deployment's, not any one Organisation's.
 type sharedDeps struct {
 	// serviceAccountJSON is empty in dev mode, where nothing reaches Google.
 	serviceAccountJSON []byte
@@ -199,7 +199,7 @@ type sharedDeps struct {
 }
 
 // newOrganisation builds one Organisation's handler: its own bound store, its
-// own roster cache, roster sync and rota publisher, so nothing one drop-in
+// own roster cache, roster sync and rota publisher, so nothing one Organisation
 // does reaches another's (ADR 0011).
 func newOrganisation(
 	ctx context.Context,
@@ -317,7 +317,7 @@ func newOrganisation(
 		}
 	}
 
-	// A drop-in with no Roles starts and serves, but nobody holds a Role, so
+	// An Organisation with no Roles starts and serves, but nobody holds a Role, so
 	// nothing can be allocated. That is the state a new Organisation is in until
 	// someone creates its Roles, and it is quiet enough to be worth saying out
 	// loud.

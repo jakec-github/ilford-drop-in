@@ -72,7 +72,7 @@ func getShiftShapes(ctx context.Context, q querier, organisationID string, shift
 func insertShiftRequirements(ctx context.Context, q querier, organisationID string, requirements []ShiftRequirement) error {
 	for _, seat := range requirements {
 		// Selected from the Role, so a Role of another Organisation writes
-		// nothing rather than a Seat this drop-in cannot fill.
+		// nothing rather than a Seat this Organisation cannot fill.
 		tag, err := q.Exec(ctx, `
 			INSERT INTO shift_requirement (shift_id, role_id, seats)
 			SELECT $1, r.id, $3 FROM role r WHERE r.id = $2 AND r.organisation_id = $4

@@ -34,7 +34,7 @@ const DEAD_LINK_MESSAGE: Record<AvailabilityLinkFailure, string> = {
 // only "No" or "Yes", which says nothing on its own to anyone who cannot see
 // which row it sits in.
 //
-// A closed date offers no answer at all — the drop-in is not running, so there
+// A closed date offers no answer at all — the Organisation is not running, so there
 // is nothing to say — but it is still listed, so a volunteer can see that
 // instead of wondering why a Sunday is missing.
 //
@@ -71,8 +71,8 @@ function ShiftChoice({
       <span className="shift-choice-label">
         <span className="shift-choice-date">{date}</span>
         {/* The hours, because they are part of what is being asked: a volunteer
-            saying yes is saying yes to an evening, and the drop-in does not
-            always run the same one. Not on a closed date — the drop-in is not
+            saying yes is saying yes to an evening, and the organisation does not
+            always run the same one. Not on a closed date — the organisation is not
             running then, so its hours say nothing. */}
         {!shift.closed && (
           <span className="shift-choice-time">

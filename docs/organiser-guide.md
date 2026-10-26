@@ -1,6 +1,6 @@
 # Organiser's guide
 
-This guide walks you through setting up your drop-in's rota in Rota Wise, then
+This guide walks you through setting up your organisation's rota in Rota Wise, then
 running your first one. Each step happens on one of the tabs of the
 **Organiser** page.
 
@@ -8,17 +8,17 @@ running your first one. Each step happens on one of the tabs of the
 
 Whoever runs your Rota Wise server sets three things up for you:
 
-- **Your drop-in's address.** It looks like `https://<site>/org/<your-drop-in>/`.
+- **Your organisation's address.** It looks like `https://<site>/org/<your-drop-in>/`.
   Share it with your volunteers: it is where they find the rota. Rota Wise never
-  lists or links to a drop-in, so this address is the only way in.
+  lists or links to an organisation, so this address is the only way in.
 - **Who can sign in.** Organisers and Rota Editors sign in with a Google
-  account, and only the email addresses on your drop-in's lists are let in.
+  account, and only the email addresses on your organisation's lists are let in.
   Organisers can change everything; Rota Editors can only change who works a
   shift. Ask the person running the server to add or remove someone.
 - **Your roster sheet.** A Google Sheet listing your volunteers, which Rota Wise
   reads (see Volunteers, below).
 
-To sign in, open your drop-in's address, add `auth/login` to the end, and choose
+To sign in, open your organisation's address, add `auth/login` to the end, and choose
 your Google account. Once you are signed in, the Organiser page is at
 `organiser/volunteers` under the same address.
 
@@ -106,7 +106,7 @@ Each shift in the **Draft rota** has its own controls:
 
 - Press the date to change when that shift runs.
 - **Shape** changes how many people that one shift asks for.
-- **Close** marks a date the drop-in is not running, such as a bank holiday.
+- **Close** marks a date the organisation is not running, such as a bank holiday.
 - **+ Pin** places someone on the shift before the allocator runs, whatever
   the rules say.
 
@@ -134,7 +134,7 @@ still empty. Use pins to settle anything you want decided a particular way.
 ### 5. Allocate
 
 When you are happy, press **Allocate rota**. The draft becomes the rota:
-volunteers see it on your drop-in's address, and in their calendar if they
+volunteers see it on your organisation's address, and in their calendar if they
 subscribed. The availability links close.
 
 ## After the rota is published
@@ -147,7 +147,7 @@ When it is time for the next rota, go back to the Allocation tab and define it.
 
 ## What volunteers see
 
-- **The rota page**, at your drop-in's address. Volunteers can pick their own
+- **The rota page**, at your organisation's address. Volunteers can pick their own
   name to see just their shifts, and copy a calendar link that keeps their
   phone's calendar up to date.
 - **The availability form**, reached only through the link emailed to them. It

@@ -29,7 +29,7 @@ const fetchPreallocations = mock<() => Promise<Preallocation[]>>();
 mock.module("../api", () => ({
   fetchOrganisation: mock(async () => ({
     id: "test-org",
-    displayName: "Test Drop-In",
+    displayName: "Test Organisation",
   })),
   fetchRoles,
   createRole: mock(async () => {}),
@@ -249,12 +249,12 @@ describe("RotaViewer placement", () => {
     fetchPreallocations.mockResolvedValue([]);
   });
 
-  // One build serves every drop-in, so the rota is headed with the name the
+  // One build serves every Organisation, so the rota is headed with the name the
   // server gives it rather than one written into the page.
-  test("the rota is headed with the drop-in's own name", async () => {
+  test("the rota is headed with the organisation's own name", async () => {
     await renderRota();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Test Drop-In Rota" }),
+      screen.getByRole("heading", { level: 1, name: "Test Organisation Rota" }),
     ).toBeTruthy();
   });
 
@@ -299,7 +299,7 @@ describe("RotaViewer placement", () => {
   // With only the one Role Alice already holds, there is nothing to switch her
   // to, so the menu says so rather than opening a dialog that cannot be
   // confirmed (issue #149).
-  test("changing a role is not offered when the drop-in has no other role", async () => {
+  test("changing a role is not offered when the organisation has no other role", async () => {
     fetchRoles.mockResolvedValue([ROLES[0]]);
     await renderEditing();
 
@@ -431,7 +431,7 @@ function withUnallocated(shape: RotaShift["shape"] = []): RotaShift[] {
   ];
 }
 
-// A shift the drop-in does not run on: nobody is on it and nobody ever will be.
+// A shift the Organisation does not run on: nobody is on it and nobody ever will be.
 function withClosed(): RotaShift[] {
   return [
     ...shifts(),
@@ -504,7 +504,7 @@ describe("RotaViewer role pickers", () => {
   });
 
   // Neither the roster nor this shift's Shape narrows a pin (ADR 0010): every
-  // Role the drop-in has is on offer.
+  // Role the Organisation has is on offer.
   test("pinning offers every role, held or not, in the shape or not", async () => {
     await renderEditing(
       "organiser",

@@ -34,7 +34,7 @@ type RotaDefaultsWriteStore interface {
 	UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error
 }
 
-// RotaDefaults reads what an Organiser has decided about how the drop-in runs.
+// RotaDefaults reads what an Organiser has decided about how the Organisation runs.
 //
 // Read per call rather than held from startup: it is one row of a handful of
 // columns, and the whole point of moving it out of the config file is that
@@ -81,7 +81,7 @@ func parseAllocationSettings(document string) model.AllocationSettings {
 	return settings
 }
 
-// settingsForAllocation refuses when the drop-in's settings are too
+// settingsForAllocation refuses when the Organisation's settings are too
 // incomplete to allocate against, naming what is missing.
 //
 // This is where the rule from ADR 0006 is enforced: incomplete settings block
@@ -104,7 +104,7 @@ func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger 
 
 	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
 		return model.RotaDefaults{}, wrapf(ErrInvalidInput,
-			"the drop-in's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
+			"the organisation's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
 			joinWithAnd(missing), plural(len(missing), "has", "have"))
 	}
 

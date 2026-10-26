@@ -45,7 +45,7 @@ func (h *Handler) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When the drop-in runs is a setting an Organiser keeps, so a change to it
+	// When the Organisation runs is a setting an Organiser keeps, so a change to it
 	// reaches every subscriber on their next poll rather than at the next
 	// deploy. Settings nobody has filled in yield all-day events rather than a
 	// failure — a subscription is not a feature to gate on them.

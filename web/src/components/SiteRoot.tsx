@@ -21,9 +21,9 @@ function Splash() {
     <main className="site-root">
       <Logo size={64} />
       <h1>Rota Wise</h1>
-      <p>This site runs the volunteer rotas for drop-ins.</p>
+      <p>This site runs the rotas for volunteer organisations.</p>
       <p>
-        If you volunteer or organise for one, use the link your drop-in gave
+        If you volunteer or organise for one, use the link your organisation gave
         you.
       </p>
       <p>

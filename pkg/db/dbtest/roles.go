@@ -13,7 +13,7 @@ import (
 // ahead of Service volunteer.
 //
 // No migration seeds Roles (ADR 0006), so a database straight out of New has
-// none — and a drop-in with no Roles has nothing anyone can be allocated to.
+// none — and an Organisation with no Roles has nothing anyone can be allocated to.
 // Every integration test that exercises a path naming a Role starts here, so
 // the fixture is the same one everywhere rather than re-typed per test.
 //

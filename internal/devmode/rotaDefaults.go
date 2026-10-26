@@ -18,7 +18,7 @@ type RotaDefaultsSeedStore interface {
 }
 
 // seedRotaDefaults are the settings the dev stack starts with: the evening
-// session the real drop-in runs, in the zone it runs in.
+// session the real Organisation runs, in the zone it runs in.
 var seedRotaDefaults = db.RotaDefaults{
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",

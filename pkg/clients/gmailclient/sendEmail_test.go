@@ -19,7 +19,7 @@ func TestComposeMessageRefusesALineBreakInAHeader(t *testing.T) {
 }
 
 // TestComposeMessageEncodesOnlyANonASCIISubject: an ASCII subject is left
-// alone, and any other is encoded, so a drop-in's name with an accent in it
+// alone, and any other is encoded, so an Organisation's name with an accent in it
 // reaches the inbox intact.
 func TestComposeMessageEncodesOnlyANonASCIISubject(t *testing.T) {
 	message, err := composeMessage("a@example.com", "Availability by Friday", "Hello\n")

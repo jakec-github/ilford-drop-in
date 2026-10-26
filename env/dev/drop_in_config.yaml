@@ -9,11 +9,11 @@
 # any environment but "dev", so none of this can leak into test or prod.
 
 # One Organisation, served under /org/dev-org/ (ADR 0011). Add another entry
-# to drive two drop-ins side by side; each gets its own Roles and Rota
+# to drive two Organisations side by side; each gets its own Roles and Rota
 # Defaults seeded at startup.
 organisations:
   - id: 'dev-org'
-    displayName: 'Dev Drop-In'
+    displayName: 'Dev Organisation'
     organiserEmails:
       - 'agent@example.com'
     rotaEditorEmails:

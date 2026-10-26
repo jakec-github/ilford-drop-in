@@ -193,7 +193,7 @@ Like the read query, this belongs in one place.
   (`getResponses.go:117`). A mis-tap recording *full* availability is benign; a
   mis-tap recording *zero* availability would silently drop a volunteer from the
   round and look identical to a legitimate "I can't do any of these".
-- Closed shifts listed but not selectable, so volunteers can see the drop-in is
+- Closed shifts listed but not selectable, so volunteers can see the Organisation is
   not running rather than wondering why a date is missing.
 - Group membership stated — "This also covers Emma Williams" — because it
   genuinely does.

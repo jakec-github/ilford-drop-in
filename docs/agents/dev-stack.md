@@ -287,7 +287,7 @@ one (#144). The whole journey is reachable here, end to end. So:
 | Volunteer sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |
 | The volunteer list | The Volunteers tab lists the whole roster with its counts, from `test_data/volunteers.csv` |
 | `GET /api/volunteers` | The full roster from `test_data/volunteers.csv`, for either level |
-| `POST /api/rotations` | Mints a rota's shifts and opens its availability round, with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight, or when a start date lands on a day the drop-in already runs |
+| `POST /api/rotations` | Mints a rota's shifts and opens its availability round, with no Google credentials — the one way to get shifts into a dev database. 409s while a rota is in flight, or when a start date lands on a day the Organisation already runs |
 | `DELETE /api/rotations/{id}` | Discards an unallocated rota and everything hanging off it — the way to start over |
 | `POST /api/draft-rota-allocation` | Runs the real CP-SAT solve over the rota in flight and stores it as the draft. Needs Roles, the settings, a Shape on every open shift and an availability round, which defining opened — it names whichever step is missing. It solves before any answer is in, and says every Seat is unfilled |
 | The rota in flight on the rota page | Anyone signed in sees its shifts flagged as unallocated, with whoever is pinned to them. From Edit rota an Organiser can pin, close, reshape and retime them; a Rota Editor can only pin, and change who is on allocated shifts. No draft: that is the Allocation tab's, and for an Organiser a line here points at it. Logged out, none of it |

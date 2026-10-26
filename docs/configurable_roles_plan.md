@@ -199,7 +199,7 @@ once the tick columns are populated.
   serving line-up and collect the food on the same Shift. Designed, then
   dropped as not worth its cost (ADR 0005). Anyone needing two jobs at once
   gets a Role naming the combination.
-- **Collection as its own activity.** Food collection is a Role on the drop-in
+- **Collection as its own activity.** Food collection is a Role on the Organisation
   Shift, not a separate scheduling stream with its own dates and its own
   availability round. That reading was considered and rejected as a much larger
   change colliding with the availability work in #75/#76.

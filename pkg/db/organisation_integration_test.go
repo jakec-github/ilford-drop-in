@@ -109,7 +109,7 @@ func TestSyncOrganisations_IsIdempotentAndDeletesNothing(t *testing.T) {
 }
 
 // One Organisation's rows are invisible to another's queries, and what is
-// unique is unique within an Organisation: two drop-ins may each have a Team
+// unique is unique within an Organisation: two Organisations may each have a Team
 // lead.
 func TestOrganisationsShareNothing(t *testing.T) {
 	east, _ := dbtest.New(t)
@@ -142,7 +142,7 @@ func TestOrganisationsShareNothing(t *testing.T) {
 	assert.False(t, updated)
 }
 
-// A query on a DB bound to no Organisation would read every drop-in's rows, so
+// A query on a DB bound to no Organisation would read every Organisation's rows, so
 // it is a panic in a test rather than a leak in production.
 func TestUnboundDBRefusesScopedQueries(t *testing.T) {
 	_, url := dbtest.New(t)

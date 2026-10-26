@@ -9,9 +9,9 @@ import (
 )
 
 // availabilityShiftResponse is one of the rota's shifts. Closed shifts are
-// listed rather than omitted so a volunteer can see the drop-in is not running
+// listed rather than omitted so a volunteer can see the Organisation is not running
 // on that date, instead of wondering why it is missing.
-// The hours are local wall clock at the drop-in, not an instant: the volunteer
+// The hours are local wall clock at the Organisation, not an instant: the volunteer
 // reading them is the person standing in the room (ADR 0007).
 type availabilityShiftResponse struct {
 	ID     string `json:"id"`

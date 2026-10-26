@@ -13,7 +13,7 @@ import { BASE_PATH } from "./basePath";
 // AuthStatus shows a login link when logged out, or the signed-in email plus a
 // logout button when logged in. It reads the global auth state so login status
 // is shared with the rest of the UI. The whole OAuth dance is server-side
-// redirects, so login is a plain link — this drop-in's own, which says where to
+// redirects, so login is a plain link — this Organisation's own, which says where to
 // come back to.
 function AuthStatus() {
   const { email, loading, logout } = useAuth();
@@ -89,7 +89,7 @@ function HomeView() {
 }
 
 function App() {
-  // The tab says which drop-in it is, on every page — a volunteer's form
+  // The tab says which Organisation it is, on every page — a volunteer's form
   // included. index.html's own title is the generic one, since one build serves
   // every Organisation.
   const organisation = useOrganisation();

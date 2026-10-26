@@ -11,7 +11,7 @@ Usage:
     scripts/fake-availability.py --mean 0.6 --sd 0.16
     scripts/fake-availability.py --rota <rotaId> --seed 1 --dry-run
 
---api-url (or API_URL) is the drop-in's own address, under /org/<id>; it
+--api-url (or API_URL) is the Organisation's own address, under /org/<id>; it
 defaults to the dev config's Organisation.
 
 Organiser session: by default it logs in at <api-url>/auth/login, which against the

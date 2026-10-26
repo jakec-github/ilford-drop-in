@@ -7,7 +7,7 @@ import "./OrganiserGuide.css";
 const html = organiserGuideHtml();
 
 // OrganiserGuide is the guide at /guide, outside every Organisation so it can
-// be read before a drop-in is set up. It fetches nothing.
+// be read before an Organisation is set up. It fetches nothing.
 export default function OrganiserGuide() {
   return (
     <main className="organiser-guide">

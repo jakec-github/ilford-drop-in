@@ -22,12 +22,12 @@ func (f pingerFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 var databaseUp = pingerFunc(func(context.Context) error { return nil })
 
-// eastOrganisation and westOrganisation are the two drop-ins the server tests
+// eastOrganisation and westOrganisation are the two Organisations the server tests
 // mount. Two, so every test that one is reachable at its address is also a
 // test that the other's is not that one.
 var (
-	eastOrganisation = &config.Organisation{ID: "east", DisplayName: "East Drop-In", OrganiserEmails: []string{"east@example.com"}}
-	westOrganisation = &config.Organisation{ID: "west", DisplayName: "West Drop-In", OrganiserEmails: []string{"west@example.com"}}
+	eastOrganisation = &config.Organisation{ID: "east", DisplayName: "East Organisation", OrganiserEmails: []string{"east@example.com"}}
+	westOrganisation = &config.Organisation{ID: "west", DisplayName: "West Organisation", OrganiserEmails: []string{"west@example.com"}}
 )
 
 // newServer is the whole server as it is deployed: both Organisations mounted,
@@ -78,7 +78,7 @@ func TestServer_AnOrganisationIsServedUnderItsPath(t *testing.T) {
 	}
 }
 
-// An id nobody configured is a missing page like any other, so which drop-ins a
+// An id nobody configured is a missing page like any other, so which Organisations a
 // server runs cannot be found out by asking it. Both get the app with its base
 // at the root, which draws its "Page not found" for any path but /.
 func TestServer_AnUnknownOrganisationIsAPlainNotFound(t *testing.T) {
@@ -111,11 +111,11 @@ func TestServer_EachOrganisationHasItsOwnData(t *testing.T) {
 	require.Equal(t, http.StatusOK, west.Code)
 	assert.Contains(t, east.Body.String(), "BEGIN:VEVENT")
 	assert.NotContains(t, west.Body.String(), "BEGIN:VEVENT")
-	assert.Contains(t, east.Body.String(), "East Drop-In")
-	assert.Contains(t, west.Body.String(), "West Drop-In")
+	assert.Contains(t, east.Body.String(), "East Organisation")
+	assert.Contains(t, west.Body.String(), "West Organisation")
 }
 
-// One cookie, two drop-ins: being an Organiser of one is nothing at the other.
+// One cookie, two Organisations: being an Organiser of one is nothing at the other.
 func TestServer_AnOrganiserOfOneIsNobodyAtAnother(t *testing.T) {
 	server, auth := newServer(t, databaseUp)
 	cookie := sessionCookieFor(auth, "east@example.com")
@@ -133,7 +133,7 @@ func TestServer_OrganisationSaysWhoItIs(t *testing.T) {
 	rec := doRequest(t, server, http.MethodGet, "/org/west/api/organisation", "")
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.JSONEq(t, `{"id":"west","displayName":"West Drop-In"}`, rec.Body.String())
+	assert.JSONEq(t, `{"id":"west","displayName":"West Organisation"}`, rec.Body.String())
 }
 
 // The root is the app, with no Organisation in its base: what it says is the
@@ -194,7 +194,7 @@ func TestServer_LinksThatLeaveTheAppCarryTheOrganisation(t *testing.T) {
 }
 
 // /auth is shared: the session cookie it sets covers every Organisation, which
-// is what makes one sign-in work at each drop-in someone is on the lists of.
+// is what makes one sign-in work at each Organisation someone is on the lists of.
 func TestServer_LoginCookiesCoverTheWholeSite(t *testing.T) {
 	a := newTestAuthenticator()
 

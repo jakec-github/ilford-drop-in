@@ -14,14 +14,14 @@ type shiftResponse struct {
 	ID   string `json:"id"`
 	Date string `json:"date"`
 	// Start and End are when the shift runs, as the shift itself holds them:
-	// local wall-clock times in the drop-in's own zone, "2026-01-11T19:30:00",
+	// local wall-clock times in the Organisation's own zone, "2026-01-11T19:30:00",
 	// with no offset on the end of them.
 	//
 	// The absent offset is the answer rather than a missing one (ADR 0007). A
 	// shift's start is a fact about Ilford, so the rota says 19:30 to everyone
 	// reading it, including a volunteer reading it from another country — where
 	// an instant would be rendered as their own evening, which is not when the
-	// drop-in runs. Conversion to a moment belongs where it is actually needed,
+	// Organisation runs. Conversion to a moment belongs where it is actually needed,
 	// and the one place that needs it is the calendar feed, which does it
 	// server-side.
 	Start  string `json:"start"`

@@ -20,7 +20,7 @@ import (
 //
 // Priority is here for that screen rather than for the rota. It rides on the
 // public listing rather than a gated one of its own because it is a fact about
-// how the drop-in is run, not about anybody in it: a filling order says nothing
+// how the Organisation is run, not about anybody in it: a filling order says nothing
 // a visitor could not count off the rota.
 type roleResponse struct {
 	ID       string `json:"id"`
@@ -45,7 +45,7 @@ type roleRequest struct {
 	Colour   string `json:"colour"`
 }
 
-// handleListRoles reports the Roles the drop-in offers, in the order their
+// handleListRoles reports the Roles the Organisation offers, in the order their
 // Seats are filled. It is the frontend's only source for which Roles exist:
 // everything else names Roles by string, so without this a client would have to
 // enumerate them itself, which is exactly what the app owning them rules out.
@@ -71,7 +71,7 @@ func (h *Handler) handleListRoles(w http.ResponseWriter, r *http.Request) {
 // handleCreateRole adds a Role and answers with it, id included — the client
 // has to address that id to edit it, and it was minted server-side.
 //
-// Organiser-only: which Roles exist is a decision about how the drop-in runs.
+// Organiser-only: which Roles exist is a decision about how the Organisation runs.
 func (h *Handler) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 	params, ok := h.decodeRoleRequest(w, r)
 	if !ok {

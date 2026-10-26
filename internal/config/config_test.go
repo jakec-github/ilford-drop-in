@@ -20,7 +20,7 @@ func intPtr(i int) *int { return &i }
 const minimalConfigYAML = `
 organisations:
   - id: "test-org"
-    displayName: "Test Drop-In"
+    displayName: "Test Organisation"
     organiserEmails:
       - "organiser@example.com"
     volunteerSheetID: "sheet123"
@@ -33,7 +33,7 @@ databaseURL: "postgres://localhost:5432/test"
 func testOrganisation() Organisation {
 	return Organisation{
 		ID:                   "test-org",
-		DisplayName:          "Test Drop-In",
+		DisplayName:          "Test Organisation",
 		OrganiserEmails:      []string{"organiser@example.com"},
 		RotaEditorEmails:     []string{"editor@example.com"},
 		VolunteerSheetID:     "sheet123",
@@ -80,7 +80,7 @@ func TestLoadFromPath_ValidConfig(t *testing.T) {
 	validConfig := `
 organisations:
   - id: "east"
-    displayName: "East Drop-In"
+    displayName: "East Organisation"
     organiserEmails:
       - "organiser@example.com"
     rotaEditorEmails:
@@ -89,7 +89,7 @@ organisations:
     serviceVolunteersTab: "Volunteers"
     rotaSheetID: "rota456"
   - id: "west-2"
-    displayName: "West Drop-In"
+    displayName: "West Organisation"
     organiserEmails:
       - "other@example.com"
     volunteerSheetID: "sheet789"
@@ -108,7 +108,7 @@ databaseURL: "postgres://localhost:5432/test"
 	require.Len(t, cfg.Organisations, 2)
 	assert.Equal(t, Organisation{
 		ID:                   "east",
-		DisplayName:          "East Drop-In",
+		DisplayName:          "East Organisation",
 		OrganiserEmails:      []string{"organiser@example.com"},
 		RotaEditorEmails:     []string{"editor@example.com"},
 		VolunteerSheetID:     "sheet123",
@@ -431,7 +431,7 @@ func TestValidate_Organisations(t *testing.T) {
 	second := vary(func(o *Organisation) { o.ID = "second-org-2" })
 	assert.NoError(t, Validate(withOrganisations(testOrganisation(), second)))
 
-	// A server with no drop-in to serve has nothing to do.
+	// A server with no Organisation to serve has nothing to do.
 	assert.Error(t, Validate(withOrganisations()))
 
 	// Two entries with one id would share a URL and a set of rows.
@@ -450,7 +450,7 @@ func TestValidate_Organisations(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "OrganiserEmails")
 
-	// Rota Editors are optional: a drop-in run by its Organisers alone is fine.
+	// Rota Editors are optional: an Organisation run by its Organisers alone is fine.
 	assert.NoError(t, Validate(withOrganisations(vary(func(o *Organisation) { o.RotaEditorEmails = nil }))))
 
 	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.OrganiserEmails = []string{"not-an-email"} }))))
@@ -461,7 +461,7 @@ func TestValidate_Organisations(t *testing.T) {
 	assert.Error(t, Validate(withOrganisations(vary(func(o *Organisation) { o.RotaSheetID = "" }))))
 }
 
-// The keys that configured the one drop-in before there could be several are
+// The keys that configured the one Organisation before there could be several are
 // refused by name, not warned about like other departed keys (ADR 0011): a
 // server that ignored the allowlists would boot with nobody able to sign in, and
 // one that ignored the base path would move every calendar feed.

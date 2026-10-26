@@ -17,7 +17,7 @@ type Rotation struct {
 	InputsChangedAt time.Time
 }
 
-// Shift represents a database shift record: a planned session of the drop-in on
+// Shift represents a database shift record: a planned session of the Organisation on
 // a specific date, minted by a rotation and existing independently of who is
 // allocated to it.
 type Shift struct {
@@ -28,12 +28,12 @@ type Shift struct {
 	// this package gives and never one it takes: a writer states StartAt and
 	// the date follows. Setting it on the way in is ignored.
 	Date string
-	// Closed is a date the drop-in does not run — a holiday closure. Set by
+	// Closed is a date the Organisation does not run — a holiday closure. Set by
 	// hand while the rota is unallocated and false at mint; there is no stored
 	// list of known closure dates (issue #132, amending ADR 0001).
 	Closed bool
 	// StartAt and EndAt are when the session runs, spelled
-	// "2006-01-02T15:04:05". They are local wall-clock times in the drop-in's
+	// "2006-01-02T15:04:05". They are local wall-clock times in the Organisation's
 	// own zone — TIMESTAMP without time zone, carrying no offset, because a
 	// Shift's start is a fact about Ilford rather than an instant on a global
 	// timeline (ADR 0007).

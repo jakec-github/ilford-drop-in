@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchOrganisation } from "../api";
 import type { Organisation } from "../types";
 
-// The drop-in a page is under never changes while it is open, so it is read
+// The Organisation a page is under never changes while it is open, so it is read
 // once and every caller shares the answer.
 let organisation: Promise<Organisation> | null = null;
 
@@ -16,7 +16,7 @@ function load(): Promise<Organisation> {
   return organisation;
 }
 
-// useOrganisation is which drop-in this site is: null until it has loaded, and
+// useOrganisation is which Organisation this site is: null until it has loaded, and
 // null for good if it fails. The name is a heading and a tab title, so a page
 // without it is still a working page and nothing waits on it.
 export function useOrganisation(): Organisation | null {

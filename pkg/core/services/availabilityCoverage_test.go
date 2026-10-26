@@ -295,7 +295,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	assert.Equal(t, 2, ordinary.Needed)
 }
 
-// TestCoverageShowsAClosedShiftAsClosed: a date the drop-in is not running is
+// TestCoverageShowsAClosedShiftAsClosed: a date the Organisation is not running is
 // not a date that is short of volunteers. Reporting it as understaffed would put
 // a permanent red mark on a round that is fine.
 func TestCoverageShowsAClosedShiftAsClosed(t *testing.T) {

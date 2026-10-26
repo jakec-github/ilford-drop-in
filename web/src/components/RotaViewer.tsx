@@ -187,7 +187,7 @@ type EditDialog =
   | { kind: "pin"; date: string }
   | { kind: "unpin"; pin: Preallocation }
   // A shift being shut or opened again, which is neither an alteration nor a
-  // pin: it changes whether the drop-in runs that day at all.
+  // pin: it changes whether the Organisation runs that day at all.
   | { kind: "closure"; shift: RotaShift }
   // A shift's hours being moved, which may move the shift to another day.
   | { kind: "times"; shift: RotaShift }
@@ -872,7 +872,7 @@ export default function RotaViewer({
           {hasClosable && (
             <>
               {" "}
-              Close one for a date the drop-in is not running, up until the rota
+              Close one for a date the organisation is not running, up until the rota
               is allocated.
             </>
           )}{" "}

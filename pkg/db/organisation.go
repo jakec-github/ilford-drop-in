@@ -8,7 +8,7 @@ import (
 )
 
 // unassignedOrganisation is the placeholder migration 030 put every existing
-// row in, because the real id of the drop-in they belonged to is a deployment's
+// row in, because the real id of the Organisation they belonged to is a deployment's
 // business and appears nowhere in this repo.
 const unassignedOrganisation = "unassigned"
 
@@ -20,7 +20,7 @@ const unassignedOrganisation = "unassigned"
 // It also adopts the rows a pre-Organisation database already held. If the
 // placeholder is still present and exactly one configured id is new, the
 // placeholder is renamed to it and every reference follows by ON UPDATE
-// CASCADE. If several are new there is no telling which drop-in the old rota
+// CASCADE. If several are new there is no telling which Organisation the old rota
 // was, and it refuses rather than guess. It reports the id it adopted into, ""
 // when it adopted nothing.
 //

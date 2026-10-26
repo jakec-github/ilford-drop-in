@@ -90,7 +90,7 @@ function DialogActions({
 }
 
 // The Roles a picker offers for a change that carries somebody's existing Role:
-// every one the drop-in has, plus that one where it is no longer among them, so
+// every one the Organisation has, plus that one where it is no longer among them, so
 // a rota allocated under a retired Role can still be edited under it.
 //
 // The exception is the Role-less assignee — an allocation from before
@@ -111,7 +111,7 @@ function withCarriedRole(
 // the shift they are already on.
 //
 // role is offered for a move and insisted on for a switch: it defaults to what
-// the person already held, but can be changed to any Role the drop-in has. What
+// the person already held, but can be changed to any Role the Organisation has. What
 // the shift's Shape asks for does not narrow it — an alteration records what
 // happened on the day rather than instructing a solve (ADR 0009).
 export function ConfirmChangeDialog({
@@ -151,7 +151,7 @@ export function ConfirmChangeDialog({
   // Roles arrive, so the chosen one is derived below rather than stored.
   const [picked, setPicked] = useState<Role | null>(null);
 
-  // The initial Role is listed even where it is no longer one the drop-in
+  // The initial Role is listed even where it is no longer one the Organisation
   // offers, and — on a move — even where it is no Role at all: a move must be
   // able to leave somebody's Role exactly as it found it, and to put it back
   // after a look at the alternatives.
@@ -242,7 +242,7 @@ export type AssigneeChange =
 //
 // Role is stated rather than inferred: the service would otherwise settle it
 // from the shift and the roster, and those rules are invisible from here. Every
-// Role the drop-in has is on offer, whoever else on the shift already holds one
+// Role the Organisation has is on offer, whoever else on the shift already holds one
 // and whatever the shift's Shape asks for — the Shape and the roster bind the
 // allocator, not somebody recording a change to a rota that has already gone
 // out (ADR 0009). The roster still decides the default, since somebody is
@@ -269,7 +269,7 @@ export function AssigneeDialog({
   // can join this shift.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
-  // Every Role the drop-in offers, highest priority first, or null while they
+  // Every Role the Organisation offers, highest priority first, or null while they
   // are still loading. Anybody coming in must name one, so until this arrives
   // there is nothing to send and the dialog says so.
   roles: Role[] | null;
@@ -297,7 +297,7 @@ export function AssigneeDialog({
 
   // A replacement carries the outgoing person's Role over, which is what makes
   // it a replacement; an add has none to carry. Either way it is listed even if
-  // the drop-in has since retired it, so a rota allocated under the old name
+  // the Organisation has since retired it, so a rota allocated under the old name
   // can still be covered under it.
   const carried = change.kind === "replace" ? change.outgoing.role : "";
   // Required: anybody arriving must name a Role, so an outgoing person who
@@ -443,7 +443,7 @@ export function AssigneeDialog({
 //
 // A pin is a decision somebody has already taken, so the rules that bind the
 // allocator do not bind it (ADR 0010). Anybody may be pinned into any Role the
-// drop-in has, whether or not the roster says they hold it and whether or not
+// Organisation has, whether or not the roster says they hold it and whether or not
 // the shift's Shape has a Seat of it left. Either earns a note, never a block:
 // a pin past the Shape is honoured, and the allocator adds nobody else there.
 export function PinDialog({
@@ -464,7 +464,7 @@ export function PinDialog({
   // 0010). They are marked, as in the Alteration dialog.
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
-  // Every Role the drop-in has, highest priority first: what may be pinned.
+  // Every Role the Organisation has, highest priority first: what may be pinned.
   // null while they load, when the Shape's own Roles stand in.
   roles: Role[] | null;
   // This shift's Shape with its pins counted against it, in the order the Seats
@@ -637,7 +637,7 @@ export function PinDialog({
 
 // ClosureDialog confirms shutting a shift or opening it back up. Both
 // directions go through one dialog because they are one decision seen from
-// either side, and both say the same thing: the drop-in either runs that day or
+// either side, and both say the same thing: the Organisation either runs that day or
 // it does not, and allocation will be worked out accordingly.
 //
 // Closing is worth confirming despite being reversible, because of what it
@@ -676,7 +676,7 @@ export function ClosureDialog({
         <p className="rota-edit-summary">
           {closing ? (
             <>
-              The drop-in does not run on {dateLabel}, so nobody will be
+              The organisation does not run on {dateLabel}, so nobody will be
               allocated there.
               {pinnedCount > 0 && (
                 <>
@@ -691,7 +691,7 @@ export function ClosureDialog({
             </>
           ) : (
             <>
-              The drop-in runs on {dateLabel} again, and allocation will fill it
+              The organisation runs on {dateLabel} again, and allocation will fill it
               like any other shift.
             </>
           )}
@@ -782,7 +782,7 @@ export function ShiftTimesDialog({
         <p className="rota-edit-note">
           {backwards
             ? "A shift has to end after it starts."
-            : "Times are the drop-in's own local time. Moving the start to another day moves the shift to that day."}
+            : "Times are the organisation's own local time. Moving the start to another day moves the shift to that day."}
         </p>
         <DialogActions
           confirmLabel="Save times"

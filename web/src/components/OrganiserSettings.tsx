@@ -223,7 +223,7 @@ function RolesSettings() {
 
       {roles !== null && roles.length === 0 && (
         <p className="settings-empty">
-          No roles yet. Add the jobs volunteers do at the drop-in — a rota
+          No roles yet. Add the jobs volunteers do at the organisation — a rota
           cannot be allocated without them.
         </p>
       )}
@@ -372,9 +372,9 @@ function StandingPreallocationsSettings() {
   );
 }
 
-// OrganiserSettings is everything an Organiser decides about how the drop-in runs, as
+// OrganiserSettings is everything an Organiser decides about how the Organisation runs, as
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
-// of independent sections: the Rota Defaults the whole drop-in runs on, the
+// of independent sections: the Rota Defaults the whole Organisation runs on, the
 // Allocation Rules the allocator keeps, the Roles volunteers hold, and the pins made every rota.
 //
 // The Rota Defaults card is the one section that is not only here — the define

@@ -205,7 +205,7 @@ func TestGetDraftRotaAllocationResolvesWhenTheInputsHaveMoved(t *testing.T) {
 	assert.Empty(t, body.SolveError, "nothing has moved, so the stored draft is the answer")
 	assert.Equal(t, 10, body.SeatsFilled)
 
-	// Close a Shift: the drop-in does not run that day, which is a different
+	// Close a Shift: the Organisation does not run that day, which is a different
 	// rota to solve.
 	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
 		_, err := tx.SetShiftClosed(ctx, first.ID, true)

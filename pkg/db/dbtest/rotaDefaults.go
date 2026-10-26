@@ -7,7 +7,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// SeedRotaDefaults gives a test database the shift times a drop-in runs at.
+// SeedRotaDefaults gives a test database the shift times an Organisation runs at.
 //
 // No migration seeds them (ADR 0006), so a database straight out of New has an
 // empty settings record — and since a Shift's date is the date of its start

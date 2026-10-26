@@ -141,7 +141,7 @@ func AddPreallocation(
 		return nil, wrapf(ErrNotFound, "date %s is not in any rota", params.Date)
 	}
 
-	// A closed shift is a day the drop-in does not run, so there is no Seat to
+	// A closed shift is a day the Organisation does not run, so there is no Seat to
 	// promise anyone. Reopening it is the way to make one.
 	if shift.Closed {
 		return nil, wrapf(ErrConflict, "shift for %s is closed", params.Date)
@@ -276,7 +276,7 @@ func ListPreallocations(
 		return nil, fmt.Errorf("failed to fetch shifts in range: %w", err)
 	}
 
-	// A closed shift carries no pins: the drop-in is not running, so nobody is
+	// A closed shift carries no pins: the Organisation is not running, so nobody is
 	// promised it, and InitShifts strips whatever it was carrying. Dropping them
 	// here is what stops the rota page listing people against a shut date.
 	dateByShiftID := make(map[string]string, len(shifts))

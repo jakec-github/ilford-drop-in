@@ -143,20 +143,20 @@ function toRotaShift(shift: ApiShift): RotaShift {
   };
 }
 
-// fetchOrganisation returns which drop-in this site is. The server says so
+// fetchOrganisation returns which Organisation this site is. The server says so
 // rather than the page having it written in, because one build serves every
 // Organisation.
 export async function fetchOrganisation(): Promise<Organisation> {
   const res = await fetch(`${BASE_PATH}/api/organisation`);
   if (!res.ok) {
-    throw new Error(`Failed to load the drop-in (${res.status})`);
+    throw new Error(`Failed to load the organisation (${res.status})`);
   }
   return (await res.json()) as Organisation;
 }
 
-// fetchSession returns who is logged in and at what level in this drop-in, or
+// fetchSession returns who is logged in and at what level in this Organisation, or
 // null if there is no active session — or the session is someone on none of
-// this drop-in's lists, which is the same thing here.
+// this Organisation's lists, which is the same thing here.
 export async function fetchSession(): Promise<Session | null> {
   const res = await fetch(`${BASE_PATH}/api/me`);
   if (res.status === 401) return null;
@@ -213,7 +213,7 @@ function toConfiguredRole(role: ApiRole): ConfiguredRole {
   };
 }
 
-// fetchRoles returns the Roles the drop-in offers, highest priority first. Public, like
+// fetchRoles returns the Roles the Organisation offers, highest priority first. Public, like
 // the rota: the chips it colours are on a page nobody has to log in to see.
 export async function fetchRoles(): Promise<ConfiguredRole[]> {
   const res = await fetch(`${BASE_PATH}/api/roles`);

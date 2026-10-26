@@ -77,7 +77,7 @@ func ValidRoleColour(colour string) bool {
 	return false
 }
 
-// Roles is the set of Roles the drop-in offers: ordered by priority, indexed by
+// Roles is the set of Roles the Organisation offers: ordered by priority, indexed by
 // name and by id. The zero value is an empty set, which answers every query
 // rather than panicking — callers with no Roles in scope hold one.
 type Roles struct {

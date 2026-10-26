@@ -33,7 +33,7 @@ interface UseRotaDefaults {
   removeRule: (id: string) => Promise<void>;
 }
 
-// useRotaDefaults owns the settings an Organiser keeps for the drop-in as a whole.
+// useRotaDefaults owns the settings an Organiser keeps for the Organisation as a whole.
 // Only the settings screen reads it today; the rota and the availability pages
 // get their times already resolved, on the shifts they render.
 export function useRotaDefaults(): UseRotaDefaults {

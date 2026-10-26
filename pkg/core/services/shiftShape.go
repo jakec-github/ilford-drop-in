@@ -172,7 +172,7 @@ func SaveShiftShape(
 // why. Reading and checking together means a caller cannot allocate by
 // forgetting to check.
 //
-// Closed Shifts are exempt. Nobody works a day the drop-in is shut, so a closed
+// Closed Shifts are exempt. Nobody works a day the Organisation is shut, so a closed
 // Shift with no Seats is not a gap in anything.
 //
 // The state is only reachable on a deployment that defined a rota before it

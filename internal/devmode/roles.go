@@ -19,7 +19,7 @@ type RoleSeedStore interface {
 // seedRoles are the Roles the dev stack starts with. They are the pair
 // test_data/volunteers.csv names in its Roles column, because a roster whose
 // Roles the app does not know parses to volunteers holding nothing, and a
-// drop-in nobody holds a Role in allocates nobody.
+// Organisation nobody holds a Role in allocates nobody.
 //
 // Names and colours match the production config these Roles came out of, so the
 // dev stack looks like the real thing rather than like a fixture. How many of

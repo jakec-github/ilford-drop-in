@@ -23,7 +23,7 @@ const apiPort = process.env.API_PORT ?? "8080";
 // WEB_PORT lets a second checkout (a git worktree, say) serve on its own port
 // without colliding with the primary one. See docs/agents/worktrees.md.
 const webPort = process.env.WEB_PORT ?? "5173";
-// Each drop-in is served under /org/<id>/ (ADR 0011). Under it, these are the
+// Each Organisation is served under /org/<id>/ (ADR 0011). Under it, these are the
 // Go server's; everything else is the SPA, served from ./dist here so a change
 // shows up on reload. Anything missing here is not proxied — it falls through to
 // the SPA fallback below and the caller gets index.html with a 200, which

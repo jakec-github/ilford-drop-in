@@ -1,4 +1,4 @@
-// BASE_PATH is the path this drop-in is served under: "/org/<id>" (ADR 0011).
+// BASE_PATH is the path this Organisation is served under: "/org/<id>" (ADR 0011).
 // One server runs several Organisations and one build serves them all, so the
 // page cannot know which it is until it is served.
 //

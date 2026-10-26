@@ -130,11 +130,11 @@ Create `env/test/drop_in_config.yaml` (also git-ignored). Every
 field below without an "optional" note is required:
 
 ```yaml
-# Each drop-in the server runs, served under /org/<id>/ (ADR 0011). One is
+# Each Organisation the server runs, served under /org/<id>/ (ADR 0011). One is
 # enough; add entries to run several side by side.
 organisations:
-  - id: 'my-drop-in'                         # its address: lowercase letters, digits, hyphens
-    displayName: 'My Drop-In'                # shown on the rota and in calendars
+  - id: 'my-organisation'                         # its address: lowercase letters, digits, hyphens
+    displayName: 'My Organisation'                # shown on the rota and in calendars
     organiserEmails:                         # Google accounts allowed to log in as an Organiser
       - 'your-email@gmail.com'
     rotaEditorEmails:                        # optional: accounts that may only change who works a shift
@@ -147,7 +147,7 @@ organisations:
 # Local Postgres (matches scripts/test-db.sh)
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
 
-# What the drop-in decides about itself is not configured here. The Roles
+# What the Organisation decides about itself is not configured here. The Roles
 # volunteers hold, the Rota Defaults (the default shift start, end and
 # timezone, and the default Shape) and the Allocation Settings (which optional
 # allocator rules apply, and the share of a rota one volunteer may work) are
@@ -163,7 +163,7 @@ server:
   sessionSecret: 'change-me-min-16-chars'     # signs session cookies; ≥16 chars
 ```
 
-The app is then at `http://localhost:5173/org/my-drop-in/`; `/` is a splash
+The app is then at `http://localhost:5173/org/my-organisation/`; `/` is a splash
 page that links nowhere.
 
 The `test` directory matches the `-e test` / `-env test` flag you pass at
@@ -214,7 +214,7 @@ half-finished rename looks like.
 
 ### Setting the shift times
 
-When the drop-in runs is set on the same screen, under **Rota Defaults**: a
+When the Organisation runs is set on the same screen, under **Rota Defaults**: a
 start time, an end time and the timezone they are read in. Like the Roles, no
 migration seeds them.
 
@@ -299,7 +299,7 @@ Run the full stack (Postgres + Go server + frontend dev server) with:
 scripts/dev.sh test
 ```
 
-- Frontend: <http://localhost:5173/org/my-drop-in/> — your Organisation's `id`
+- Frontend: <http://localhost:5173/org/my-organisation/> — your Organisation's `id`
 - API/server: <http://localhost:8080>
 
 The rota page reads shifts from the database, which starts empty. To fill it,

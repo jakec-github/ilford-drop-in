@@ -72,7 +72,7 @@ func sortedDates(placements map[string][]allocator.CpsatAssignment) []string {
 
 // allocatableRota is a rota with everything allocating needs: two Shifts, a
 // round two volunteers have answered, and the Roles and settings a configured
-// drop-in has. Tests vary what the solver says about it, not what it is.
+// Organisation has. Tests vary what the solver says about it, not what it is.
 func allocatableRota() (*mockAllocateRotaStore, *mockVolClient) {
 	store := &mockAllocateRotaStore{
 		rotations: []db.Rotation{{ID: "rota-1", Start: "2026-08-02", ShiftCount: 2}},
@@ -328,7 +328,7 @@ func TestAllocateRotaInFlightRefusesWhenAShiftAsksForNobody(t *testing.T) {
 	assert.Empty(t, store.insertedAllocations, "nothing is written")
 }
 
-// Nobody works a day the drop-in is shut, so a closed Shift with no Seats is
+// Nobody works a day the Organisation is shut, so a closed Shift with no Seats is
 // not a gap in anything and must not stop the rota being allocated.
 func TestAllocateRotaInFlightIgnoresAClosedShiftWithNoShape(t *testing.T) {
 	store, volunteers := allocatableRota()

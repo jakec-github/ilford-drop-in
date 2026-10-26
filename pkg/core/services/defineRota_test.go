@@ -81,7 +81,7 @@ var testShape = []db.DefaultShapeSeat{
 }
 
 // definable is a deployment a rota can be defined against: an Organiser has said
-// when the drop-in runs and what a shift asks for. Everything else about it is
+// when the Organisation runs and what a shift asks for. Everything else about it is
 // empty, and tests that care about one part set it.
 func definable() *mockDB {
 	return &mockDB{
@@ -390,7 +390,7 @@ func TestDefineRota_NamesTheEarliestRotaInFlight(t *testing.T) {
 	assert.NotContains(t, err.Error(), "2026-09-06")
 }
 
-// A start date an Organiser chose can land on a day the drop-in already runs, which
+// A start date an Organiser chose can land on a day the Organisation already runs, which
 // the one-Shift-per-date index refuses. It is an ordinary mistake, so it is
 // answered as one: the day, the rota covering it, and where to start instead.
 func TestDefineRota_RefusesADateAlreadyTaken(t *testing.T) {

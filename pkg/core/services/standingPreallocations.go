@@ -166,7 +166,7 @@ func AddStandingPreallocation(
 		if vol == nil {
 			return nil, wrapf(ErrNotFound, "volunteer %s not found", params.VolunteerID)
 		}
-		// Active or not, and any Role the drop-in has, held or not: ADR 0010,
+		// Active or not, and any Role the Organisation has, held or not: ADR 0010,
 		// as for a single pin.
 		name = vol.DisplayName
 	}

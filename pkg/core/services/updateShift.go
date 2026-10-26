@@ -196,7 +196,7 @@ func parseShiftTimestamp(value, which string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, wrapf(ErrInvalidInput,
-		"%q is not a date and time — write the %s as 2026-08-02T19:30, in the drop-in's own local time", value, which)
+		"%q is not a date and time — write the %s as 2026-08-02T19:30, in the organisation's own local time", value, which)
 }
 
 // dayOf is the date half of one of a Shift's timestamps. Safe on any value
@@ -209,6 +209,6 @@ func dayOf(timestamp string) string {
 // the refusal an Organiser reads, naming the day two shifts would have shared.
 func dateTakenConflict(startAt string) error {
 	return wrapf(ErrConflict,
-		"the drop-in already runs on %s, and it cannot run twice on one day — move that shift first",
+		"the organisation already runs on %s, and it cannot run twice on one day — move that shift first",
 		readableDate(dayOf(startAt)))
 }

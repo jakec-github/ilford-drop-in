@@ -23,7 +23,7 @@ func testServerConfig() *config.ServerConfig {
 func testOrganisations() []config.Organisation {
 	return []config.Organisation{{
 		ID:               "test-org",
-		DisplayName:      "Test Drop-In",
+		DisplayName:      "Test Organisation",
 		OrganiserEmails:  []string{"organiser@example.com"},
 		RotaEditorEmails: []string{"editor@example.com"},
 	}}
@@ -66,7 +66,7 @@ func stubLogin(t *testing.T, a *Authenticator, query string) string {
 	rec = httptest.NewRecorder()
 	server.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, login, nil))
 	require.Equal(t, http.StatusFound, rec.Code)
-	assert.Equal(t, "/org/test-org/", rec.Header().Get("Location"), "stub login should come back to the drop-in it set out from")
+	assert.Equal(t, "/org/test-org/", rec.Header().Get("Location"), "stub login should come back to the organisation it set out from")
 
 	var session *http.Cookie
 	for _, c := range rec.Result().Cookies() {

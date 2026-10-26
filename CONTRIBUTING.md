@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping out with the Ilford Drop-in rota tool. This guide covers how
+Thanks for helping out with Rota Wise. This guide covers how
 to get set up and how changes make it into the project.
 
 ## Getting set up

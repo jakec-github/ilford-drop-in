@@ -78,7 +78,7 @@ func TestShiftTimestampsRefuses(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// A Shift's own times are read in the drop-in's zone, so the same stored 19:30
+// A Shift's own times are read in the Organisation's zone, so the same stored 19:30
 // is a different moment in winter and in summer — the conversion the calendar
 // feed and the shift listing both need (issue #134, ADR 0007).
 func TestShiftInstantsReadTheStoredTimesInTheZone(t *testing.T) {

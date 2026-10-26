@@ -61,7 +61,7 @@ func ProposeRota(ctx context.Context, store RotaProposalStore) (*RotaProposal, e
 // no rotas to follow.
 //
 // Sunday rather than "the same weekday as last time" because that is the day
-// the drop-in runs, and a rota whose start date has been moved by hand is a
+// the Organisation runs, and a rota whose start date has been moved by hand is a
 // one-off rather than a new cadence to inherit.
 func nextRotaStart(rotations []db.Rotation) (string, error) {
 	latest := utils.FindLatestRotation(rotations)

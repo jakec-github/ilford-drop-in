@@ -107,7 +107,7 @@ function reread(): Promise<void> {
   return current ? current.then(load) : load();
 }
 
-// useRoles owns which Roles the drop-in offers. Most callers only read it — the
+// useRoles owns which Roles the Organisation offers. Most callers only read it — the
 // rota and the roster colour their chips by it — and the settings screen is the
 // one that writes.
 //

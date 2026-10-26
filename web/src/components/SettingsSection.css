@@ -59,7 +59,7 @@
   color: var(--role-rose);
 }
 
-/* What the drop-in as a whole runs on, read as a column of labelled facts
+/* What the Organisation as a whole runs on, read as a column of labelled facts
    rather than a sentence: an Organiser checking the times is looking for one line,
    and the section grows more of them as later settings land here. */
 .settings-facts {

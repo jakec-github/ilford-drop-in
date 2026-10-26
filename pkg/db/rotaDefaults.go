@@ -8,8 +8,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// RotaDefaults is the drop-in's settings record as the database holds it: one
-// set of answers about how the drop-in as a whole runs, edited on the Settings
+// RotaDefaults is the Organisation's settings record as the database holds it: one
+// set of answers about how the Organisation as a whole runs, edited on the Settings
 // screen. It arrives holding the shift times; the default Shape, the allocation
 // toggles and the Standing Preallocations join it in later tickets.
 //
@@ -19,7 +19,7 @@ import (
 //
 // The times are held as "15:04" strings rather than as time.Time, because a
 // time of day with no date is not a moment: it becomes one only when read
-// against a Shift's date in the drop-in's timezone, which is
+// against a Shift's date in the Organisation's timezone, which is
 // model.RotaDefaults' job. The column is a real TIME, so the round trip is
 // through Postgres's own parser rather than the app's.
 type RotaDefaults struct {
@@ -84,7 +84,7 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 //
 // An empty field is written as NULL. "Not set" has to survive the round trip:
 // stored as a zero TIME it would read back as midnight, which is a time the
-// drop-in could plausibly be told to start at.
+// Organisation could plausibly be told to start at.
 func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error {
 	_, err := d.pool.Exec(ctx, `
 		INSERT INTO rota_defaults (organisation_id, shift_start_time, shift_end_time, shift_timezone)

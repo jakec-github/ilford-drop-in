@@ -4,9 +4,9 @@
 
 <h1 align="center">Rota Wise</h1>
 
-Volunteer rotas for drop-ins and other services run by volunteers. Rota Wise
+Volunteer rotas for any organisation run by volunteers. Rota Wise
 collects volunteer availability, allocates volunteers to shifts, and publishes
-the resulting rota. One server runs several drop-ins, each under its own
+the resulting rota. One server runs several organisations, each under its own
 address; the first was a weekly charity drop-in in Ilford, London, which
 provides food and support to vulnerable community members.
 

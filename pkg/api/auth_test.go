@@ -148,7 +148,7 @@ func TestSession_ValidCookieButNotOnAllowlist(t *testing.T) {
 }
 
 // A session is who someone is, everywhere; what they may do is each
-// Organisation's own business. An Organiser of one drop-in is nobody at
+// Organisation's own business. An Organiser of one Organisation is nobody at
 // another, on the same cookie.
 func TestSession_AllowlistsAreEachOrganisations(t *testing.T) {
 	a := testAuth()
@@ -168,7 +168,7 @@ func TestSession_AllowlistsAreEachOrganisations(t *testing.T) {
 	assert.Equal(t, LevelRotaEditor, session.Level, "the level is the one this Organisation gives")
 
 	_, ok = south.session(req)
-	assert.False(t, ok, "being signed in for one drop-in says nothing about another")
+	assert.False(t, ok, "being signed in for one organisation says nothing about another")
 }
 
 func TestRequireLevel(t *testing.T) {

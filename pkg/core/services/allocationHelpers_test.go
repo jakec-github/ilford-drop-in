@@ -45,7 +45,7 @@ func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 	return shifts
 }
 
-// testRotaDefaultsStore answers with the settings a configured drop-in has —
+// testRotaDefaultsStore answers with the settings a configured Organisation has —
 // the evening session the real one runs — unless a test sets rotaDefaults to
 // say otherwise, which is how the settings-are-incomplete cases are written.
 type testRotaDefaultsStore struct {
@@ -62,7 +62,7 @@ func (s testRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefaults
 }
 
 // testShiftShapeStore answers with the Shape every Shift was minted with — the
-// one a configured drop-in asks for, one Team lead and four Service volunteers,
+// one a configured Organisation asks for, one Team lead and four Service volunteers,
 // against the Role ids testRoleStore hands out — unless a test says otherwise.
 //
 // shapeOfSize is how most tests say otherwise: they care about how many ordinary

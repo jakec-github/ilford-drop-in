@@ -255,7 +255,7 @@ func TestUpdateShift_MustEndAfterItStarts(t *testing.T) {
 	assert.Empty(t, store.timeWrites)
 }
 
-// Moving a Shift onto a day the drop-in already runs is a conflict, and the
+// Moving a Shift onto a day the Organisation already runs is a conflict, and the
 // message names the day rather than reporting a broken index.
 func TestUpdateShift_RefusesADateAnotherShiftHolds(t *testing.T) {
 	store := unallocatedShiftStore()
