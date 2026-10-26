@@ -33,6 +33,14 @@ export function personRef(assignee: Assignee): PersonRef {
     : { custom: assignee.name };
 }
 
+// The chip-selection key for a person: their volunteer id, or a custom entry's
+// text. Never a display name, which two volunteers may share.
+export function personKey(person: PersonRef): string {
+  return "volunteerId" in person
+    ? `volunteer:${person.volunteerId}`
+    : `custom:${person.custom}`;
+}
+
 export function samePerson(a: PersonRef, b: PersonRef): boolean {
   return "volunteerId" in a && "volunteerId" in b
     ? a.volunteerId === b.volunteerId

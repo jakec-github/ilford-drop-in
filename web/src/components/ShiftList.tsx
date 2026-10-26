@@ -15,6 +15,7 @@ import {
   groupByMonth,
   groupByRole,
   isUnallocated,
+  personKey,
   personRef,
   roleGroupLabel,
   roleSuffix,
@@ -23,6 +24,7 @@ import {
   type RoleGroup,
 } from "./shifts";
 import { formatShiftTimes } from "./shiftTimes";
+import { useChipSelection } from "../ui/useChipSelection";
 import "../ui/Chip.css";
 import "./ShiftList.css";
 
@@ -169,7 +171,6 @@ export interface RowEdit {
 function Chip({
   assignee,
   colourOf,
-  selected,
   label,
   className,
   draggable,
@@ -181,7 +182,6 @@ function Chip({
 }: {
   assignee: Assignee;
   colourOf: RoleColourOf;
-  selected: boolean;
   // Overrides the accessible name, which is otherwise the chip's text. Editing
   // turns a chip into a control that does something to the person named on it,
   // and "Bob" alone does not say what.
@@ -189,11 +189,15 @@ function Chip({
   className?: string;
   draggable?: boolean;
   disabled?: boolean;
-  onClick: () => void;
+  // What pressing it does instead of selecting it: editing gives a chip a menu.
+  onClick?: () => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   onDrop?: () => void;
 }) {
+  // Selected with every other chip for the same person on the page, however
+  // they are named.
+  const { selected, toggle } = useChipSelection(personKey(personRef(assignee)));
   const cls = [
     "chip",
     assignee.custom ? "chip--tag" : "chip--pill",
@@ -222,7 +226,8 @@ function Chip({
       // someone tabbing through the rota still hears why this one is not a
       // destination instead of skipping silently past it.
       aria-disabled={disabled}
-      onClick={disabled ? undefined : onClick}
+      aria-pressed={onClick ? undefined : selected}
+      onClick={disabled ? undefined : (onClick ?? toggle)}
       onDragStart={(e) => {
         // Some form of payload is required for a drag to start at all in
         // Firefox; what is actually dragged is held in React state, since the
@@ -446,7 +451,7 @@ function PlannedList({
             data-role-colour={colourOf(entry.pin.roleId) ?? undefined}
             title={pinTitle(entry.pin)}
           >
-            {entry.pin.name}
+            <SelectName person={pinRef(entry.pin)} name={entry.pin.name} />
             {onUnpin && (
               <button
                 type="button"
@@ -480,12 +485,32 @@ function PlannedList({
             data-role-colour={colourOf(entry.assignee.roleId) ?? undefined}
             title={draftTitle(entry.assignee)}
           >
-            {entry.assignee.name}
+            <SelectName
+              person={personRef(entry.assignee)}
+              name={entry.assignee.name}
+            />
             {entry.assignee.group && <GroupDot group={entry.assignee.group} />}
           </li>
         ),
       )}
     </ul>
+  );
+}
+
+// SelectName is the name on a pinned or drafted chip, pressed to select that
+// person wherever they are on the page. The chip around it takes the highlight
+// as a rota chip does, through :has().
+function SelectName({ person, name }: { person: PersonRef; name: string }) {
+  const { selected, toggle } = useChipSelection(personKey(person));
+  return (
+    <button
+      type="button"
+      className="chip-select"
+      aria-pressed={selected}
+      onClick={toggle}
+    >
+      {name}
+    </button>
   );
 }
 
@@ -569,8 +594,6 @@ function ShiftRow({
   draftSolved,
   draftStale,
   colourOf,
-  selectedName,
-  onSelectName,
   edit,
 }: {
   shift: RotaShift;
@@ -584,18 +607,12 @@ function ShiftRow({
   draftSolved: boolean;
   draftStale: boolean;
   colourOf: RoleColourOf;
-  selectedName: string;
-  onSelectName?: (name: string) => void;
   edit: RowEdit | null;
 }) {
   // Whether this row is showing its fuller view. One row's own business: rows
   // are opened to read one shift closely, and opening one is no reason to
   // reshuffle the rest of the list.
   const [expanded, setExpanded] = useState(false);
-
-  function handleClick(name: string) {
-    onSelectName?.(name === selectedName ? "" : name);
-  }
 
   const unallocated = isUnallocated(shift);
   // Whether the draft has anything to say about this row at all. Only an
@@ -796,8 +813,6 @@ function ShiftRow({
             key={key}
             assignee={a}
             colourOf={colourOf}
-            selected={a.name === selectedName}
-            onClick={() => handleClick(a.name)}
           />
         );
       }
@@ -823,7 +838,6 @@ function ShiftRow({
           key={key}
           assignee={a}
           colourOf={colourOf}
-          selected={a.name === selectedName}
           className={picked ? "lifted" : ""}
           draggable
           disabled={pending !== null && !swappable}
@@ -968,8 +982,6 @@ export default function ShiftList({
   draftSolved = false,
   draftStale = false,
   colourOf,
-  selectedName = "",
-  onSelectName,
   rowEdit,
 }: {
   // The shifts to draw, in the order to draw them. Which shifts those are is
@@ -992,11 +1004,6 @@ export default function ShiftList({
   // the drafted names; nothing else about the rows changes.
   draftStale?: boolean;
   colourOf: RoleColourOf;
-  // The name the reader has picked out of the rota, highlighted wherever it
-  // appears. Absent where there is nothing to pick with — the Allocation tab
-  // has no search, and its rows have nobody allocated to highlight.
-  selectedName?: string;
-  onSelectName?: (name: string) => void;
   // What whoever is editing may change about a given row, or null where nothing can be
   // changed. A function of the shift rather than a flag, because what one row
   // offers depends on what is in flight elsewhere in the list.
@@ -1016,8 +1023,6 @@ export default function ShiftList({
               draftSolved={draftSolved}
               draftStale={draftStale}
               colourOf={colourOf}
-              selectedName={selectedName}
-              onSelectName={onSelectName}
               edit={rowEdit ? rowEdit(shift) : null}
             />
           ))}

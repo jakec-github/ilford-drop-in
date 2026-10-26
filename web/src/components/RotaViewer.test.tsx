@@ -969,3 +969,63 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     });
   });
 });
+
+// Two volunteers both called Sam, one on each of two shifts, and the first Sam
+// again on a third.
+function twoSams(): RotaShift[] {
+  const sam = (volunteerId: string) => ({
+    name: "Sam",
+    roleId: "r-greet",
+    role: GREETER,
+    custom: false,
+    group: null,
+    volunteerId,
+  });
+  const shift = (id: string, date: string, volunteerId: string) => ({
+    id,
+    date,
+    start: `${date}T19:30:00`,
+    end: `${date}T21:30:00`,
+    closed: false,
+    allocated: true,
+    shape: [],
+    assignees: [sam(volunteerId)],
+  });
+  return [
+    shift("s1", "2026-01-04", "sam-1"),
+    shift("s2", "2026-01-11", "sam-2"),
+    shift("s3", "2026-01-18", "sam-1"),
+  ];
+}
+
+describe("RotaViewer chip selection", () => {
+  beforeEach(() => {
+    fetchRoles.mockResolvedValue(ROLES);
+    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchPreallocations.mockResolvedValue([]);
+  });
+
+  test("selecting a chip highlights the same volunteer, not another of the same name", async () => {
+    await renderRota(null, twoSams());
+    const chips = ["4 Jan", "11 Jan", "18 Jan"].map((d) =>
+      within(rowFor(d)).getByRole("button", { name: "Sam" }),
+    );
+
+    fireEvent.click(chips[0]);
+    expect(chips.map((c) => c.classList.contains("selected"))).toEqual([
+      true,
+      false,
+      true,
+    ]);
+
+    fireEvent.click(chips[1]);
+    expect(chips.map((c) => c.classList.contains("selected"))).toEqual([
+      false,
+      true,
+      false,
+    ]);
+
+    fireEvent.click(chips[1]);
+    expect(chips.some((c) => c.classList.contains("selected"))).toBe(false);
+  });
+});
