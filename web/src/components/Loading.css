@@ -1,0 +1,96 @@
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 5rem 1rem;
+  text-align: center;
+  /* Held back for a moment, so a load that is over at once never shows. */
+  animation: loading-appear 0.2s 0.3s both;
+}
+
+.loading p {
+  margin: 0;
+}
+
+.loading--inline {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 0.4rem;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--text);
+  /* Beside content that is already there, a wait shows at once: it covers the
+     debounce before a re-solve as well as the request, and from the reader's
+     side those are one wait. */
+  animation: none;
+}
+
+@keyframes loading-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Each column fills from the logo's top line and drains back, a wave from left
+   to right. Short is faint and full is solid, as the logo draws them. Negative
+   delays start the wave mid-stride, so the first frame is already moving. */
+.loading-column {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: loading-fill 1.2s ease-in-out infinite;
+}
+
+.loading-column:nth-child(2) {
+  animation-delay: -1.05s;
+}
+
+.loading-column:nth-child(3) {
+  animation-delay: -0.9s;
+}
+
+.loading-column:nth-child(4) {
+  animation-delay: -0.75s;
+}
+
+@keyframes loading-fill {
+  0%,
+  100% {
+    transform: scaleY(0.36);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* Less movement asked for: the columns hold the logo's own pose — full, two
+   thirds, full, a third — and only their brightness travels along them. */
+@media (prefers-reduced-motion: reduce) {
+  .loading-column {
+    animation-name: loading-glow;
+    animation-duration: 1.6s;
+  }
+
+  .loading-column:nth-child(2) {
+    transform: scaleY(0.64);
+  }
+
+  .loading-column:nth-child(4) {
+    transform: scaleY(0.36);
+  }
+}
+
+@keyframes loading-glow {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}

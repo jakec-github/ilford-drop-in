@@ -12,6 +12,7 @@ import Button from "../ui/Button";
 import {
   formatShiftDate,
   formatShiftDateLong,
+  groupByMonth,
   groupByRole,
   isUnallocated,
   personRef,
@@ -1002,19 +1003,24 @@ export default function ShiftList({
 }) {
   return (
     <div className="shift-list">
-      {shifts.map((shift) => (
-        <ShiftRow
-          key={shift.id}
-          shift={shift}
-          pins={pinsByDate.get(shift.date) ?? []}
-          drafted={draftByShiftID.get(shift.id) ?? []}
-          draftSolved={draftSolved}
-          draftStale={draftStale}
-          colourOf={colourOf}
-          selectedName={selectedName}
-          onSelectName={onSelectName}
-          edit={rowEdit ? rowEdit(shift) : null}
-        />
+      {groupByMonth(shifts).map((month) => (
+        <section key={month.key} aria-label={month.label}>
+          <h3 className="shift-month">{month.label}</h3>
+          {month.shifts.map((shift) => (
+            <ShiftRow
+              key={shift.id}
+              shift={shift}
+              pins={pinsByDate.get(shift.date) ?? []}
+              drafted={draftByShiftID.get(shift.id) ?? []}
+              draftSolved={draftSolved}
+              draftStale={draftStale}
+              colourOf={colourOf}
+              selectedName={selectedName}
+              onSelectName={onSelectName}
+              edit={rowEdit ? rowEdit(shift) : null}
+            />
+          ))}
+        </section>
       ))}
     </div>
   );

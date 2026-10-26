@@ -20,6 +20,7 @@ import {
   ShiftTimesDialog,
   UnpinDialog,
 } from "./RotaEditDialogs";
+import Loading from "./Loading";
 import { seatCounts } from "./shape";
 import ShapeForm from "./ShapeForm";
 import type { RowEdit } from "./ShiftList";
@@ -426,12 +427,7 @@ export default function DraftRotaPanel({
       <div className="draft-panel-head">
         <h2 className="draft-panel-title">Draft rota</h2>
         <div className="draft-panel-controls">
-          {stale && (
-            <span className="draft-panel-updating" role="status">
-              <span className="draft-panel-spinner" aria-hidden="true" />
-              Updating…
-            </span>
-          )}
+          {stale && <Loading inline>Updating…</Loading>}
           {/* "Regenerate" rather than "Refresh": reading this tab already
               brings the draft up to date, so the only reason to press this is
               the change no stamp can see — a volunteer added to the roster

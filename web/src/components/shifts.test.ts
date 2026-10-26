@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ShapeSeat } from "../types";
-import { groupByRole, roleGroupLabel, shiftDeficit } from "./shifts";
+import {
+  groupByMonth,
+  groupByRole,
+  roleGroupLabel,
+  shiftDeficit,
+} from "./shifts";
 
 // Deliberately not the Role names any deployment ships with: nothing here may
 // match on a name, and a fixture named like this is what catches it if it
@@ -230,5 +235,33 @@ describe("shiftDeficit", () => {
     expect(shiftDeficit(SHAPE, people)).toEqual([
       { role: "Greeter", deficit: 1 },
     ]);
+  });
+});
+
+describe("groupByMonth", () => {
+  const at = (...dates: string[]) => dates.map((date) => ({ date }));
+  const shape = (shifts: { date: string }[]) =>
+    groupByMonth(shifts).map((g) => [g.label, g.shifts.map((s) => s.date)]);
+
+  test("runs of one month share a heading, named without a year", () => {
+    expect(shape(at("2026-11-01", "2026-11-29", "2026-12-06"))).toEqual([
+      ["November", ["2026-11-01", "2026-11-29"]],
+      ["December", ["2026-12-06"]],
+    ]);
+  });
+
+  test("every heading carries its year once the shifts cross one", () => {
+    expect(shape(at("2026-12-27", "2027-01-03"))).toEqual([
+      ["December 2026", ["2026-12-27"]],
+      ["January 2027", ["2027-01-03"]],
+    ]);
+  });
+
+  test("a month that comes round again in the order given starts a new run", () => {
+    expect(shape(at("2026-11-01", "2026-12-06", "2026-11-08"))).toHaveLength(3);
+  });
+
+  test("no shifts, no headings", () => {
+    expect(groupByMonth([])).toEqual([]);
   });
 });

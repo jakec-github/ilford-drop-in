@@ -1,6 +1,7 @@
 import Button from "../ui/Button";
 import { useAvailabilityForm } from "../hooks/useAvailabilityForm";
 import type { AvailabilityLinkFailure, AvailabilityShift } from "../types";
+import Loading from "./Loading";
 import { formatShiftTimes } from "./shiftTimes";
 import "./AvailabilityForm.css";
 
@@ -155,7 +156,7 @@ export default function AvailabilityForm({ token }: { token: string }) {
             Could not load your form: {error}
           </p>
         ) : (
-          <p className="app-status">Loading…</p>
+          <Loading>Loading…</Loading>
         )}
       </main>
     );

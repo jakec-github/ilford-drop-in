@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { useAuth } from "../auth-context";
 import { BASE_PATH } from "../basePath";
 import { ORGANISER_TABS, type OrganiserTab } from "./organiserTabs";
+import Loading from "./Loading";
 import "./OrganiserPage.css";
 
 function WipPanel({ title }: { title: string }) {
@@ -23,7 +24,7 @@ export default function OrganiserPage({ tab }: { tab: OrganiserTab }) {
   const { level, loading } = useAuth();
 
   if (loading) {
-    return <p className="app-status">Loading…</p>;
+    return <Loading>Loading…</Loading>;
   }
   if (level === null) {
     return (

@@ -12,12 +12,16 @@
    full shift look like a problem. So the list takes the width its widest row
    wants, floored at the 40rem column and capped by the shell around it — on the
    rota page, which is narrower than the floor, that is no change at all. */
+/* A card of its own, because on the rota page it sits straight on the tinted
+   page, and the Role palette is only verified against --bg. */
 .shift-list {
   width: fit-content;
   min-width: min(100%, 40rem);
   max-width: 100%;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: var(--card-shadow);
   overflow: hidden;
 }
 
@@ -32,6 +36,19 @@
 
 .shift-row:last-child {
   border-bottom: none;
+}
+
+/* Each month's shifts sit under its name, drawn in the logo's dark top like
+   the band across the page: a rota is a calendar, and this is its page turn. */
+.shift-month {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--band-text);
+  background: var(--band);
 }
 
 /* A closed row reads as dimmed, but the dimming is on what it says rather than
@@ -197,12 +214,14 @@
 }
 
 /* Unallocated shifts (organiser-only): a faint diagonal hatch marks them as
-   "rota not run yet", distinct from a closed shift's flat dimming. */
+   "rota not run yet", distinct from a closed shift's flat dimming. A neutral
+   grey rather than --border, which is tinted towards the theme's green: the
+   hatch is texture, and must not read as a colour that means something. */
 .shift-row.unallocated {
   background-image: repeating-linear-gradient(
     -45deg,
-    transparent 0 6px,
-    color-mix(in srgb, var(--border) 60%, transparent) 6px 7px
+    transparent 0 13px,
+    rgba(128, 128, 128, 0.12) 13px 14px
   );
 }
 
