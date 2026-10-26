@@ -133,3 +133,15 @@ func TestMaxAllocationCountRoundsDown(t *testing.T) {
 func TestMaxAllocationCountNeverFallsToZero(t *testing.T) {
 	assert.Equal(t, 1, model.MaxAllocationCount(10, 4))
 }
+
+// A kind's starting value is one it accepts, so a rule added from the library
+// and saved untouched is never refused.
+func TestEveryKindStartsAtAValueItAccepts(t *testing.T) {
+	for _, k := range model.RuleLibrary {
+		rule := model.AllocationRule{Kind: k.ID, Value: k.DefaultValue}
+		if k.HasOption() {
+			rule.Option = k.Options[0]
+		}
+		assert.NoError(t, rule.Validate(), k.ID)
+	}
+}

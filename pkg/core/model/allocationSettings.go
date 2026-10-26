@@ -47,6 +47,9 @@ type RuleKind struct {
 	ValueLabel string
 	MinValue   int
 	MaxValue   int
+	// DefaultValue is what a rule of this kind starts at when it is added from
+	// the library, before an Organiser moves it.
+	DefaultValue int
 	// Input says which control the screen sets the value with, so the client
 	// can draw a ring for a share and a stepper for a count without knowing
 	// which kind it is looking at. Empty for a kind with no value; a client
@@ -95,34 +98,37 @@ func (k RuleKind) HasOption() bool {
 // not a rota, so they are not an Organiser's decision to make.
 var RuleLibrary = []RuleKind{
 	{
-		ID:          MaxFrequencyKind,
-		Family:      VolunteerRuleFamily,
-		Label:       "Percentage attendance cap",
-		Description: "Nobody covered works more than a set share of a rota's shifts. Rounds down, but never to none.",
-		ValueLabel:  "Most of a rota one person may work (%)",
-		MinValue:    1,
-		MaxValue:    100,
-		Input:       PercentInput,
+		ID:           MaxFrequencyKind,
+		Family:       VolunteerRuleFamily,
+		Label:        "Percentage attendance cap",
+		Description:  "Nobody covered works more than a set share of a rota's shifts. Rounds down, but never to none.",
+		ValueLabel:   "Most of a rota one person may work (%)",
+		MinValue:     1,
+		MaxValue:     100,
+		DefaultValue: 50,
+		Input:        PercentInput,
 	},
 	{
-		ID:          ShiftGapKind,
-		Family:      VolunteerRuleFamily,
-		Label:       "Shift gap",
-		Description: "Between any two shifts somebody covered works, there are at least this many they do not. Closed shifts count, and so does the end of the previous rota. A gap of 1 means no back-to-back shifts.",
-		ValueLabel:  "Minimum shifts between",
-		MinValue:    1,
-		MaxValue:    52,
-		Input:       StepperInput,
+		ID:           ShiftGapKind,
+		Family:       VolunteerRuleFamily,
+		Label:        "Shift gap",
+		Description:  "Between any two shifts somebody covered works, there are at least this many they do not. Closed shifts count, and so does the end of the previous rota. A gap of 1 means no back-to-back shifts.",
+		ValueLabel:   "Minimum shifts between",
+		MinValue:     1,
+		MaxValue:     52,
+		DefaultValue: 1,
+		Input:        StepperInput,
 	},
 	{
-		ID:          MonthlyCapKind,
-		Family:      VolunteerRuleFamily,
-		Label:       "Monthly attendance cap",
-		Description: "Nobody covered works more than this many shifts in one calendar month, counting shifts already worked that month in the previous rota.",
-		ValueLabel:  "Most shifts in one month",
-		MinValue:    1,
-		MaxValue:    31,
-		Input:       CountInput,
+		ID:           MonthlyCapKind,
+		Family:       VolunteerRuleFamily,
+		Label:        "Monthly attendance cap",
+		Description:  "Nobody covered works more than this many shifts in one calendar month, counting shifts already worked that month in the previous rota.",
+		ValueLabel:   "Most shifts in one month",
+		MinValue:     1,
+		MaxValue:     31,
+		DefaultValue: 2,
+		Input:        CountInput,
 	},
 	{
 		ID:     ShiftRequiresKind,

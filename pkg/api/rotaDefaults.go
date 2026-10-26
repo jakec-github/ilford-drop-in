@@ -45,10 +45,11 @@ type ruleKindResponse struct {
 	Description string `json:"description"`
 	// ValueLabel names the one value a rule of this kind carries, empty for a
 	// kind that carries none; MinValue and MaxValue bound it, inclusive.
-	ValueLabel string `json:"valueLabel,omitempty"`
-	MinValue   int    `json:"minValue,omitempty"`
-	MaxValue   int    `json:"maxValue,omitempty"`
-	Input      string `json:"input,omitempty"`
+	ValueLabel   string `json:"valueLabel,omitempty"`
+	MinValue     int    `json:"minValue,omitempty"`
+	MaxValue     int    `json:"maxValue,omitempty"`
+	DefaultValue int    `json:"defaultValue,omitempty"`
+	Input        string `json:"input,omitempty"`
 	// OptionLabel names the one choice a rule of this kind carries, empty for
 	// a kind that carries none; Options is every choice it accepts.
 	OptionLabel string   `json:"optionLabel,omitempty"`
@@ -238,16 +239,17 @@ func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rota
 	library := make([]ruleKindResponse, 0, len(model.RuleLibrary))
 	for _, k := range model.RuleLibrary {
 		library = append(library, ruleKindResponse{
-			ID:          k.ID,
-			Family:      string(k.Family),
-			Label:       k.Label,
-			Description: k.Description,
-			ValueLabel:  k.ValueLabel,
-			MinValue:    k.MinValue,
-			MaxValue:    k.MaxValue,
-			Input:       string(k.Input),
-			OptionLabel: k.OptionLabel,
-			Options:     k.Options,
+			ID:           k.ID,
+			Family:       string(k.Family),
+			Label:        k.Label,
+			Description:  k.Description,
+			ValueLabel:   k.ValueLabel,
+			MinValue:     k.MinValue,
+			MaxValue:     k.MaxValue,
+			DefaultValue: k.DefaultValue,
+			Input:        string(k.Input),
+			OptionLabel:  k.OptionLabel,
+			Options:      k.Options,
 		})
 	}
 

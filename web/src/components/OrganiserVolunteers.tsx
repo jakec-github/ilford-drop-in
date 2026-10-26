@@ -1,3 +1,4 @@
+import { wholeShares } from "./wholeShares";
 import { useMemo } from "react";
 import Button from "../ui/Button";
 import type { RoleColourOf, RoleIdOf } from "../hooks/useRoles";
@@ -21,17 +22,23 @@ interface RosterCounts {
   // the roster rather than from a list of configured Roles, because nothing
   // tells the frontend what those are yet — a Role nobody holds does not appear.
   byRole: { role: string; count: number }[];
-  // null when nobody is active, since there is then no denominator to take a
-  // percentage of — shown as a dash rather than 0%, which would read as a fact.
-  malePercentage: number | null;
+  // Each share of the active volunteers, in percent, or null when nobody is
+  // active — there is then no denominator, and a dash says so where 0% would
+  // read as a fact. other is everyone the sheet calls neither, blank included,
+  // so the three always make the whole.
+  genderSplit: { male: number; female: number; other: number } | null;
 }
 
-// Gender is free text from the sheet, so "male" is matched case-insensitively
-// and anything else — "Female", "Prefer not to say", blank — simply is not male.
-// One definition, used by both the count and the tag, so the percentage can never
-// disagree with the rows it is counting.
+// Gender is free text from the sheet, so "male" and "female" are matched
+// case-insensitively and anything else — "Prefer not to say", blank — is
+// other. One definition, used by both the split and the tag, so the stat can
+// never disagree with the rows it is counting.
 function isMale(volunteer: Volunteer): boolean {
   return volunteer.gender?.toLowerCase() === "male";
+}
+
+function isFemale(volunteer: Volunteer): boolean {
+  return volunteer.gender?.toLowerCase() === "female";
 }
 
 // Every count is over active volunteers only: an Organiser sizing up the team wants
@@ -42,6 +49,7 @@ function isMale(volunteer: Volunteer): boolean {
 function countRoster(volunteers: Volunteer[]): RosterCounts {
   const active = volunteers.filter((v) => v.active);
   const male = active.filter(isMale).length;
+  const female = active.filter(isFemale).length;
 
   const counts = new Map<string, number>();
   // A volunteer's Roles arrive in priority order, so a lower-priority Role is
@@ -61,9 +69,64 @@ function countRoster(volunteers: Volunteer[]): RosterCounts {
     byRole: [...counts]
       .map(([role, count]) => ({ role, count }))
       .sort((a, b) => (rank.get(a.role) ?? 0) - (rank.get(b.role) ?? 0)),
-    malePercentage:
-      active.length === 0 ? null : Math.round((male / active.length) * 100),
+    genderSplit:
+      active.length === 0
+        ? null
+        : (([m, f, o]) => ({ male: m, female: f, other: o }))(
+            wholeShares(
+              [male, female, active.length - male - female],
+              active.length,
+            ),
+          ),
   };
+}
+
+// GenderSplit is the roster's gender mix as one bar, its parts labelled
+// beneath. Other is drawn only when somebody is in it, so a roster that is all
+// male and female reads as two parts rather than three with one empty.
+function GenderSplit({ split }: { split: RosterCounts["genderSplit"] }) {
+  const parts = split
+    ? [
+        { key: "male", label: "Male", share: split.male },
+        { key: "female", label: "Female", share: split.female },
+        ...(split.other > 0
+          ? [{ key: "other", label: "Other", share: split.other }]
+          : []),
+      ]
+    : [];
+  return (
+    <div className="roster-count roster-count--split">
+      <dt>Gender split</dt>
+      <dd>
+        {split === null ? (
+          "—"
+        ) : (
+          <>
+            <span className="gender-bar" aria-hidden="true">
+              {parts.map((p) => (
+                <span
+                  key={p.key}
+                  className={`gender-bar-part gender-bar-part--${p.key}`}
+                  style={{ flexGrow: p.share }}
+                />
+              ))}
+            </span>
+            <span className="gender-legend">
+              {parts.map((p) => (
+                <span
+                  key={p.key}
+                  className={`gender-legend-item gender-legend-item--${p.key}`}
+                >
+                  {p.label} {p.share}%
+                </span>
+              ))}
+            </span>
+            <span className="roster-count-note">of active volunteers</span>
+          </>
+        )}
+      </dd>
+    </div>
+  );
 }
 
 function Count({
@@ -188,15 +251,7 @@ export default function OrganiserVolunteers() {
             {counts.byRole.map(({ role, count }) => (
               <Count key={role} label={role} value={String(count)} />
             ))}
-            <Count
-              label="Male"
-              value={
-                counts.malePercentage === null
-                  ? "—"
-                  : `${counts.malePercentage}%`
-              }
-              note="of active volunteers"
-            />
+            <GenderSplit split={counts.genderSplit} />
           </dl>
 
           <p className="roster-caption">

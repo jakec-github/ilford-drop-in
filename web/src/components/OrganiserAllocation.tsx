@@ -7,6 +7,7 @@ import { useRota } from "../hooks/useRota";
 import { useRotaInFlight } from "../hooks/useRotaInFlight";
 import AvailabilityPanel from "./AvailabilityPanel";
 import DefineRota from "./DefineRota";
+import { DraftRules } from "./AllocationRules";
 import DraftRotaPanel from "./DraftRotaPanel";
 import type { RotaInFlight, RotaShift } from "../types";
 import "./OrganiserAllocation.css";
@@ -247,36 +248,42 @@ function InFlightRota({
           the section not being there, and a read that failed took the button
           that would retry it off the screen. What state the draft is in is the
           panel's to say, not a reason to leave it out. */}
-      <DraftRotaPanel
-        state={draftState}
-        loadError={draftError}
-        stale={stale}
-        solving={solving}
-        reading={reading}
-        solveError={solveError}
-        onSolve={() => void solve()}
-        allocating={allocating}
-        allocateError={allocateError}
-        attempt={attempt}
-        onAllocate={() =>
-          allocate().then((outcome) => {
-            if (!outcome?.allocated) return;
-            // The rota has gone out, and the rota page is what shows one.
-            onAllocated();
-          })
-        }
-        shifts={inFlightShifts}
-        // The one signal that says an allocator input has moved, whichever of
-        // them it was: the pins are the panel's own, and these three are the
-        // rota's, so they meet here.
-        onInputMoved={inputsMoved}
-        // Each of these re-reads the rota on its way through, so the rows
-        // redraw from what the server now says rather than from what was
-        // asked for.
-        onSetClosed={setClosed}
-        onSetTimes={setTimes}
-        onSetShape={setShape}
-      />
+      {/* The rules sit beside the draft so it is read with what it was made
+          under, and changing one there re-solves it like any other input
+          (issue #281). Under it on a screen too narrow for both. */}
+      <div className="draft-with-rules">
+        <DraftRotaPanel
+          state={draftState}
+          loadError={draftError}
+          stale={stale}
+          solving={solving}
+          reading={reading}
+          solveError={solveError}
+          onSolve={() => void solve()}
+          allocating={allocating}
+          allocateError={allocateError}
+          attempt={attempt}
+          onAllocate={() =>
+            allocate().then((outcome) => {
+              if (!outcome?.allocated) return;
+              // The rota has gone out, and the rota page is what shows one.
+              onAllocated();
+            })
+          }
+          shifts={inFlightShifts}
+          // The one signal that says an allocator input has moved, whichever of
+          // them it was: the pins are the panel's own, and these three are the
+          // rota's, so they meet here.
+          onInputMoved={inputsMoved}
+          // Each of these re-reads the rota on its way through, so the rows
+          // redraw from what the server now says rather than from what was
+          // asked for.
+          onSetClosed={setClosed}
+          onSetTimes={setTimes}
+          onSetShape={setShape}
+        />
+        <DraftRules onChanged={inputsMoved} />
+      </div>
 
       {/* Minting a round and sending the links is the same rota's business as
           everything above, which is why it is a section here rather than a tab

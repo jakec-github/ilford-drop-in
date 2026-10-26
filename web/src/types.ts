@@ -125,6 +125,16 @@ export interface RuleKind {
   valueLabel?: string;
   minValue?: number;
   maxValue?: number;
+  // Where a rule of this kind starts when it is added from the library.
+  defaultValue?: number;
+  // Which control sets the value: a ring for a share, a stepper for a small
+  // count, a slider for a count across a range. Anything else, or nothing,
+  // gets a plain number box — so a new input needs no change here to work.
+  input?: string;
+  // Set only on a kind whose rules carry one choice, with every choice it
+  // accepts.
+  optionLabel?: string;
+  options?: string[];
 }
 
 // Scope is which volunteers a Volunteer Rule covers: an include list and an
@@ -142,6 +152,8 @@ export interface AllocationRule {
   kind: string;
   // 0 for a kind that carries none.
   value: number;
+  // "" for a kind that carries none.
+  option: string;
   scope: Scope;
   note: string;
   // Stored but not applied: a kind this build does not have, or a value it no
@@ -154,6 +166,7 @@ export interface AllocationRule {
 export interface AllocationRuleDraft {
   kind: string;
   value: number;
+  option: string;
   scope: Scope;
   note: string;
 }

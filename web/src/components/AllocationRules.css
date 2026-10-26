@@ -1,83 +1,545 @@
-/* The Allocation Rules section: the rules an Organiser has added, and the
-   dialog that adds or edits one. */
+/* The Allocation Rules: one card per rule, edited where it stands, and the
+   library they are added from. Each kind wears a colour of its own
+   (--rule-colour), down the card's edge and on its controls, so two cards are
+   told apart before either is read. */
 
-.allocation-rules {
-  list-style: none;
+.rule-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin: 0;
   padding: 0;
+  list-style: none;
 }
 
-/* What the rule is, what value it carries, who it covers and why it is there,
-   then its two actions. A rule is read as a sentence, not compared down a
-   column, so its facts stack rather than line up. */
-.allocation-rule {
+.rule-card {
+  --rule-colour: var(--role-slate);
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.625rem 0;
-  border-top: 1px solid var(--border);
-}
-
-.allocation-rule:first-child {
-  border-top: none;
-}
-
-.allocation-rule-body {
-  display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-  font-size: 0.875rem;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem 0.875rem 1.25rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  transition:
+    box-shadow 0.2s,
+    opacity 0.25s,
+    transform 0.25s;
 }
 
-.allocation-rule-name {
-  font-weight: 600;
+/* The kind's colour, as a stripe down the leading edge. */
+.rule-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--rule-colour);
+}
+
+.rule-card:hover,
+.rule-card:focus-within {
+  box-shadow: 0 6px 20px -12px rgba(0, 0, 0, 0.35);
+}
+
+.rule-card--compact {
+  gap: 0.5rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
+}
+
+.rule-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rule-card-name {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1rem;
   color: var(--text-h);
 }
 
-.allocation-rule-value {
-  font-variant-numeric: tabular-nums;
+.rule-card--compact .rule-card-name {
+  font-size: 0.9375rem;
 }
 
-.allocation-rule-note {
-  font-style: italic;
+.rule-card-description {
+  margin: -0.25rem 0 0;
+  font-size: 0.8125rem;
 }
 
-.allocation-rule-actions {
-  display: flex;
+/* Saving says so quietly, by the title, then fades: a card that saves itself
+   has to show that it did, but it is not news. */
+.rule-card-saving {
+  font-size: 0.75rem;
+  color: var(--text);
+  transition: opacity 0.4s;
+}
+
+.rule-card-saving--saved {
+  color: var(--positive);
+}
+
+.rule-card-saving--idle {
+  opacity: 0;
+}
+
+.rule-card-remove,
+.rule-add {
+  display: inline-grid;
   flex: none;
-  gap: 0.375rem;
+  place-items: center;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
-.rule-scope {
+.rule-card-remove {
+  width: 28px;
+  height: 28px;
+}
+
+.rule-card-remove svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.rule-card-remove:hover,
+.rule-card-remove:focus-visible {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+/* The library's door: round, filled, and turning a quarter as it is
+   reached for. */
+.rule-add {
+  width: 34px;
+  height: 34px;
+  color: var(--bg);
+  background: var(--accent);
+  transition: transform 0.2s;
+}
+
+.rule-add svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.rule-add:hover,
+.rule-add:focus-visible {
+  transform: rotate(90deg) scale(1.05);
+}
+
+/* Removing asks on the card itself: the card blurs under the question, so it
+   is plain which rule is going. */
+.rule-card-confirm {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.375rem;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-h);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
 }
 
-.rule-scope-lead {
-  font-weight: 600;
+.rule-card--asking .rule-card-confirm {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-.scope-chip {
-  padding: 0.0625rem 0.5rem;
-  font-size: 0.8125rem;
+.button.rule-card-confirm-remove {
+  color: var(--bg);
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
+.rule-card--leaving {
+  opacity: 0.4;
+  transform: translateX(1rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rule-card--fresh {
+    animation: rule-card-arrive 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+}
+
+@keyframes rule-card-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-0.75rem) scale(0.97);
+  }
+}
+
+/* A figure that can be typed over: it reads as a number until it is
+   clicked, and then it is a box. */
+.typed-number {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.typed-number input {
+  width: auto;
+  min-width: 1ch;
+  padding: 0 0.125rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  text-align: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  field-sizing: content;
+}
+
+.typed-number input:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rule-colour) 10%, transparent);
+}
+
+.typed-number input:focus {
+  outline: 2px solid var(--rule-colour);
+  background: var(--bg);
+}
+
+.rule-figure {
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--rule-colour);
+}
+
+/* The percentage ring: the share fills the circle, a knob rides its end, and
+   the figure sits beside it. */
+.percent-ring {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.percent-ring-dial {
+  flex: none;
+  width: 92px;
+  height: 92px;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+
+.percent-ring-dial.dragging {
+  cursor: grabbing;
+}
+
+.percent-ring-dial[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.percent-ring-track,
+.percent-ring-fill {
+  fill: none;
+  stroke-width: 10;
+}
+
+.percent-ring-track {
+  stroke: var(--border);
+}
+
+.percent-ring-fill {
+  stroke: var(--rule-colour);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.12s;
+}
+
+.percent-ring-knob {
+  fill: var(--bg);
+  stroke: var(--rule-colour);
+  stroke-width: 3;
+  transition:
+    cx 0.12s,
+    cy 0.12s;
+}
+
+.percent-ring-dial:focus-visible .percent-ring-fill {
+  filter: drop-shadow(0 0 4px var(--rule-colour));
+}
+
+.percent-ring-figure {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.typed-number-suffix {
+  font-size: 0.6em;
+  color: var(--rule-colour);
+}
+
+.rule-card--compact .percent-ring-dial {
+  width: 72px;
+  height: 72px;
+}
+
+.rule-card--compact .percent-ring-figure {
+  font-size: 1.5rem;
+}
+
+/* The stepper, and the strip under it that draws the gap. */
+.rule-stepper-row,
+.growing-slider-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rule-stepper-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font: inherit;
+  font-size: 1.125rem;
+  line-height: 1;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.rule-stepper-button:hover:not(:disabled) {
+  border-color: var(--rule-colour);
+  color: var(--rule-colour);
+}
+
+.rule-stepper-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.rule-stepper-label {
+  font-size: 0.875rem;
+}
+
+.gap-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0.5rem;
+}
+
+.gap-strip > span:not(.gap-strip-span) {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.gap-strip-worked {
+  background: var(--rule-colour);
+}
+
+.gap-strip-free {
+  background: var(--border);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .gap-strip > span {
+    animation: chip-enter 0.2s ease-out;
+  }
+}
+
+/* A gap too long to draw shift by shift: the two worked shifts, and a dashed
+   stretch between them that says how long it is. */
+.gap-strip-span {
+  flex: 1 1 auto;
+  max-width: 12rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--text-h);
+  background: repeating-linear-gradient(
+      90deg,
+      var(--border) 0 6px,
+      transparent 6px 10px
+    )
+    center / 100% 2px no-repeat;
+}
+
+/* The growing slider: its scale's far end grows when the thumb reaches it. */
+.growing-slider input[type="range"] {
+  width: 100%;
+  margin: 0.375rem 0 0;
+  accent-color: var(--rule-colour);
+}
+
+.growing-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.growing-slider-end {
+  display: inline-block;
+  transition:
+    transform 0.3s,
+    color 0.3s;
+}
+
+.growing-slider-end.grew {
+  font-weight: 700;
+  color: var(--rule-colour);
+  transform: scale(1.4);
+}
+
+/* A two-way switch, used for who a rule covers and for a kind's choice. */
+.scope-switch {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: 999px;
 }
 
+.scope-switch button {
+  padding: 0.125rem 0.625rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.scope-switch button.on {
+  color: #fff;
+  background: var(--rule-colour);
+}
+
+.scope-switch button:disabled {
+  cursor: default;
+}
+
+.rule-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.rule-option-label {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.scope-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scope-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 /* A name the roster no longer has still binds nobody, but it is still on the
    rule — dashed so it reads as something to tidy away. */
-.scope-chip--stale {
+.chip.chip--stale {
   border-style: dashed;
 }
 
-/* What an Organiser should look at before trusting the rule: one not applied,
-   or one that covers nobody. */
+/* "+ person": a select dressed as a dashed ghost chip, so adding somebody
+   reads as making one more of the chips beside it. */
+.scope-add {
+  width: auto;
+  max-width: 10rem;
+  padding: 0.1875rem 0.625rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.scope-add:hover:not(:disabled),
+.scope-add:focus-visible {
+  color: var(--rule-colour);
+  border-color: var(--rule-colour);
+}
+
+.rule-card-coverage {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.rule-inline-confirm {
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.rule-inline-confirm p {
+  margin: 0 0 0.375rem;
+}
+
+/* The note: an underline until it is used, so an empty one costs a line
+   rather than a box. */
+.rule-card-note {
+  width: 100%;
+  padding: 0.25rem 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--text-h);
+  background: none;
+  border: none;
+  border-bottom: 1px dashed transparent;
+}
+
+.rule-card-note:hover,
+.rule-card-note:focus {
+  border-bottom-color: var(--border);
+  outline: none;
+}
+
+/* What an Organiser should look at before trusting the rule. */
 .rule-flag {
   align-self: flex-start;
+  margin: 0;
   padding: 0.125rem 0.5rem;
   font-size: 0.8125rem;
   color: var(--text-h);
@@ -85,11 +547,12 @@
   border-radius: 6px;
 }
 
-/* The library: each kind a whole button, its label over what it does. */
+/* The library: each kind a card of its own, topped in the colour its rules
+   will wear, lifting as it is reached for. */
 .rule-library {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.625rem;
   margin: 0 0 1rem;
   padding: 0;
   list-style: none;
@@ -100,19 +563,31 @@
   flex-direction: column;
   gap: 0.25rem;
   width: 100%;
-  padding: 0.625rem 0.75rem;
+  height: 100%;
+  padding: 0.75rem;
   font: inherit;
   text-align: left;
   color: inherit;
-  background: none;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-top: 4px solid var(--rule-colour);
+  border-radius: 10px;
   cursor: pointer;
+  transition:
+    transform 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
-.rule-library-kind:hover,
+.rule-library-kind:hover:not(:disabled),
 .rule-library-kind:focus-visible {
-  border-color: var(--accent);
+  transform: translateY(-3px);
+  border-color: var(--rule-colour);
+  box-shadow: 0 8px 18px -12px rgba(0, 0, 0, 0.4);
+}
+
+.rule-library-kind:disabled {
+  cursor: progress;
 }
 
 .rule-library-label {
@@ -124,68 +599,32 @@
   font-size: 0.8125rem;
 }
 
-.settings-hint.rule-kind-description {
-  margin-top: 0;
-}
-
-/* Two lists side by side on a desk, so it is plain that one is in use and
-   the other waits on it being emptied; stacked on a phone. */
-.scope-lists {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.scope-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 0;
-  margin: 0;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.scope-list legend {
-  padding: 0 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.scope-list select {
-  width: 100%;
-}
-
-.scope-names {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scope-name {
+/* Beside the draft rota. */
+.draft-rules-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
 }
 
-.scope-picker .settings-warning {
-  margin: 0 0 0.75rem;
+.draft-rules-head h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-h);
 }
 
-@media (max-width: 30rem) {
-  .scope-lists {
-    grid-template-columns: 1fr;
-  }
+.draft-rules .settings-empty {
+  font-size: 0.8125rem;
+}
 
-  .allocation-rule {
-    flex-direction: column;
+@media (prefers-reduced-motion: reduce) {
+  .rule-card,
+  .rule-add,
+  .rule-library-kind,
+  .percent-ring-fill,
+  .percent-ring-knob,
+  .growing-slider-end {
+    transition: none;
   }
 }

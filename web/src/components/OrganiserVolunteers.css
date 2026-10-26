@@ -82,6 +82,72 @@
   color: var(--text);
 }
 
+/* The gender split: one bar, its parts in proportion, labelled underneath.
+   Twice a single figure's width, since it says three things where they say
+   one. The parts grow in on first paint so the mix reads as a measurement. */
+.roster-count--split {
+  grid-column: span 2;
+}
+
+.gender-bar {
+  display: flex;
+  gap: 2px;
+  height: 0.625rem;
+  margin: 0.5rem 0 0.375rem;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.gender-bar-part {
+  flex-basis: 0;
+  animation: gender-bar-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: left;
+}
+
+@keyframes gender-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gender-bar-part {
+    animation: none;
+  }
+}
+
+.gender-bar-part--male,
+.gender-legend-item--male::before {
+  background: var(--role-blue);
+}
+
+.gender-bar-part--female,
+.gender-legend-item--female::before {
+  background: var(--role-rose);
+}
+
+.gender-bar-part--other,
+.gender-legend-item--other::before {
+  background: var(--role-slate);
+}
+
+.gender-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.gender-legend-item::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.375rem;
+  border-radius: 2px;
+}
+
 .roster-caption {
   margin: 1.5rem 0 0.5rem;
   font-size: 0.75rem;
