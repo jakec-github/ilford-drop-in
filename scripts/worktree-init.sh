@@ -296,6 +296,13 @@ echo "  .worktree.env: written"
 echo ""
 echo "Installing frontend dependencies..."
 (cd "$REPO_ROOT/web" && bun install)
+# The headless browser for web/'s playwright-core: Playwright never fetches
+# its own, so a first launch fails without this. Instant when the cache
+# (~/Library/Caches/ms-playwright, shared by every checkout) already has this
+# version; ~100MB once when it does not. Agent tooling only, so a failure here
+# warns rather than stopping the setup.
+(cd "$REPO_ROOT/web" && bun --bun x playwright-core install chromium-headless-shell) \
+    || echo "warning: Playwright's browser not installed; see docs/agents/dev-stack.md" >&2
 # The repo's hooks (.githooks/), shared by every checkout of this repo.
 git -C "$REPO_ROOT" config core.hooksPath .githooks
 

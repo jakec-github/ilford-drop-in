@@ -276,9 +276,10 @@ await browser.close();
 bun logs/playwright/look.ts
 ```
 
-The browser comes from the same cache as the MCP server's. If the dependency's
-version does not match a build in that cache, `cd web && bunx playwright-core
-install chromium-headless-shell` fetches it once.
+Playwright never downloads its own browser, so a launch fails until one is
+installed for this version. `worktree-init.sh` installs it. In the primary
+checkout, run `cd web && bunx playwright-core install chromium-headless-shell`
+once.
 
 Work from **accessibility-tree snapshots**, not screenshots: they are cheaper,
 they are stable, and they say what a thing *is* rather than what it looks like.
