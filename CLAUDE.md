@@ -60,6 +60,7 @@ does not apply to you.
 - Triage label vocabulary: `docs/agents/triage-labels.md`
 - Agent tracker actions run as the `jakec-agent` machine account via `GH_TOKEN`
   from `.claude/settings.local.json` (untracked; never commit it)
+  — `scripts/agent-gh.sh <gh args>` reads it for you
 - Domain glossary: `CONTEXT.md`; decision records: `docs/adr/`
 
 ## Running the app

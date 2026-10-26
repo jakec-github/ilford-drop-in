@@ -91,6 +91,11 @@ scripts/test-db.sh list                # what exists on the server
 scripts/test-db.sh psql ilford_wt_foo  # a psql shell on it
 ```
 
+There is no `psql` on the host. Postgres runs in the `ilford-pg-test` container,
+and `test-db.sh psql` reaches it through `docker exec`. It passes flags straight
+to psql, so `scripts/test-db.sh psql ilford_wt_foo -c "SELECT …"` works from a
+script. Use it rather than looking for a local client.
+
 Postgres refuses to clone a template that has open connections, so nothing may
 be connected to `ilford_dropin_test` while a worktree is being created or reset.
 The script says so plainly, and tells you how to see what is connected. In

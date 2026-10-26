@@ -8,7 +8,7 @@ Implement the work described by the user in the spec or tickets.
 
 Use /tdd where possible, at pre-agreed seams.
 
-Run typechecking regularly, single test files regularly, and the full test suite once at the end.
+Run typechecking and lint (`bun run lint` in `web/`) regularly, single test files regularly, and the full test suite once at the end.
 
 Use the PR workflow in CLAUDE.md
 

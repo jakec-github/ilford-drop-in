@@ -50,8 +50,16 @@ disambiguates in the end.
 
 ## Upload in one commit
 
-Use a scratch worktree of the orphan branch, outside the repo, so the files are
-staged somewhere that has no code in it and the whole set goes up as one commit:
+`scripts/pr-shots.sh` does the whole procedure. It stages the files in a scratch
+worktree of the orphan branch outside the repo, pushes them as one commit,
+removes the worktree, and prints the markdown that embeds each image:
+
+```bash
+scripts/pr-shots.sh 194 logs/playwright/before-main.png logs/playwright/allocation-after.png
+scripts/agent-gh.sh pr comment 194 --body "$(scripts/pr-shots.sh 194 logs/playwright/*.png)"
+```
+
+By hand, it is:
 
 ```bash
 n=194                                   # the PR number

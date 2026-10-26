@@ -251,6 +251,36 @@ by hand:
 npx -y playwright install chromium
 ```
 
+### When playwright-mcp is down
+
+The MCP server can drop mid-session. Its tools then vanish, and they do not
+come back until the session restarts. `web/` has `playwright-core` as a dev
+dependency, so a short script does the same job without it. Run it with
+**bun**, not `node`: the default `node` on this machine is too old for
+Playwright.
+
+```ts
+// logs/playwright/look.ts — under logs/, so it is never committed
+import { chromium } from "../../web/node_modules/playwright-core";
+const app = "http://localhost:8080/org/dev-org";
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+await page.goto(`${app}/auth/login`);
+await page.goto(`${app}/organiser/settings`);
+console.log(await page.locator("main").ariaSnapshot());
+await page.screenshot({ path: "logs/playwright/settings.png", fullPage: true });
+await browser.close();
+```
+
+```bash
+bun logs/playwright/look.ts
+```
+
+Playwright never downloads its own browser, so a launch fails until one is
+installed for this version. `worktree-init.sh` installs it. In the primary
+checkout, run `cd web && bunx playwright-core install chromium-headless-shell`
+once.
+
 Work from **accessibility-tree snapshots**, not screenshots: they are cheaper,
 they are stable, and they say what a thing *is* rather than what it looks like.
 A screenshot is evidence to hand a human reviewer — never the basis for your own
