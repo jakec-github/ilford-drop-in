@@ -14,9 +14,11 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
 Agent tracker/PR actions authenticate as the `jakec-agent` machine account (via
-`GH_TOKEN`); reviews and merges are done by `jakechorley`. Shipping code follows
-the **PR workflow in `.claude.md`** — branch per ticket, PR with `Closes #<n>`,
-review requested from `jakechorley`, agent never merges.
+`GH_TOKEN`); reviews are done by `jakec-github`, and the approval is the merge.
+Shipping code follows the **PR workflow in `CLAUDE.md`** — branch per ticket,
+PR with `Closes #<n>`, review requested from `jakec-github`, auto-merge armed
+with `scripts/arm-auto-merge.sh` once CI is green. The agent never merges by
+hand.
 
 ## Pull requests as a triage surface
 
