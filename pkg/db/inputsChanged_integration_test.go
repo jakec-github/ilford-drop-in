@@ -136,9 +136,9 @@ func TestEveryAllocatorInputStampsTheRota(t *testing.T) {
 		{
 			// Not a fact about one rota, which is why it stamps every rota in
 			// flight rather than one named rota.
-			name: "an Allocation Settings change",
+			name: "an Allocation Rule being added, edited or removed",
 			move: func(t *testing.T) {
-				require.NoError(t, database.SaveAllocationSettings(ctx, `{"maxFrequency":0.5}`))
+				require.NoError(t, database.UpdateAllocationSettings(ctx, func(string) (string, error) { return `{"rules":[]}`, nil }))
 			},
 		},
 		{
@@ -221,7 +221,7 @@ func TestAnAllocatedRotaIsNeverStamped(t *testing.T) {
 		_, err := tx.SetShiftTimes(ctx, first.ID, "2026-08-23T19:30:00", "2026-08-23T21:30:00")
 		return err
 	}))
-	require.NoError(t, database.SaveAllocationSettings(ctx, `{"maxFrequency":0.5}`))
+	require.NoError(t, database.UpdateAllocationSettings(ctx, func(string) (string, error) { return `{"rules":[]}`, nil }))
 
 	rotations, err := database.GetRotations(ctx)
 	require.NoError(t, err)

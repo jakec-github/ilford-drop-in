@@ -784,11 +784,10 @@ func (m *mockStore) SaveDefaultShape(_ context.Context, shape []db.DefaultShapeS
 	return nil
 }
 
-func (m *mockStore) SaveAllocationSettings(_ context.Context, settings string) error {
+func (m *mockStore) UpdateAllocationSettings(_ context.Context, edit func(string) (string, error)) error {
 	if m.rotaDefaultsWriteErr != nil {
 		return m.rotaDefaultsWriteErr
 	}
-	m.savedAllocationSettings = append(m.savedAllocationSettings, settings)
 
 	// Saving a section writes through to what the next read sees, as the real
 	// store does — the settings screen reloads nothing after a save.
@@ -796,6 +795,11 @@ func (m *mockStore) SaveAllocationSettings(_ context.Context, settings string) e
 	if m.rotaDefaults != nil {
 		updated = *m.rotaDefaults
 	}
+	settings, err := edit(updated.AllocationSettings)
+	if err != nil {
+		return err
+	}
+	m.savedAllocationSettings = append(m.savedAllocationSettings, settings)
 	updated.AllocationSettings = settings
 	m.rotaDefaults = &updated
 	return nil

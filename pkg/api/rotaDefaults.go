@@ -9,8 +9,8 @@ import (
 )
 
 // rotaDefaultsResponse is the settings record: what an Organiser has decided about
-// how the drop-in as a whole runs. It holds the shift times and the default
-// Shape; the allocation toggles join them here in a later ticket.
+// how the drop-in as a whole runs: the shift times, the default Shape and the
+// Allocation Rules.
 //
 // Times are the same "19:30" the database and the form field spell, not
 // timestamps: a time of day is not a moment until it is read against a date.
@@ -29,44 +29,63 @@ type rotaDefaultsResponse struct {
 	// filled. Never null: a Shape nobody has stated is an empty list, which is a
 	// state to render rather than an absence to guard against.
 	DefaultShape []seatResponse `json:"defaultShape"`
-	// AllocationSettings is which optional allocator rules apply, and
-	// SwitchableConstraints is which rules there are to apply. Both, because
-	// the screen renders one list of toggles and cannot draw it from the
-	// answers alone — a rule nobody has answered still has to appear, switched
-	// off. Sending the registry also means the client holds no copy of it: the
-	// list in Go is the only one (ADR 0006).
-	AllocationSettings    allocationSettingsResponse `json:"allocationSettings"`
-	SwitchableConstraints []switchableConstraint     `json:"switchableConstraints"`
+	// AllocationRules are the rules an Organiser has added, in the order they
+	// were added, and RuleLibrary is every kind there is to add. The library
+	// travels with the rules so the client holds no copy of it: the list in Go
+	// is the only one (ADR 0012).
+	AllocationRules []allocationRuleResponse `json:"allocationRules"`
+	RuleLibrary     []ruleKindResponse       `json:"ruleLibrary"`
 }
 
-// switchableConstraint is one optional allocator rule as the screen needs it:
-// the name it is answered under, and the words to put beside the switch.
-type switchableConstraint struct {
-	Name        string `json:"name"`
+// ruleKindResponse is one Rule Kind as the screen offers it.
+type ruleKindResponse struct {
+	ID          string `json:"id"`
+	Family      string `json:"family"`
 	Label       string `json:"label"`
 	Description string `json:"description"`
-	// ValueLabel names the extra answer this rule needs, empty for the rules
-	// that need none. Only max_frequency has one.
+	// ValueLabel names the one value a rule of this kind carries, empty for a
+	// kind that carries none; MinValue and MaxValue bound it, inclusive.
 	ValueLabel string `json:"valueLabel,omitempty"`
+	MinValue   int    `json:"minValue,omitempty"`
+	MaxValue   int    `json:"maxValue,omitempty"`
 }
 
-// allocationSettingsResponse is an Organiser's answers.
+// scopeBody is a Scope on the wire, both ways. The lists are never null on the
+// way out, so the client has one shape to read.
+type scopeBody struct {
+	Include []string `json:"include"`
+	Exclude []string `json:"exclude"`
+}
+
+// allocationRuleResponse is one stored rule.
 //
-// Enabled carries an entry for every rule in the registry, including the ones
-// nobody has answered — the rule that an unanswered constraint is off is
-// settled here rather than in the client, so there is one place it is stated.
-type allocationSettingsResponse struct {
-	Enabled      map[string]bool `json:"enabled"`
-	MaxFrequency float64         `json:"maxFrequency"`
+// Ignored marks a rule this build cannot apply — a kind it does not have, or
+// values that no longer validate. It is listed rather than hidden so an
+// Organiser can see why it is not applying and take it off; the solve leaves it
+// out either way (ADR 0006).
+type allocationRuleResponse struct {
+	ID      string    `json:"id"`
+	Kind    string    `json:"kind"`
+	Value   int       `json:"value"`
+	Scope   scopeBody `json:"scope"`
+	Note    string    `json:"note"`
+	Ignored bool      `json:"ignored"`
 }
 
-// allocationSettingsRequest is the allocation-settings section of the settings
-// screen, stated whole for the same reason the shift times are: the screen
-// shows every rule at once, and a partial write could not express switching one
-// off.
-type allocationSettingsRequest struct {
-	Enabled      map[string]bool `json:"enabled"`
-	MaxFrequency float64         `json:"maxFrequency"`
+// addAllocationRuleRequest is a rule from the library with its values filled in.
+type addAllocationRuleRequest struct {
+	Kind  string    `json:"kind"`
+	Value int       `json:"value"`
+	Scope scopeBody `json:"scope"`
+	Note  string    `json:"note"`
+}
+
+// editAllocationRuleRequest is what can change about a rule in place. Its kind
+// is what it is: a different kind is a different rule.
+type editAllocationRuleRequest struct {
+	Value int       `json:"value"`
+	Scope scopeBody `json:"scope"`
+	Note  string    `json:"note"`
 }
 
 // seatResponse is one line of a Shape: this many of this Role.
@@ -206,58 +225,118 @@ func (h *Handler) writeSettings(w http.ResponseWriter, r *http.Request, defaults
 }
 
 func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rotaDefaultsResponse {
-	constraints := make([]switchableConstraint, 0, len(model.SwitchableConstraints))
-	for _, c := range model.SwitchableConstraints {
-		constraints = append(constraints, switchableConstraint{
-			Name:        c.Name,
-			Label:       c.Label,
-			Description: c.Description,
-			ValueLabel:  c.ValueLabel,
+	library := make([]ruleKindResponse, 0, len(model.RuleLibrary))
+	for _, k := range model.RuleLibrary {
+		library = append(library, ruleKindResponse{
+			ID:          k.ID,
+			Family:      string(k.Family),
+			Label:       k.Label,
+			Description: k.Description,
+			ValueLabel:  k.ValueLabel,
+			MinValue:    k.MinValue,
+			MaxValue:    k.MaxValue,
+		})
+	}
+
+	rules := make([]allocationRuleResponse, 0, len(defaults.AllocationSettings.Rules))
+	for _, r := range defaults.AllocationSettings.Rules {
+		rules = append(rules, allocationRuleResponse{
+			ID:    r.ID,
+			Kind:  r.Kind,
+			Value: r.Value,
+			Scope: scopeBody{
+				Include: emptyIfNil(r.Scope.Include),
+				Exclude: emptyIfNil(r.Scope.Exclude),
+			},
+			Note:    r.Note,
+			Ignored: r.Validate() != nil,
 		})
 	}
 
 	return rotaDefaultsResponse{
-		ShiftStartTime:        defaults.ShiftStartTime,
-		ShiftEndTime:          defaults.ShiftEndTime,
-		ShiftTimezone:         defaults.Timezone(),
-		DefaultShape:          toSeatResponses(shape),
-		AllocationSettings:    toAllocationSettingsResponse(defaults.AllocationSettings),
-		SwitchableConstraints: constraints,
+		ShiftStartTime:  defaults.ShiftStartTime,
+		ShiftEndTime:    defaults.ShiftEndTime,
+		ShiftTimezone:   defaults.Timezone(),
+		DefaultShape:    toSeatResponses(shape),
+		AllocationRules: rules,
+		RuleLibrary:     library,
 	}
 }
 
-// toAllocationSettingsResponse states an answer for every rule that exists,
-// so the client never has to know that a missing key means off.
-func toAllocationSettingsResponse(settings model.AllocationSettings) allocationSettingsResponse {
-	enabled := make(map[string]bool, len(model.SwitchableConstraints))
-	for _, c := range model.SwitchableConstraints {
-		enabled[c.Name] = settings.IsEnabled(c.Name)
-	}
-
-	return allocationSettingsResponse{Enabled: enabled, MaxFrequency: settings.MaxFrequency}
-}
-
-// handleSaveAllocationSettings writes which optional allocator rules apply and
-// answers with the settings as they now stand — which is not always what was
-// sent: an answer naming a rule this build does not have is dropped, and the
-// reply is how a client working from an older list finds that out.
-func (h *Handler) handleSaveAllocationSettings(w http.ResponseWriter, r *http.Request) {
-	var req allocationSettingsRequest
+// decodeStrict reads a request body, refusing a field the endpoint does not
+// take so a client's typo is a 400 rather than an answer quietly dropped.
+func decodeStrict(r *http.Request, into any) error {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	return decoder.Decode(into)
+}
+
+// handleAddAllocationRule adds a rule from the library and answers with the
+// settings record as it now stands.
+func (h *Handler) handleAddAllocationRule(w http.ResponseWriter, r *http.Request) {
+	var req addAllocationRuleRequest
+	if err := decodeStrict(r, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 
-	settings, err := services.SaveAllocationSettings(r.Context(), h.store, services.AllocationSettingsParams{
-		Enabled:      req.Enabled,
-		MaxFrequency: req.MaxFrequency,
-	}, h.logger)
-	if err != nil {
+	if _, err := services.AddAllocationRule(r.Context(), h.store, model.AllocationRule{
+		Kind:  req.Kind,
+		Value: req.Value,
+		Scope: model.Scope{Include: req.Scope.Include, Exclude: req.Scope.Exclude},
+		Note:  req.Note,
+	}, h.logger); err != nil {
 		h.writeServiceError(w, err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, toAllocationSettingsResponse(settings))
+	h.writeCurrentSettings(w, r)
+}
+
+// handleEditAllocationRule changes a rule's value, Scope and note in place.
+func (h *Handler) handleEditAllocationRule(w http.ResponseWriter, r *http.Request) {
+	var req editAllocationRuleRequest
+	if err := decodeStrict(r, &req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	if _, err := services.EditAllocationRule(r.Context(), h.store, r.PathValue("id"), model.AllocationRule{
+		Value: req.Value,
+		Scope: model.Scope{Include: req.Scope.Include, Exclude: req.Scope.Exclude},
+		Note:  req.Note,
+	}, h.logger); err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	h.writeCurrentSettings(w, r)
+}
+
+// handleRemoveAllocationRule takes a rule off, whatever its kind.
+func (h *Handler) handleRemoveAllocationRule(w http.ResponseWriter, r *http.Request) {
+	if err := services.RemoveAllocationRule(r.Context(), h.store, r.PathValue("id"), h.logger); err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+
+	h.writeCurrentSettings(w, r)
+}
+
+// writeCurrentSettings reads the settings record back and answers with it.
+func (h *Handler) writeCurrentSettings(w http.ResponseWriter, r *http.Request) {
+	defaults, err := services.RotaDefaults(r.Context(), h.store)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+	h.writeSettings(w, r, defaults)
+}
+
+// emptyIfNil gives a list that is never null on the wire.
+func emptyIfNil(ids []string) []string {
+	if ids == nil {
+		return []string{}
+	}
+	return ids
 }

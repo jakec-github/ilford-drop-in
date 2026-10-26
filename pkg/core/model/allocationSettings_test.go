@@ -4,126 +4,128 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// The four switchable rules, pinned by name. These strings are the contract
-// with the Python constraint registry (constraints/__init__.py), which is the
-// authority on what they may mean; this list is what an Organiser is offered.
-// pyallocator's own test pins the same four from the other side.
-func TestSwitchableConstraintsAreTheFourOptionalRules(t *testing.T) {
-	var names []string
-	for _, c := range model.SwitchableConstraints {
-		names = append(names, c.Name)
-		assert.NotEmpty(t, c.Label, "%s needs a label an Organiser can read", c.Name)
-		assert.NotEmpty(t, c.Description, "%s needs to say what it does", c.Name)
+// A rule starts out covering everyone, and is narrowed by naming people in
+// one of its two lists (ADR 0012).
+func TestAnEmptyScopeCoversEveryone(t *testing.T) {
+	var scope model.Scope
+
+	assert.True(t, scope.Covers("alice"))
+	assert.True(t, scope.Covers("bob"))
+}
+
+func TestAnIncludeListCoversOnlyTheVolunteersOnIt(t *testing.T) {
+	scope := model.Scope{Include: []string{"alice"}}
+
+	assert.True(t, scope.Covers("alice"))
+	assert.False(t, scope.Covers("bob"))
+}
+
+func TestAnExcludeListCoversEveryoneButTheVolunteersOnIt(t *testing.T) {
+	scope := model.Scope{Exclude: []string{"alice"}}
+
+	assert.False(t, scope.Covers("alice"))
+	assert.True(t, scope.Covers("bob"))
+}
+
+// A volunteer who has left the roster stays on an include list, so a list
+// naming only such people covers nobody still on it — not everyone.
+func TestAnIncludeListOfLeaversCoversNobody(t *testing.T) {
+	scope := model.Scope{Include: []string{"left-the-roster"}}
+
+	assert.False(t, scope.Covers("alice"))
+}
+
+// The library's ids, pinned. They are the contract with pyallocator's
+// RULE_KINDS (constraints/__init__.py), which pins the same four from the
+// other side, and what every stored rule names: renaming one quietly stops
+// every rule of that kind applying.
+func TestTheRuleLibraryIsTheFourDayOneKinds(t *testing.T) {
+	var ids []string
+	families := map[string]model.RuleFamily{}
+	for _, k := range model.RuleLibrary {
+		ids = append(ids, k.ID)
+		families[k.ID] = k.Family
+		assert.NotEmpty(t, k.Label, k.ID)
+		assert.NotEmpty(t, k.Description, k.ID)
 	}
 
-	assert.Equal(t, []string{
-		"max_frequency",
-		"male_required",
-		"no_back_to_back",
-		"one_shift_per_month",
-	}, names)
+	assert.Equal(t, []string{"max_frequency", "shift_gap", "monthly_cap", "male_required"}, ids)
+	assert.Equal(t, model.ShiftRuleFamily, families["male_required"])
+	assert.Equal(t, model.VolunteerRuleFamily, families["shift_gap"])
 }
 
-// A rule nobody has answered is off. Empty settings are the ordinary first
-// state of a deployment, not a fault, and they allocate — with no optional
-// rules applied.
-func TestUnansweredConstraintsAreOff(t *testing.T) {
-	var settings model.AllocationSettings
-
-	assert.False(t, settings.IsEnabled("no_back_to_back"))
-	assert.Empty(t, settings.EnabledConstraints())
+func TestValidateAcceptsEveryKindWithASensibleValue(t *testing.T) {
+	for _, rule := range []model.AllocationRule{
+		{Kind: "max_frequency", Value: 34},
+		{Kind: "shift_gap", Value: 1, Scope: model.Scope{Exclude: []string{"alice"}}},
+		{Kind: "monthly_cap", Value: 2, Scope: model.Scope{Include: []string{"bob"}}},
+		{Kind: "male_required"},
+	} {
+		assert.NoError(t, rule.Validate(), rule.Kind)
+	}
 }
 
-// The enabled list is in registry order whatever order the answers were
-// stored in, so what reaches the solver reads the same every time.
-func TestEnabledConstraintsAreInRegistryOrder(t *testing.T) {
-	settings := model.AllocationSettings{
-		Enabled: map[string]bool{
-			"no_back_to_back": true,
-			"max_frequency":   true,
-			"male_required":   false,
-		},
+func TestValidateRefusesWhatCannotBeRepresented(t *testing.T) {
+	for name, rule := range map[string]model.AllocationRule{
+		"an unknown kind":             {Kind: "phase_of_the_moon"},
+		"a missing value":             {Kind: "shift_gap"},
+		"a percentage over 100":       {Kind: "max_frequency", Value: 101},
+		"a negative gap":              {Kind: "shift_gap", Value: -1},
+		"a value on a valueless rule": {Kind: "male_required", Value: 1},
+		"a Scope on a Shift Rule":     {Kind: "male_required", Scope: model.Scope{Include: []string{"alice"}}},
+		"including and excluding": {Kind: "monthly_cap", Value: 1, Scope: model.Scope{
+			Include: []string{"alice"}, Exclude: []string{"bob"},
+		}},
+	} {
+		assert.Error(t, rule.Validate(), name)
+	}
+}
+
+func TestNormalisedCleansTheScopeAndNote(t *testing.T) {
+	rule := model.AllocationRule{
+		Kind:  "shift_gap",
+		Value: 1,
+		Scope: model.Scope{Exclude: []string{" alice ", "", "bob", "alice"}},
+		Note:  "  asked for a rest  ",
+	}.Normalised()
+
+	assert.Equal(t, []string{"alice", "bob"}, rule.Scope.Exclude)
+	assert.Nil(t, rule.Scope.Include)
+	assert.Equal(t, "asked for a rest", rule.Note)
+}
+
+// A stored rule this build cannot apply is left out of the solve and named,
+// never an error (ADR 0006, the 2026-08-03 outage).
+func TestRulesThisBuildCannotApplyAreIgnoredAndNamed(t *testing.T) {
+	settings := model.AllocationSettings{Rules: []model.AllocationRule{
+		{ID: "1", Kind: "shift_gap", Value: 1},
+		{ID: "2", Kind: "phase_of_the_moon", Value: 3},
+		{ID: "3", Kind: "male_required"},
+		{ID: "4", Kind: "max_frequency", Value: 0},
+	}}
+
+	var applicable, ignored []string
+	for _, r := range settings.Applicable() {
+		applicable = append(applicable, r.ID)
+	}
+	for _, r := range settings.Ignored() {
+		ignored = append(ignored, r.ID)
 	}
 
-	assert.Equal(t, []string{"max_frequency", "no_back_to_back"}, settings.EnabledConstraints())
-	assert.True(t, settings.IsEnabled("max_frequency"))
-	assert.False(t, settings.IsEnabled("male_required"), "an explicit false is off")
+	assert.Equal(t, []string{"1", "3"}, applicable)
+	assert.Equal(t, []string{"2", "4"}, ignored)
 }
 
-// An answer for a rule this build does not have is dropped rather than
-// refused, and named so an operator can see why it stopped applying.
-func TestUnknownConstraintsAreIgnoredAndNamed(t *testing.T) {
-	settings := model.AllocationSettings{
-		Enabled: map[string]bool{"max_frequency": true, "phase_of_the_moon": true},
-	}
-
-	assert.Equal(t, []string{"max_frequency"}, settings.EnabledConstraints())
-	assert.Equal(t, []string{"phase_of_the_moon"}, settings.UnknownConstraints())
+func TestMaxAllocationCountRoundsDown(t *testing.T) {
+	assert.Equal(t, 2, model.MaxAllocationCount(34, 7))
+	assert.Equal(t, 7, model.MaxAllocationCount(100, 7))
 }
 
-// A stored answer that is false for an unknown rule is not worth naming: it
-// asks for nothing, so dropping it changes nothing.
-func TestUnknownConstraintsOnlyNamesEnabledOnes(t *testing.T) {
-	settings := model.AllocationSettings{
-		Enabled: map[string]bool{"phase_of_the_moon": false},
-	}
-
-	assert.Empty(t, settings.UnknownConstraints())
-}
-
-// The max-frequency rule carries a value as well as a switch, so it is the one
-// toggle that can be incoherent: on, with no share of the rota to cap at.
-func TestMissingAllocationSettingsNamesAnEnabledFrequencyWithNoValue(t *testing.T) {
-	settings := model.AllocationSettings{Enabled: map[string]bool{"max_frequency": true}}
-
-	assert.Equal(t, []string{"the maximum allocation frequency"}, settings.Missing())
-
-	settings.MaxFrequency = 0.34
-	assert.Empty(t, settings.Missing())
-}
-
-// Off, the value is not asked for — an Organiser who switches the rule off has not
-// left anything unfilled.
-func TestMissingAllocationSettingsIgnoresADisabledFrequency(t *testing.T) {
-	var settings model.AllocationSettings
-
-	assert.Empty(t, settings.Missing())
-}
-
-// The cap the solver receives is a count of shifts, not a share. It rounds the
-// way the config-derived one always did — down, so a third of seven shifts is
-// two rather than three.
-func TestMaxAllocationCount(t *testing.T) {
-	settings := model.AllocationSettings{
-		Enabled:      map[string]bool{"max_frequency": true},
-		MaxFrequency: 0.34,
-	}
-
-	assert.Equal(t, 2, settings.MaxAllocationCount(7))
-}
-
-// With the rule off the cap is every shift in the rota: a number the solver
-// cannot trip over, so nothing depends on Python having left the constraint
-// out as well.
-func TestMaxAllocationCountWithTheRuleOff(t *testing.T) {
-	var settings model.AllocationSettings
-
-	assert.Equal(t, 7, settings.MaxAllocationCount(7))
-}
-
-// A rota one volunteer could work entirely still caps at one shift rather than
-// at none: a cap of zero is a rota nobody may work, which is never what an
-// Organiser setting a frequency meant.
+// A share meant as "not often" must not come out meaning "never".
 func TestMaxAllocationCountNeverFallsToZero(t *testing.T) {
-	settings := model.AllocationSettings{
-		Enabled:      map[string]bool{"max_frequency": true},
-		MaxFrequency: 0.1,
-	}
-
-	require.Equal(t, 1, settings.MaxAllocationCount(4))
+	assert.Equal(t, 1, model.MaxAllocationCount(10, 4))
 }

@@ -31,11 +31,13 @@ func TestSeedRotaDefaults(t *testing.T) {
 
 	// And the allocator rules, for the same reason: a dev stack that could not
 	// allocate would be one nobody could try the journey on. These three are
-	// what the solver applied unconditionally before they became a choice.
-	assert.JSONEq(t, `{
-		"enabled": {"max_frequency": true, "male_required": true, "no_back_to_back": true},
-		"maxFrequency": 0.34
-	}`, defaults.AllocationSettings)
+	// what the solver applied unconditionally before they became a choice, a
+	// gap of one being what no_back_to_back was.
+	assert.JSONEq(t, `{"rules": [
+		{"id": "seed-max-frequency", "kind": "max_frequency", "value": 34, "scope": {}},
+		{"id": "seed-shift-gap", "kind": "shift_gap", "value": 1, "scope": {}},
+		{"id": "seed-male-required", "kind": "male_required", "scope": {}}
+	]}`, defaults.AllocationSettings)
 }
 
 // The seed runs on every dev-stack start, so it has to be a seed rather than a

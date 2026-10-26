@@ -14,7 +14,7 @@ import (
 type RotaDefaultsSeedStore interface {
 	GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error)
 	SaveRotaDefaults(ctx context.Context, defaults db.RotaDefaults) error
-	SaveAllocationSettings(ctx context.Context, settings string) error
+	UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error
 }
 
 // seedRotaDefaults are the settings the dev stack starts with: the evening
@@ -25,19 +25,17 @@ var seedRotaDefaults = db.RotaDefaults{
 	ShiftTimezone:  model.DefaultShiftTimezone,
 }
 
-// seedAllocationSettings are the optional allocator rules the dev stack starts
-// with: the three that were the solver's hardcoded default list before they
-// became an Organiser's choice, at the frequency the config file used to carry.
-// one_shift_per_month stays off, as it always was — it is regularly
-// unsatisfiable at real volunteer numbers.
-var seedAllocationSettings = model.AllocationSettings{
-	Enabled: map[string]bool{
-		model.MaxFrequencyConstraint: true,
-		"male_required":              true,
-		"no_back_to_back":            true,
-	},
-	MaxFrequency: 0.34,
-}
+// seedAllocationSettings are the Allocation Rules the dev stack starts with: the
+// three that were the solver's hardcoded default list before they became an
+// Organiser's choice, at the frequency the config file used to carry. A gap of
+// one is what no_back_to_back was. No monthly cap — one a month was regularly
+// unsatisfiable at real volunteer numbers. The ids are fixed so a dev database
+// reads the same on every machine.
+var seedAllocationSettings = model.AllocationSettings{Rules: []model.AllocationRule{
+	{ID: "seed-max-frequency", Kind: model.MaxFrequencyKind, Value: 34},
+	{ID: "seed-shift-gap", Kind: model.ShiftGapKind, Value: 1},
+	{ID: "seed-male-required", Kind: model.MaleRequiredKind},
+}}
 
 // SeedRotaDefaults gives a dev database its shift times and its allocation
 // settings, once. No migration seeds them (ADR 0006) — they are an Organiser's to
@@ -66,7 +64,10 @@ func SeedRotaDefaults(ctx context.Context, store RotaDefaultsSeedStore) (bool, e
 	if err != nil {
 		return false, fmt.Errorf("failed to encode seed allocation settings: %w", err)
 	}
-	if err := store.SaveAllocationSettings(ctx, string(document)); err != nil {
+	err = store.UpdateAllocationSettings(ctx, func(string) (string, error) {
+		return string(document), nil
+	})
+	if err != nil {
 		return false, fmt.Errorf("failed to seed allocation settings: %w", err)
 	}
 

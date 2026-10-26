@@ -220,7 +220,8 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 
 // buildHistoricalShifts fetches allocations from the previous rota, applies that
 // rota's alterations (covers/swaps) so history reflects who actually worked, and
-// builds historical shift objects sorted ascending by date. Only includes Date
+// builds historical shift objects sorted ascending by date — one per Shift of
+// that rota, Closed ones and ones nobody worked included. Only includes Date
 // and AllocatedGroups fields. Callers pass ALL volunteers (inactive included) so
 // shifts worked by now-inactive volunteers keep their groups — dropping them
 // would shift the back-to-back boundary onto an earlier date. Allocations whose
@@ -265,11 +266,6 @@ func buildHistoricalShifts(
 	}
 	logger.Debug("Fetched allocations from previous rota", zap.Int("count", len(previousRotaAllocations)))
 
-	if len(previousRotaAllocations) == 0 {
-		logger.Info("No allocations found in previous rota")
-		return []*allocator.Shift{}, nil
-	}
-
 	// Group allocations by shift id, custom entries included so
 	// alterations that remove them can match.
 	allocationsByShiftID := make(map[string][]db.Allocation)
@@ -292,9 +288,12 @@ func buildHistoricalShifts(
 		volunteersByID[vol.ID] = vol
 	}
 
-	// Build historical shifts
-	historicalShifts := make([]*allocator.Shift, 0, len(allocationsByShiftID))
-	for shiftID, allocations := range allocationsByShiftID {
+	// Every Shift of the previous rota, worked or not: a Closed Shift counts
+	// toward a gap (ADR 0012), so the solver must see where each one fell.
+	historicalShifts := make([]*allocator.Shift, 0, len(previousRotaShifts))
+	for _, previousShift := range previousRotaShifts {
+		shiftID := previousShift.ID
+		allocations := allocationsByShiftID[shiftID]
 		// Group volunteers by allocator.GroupKeyFor to reconstruct volunteer
 		// groups, skipping custom entries and unknown volunteer ids. Only the
 		// key travels into the solver, and it is matched against the keys of
