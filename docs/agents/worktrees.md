@@ -126,7 +126,9 @@ or not. From inside the worktree:
 scripts/worktree-init.sh --remove
 ```
 
-That removes the directory and drops the database, which is the part that lives
+That stops the worktree's dev stack if it is running — its pid file is in the
+worktree's `logs/`, so a server left up would have nothing left to stop it —
+then removes the directory and drops the database, which is the part that lives
 outside it and would otherwise pile up. Git refuses to remove a worktree holding
 uncommitted or untracked files; the script leaves the database alone when that
 happens and points at `--force`, so look at what you are discarding before
