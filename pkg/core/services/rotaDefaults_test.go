@@ -300,7 +300,7 @@ func TestRemoveAllocationRule(t *testing.T) {
 // wrote beside it (ADR 0006).
 func TestEditsLeaveWhatThisBuildDoesNotUnderstandAlone(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
-		AllocationSettings: `{"weights":{"spread_males":3},"rules":[` +
+		AllocationSettings: `{"weights":{"spread_genders":3},"rules":[` +
 			`{"id":"future","kind":"phase_of_the_moon","value":3,"colour":"blue"},` +
 			`{"id":"gap","kind":"shift_gap","value":1,"scope":{}}]}`,
 	}}
@@ -315,7 +315,7 @@ func TestEditsLeaveWhatThisBuildDoesNotUnderstandAlone(t *testing.T) {
 		Rules   []json.RawMessage `json:"rules"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(store.defaults.AllocationSettings), &doc))
-	assert.JSONEq(t, `{"spread_males":3}`, string(doc.Weights))
+	assert.JSONEq(t, `{"spread_genders":3}`, string(doc.Weights))
 	require.Len(t, doc.Rules, 3)
 	assert.JSONEq(t, `{"id":"future","kind":"phase_of_the_moon","value":3,"colour":"blue"}`, string(doc.Rules[0]))
 }

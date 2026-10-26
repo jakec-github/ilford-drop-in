@@ -155,7 +155,7 @@ read `x.role`. Modularity is the point of this package:
     headcount term then breaks ties towards even totals, so per-Role
     remainders do not pile onto one shift (#242). Custom preallocations
     occupy their Role's early Seats and a shift's first heads.
-  - `spread_males` (30 // male) — distribute males one-per-shift first.
+  - `spread_genders` (30 // man or woman, scaled by shift size) — match each shift's split between men and women to the roster's; other genders do not count.
   - `fairness` (20 // lifetime allocation, historical + this rota) —
     reach for under-used groups before frequently-allocated ones.
   - `maximize_allocations` (1) — base reward so shifts fill where they

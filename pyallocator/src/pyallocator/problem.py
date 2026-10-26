@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .domain import GENDER_MALE, AllocationInput, Group, Member, Role, ShiftSpec
+from .domain import GENDER_FEMALE, GENDER_MALE, AllocationInput, Group, Member, Role, ShiftSpec
 
 
 class ProblemError(ValueError):
@@ -44,6 +44,10 @@ class VolunteerView:
     @property
     def is_male(self) -> bool:
         return self.member.gender == GENDER_MALE
+
+    @property
+    def is_female(self) -> bool:
+        return self.member.gender == GENDER_FEMALE
 
 
 class Problem:

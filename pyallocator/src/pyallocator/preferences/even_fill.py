@@ -54,7 +54,7 @@ from ..problem import Problem
 from .base import ObjectiveTerm
 
 # Weight of the first Seat of the lowest-priority Role; its Seat n is worth
-# EVEN_FILL_WEIGHT // n. Dominant over spread_males, fairness and
+# EVEN_FILL_WEIGHT // n. Dominant over spread_genders, fairness and
 # maximize_allocations by design.
 EVEN_FILL_WEIGHT = 60
 

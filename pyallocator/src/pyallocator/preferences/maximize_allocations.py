@@ -6,7 +6,7 @@ Counting is per group (one member as its stand-in, Problem.stand_in), not per
 volunteer, so a couple earns the same base reward as an individual —
 preserving the original group-level objective exactly.
 
-The shaping preferences (even_fill, spread_males, fairness) decide
+The shaping preferences (even_fill, spread_genders, fairness) decide
 WHERE and WHO; this keeps the overall pressure to allocate at all.
 Other preference weights are calibrated against this baseline.
 """

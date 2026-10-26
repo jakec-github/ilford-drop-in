@@ -25,7 +25,7 @@ from .base import ObjectiveTerm
 
 # Weight of a never-allocated group's first shift; a group's nth
 # lifetime allocation is worth FAIRNESS_WEIGHT // n. Below even_fill
-# and spread_males, above the base allocation reward.
+# and spread_genders, above the base allocation reward.
 FAIRNESS_WEIGHT = 20
 
 

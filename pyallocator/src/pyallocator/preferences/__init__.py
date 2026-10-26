@@ -5,12 +5,12 @@ preference modules here. Tests inject subsets via model_builder.build().
 
 Weight hierarchy (per unit, harmonic-diminishing):
     even_fill, one Seat (its Role's priority band, 61 apart, plus 60 // Seat)
-    > spread_males (30 // male)
+    > spread_genders (30 // man or woman, scaled by shift size)
     > even_fill, one head of any Role (20 // head; a tie-break on totals)
     > fairness (20 // lifetime allocation) > maximize_allocations (1).
 """
 
-from . import even_fill, fairness, maximize_allocations, spread_males
+from . import even_fill, fairness, maximize_allocations, spread_genders
 from .base import ObjectiveTerm, Preference
 
 FUNDAMENTAL_PREFERENCES: list[Preference] = [
@@ -20,7 +20,7 @@ FUNDAMENTAL_PREFERENCES: list[Preference] = [
 ]
 
 ADDITIONAL_PREFERENCES: list[Preference] = [
-    spread_males.PREFERENCE,
+    spread_genders.PREFERENCE,
 ]
 
 DEFAULT_PREFERENCES = FUNDAMENTAL_PREFERENCES + ADDITIONAL_PREFERENCES
