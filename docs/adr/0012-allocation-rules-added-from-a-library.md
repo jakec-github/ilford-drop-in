@@ -7,8 +7,8 @@ Status: proposed, 2026-10-26. Supersedes the switch model in
 
 An Organiser no longer switches a fixed set of global rules on and off. They add
 **Allocation Rules** from a **Rule Library**, as many as they like, each with its
-own values. A **Volunteer Rule** has a **Scope** — only the volunteers it names,
-or everyone except them — so one kind can say different things about different
+own values. A **Volunteer Rule** has a **Scope** — everyone, only the volunteers it
+includes, or everyone except those it excludes — so one kind can say different things about different
 people: "a gap of 1, everyone except Alice" and "a gap of 3, only Alice". A
 **Shift Rule** applies to every Shift. **Allocation Settings** survives as the
 umbrella for everything an Organiser decides about how the allocator solves:
@@ -26,10 +26,16 @@ could not be said at all while every rule applied to everyone or no one.
   then reads as true on its own, there is no precedence to learn or to explain
   on screen, and the solver simply adds the constraints together.
 
-- **A Scope is one list in one mode.** Only these, or everyone except these —
-  never both on one rule. A rule naming some to include and some to exclude
-  cannot be read at a glance, and means nothing an include list does not
-  already say.
+- **A Scope is an include list and an exclude list, at most one of them in
+  use.** Both empty covers everyone; an include list covers only those
+  volunteers; an exclude list covers everyone but them. A rule naming some to
+  include and some to exclude cannot be read at a glance, and means nothing an
+  include list does not already say, so a name can be added to one list only
+  while the other is empty. There is no mode to choose when a rule is made: it
+  starts covering everyone, and an Organiser excludes people from it, or
+  narrows it to a few, as circumstances arrive. Removing the last included
+  volunteer therefore widens the rule to everyone, and the screen says so
+  before it happens.
 
 - **A Scope names volunteers, not groups.** A rule is about a person; the
   reason for it is theirs. Because a group works together, a rule binds the
@@ -42,9 +48,9 @@ could not be said at all while every rule applied to everyone or no one.
   no longer on the roster and is ignored by the solve until somebody removes it
   or the volunteer returns. It never blocks allocation. A stale *pin* does
   (ADR 0010), because a pin promises a placement; a rule promises nothing, so a
-  rule about nobody has nothing left to break. Likewise an "only" Scope naming
-  nobody is allowed and flagged rather than refused: it is representable and
-  harmless.
+  rule about nobody has nothing left to break. Likewise an include list whose every
+  name has left the roster covers nobody, and is flagged rather than refused:
+  it is representable and harmless.
 
 - **Every Rule Kind can be satisfied by leaving Seats empty.** No combination
   of Allocation Rules may make the solve infeasible. Rules now repeat and
@@ -78,6 +84,13 @@ could not be said at all while every rule applied to everyone or no one.
 - **Most specific wins.** An include-Scope overriding an exclude-Scope would
   make loosening one person a single step, at the cost of a screen that has to
   explain why a rule it shows is not applying to Bob.
+
+- **A Scope with a mode** ("only these" or "everyone except these") chosen
+  when the rule is made. It was the first design, and was dropped before it
+  shipped as heavier than it needed to be: it asks an Organiser to decide the
+  shape of a rule before they know how they will use it, and changing their
+  mind meant changing the mode. Two lists, one in use at a time, say the same
+  things and let a rule start broad and narrow over time.
 
 - **Scoping by group**, so picking Alice picks Bob. It shows what the solve
   does, but a rule would silently change what it says every time the roster's

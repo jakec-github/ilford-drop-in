@@ -114,12 +114,15 @@ people, but since a group works together, it binds the rest of their group in
 effect.
 
 **Scope**:
-Which volunteers a Volunteer Rule covers: either only the volunteers it names,
-or everyone except the volunteers it names. Never both at once. Any volunteer
-on the roster may be named, active or not. An "only" Scope naming nobody covers
-nobody, and is allowed. A named
-volunteer who has left the roster stays named, shown as no longer on the
-roster, and is covered by nothing until the name is removed or they return.
+Which volunteers a Volunteer Rule covers, as two lists: volunteers to include
+and volunteers to exclude. At most one of them names anybody. With both empty
+the rule covers everyone; with an include list, only the volunteers on it; with
+an exclude list, everyone except them. A rule is added covering everyone and
+narrowed later, so an Organiser never decides up front what kind of Scope it
+has. Any volunteer on the roster may be named, active or not. A named volunteer
+who has left the roster stays named, shown as no longer on the roster, and is
+covered by nothing until the name is removed or they return, so an include list
+naming only such volunteers covers nobody, and is allowed.
 
 **Allocation**:
 The assignment of one volunteer (or custom entry) to one Role on one Shift,
