@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/worktree-init.sh                # set the worktree up
 #   scripts/worktree-init.sh --reset-db     # drop and re-clone this worktree's database
-#   scripts/worktree-init.sh --remove       # remove this worktree and drop its database
+#   scripts/worktree-init.sh --remove       # stop its dev stack, remove it, drop its database
 #   scripts/worktree-init.sh --orphans      # list databases left by removed worktrees
 #
 # Run it from inside the worktree (--orphans works from the primary checkout
@@ -124,6 +124,10 @@ if [[ "${1:-}" == "--remove" ]]; then
     fi
 
     echo "Removing worktree '${WORKTREE_NAME}' and dropping ${DB_NAME}..."
+    # A dev stack left running would outlive its pid file, which lives in the
+    # worktree's logs/, and then nothing could stop it. Its own copy of the
+    # script, so it reads this worktree's pid file and port.
+    "$REPO_ROOT/scripts/dev-stack.sh" stop
     # Run from the primary checkout: this script's own directory is about to go.
     cd "$PRIMARY_ROOT"
     if ! "${remove_cmd[@]}"; then
