@@ -38,6 +38,19 @@
   border-bottom: none;
 }
 
+/* Each month's shifts sit under its name, drawn in the logo's dark top like
+   the band across the page: a rota is a calendar, and this is its page turn. */
+.shift-month {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--band-text);
+  background: var(--band);
+}
+
 /* A closed row reads as dimmed, but the dimming is on what it says rather than
    on the row: `opacity` on the row is a compositing group no child can escape,
    and the one control a closed row carries is the way back out of it. A faded
@@ -201,12 +214,14 @@
 }
 
 /* Unallocated shifts (organiser-only): a faint diagonal hatch marks them as
-   "rota not run yet", distinct from a closed shift's flat dimming. */
+   "rota not run yet", distinct from a closed shift's flat dimming. A neutral
+   grey rather than --border, which is tinted towards the theme's green: the
+   hatch is texture, and must not read as a colour that means something. */
 .shift-row.unallocated {
   background-image: repeating-linear-gradient(
     -45deg,
-    transparent 0 6px,
-    color-mix(in srgb, var(--border) 60%, transparent) 6px 7px
+    transparent 0 13px,
+    rgba(128, 128, 128, 0.12) 13px 14px
   );
 }
 

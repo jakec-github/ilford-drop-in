@@ -175,13 +175,10 @@ h2 {
   background: var(--band);
 }
 
+/* The mark alone, no wordmark: it is the way home, and its name is its label. */
 .app-brand {
   display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
   flex-shrink: 0;
-  font-weight: 700;
-  letter-spacing: 0.01em;
 }
 
 /* The mark's body and the band are near the same green; a hairline keeps it a

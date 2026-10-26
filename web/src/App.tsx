@@ -57,7 +57,6 @@ function Header() {
     <header className="app-header">
       <Link href="/" className="app-brand" aria-label="Rota Wise">
         <Logo size={26} />
-        Rota Wise
       </Link>
       <div className="app-header-end">
         <nav className="app-nav">

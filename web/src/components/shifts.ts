@@ -68,6 +68,39 @@ export function formatShiftDate(dateStr: string): string {
   });
 }
 
+// MonthGroup is a run of consecutive shifts in one calendar month, under the
+// heading the shift list draws above them.
+export interface MonthGroup<T extends { date: string }> {
+  key: string;
+  label: string;
+  shifts: T[];
+}
+
+// Splits shifts, in the order given, into runs by calendar month. The heading
+// is the month alone ("November") unless the shifts reach into more than one
+// year, when every heading carries its year so January cannot be read as the
+// one before December.
+export function groupByMonth<T extends { date: string }>(
+  shifts: T[],
+): MonthGroup<T>[] {
+  const years = new Set(shifts.map((s) => s.date.slice(0, 4)));
+  const groups: MonthGroup<T>[] = [];
+  for (const shift of shifts) {
+    const key = shift.date.slice(0, 7);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.shifts.push(shift);
+      continue;
+    }
+    const label = new Date(shift.date).toLocaleDateString("en-GB", {
+      month: "long",
+      ...(years.size > 1 ? { year: "numeric" } : {}),
+    });
+    groups.push({ key, label, shifts: [shift] });
+  }
+  return groups;
+}
+
 // "Sun 2 Feb" — used where a date is read out of the list's context, in a
 // dialog or a screen-reader label, and the weekday stops "2 Feb" reading as a
 // date the reader has to look up.
