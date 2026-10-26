@@ -76,9 +76,50 @@ starts from, never what an existing one holds.
 _Avoid_: config, template, preset
 
 **Allocation Settings**:
-Which of the optional allocator rules apply, and the values they need. Live and
-global rather than recorded per Rotation: an allocated rota is its Allocations,
-not the settings that produced them.
+Everything an Organiser decides about how the allocator solves — its Allocation
+Rules today, and in time how it weighs its preferences. Live and global rather
+than recorded per Rotation: an allocated rota is its Allocations, not the
+settings that produced them.
+
+**Rule Library**:
+The fixed catalogue of Rule Kinds an Organiser can add Allocation Rules from.
+What a kind means is the app's; whether and how often it applies is the
+Organiser's. The fundamental constraints — one Seat per person per Shift, groups
+working together, availability, Seat capacity, Closed Shifts, Preallocations —
+are not in it: they are what makes a rota a rota, and are never added. Every
+kind in it can be satisfied by leaving Seats empty, so no set of Allocation
+Rules can stop a rota being allocated.
+
+**Rule Kind**:
+One entry in the Rule Library, such as "cap how often somebody works", and the
+values it asks for. Each is either a Shift Rule kind or a Volunteer Rule kind.
+
+**Allocation Rule**:
+One Rule Kind added by an Organiser, with its own values (and, for a Volunteer
+Rule, its own Scope). A kind may be added any number of times. Every Allocation
+Rule applies; none overrides another, so a volunteer covered by two caps is held
+to both, and loosening a rule for one person means taking them out of its Scope
+and giving them a rule of their own. May carry a note saying why it was added,
+which the allocator never reads. Binds the allocator alone (ADR 0010).
+_Avoid_: constraint, toggle, setting (for one rule)
+
+**Shift Rule**:
+An Allocation Rule about what each Shift must contain, such as requiring a male
+on it. Applies to every Shift.
+
+**Volunteer Rule**:
+An Allocation Rule about what any one volunteer may be given, such as no
+back-to-back Shifts. Applies to the volunteers in its Scope. It is about those
+people, but since a group works together, it binds the rest of their group in
+effect.
+
+**Scope**:
+Which volunteers a Volunteer Rule covers: either only the volunteers it names,
+or everyone except the volunteers it names. Never both at once. Any volunteer
+on the roster may be named, active or not. An "only" Scope naming nobody covers
+nobody, and is allowed. A named
+volunteer who has left the roster stays named, shown as no longer on the
+roster, and is covered by nothing until the name is removed or they return.
 
 **Allocation**:
 The assignment of one volunteer (or custom entry) to one Role on one Shift,
