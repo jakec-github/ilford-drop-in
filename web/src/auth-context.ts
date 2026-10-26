@@ -8,7 +8,7 @@ import { createContext, useContext } from "react";
 export type AccessLevel = "organiser" | "rotaEditor";
 
 // Session is who is logged in, as GET /api/me reports it: their level is the
-// one this drop-in gives them.
+// one this Organisation gives them.
 export interface Session {
   email: string;
   level: AccessLevel;

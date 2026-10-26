@@ -1,6 +1,6 @@
-# Ilford Drop-in Rota — Web Frontend
+# Rota Wise — Web Frontend
 
-A React + TypeScript frontend for viewing volunteer rotas at the Ilford Sunday Drop-in.
+A React + TypeScript frontend for viewing and organising volunteer rotas.
 
 ## Prerequisites
 

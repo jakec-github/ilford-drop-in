@@ -80,7 +80,7 @@ type mockStore struct {
 	rotaDefaultsWriteErr    error
 
 	// defaultShape overrides apiTestDefaultShape for a test that cares what a
-	// Shift asks for; noShape is a drop-in nobody has stated a Shape for, which
+	// Shift asks for; noShape is an Organisation nobody has stated a Shape for, which
 	// is where every deployment starts.
 	defaultShape  []db.DefaultShapeSeat
 	noShape       bool
@@ -812,7 +812,7 @@ func (m *mockStore) UpdateAllocationSettings(_ context.Context, edit func(string
 
 func intPtr(i int) *int { return &i }
 
-// apiTestRotaDefaults is the settings a configured drop-in has: the evening
+// apiTestRotaDefaults is the settings a configured Organisation has: the evening
 // session the real one runs. Every endpoint that renders a time reads these, so
 // they are the fixture rather than a per-test setup.
 var apiTestRotaDefaults = db.RotaDefaults{
@@ -829,7 +829,7 @@ var apiTestDefaults = model.RotaDefaults{
 	ShiftTimezone:  apiTestRotaDefaults.ShiftTimezone,
 }
 
-// apiTestDefaultShape is what a configured drop-in's Shifts ask for, against the
+// apiTestDefaultShape is what a configured Organisation's Shifts ask for, against the
 // Roles apiTestRoles holds: one lead and four others.
 var apiTestDefaultShape = []db.DefaultShapeSeat{
 	{RoleID: "role-team-lead", Seats: 1},
@@ -840,7 +840,7 @@ var apiTestDefaultShape = []db.DefaultShapeSeat{
 // each level on its allowlists.
 var apiTestCfg = &config.Organisation{
 	ID:               "test-org",
-	DisplayName:      "Test Drop-In",
+	DisplayName:      "Test Organisation",
 	OrganiserEmails:  []string{testOrganiserEmail},
 	RotaEditorEmails: []string{testRotaEditorEmail},
 }
@@ -1002,7 +1002,7 @@ func TestListShiftsEndpoint_ARenamedRoleReadsUnderItsNewName(t *testing.T) {
 // still reading the settings gets 19:30 and this catches it.
 //
 // They cross as wall-clock time with no offset: what the listing says is when
-// the drop-in runs in Ilford, whoever is reading it and wherever from.
+// the Organisation runs in Ilford, whoever is reading it and wherever from.
 func TestListShiftsEndpointReadsTheShiftsOwnTimes(t *testing.T) {
 	store := &mockStore{
 		shiftsInRange: []db.ShiftInRange{{
@@ -1383,7 +1383,7 @@ func TestCalendarEndpoint(t *testing.T) {
 
 	body := rec.Body.String()
 	assert.Contains(t, body, "UID:alice-2026-01-11@ilford-drop-in")
-	assert.Contains(t, body, "SUMMARY:Test Drop-In shift (Team lead)")
+	assert.Contains(t, body, "SUMMARY:Test Organisation shift (Team lead)")
 	// Only alice's shifts appear
 	assert.NotContains(t, body, "2026-01-18")
 }

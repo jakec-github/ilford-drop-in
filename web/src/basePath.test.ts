@@ -40,14 +40,14 @@ describe("BASE_PATH", () => {
   });
 });
 
-// Each drop-in's API is under its own path, so every request names it through
+// Each Organisation's API is under its own path, so every request names it through
 // BASE_PATH. A request at the root would reach no Organisation at all — the
 // server answers anything outside /org/<id>/ but /auth and /health with a 404 —
 // and one written relative to the page would resolve against the page's
 // directory rather than the Organisation's. Signing out is the one exception:
 // the session is the whole site's, so ending it is too. api.ts is the one place
 // requests are made (views never call fetch), so this is the whole of the rule.
-test("every request in api.ts is under the drop-in's own path", async () => {
+test("every request in api.ts is under the organisation's own path", async () => {
   const source = await Bun.file(new URL("./api.ts", import.meta.url)).text();
 
   const paths = [...source.matchAll(/fetch\(\s*["'`]([^"'`]*)/g)].map(

@@ -181,7 +181,7 @@ func markRotaInputsChangedForShift(ctx context.Context, q querier, shiftID strin
 
 // markAllRotaInputsChanged stamps every unallocated Rotation of one
 // Organisation, for the inputs that belong to no single rota — the Roles and the
-// Allocation Settings, which are how the whole drop-in runs rather than facts
+// Allocation Settings, which are how the whole Organisation runs rather than facts
 // about one rota. There is at most one unallocated Rotation anyway (issue #139);
 // the statement does not rely on that.
 func markAllRotaInputsChanged(ctx context.Context, q querier, organisationID string) error {

@@ -17,7 +17,7 @@ import { seatCounts } from "./shape";
 const DUTY_LEAD = "Duty lead";
 const HOT_FOOD = "Hot food";
 const GREETER = "Greeter";
-// A Role the drop-in has that the pin dialog's Shape below asks for none of.
+// A Role the Organisation has that the pin dialog's Shape below asks for none of.
 const LITTER = "Litter picker";
 
 // As the API lists them: highest priority first.
@@ -130,7 +130,7 @@ describe("ConfirmChangeDialog", () => {
 
   // A rota allocated before the Role was retired still names it. Dropping it
   // from the list would quietly move the person into whatever came first.
-  test("a role the drop-in no longer offers is still listed, and stays selected", () => {
+  test("a role the organisation no longer offers is still listed, and stays selected", () => {
     const onConfirm = mock<(reason: string, role?: string) => void>();
     render(
       <ConfirmChangeDialog
@@ -664,7 +664,7 @@ function pinProps(takenRoleIds: string[] = []) {
 describe("PinDialog", () => {
   // Neither holding a Role nor the Shape having a Seat of it binds whoever is
   // pinning: those bind the allocator (ADR 0010).
-  test("offers every role the drop-in has, whatever the volunteer holds or the shape asks for", () => {
+  test("offers every role the organisation has, whatever the volunteer holds or the shape asks for", () => {
     render(<PinDialog {...pinProps()} onConfirm={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("Who"), {

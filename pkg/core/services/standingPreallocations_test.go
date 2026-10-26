@@ -185,7 +185,7 @@ func TestAddStandingPreallocation_CustomHappyPath(t *testing.T) {
 }
 
 // Not holding a Role is a rule, not a representation limit (ADR 0010), so a
-// standing pin may name any Role the drop-in has.
+// standing pin may name any Role the Organisation has.
 func TestAddStandingPreallocation_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	store := &mockStandingStore{}
 	view, err := addStanding(t, store, AddStandingPreallocationParams{

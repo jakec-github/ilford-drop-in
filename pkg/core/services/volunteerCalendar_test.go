@@ -11,7 +11,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// The settings a configured drop-in has: the evening session the real one runs.
+// The settings a configured Organisation has: the evening session the real one runs.
 var calendarTestDefaults = model.RotaDefaults{
 	ShiftStartTime: "19:30",
 	ShiftEndTime:   "21:30",
@@ -20,16 +20,16 @@ var calendarTestDefaults = model.RotaDefaults{
 
 // Where the rota lives, as the handler reads it off the request. A test value,
 // not the deployment's — the site's own domain is not in this repo (issue #202).
-const calendarTestURL = "https://drop-in.example"
+const calendarTestURL = "https://organisation.example"
 
-const calendarTestName = "Test Drop-In"
+const calendarTestName = "Test Organisation"
 
 func calendarTestVolunteer() model.Volunteer {
 	return model.Volunteer{ID: "alice", DisplayName: "Alice", Roles: []string{"Team lead", "Service volunteer"}}
 }
 
 // calendarShift is a shift as the listing hands one over: minted with the
-// drop-in's default times written onto its date, which is what defineRota does.
+// Organisation's default times written onto its date, which is what defineRota does.
 func calendarShift(t *testing.T, date string) Shift {
 	t.Helper()
 	start, end, err := model.ShiftTimestamps(date, calendarTestDefaults.ShiftStartTime, calendarTestDefaults.ShiftEndTime)
@@ -59,19 +59,19 @@ func TestBuildVolunteerCalendar_Basic(t *testing.T) {
 	assert.Contains(t, out, "UID:alice-2026-01-12@ilford-drop-in")
 	assert.Contains(t, out, "DTSTART:20260112T193000Z")
 	assert.Contains(t, out, "DTEND:20260112T213000Z")
-	assert.Contains(t, out, "SUMMARY:Test Drop-In shift")
+	assert.Contains(t, out, "SUMMARY:Test Organisation shift")
 	assert.Contains(t, out, "SEQUENCE:0")
 	// Unaltered shift: DTSTAMP falls back to the shift start
 	assert.Contains(t, out, "DTSTAMP:20260112T193000Z")
 
 	// Calendar name is folded across lines by the em dash, so check the prefix
-	assert.Contains(t, out, "X-WR-CALNAME:Test Drop-In")
+	assert.Contains(t, out, "X-WR-CALNAME:Test Organisation")
 
 	// RFC 5545 requires CRLF line endings
 	assert.Contains(t, out, "\r\n")
 }
 
-// A shift's times are wall-clock in the drop-in's zone, so the same stored
+// A shift's times are wall-clock in the Organisation's zone, so the same stored
 // 19:30 is a different instant either side of the DST boundary. This is what a
 // subscriber's client has to be told, and the reason the zone is a setting.
 func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
@@ -88,7 +88,7 @@ func TestBuildVolunteerCalendar_DSTBoundary(t *testing.T) {
 }
 
 // The event runs between the shift's own times, not between the times the
-// settings currently hold. A shift minted before an Organiser moved the drop-in an
+// settings currently hold. A shift minted before an Organiser moved the Organisation an
 // hour later keeps the hour it was minted with (ADR 0007), and a subscriber
 // sees the evening that was actually planned.
 func TestBuildVolunteerCalendar_ReadsTheShiftsOwnTimes(t *testing.T) {
@@ -122,14 +122,14 @@ func TestBuildVolunteerCalendar_RoleSummary(t *testing.T) {
 
 	out, err := BuildVolunteerCalendar(shifts, calendarTestVolunteer(), testRoles, calendarTestDefaults, calendarTestName, calendarTestURL)
 	require.NoError(t, err)
-	assert.Contains(t, out, "SUMMARY:Test Drop-In shift (Team lead)")
+	assert.Contains(t, out, "SUMMARY:Test Organisation shift (Team lead)")
 
 	// The same shift from Bob's perspective names the job he is doing
 	bob := model.Volunteer{ID: "bob", DisplayName: "Bob", Roles: []string{"Service volunteer"}}
 	out, err = BuildVolunteerCalendar(shifts, bob, testRoles, calendarTestDefaults, calendarTestName, calendarTestURL)
 	require.NoError(t, err)
 	assert.NotContains(t, out, "(Team lead)")
-	assert.Contains(t, out, "SUMMARY:Test Drop-In shift (Service volunteer)")
+	assert.Contains(t, out, "SUMMARY:Test Organisation shift (Service volunteer)")
 }
 
 func TestBuildVolunteerCalendar_SequenceAndDtstamp(t *testing.T) {
@@ -238,7 +238,7 @@ func TestBuildVolunteerCalendar_ARenamedRoleIsNamedAsItIsNow(t *testing.T) {
 	require.NoError(t, err)
 	body := unfolded(out)
 
-	assert.Contains(t, out, "SUMMARY:Test Drop-In shift (Shift lead)")
+	assert.Contains(t, out, "SUMMARY:Test Organisation shift (Shift lead)")
 	assert.Contains(t, body, "You are on as Shift lead.")
 	assert.Contains(t, body, "Bob — Helper")
 }

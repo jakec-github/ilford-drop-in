@@ -41,12 +41,12 @@ type AvailabilityStore interface {
 
 // AvailabilityShift is one of a rota's shifts as both the volunteer's form and
 // the Organiser roster present it. Closed shifts are carried rather than filtered
-// out: a volunteer seeing the date listed and shut knows the drop-in is not
+// out: a volunteer seeing the date listed and shut knows the Organisation is not
 // running, where a missing date just looks like a mistake.
 type AvailabilityShift struct {
 	ID   string
 	Date string // YYYY-MM-DD
-	// The hours the shift runs, as local wall clock at the drop-in
+	// The hours the shift runs, as local wall clock at the Organisation
 	// (model.ShiftTimestampLayout). A volunteer answering yes or no is
 	// answering about these, not about the whole day.
 	Start  string

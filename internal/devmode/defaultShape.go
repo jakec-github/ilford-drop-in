@@ -17,7 +17,7 @@ type DefaultShapeSeedStore interface {
 }
 
 // seedShape is how many Seats of each Role the dev stack's Shifts ask for, by
-// Role name: the shape of the real drop-in, one lead and four others.
+// Role name: the shape of the real Organisation, one lead and four others.
 var seedShape = map[string]int{
 	"Team lead":         1,
 	"Service volunteer": 4,

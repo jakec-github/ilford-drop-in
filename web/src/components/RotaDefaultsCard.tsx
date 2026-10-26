@@ -8,7 +8,7 @@ import ShapeForm from "./ShapeForm";
 import { describeShape } from "./shape";
 import type { ShiftTimes } from "../types";
 
-// ShiftTimesForm is the shift-time half of the Rota Defaults: when the drop-in
+// ShiftTimesForm is the shift-time half of the Rota Defaults: when the Organisation
 // starts, when it ends, and the zone those are read in. All three at once,
 // because a time of day means nothing without the zone it is read in.
 //
@@ -98,7 +98,7 @@ function ShiftTimesForm({
         </label>
         <p className="settings-hint">
           The zone the times above are read in. Leave it as Europe/London unless
-          the drop-in has moved.
+          the organisation has moved.
         </p>
 
         {error && <p className="settings-error">{error}</p>}
@@ -123,8 +123,8 @@ function ShiftTimesForm({
 // One value rather than two booleans, so two dialogs cannot be open at once.
 type EditingDefaults = "times" | "shape" | null;
 
-// RotaDefaultsCard is the settings an Organiser keeps for the drop-in as a whole:
-// when the drop-in runs, and what a shift asks for.
+// RotaDefaultsCard is the settings an Organiser keeps for the Organisation as a whole:
+// when the Organisation runs, and what a shift asks for.
 //
 // It is the one settings card read on two screens. On Settings it sits with the
 // rest; on the Allocation tab it sits under the define form, because those two
@@ -151,7 +151,7 @@ export default function RotaDefaultsCard() {
   return (
     <SettingsSection
       title="Rota Defaults"
-      blurb="What every rota is made from. When the drop-in runs, and how many people each shift asks for."
+      blurb="What every rota is made from. When the organisation runs, and how many people each shift asks for."
       action={
         defaults && (
           <span className="settings-section-actions">

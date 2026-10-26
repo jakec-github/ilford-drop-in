@@ -80,7 +80,7 @@ export interface RoleEdit {
   colour: RoleColour;
 }
 
-// ShiftTimes is when the drop-in runs: one section of the settings record, and
+// ShiftTimes is when the Organisation runs: one section of the settings record, and
 // the whole of what the shift-time form states.
 //
 // Its own type rather than a slice of RotaDefaults because the server takes it
@@ -96,7 +96,7 @@ export interface ShiftTimes {
   shiftEndTime: string;
   // An IANA zone name. Never empty on the way out of the server: it answers
   // with the default when an Organiser has not chosen one, so there is one answer
-  // to what zone the drop-in runs in.
+  // to what zone the Organisation runs in.
   shiftTimezone: string;
 }
 
@@ -390,12 +390,12 @@ export interface RotaChange {
 
 // AvailabilityShift is one of a rota's shifts as the availability screens show
 // it. Closed shifts are carried rather than dropped: a volunteer seeing the date
-// listed and shut knows the drop-in is not running, where a missing date just
+// listed and shut knows the Organisation is not running, where a missing date just
 // looks like a mistake.
 export interface AvailabilityShift {
   id: string;
   date: string;
-  // The hours the shift runs, local wall clock at the drop-in — never fed to
+  // The hours the shift runs, local wall clock at the Organisation — never fed to
   // `new Date()`, which would redraw them in the reader's own zone.
   start: string;
   end: string;
@@ -478,7 +478,7 @@ export interface AvailabilityGroup {
 // someone holding two Roles could fill either and can only take one, so the
 // Roles do not sum to anything meaningful.
 //
-// A closed shift carries no roles: the drop-in is not running that day, so it
+// A closed shift carries no roles: the Organisation is not running that day, so it
 // is not a shift that is short of people.
 export interface ShiftCoverage {
   id: string;
@@ -541,10 +541,10 @@ export interface RotaShift {
   id: string;
   date: string;
   // When the shift runs, as the shift itself holds it: local wall-clock time in
-  // the drop-in's own zone, "2026-02-02T19:30:00", with no offset on the end.
+  // the Organisation's own zone, "2026-02-02T19:30:00", with no offset on the end.
   //
   // The missing offset is the point, so these are never fed to `new Date()`.
-  // The drop-in runs at 19:30 in Ilford, and that is what the rota says to a
+  // The Organisation runs at 19:30 in Ilford, and that is what the rota says to a
   // volunteer reading it from anywhere — where an instant would be redrawn as
   // their own evening, which is not when to turn up.
   //
@@ -552,7 +552,7 @@ export interface RotaShift {
   // cannot disagree.
   start: string;
   end: string;
-  // closed is a date the drop-in does not run — a holiday closure, set by hand
+  // closed is a date the Organisation does not run — a holiday closure, set by hand
   // on the shift itself. Frozen once the rota is allocated.
   closed: boolean;
   // allocated is false for a minted shift whose rota has not been run yet: it
@@ -626,7 +626,7 @@ export interface NewStandingPreallocation {
   person: PersonRef;
 }
 
-// Organisation is the drop-in this site is, as GET /api/organisation reports it.
+// Organisation is the Organisation this site is, as GET /api/organisation reports it.
 // One server runs several, each under /org/<id>/, and each calls itself by its
 // own name.
 export interface Organisation {

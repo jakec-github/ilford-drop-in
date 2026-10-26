@@ -162,7 +162,7 @@ func solveRotaInFlight(
 	// Shift indices are the solver's vocabulary, and index i is the i-th date in
 	// order, so the shift ids availability is stored against are lined up the
 	// same way. Each spec carries the Shift's own Shape and Closed: the solver
-	// is told what each day asks for and which days the drop-in does not run,
+	// is told what each day asks for and which days the Organisation does not run,
 	// rather than working either out (#132, #137).
 	shiftSpecs := make([]allocator.ShiftSpec, len(shiftDates))
 	orderedShiftIDs := make([]string, len(shiftDates))

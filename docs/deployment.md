@@ -115,7 +115,7 @@ disk. Each deploy removes the images no container uses (see
 - Point the domain's A record (host `@`) at the IP **before** first boot of
   the stack — Caddy's certificate issuance needs the name to resolve.
 - Write the domain into `/opt/dropin/site.env` on the box. It is not in the
-  repo — see [The site's domain](#the-sites-domain). Each drop-in sits under
+  repo — see [The site's domain](#the-sites-domain). Each Organisation sits under
   `/org/<id>/` on that host — see [Organisations](#organisations).
 
 ### 2. Provision the box
@@ -284,7 +284,7 @@ wildcard address with no certificate:
 
 ## Organisations
 
-One server runs any number of drop-ins — Organisations — each listed under
+One server runs any number of Organisations — Organisations — each listed under
 `organisations:` in the environment's config with its own `id`, `displayName`,
 allowlists and sheets ([ADR 0011](adr/0011-one-server-many-organisations.md)).
 The `id` is the Organisation's address: everything it has lives under
@@ -410,7 +410,7 @@ used to configure something and now configures nothing.
 
 ## Domain settings
 
-The Roles the drop-in offers are **rows in the database**, not config (ADR
+The Roles the Organisation offers are **rows in the database**, not config (ADR
 0006). Nothing seeds them: the migration that created the table left it empty on
 purpose, so a database is in this state until somebody fills it, and the server
 warns at startup when it is. With no Roles nobody on the roster holds one and

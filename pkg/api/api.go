@@ -181,7 +181,7 @@ func (h *Handler) Routes() http.Handler {
 	// Public alongside the rota: it is what tells a client which Roles exist
 	// and what each is drawn in, and the rota names Roles on every chip. The
 	// writes beside it are Organiser-only — which Roles exist is a decision about
-	// how the drop-in runs — and there is no DELETE, because a Role is
+	// how the Organisation runs — and there is no DELETE, because a Role is
 	// permanent (ADR 0006).
 	api.HandleFunc("GET /roles", h.handleListRoles)
 	api.Handle("POST /roles", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateRole)))
@@ -283,7 +283,7 @@ func (h *Handler) Routes() http.Handler {
 	// Under /auth rather than /api because it is the same browser redirect
 	// dance as login and comes back to its registered callback URI — it is an
 	// OAuth endpoint that happens to start a send, not a data endpoint. Under
-	// the Organisation rather than at the root, because which drop-in's round
+	// the Organisation rather than at the root, because which Organisation's round
 	// it sends is the whole of what it is asked.
 	//
 	// POST, submitted as a form, because it mails every volunteer: a GET would

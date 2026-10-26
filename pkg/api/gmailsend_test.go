@@ -500,8 +500,8 @@ func sendCallbackServer(h *Handler) http.Handler {
 
 // TestSendCallbackGoesToTheOrganisationInTheState: the callback is shared, so
 // the signed state is what says whose send it is — and that Organisation's own
-// allowlist decides. An Organiser of one drop-in cannot finish a send for
-// another, and a state naming no drop-in this server runs sends nothing.
+// allowlist decides. An Organiser of one Organisation cannot finish a send for
+// another, and a state naming no Organisation this server runs sends nothing.
 func TestSendCallbackGoesToTheOrganisationInTheState(t *testing.T) {
 	auth := newTestAuthenticator()
 	eastMailer, westMailer := &recordingMailer{}, &recordingMailer{}

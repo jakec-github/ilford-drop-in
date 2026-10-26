@@ -202,7 +202,7 @@ type ShiftOverride struct {
 
 // ShiftSpec is one minted shift as the solver's model receives it, before
 // anything is resolved: which date it falls on, what it asks for, and whether
-// the drop-in runs that day. Closed arrives here rather than being derived from
+// the Organisation runs that day. Closed arrives here rather than being derived from
 // an override because it is a field on the Shift, set by hand (issue #132).
 type ShiftSpec struct {
 	Date string
@@ -248,7 +248,7 @@ type InitShiftsInput struct {
 // made, and the solver refuses an input that gets past it anyway.
 //
 // A closed shift keeps neither pins nor available groups: nobody works a day
-// the drop-in is shut, whichever of the two sources promised them. Stripping
+// the Organisation is shut, whichever of the two sources promised them. Stripping
 // the pins here is also what the Python side's contract rests on — it refuses
 // an input pinning anyone to a closed shift.
 func InitShifts(input InitShiftsInput) ([]*Shift, error) {

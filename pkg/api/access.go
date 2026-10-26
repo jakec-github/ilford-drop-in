@@ -47,7 +47,7 @@ func (a access) levelOf(email string) (Level, bool) {
 
 // session returns who the request comes from and what they may do in this
 // Organisation. A valid cookie for someone on none of its lists is no session
-// here at all: being signed in for one drop-in says nothing about another.
+// here at all: being signed in for one Organisation says nothing about another.
 func (h *Handler) session(r *http.Request) (Session, bool) {
 	email, ok := h.auth.emailFromRequest(r)
 	if !ok {

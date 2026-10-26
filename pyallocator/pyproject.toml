@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pyallocator"
 version = "0.1.0"
-description = "CP-SAT rota allocator for the Ilford drop-in volunteer rota"
+description = "CP-SAT rota allocator for Rota Wise volunteer rotas"
 requires-python = ">=3.11"
 dependencies = [
     "ortools>=9.10",

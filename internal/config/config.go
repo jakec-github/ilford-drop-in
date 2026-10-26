@@ -28,7 +28,7 @@ type ServerConfig struct {
 	RedirectURI string `yaml:"redirectURI,omitempty" validate:"omitempty,uri"`
 }
 
-// Organisation is one drop-in the server runs a rota for (ADR 0011): who may
+// Organisation is one Organisation the server runs a rota for (ADR 0011): who may
 // organise it, which sheets it reads and writes, and what it is called. It is
 // served under /org/<ID>/, and its rows in the database carry ID.
 type Organisation struct {
@@ -85,7 +85,7 @@ func (c *Config) Organisation(id string) (*Organisation, bool) {
 	return nil, false
 }
 
-// retiredKeys are keys that configured one drop-in before there could be
+// retiredKeys are keys that configured one Organisation before there could be
 // several, and are refused by name rather than warned about (ADR 0011). Each
 // now lives on an entry in organisations, and ignoring one would be worse than
 // an outage: a server that ignored the allowlists would boot with nobody able
@@ -159,7 +159,7 @@ type DevModeConfig struct {
 
 // Config represents the application configuration
 type Config struct {
-	// Organisations are the drop-ins this server runs, each under /org/<id>/
+	// Organisations are the Organisations this server runs, each under /org/<id>/
 	// (ADR 0011). At least one.
 	Organisations []Organisation `yaml:"organisations" validate:"required,min=1,dive"`
 	DatabaseURL   string         `yaml:"databaseURL" validate:"required"`
@@ -172,7 +172,7 @@ type Config struct {
 	// shiftStartTime, shiftEndTime and shiftTimezone used to live here, and so
 	// did maxAllocationFrequency, requiresMale and defaultShiftSize. They are
 	// all settings now, edited on the Settings screen (ADR 0006, #128, #129 and
-	// #130): when the drop-in runs, what a shift asks for, and which optional
+	// #130): when the Organisation runs, what a shift asks for, and which optional
 	// allocator rules apply are an Organiser's decisions, not an operator's, and
 	// none of them should take a redeploy.
 	//
@@ -187,12 +187,12 @@ type Config struct {
 	//
 	// rotaOverrides is gone too (#136), and with it the last domain setting in
 	// this file. Everything an override could say has a home an Organiser can reach:
-	// whether the drop-in runs on a date is Closed on the Shift (#132), who is
+	// whether the Organisation runs on a date is Closed on the Shift (#132), who is
 	// pinned to it comes from the Standing Preallocations (#131), and how big it
 	// is comes from the default Shape (#129). It was a list of recurrence rules
 	// because there was no screen to state any of that on; there is one now.
 	//
-	// What is left is deployment: which drop-ins to serve and which sheets each
+	// What is left is deployment: which Organisations to serve and which sheets each
 	// reads, which database to talk to, and how to run the server. Those are an
 	// operator's, and a redeploy is the right way to change them.
 	//

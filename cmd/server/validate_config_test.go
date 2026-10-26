@@ -17,7 +17,7 @@ import (
 const organisationsYAML = `
 organisations:
   - id: "east"
-    displayName: "East Drop-In"
+    displayName: "East Organisation"
     organiserEmails:
       - "organiser@example.com"
     volunteerSheetID: "sheet123"
@@ -169,14 +169,14 @@ func TestValidateConfig_SummarisesOrganisations(t *testing.T) {
 	path := writeConfig(t, `
 organisations:
   - id: "east"
-    displayName: "East Drop-In"
+    displayName: "East Organisation"
     organiserEmails:
       - "organiser@example.com"
     volunteerSheetID: "sheet123"
     serviceVolunteersTab: "Volunteers"
     rotaSheetID: "rota456"
   - id: "west"
-    displayName: "West Drop-In"
+    displayName: "West Organisation"
     organiserEmails:
       - "a@example.com"
       - "b@example.com"
@@ -193,8 +193,8 @@ server:
 
 	out, err := runValidateConfig(t, "prod", path)
 	require.NoError(t, err)
-	assert.Contains(t, out, "east (East Drop-In) — 1 organiser, 0 rota editors")
-	assert.Contains(t, out, "west (West Drop-In) — 2 organisers, 1 rota editor")
+	assert.Contains(t, out, "east (East Organisation) — 1 organiser, 0 rota editors")
+	assert.Contains(t, out, "west (West Organisation) — 2 organisers, 1 rota editor")
 	assert.Contains(t, out, "port 8080")
 }
 

@@ -120,7 +120,7 @@ export interface PlacementEdit {
   onRemove: (assignee: Assignee) => void;
   onReplace: (assignee: Assignee) => void;
   // Whether there is another Role this person could be switched to. False when
-  // the only Role the drop-in has is the one they already hold, where a switch
+  // the only Role the Organisation has is the one they already hold, where a switch
   // would change nothing (issue #149).
   canChangeRole: (assignee: Assignee) => boolean;
   // Changes what job this person is doing on this shift, leaving them on it.
@@ -660,7 +660,7 @@ function ShiftRow({
   // Whether this row has a fuller view to show at all. Whoever is on the shift
   // is the whole of what the expanded view says today, so a row with nobody on
   // it has nothing behind the chevron — a closed shift most of all, which is a
-  // date the drop-in does not run rather than a shift short of people.
+  // date the Organisation does not run rather than a shift short of people.
   const expandable = shift.closed
     ? false
     : unallocated

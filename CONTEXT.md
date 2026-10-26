@@ -1,13 +1,13 @@
-# Ilford Drop-In Rota
+# Rota Wise
 
-Scheduling system for a weekly charity drop-in: it collects volunteer availability,
+Scheduling system for volunteer organisations: it collects volunteer availability,
 allocates volunteers to shifts, and publishes the resulting rota.
 
 ## Language
 
 **Shift**:
-A planned session of the drop-in, minted by a Rotation, running from a start to
-an end given as local time in the drop-in's own timezone. Exists independently
+A planned session of the Organisation, minted by a Rotation, running from a start to
+an end given as local time in the Organisation's own timezone. Exists independently
 of who is allocated to it. Its date is the date it starts, and there is at most
 one Shift per date. Times are descriptive, not an allocator input, so unlike a
 Shape they stay editable once the Rotation is allocated.
@@ -68,7 +68,7 @@ is not held to it (ADR 0010).
 _Avoid_: shift size, template, structure
 
 **Rota Defaults**:
-The settings an Organiser keeps for the drop-in as a whole — the Roles that exist,
+The settings an Organiser keeps for the Organisation as a whole — the Roles that exist,
 the default Shape, the default shift times, the Standing Preallocations and the
 Allocation Settings. They seed each new Rotation and its Shifts at definition;
 nothing copies them back afterwards, so editing them changes what the next rota
@@ -176,7 +176,7 @@ recorded, so a Shift absent from a response is a no; each response therefore
 states every open Shift it accepts, never a change since last time.
 
 **Closed**:
-A Shift on a date the drop-in does not run (e.g. a holiday closure). Held on
+A Shift on a date the Organisation does not run (e.g. a holiday closure). Held on
 the Shift itself and set by hand. Being Closed is an allocator input, so it is
 editable only while the Rotation is unallocated.
 
@@ -202,7 +202,7 @@ definition, not a standing fact: once seeded, the Preallocations it made are
 ordinary and outlive any later change to it.
 
 **Organisation**:
-One drop-in that runs its rota on the app: its own Roles, Rota Defaults,
+One volunteer organisation that runs its rota on the app: its own Roles, Rota Defaults,
 Rotations, roster and allowlists, sharing nothing with any other. Listed in the
 deployment's config, served under `/org/<id>/`, and never linked to or listed
 anywhere else, so its address is the only way in (ADR 0011). Being an Organiser

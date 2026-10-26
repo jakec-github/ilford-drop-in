@@ -38,7 +38,7 @@ describe("SiteRoot", () => {
   });
 
   // A missing page and an unknown Organisation draw the same thing, so which
-  // drop-ins a server runs cannot be found out by asking it.
+  // Organisations a server runs cannot be found out by asking it.
   test("any other path is the same page not found", () => {
     const missing = render(<SiteRoot pathname="/no-such-page" />).container
       .innerHTML;

@@ -8,12 +8,12 @@ import (
 // DefaultShiftTimezone is the zone a shift's times are read in when nobody has
 // said otherwise. A fallback rather than a missing answer: without a zone a
 // time of day cannot become a moment at all, and every deployment of this app
-// is one drop-in in one place.
+// is one Organisation in one place.
 const DefaultShiftTimezone = "Europe/London"
 
 // ShiftTimeLayout is how a time of day is spelled everywhere it crosses a
 // boundary — the settings API, the database, an Organiser's form field. Hours and
-// minutes only: the drop-in does not start at half past seven and eleven
+// minutes only: the Organisation does not start at half past seven and eleven
 // seconds.
 const ShiftTimeLayout = "15:04"
 
@@ -24,7 +24,7 @@ const ShiftTimeLayout = "15:04"
 // be a different kind of thing.
 const ShiftTimestampLayout = "2006-01-02T15:04:05"
 
-// RotaDefaults is what an Organiser has decided about how the drop-in as a whole
+// RotaDefaults is what an Organiser has decided about how the Organisation as a whole
 // runs: one live, global record, edited on the Settings screen rather than set
 // by an operator in the config file (ADR 0006). It holds the default shift
 // times today; the default Shape, the allocation toggles and the Standing
@@ -37,7 +37,7 @@ const ShiftTimestampLayout = "2006-01-02T15:04:05"
 // without a time say so by leaving the time out rather than by failing.
 type RotaDefaults struct {
 	// ShiftStartTime and ShiftEndTime are wall-clock times of day in the
-	// drop-in's own timezone, spelled in ShiftTimeLayout. Empty means unset.
+	// Organisation's own timezone, spelled in ShiftTimeLayout. Empty means unset.
 	ShiftStartTime string
 	ShiftEndTime   string
 	// ShiftTimezone is an IANA zone name. Empty means unset, and reads as
@@ -83,7 +83,7 @@ func (d RotaDefaults) HasShiftTimes() bool {
 
 // ShiftInstants reads a Shift's own start and end — the local wall-clock times
 // it carries, in ShiftTimestampLayout — as the moments they fall at, by
-// applying the drop-in's timezone. It is the conversion every reader that needs
+// applying the Organisation's timezone. It is the conversion every reader that needs
 // an instant makes: a subscriber's calendar client and a browser both want to
 // know when 19:30 in Ilford is where they are (ADR 0007).
 //

@@ -137,7 +137,7 @@ func TestCreateRoleEndpointRefusesACeiling(t *testing.T) {
 	assert.Empty(t, store.insertedRoles)
 }
 
-// Which Roles exist is a decision about how the drop-in runs, so only an Organiser
+// Which Roles exist is a decision about how the Organisation runs, so only an Organiser
 // makes it. The read stays public; the writes do not.
 func TestCreateRoleEndpointRequiresAnOrganiser(t *testing.T) {
 	store := &mockStore{roles: []db.Role{}}

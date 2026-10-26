@@ -48,7 +48,7 @@ export default function StandingPreallocationForm({
       ? { volunteerId: choice }
       : null;
 
-  // Every Role the drop-in has, whoever is being pinned: not holding one is a
+  // Every Role the Organisation has, whoever is being pinned: not holding one is a
   // rule, and rules bind the allocator, not the Organiser (ADR 0010). The
   // default is the highest-priority Role this volunteer holds, since somebody
   // is usually pinned for the job they mostly do; an explicit pick outranks it.

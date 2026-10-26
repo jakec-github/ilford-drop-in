@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provision a fresh Ubuntu droplet for the drop-in server (ADR 0002).
+# Provision a fresh Ubuntu droplet for the Organisation server (ADR 0002).
 # Idempotent: safe to rerun. Run as root on the droplet:
 #   scp scripts/provision.sh root@<ip>: && ssh root@<ip> ./provision.sh
 set -euo pipefail

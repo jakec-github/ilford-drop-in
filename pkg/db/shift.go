@@ -30,7 +30,7 @@ const shiftDateExpr = "s.start_at::date"
 
 // ErrShiftDateTaken reports that a write would have put two Shifts on one date.
 // It is named for the same reason ErrDuplicateRoleName is: an Organiser moving a
-// Shift onto a day the drop-in already runs has made an ordinary mistake and is
+// Shift onto a day the Organisation already runs has made an ordinary mistake and is
 // told so, and reading the driver's error code is this package's job rather
 // than every caller's.
 var ErrShiftDateTaken = errors.New("another shift already starts on that date")
@@ -200,7 +200,7 @@ func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error)
 // It carries no freeze check of its own: the caller holds the rota's row lock
 // and has already established that the rota is unallocated.
 //
-// Whether the drop-in runs that day is an allocator input, so the rota's draft
+// Whether the Organisation runs that day is an allocator input, so the rota's draft
 // is stamped stale. Closing a Shift that was already closed stamps it too: the
 // alternative is a read-before-write to find out, and the cost of being wrong
 // is one re-solve.
@@ -281,7 +281,7 @@ func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, 
 // commit, and the losing transaction writes nothing. Any change that relaxes
 // that index must introduce a replacement guard here. That refusal comes back
 // as ErrShiftDateTaken, since it is also how a rota defined to start on a day
-// the drop-in already runs is turned away.
+// the Organisation already runs is turned away.
 func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation, requirements []ShiftRequirement) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {

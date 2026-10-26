@@ -14,7 +14,7 @@ import "./ShapeForm.css";
 // the server.
 //
 // Every Role gets a row rather than there being an add-a-Role dance, because a
-// drop-in has a handful of Roles and "how many of this one?" is the only
+// Organisation has a handful of Roles and "how many of this one?" is the only
 // question there is. Nought is how a Role is left out — the server refuses a
 // Seat of nought, so those rows are dropped on the way rather than sent.
 //

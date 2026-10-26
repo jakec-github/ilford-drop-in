@@ -8,7 +8,7 @@ import (
 
 // EveningStart and EveningEnd are the times of day Shift mints a session at.
 // Any pair would do — nothing under test depends on these hours — but they are
-// the drop-in's own, so a fixture reads like a session somebody would run.
+// the Organisation's own, so a fixture reads like a session somebody would run.
 const (
 	EveningStart = "T19:30:00"
 	EveningEnd   = "T21:30:00"

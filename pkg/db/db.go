@@ -16,7 +16,7 @@ var migrationsFS embed.FS
 
 // DB provides database operations using PostgreSQL.
 //
-// Every query about a drop-in's rota is about one Organisation's, so a DB is
+// Every query about an Organisation's rota is about one Organisation's, so a DB is
 // bound to one before it runs any (ADR 0011). NewDB returns an unbound DB, which
 // can migrate, ping and sync the Organisation list and nothing else;
 // ForOrganisation hands out the bound copies the rest of the server uses. The
@@ -37,7 +37,7 @@ func (d *DB) ForOrganisation(id string) *DB {
 }
 
 // org is the Organisation this DB is bound to. It panics when unbound: a scoped
-// query run without an Organisation would read or write every drop-in's rows.
+// query run without an Organisation would read or write every Organisation's rows.
 func (d *DB) org() string {
 	if d.organisationID == "" {
 		panic("db: scoped query on a DB not bound to an Organisation; use ForOrganisation")

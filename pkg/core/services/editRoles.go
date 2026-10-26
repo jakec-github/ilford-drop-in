@@ -70,7 +70,7 @@ func (p RoleParams) validate() (db.Role, error) {
 //
 // A Role created is a Role forever. There is no delete and no retire anywhere
 // (ADR 0006), so nothing referencing a Role can ever dangle — the price is a
-// picker that accumulates Roles the drop-in has stopped using.
+// picker that accumulates Roles the Organisation has stopped using.
 func CreateRole(ctx context.Context, store RoleWriteStore, params RoleParams, logger *zap.Logger) (*model.Role, error) {
 	row, err := params.validate()
 	if err != nil {

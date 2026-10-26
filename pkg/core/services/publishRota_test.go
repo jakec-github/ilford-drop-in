@@ -385,7 +385,7 @@ func closeShift(shifts []db.Shift, date string) []db.Shift {
 	return shifts
 }
 
-// An empty roster is a server whose roster has not synced yet, not a drop-in
+// An empty roster is a server whose roster has not synced yet, not an Organisation
 // with nobody in it. Publishing then would name everybody on the sheet as
 // unknown, so it refuses and leaves the sheet as it was.
 func TestPublishRota_RefusesBeforeTheRosterHasLoaded(t *testing.T) {

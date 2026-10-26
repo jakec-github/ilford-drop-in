@@ -143,7 +143,7 @@ func DefineRota(
 	}
 	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
 		return nil, wrapf(ErrInvalidInput,
-			"the drop-in's settings are incomplete - %s %s not been set; set the rota defaults before defining a rota",
+			"the organisation's settings are incomplete - %s %s not been set; set the rota defaults before defining a rota",
 			joinWithAnd(missing), plural(len(missing), "has", "have"))
 	}
 
@@ -151,7 +151,7 @@ func DefineRota(
 	// below. An unset one is a refusal for the same reason the times are: a
 	// rota whose shifts ask for nobody solves perfectly and staffs nothing.
 	// One Shift can be emptied afterwards, deliberately (issue #138) — a week
-	// the drop-in is shut — but a whole rota of them is a mistake rather than
+	// the Organisation is shut — but a whole rota of them is a mistake rather than
 	// an intention.
 	shape, err := DefaultShape(ctx, database)
 	if err != nil {
@@ -321,7 +321,7 @@ func openRound(
 	return asked
 }
 
-// datesAlreadyTaken says that this rota would have run on a day the drop-in
+// datesAlreadyTaken says that this rota would have run on a day the Organisation
 // already runs, and points at the rota in the way.
 //
 // The index names no date, so this works out which day it must have been: the
@@ -334,13 +334,13 @@ func datesAlreadyTaken(shifts []db.Shift, rotations []db.Rotation) error {
 		for _, r := range rotations {
 			if r.Start <= s.Date && s.Date <= r.End {
 				return wrapf(ErrConflict,
-					"the drop-in already runs on %s, and it cannot run twice on one day - the rota running %s to %s covers it, so start after %s",
+					"the organisation already runs on %s, and it cannot run twice on one day - the rota running %s to %s covers it, so start after %s",
 					readableDate(s.Date), readableDate(r.Start), readableDate(r.End), readableDate(r.End))
 			}
 		}
 	}
 	return wrapf(ErrConflict,
-		"one of those dates already has a shift on it, and the drop-in cannot run twice on one day - start the rota on a different date")
+		"one of those dates already has a shift on it, and the organisation cannot run twice on one day - start the rota on a different date")
 }
 
 // unallocatedRota returns the earliest-starting rota that has not been

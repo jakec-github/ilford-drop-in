@@ -21,7 +21,7 @@
 # "id", which is also the only thing `delete` can be pointed at — a config pin
 # is changed by editing the config.
 #
-# Dates are YYYY-MM-DD. API_URL is the drop-in's own address, under /org/<id>;
+# Dates are YYYY-MM-DD. API_URL is the Organisation's own address, under /org/<id>;
 # it defaults to the dev config's http://localhost:8080/org/dev-org. Override it,
 # e.g. API_URL=http://localhost:9090/org/dev-org scripts/preallocs.sh list
 #

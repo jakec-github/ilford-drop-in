@@ -8,7 +8,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// RoleStore reads the Roles the drop-in offers. Every store interface in this
+// RoleStore reads the Roles the Organisation offers. Every store interface in this
 // package embeds it, because a Role name is resolved on nearly every path there
 // is: the roster, pins, the solver contract, the rota's chips.
 type RoleStore interface {

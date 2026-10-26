@@ -335,7 +335,7 @@ func TestListShifts_InvalidDateFilters(t *testing.T) {
 }
 
 // A closed shift is closed because its row says so, and it carries no assignees
-// even where allocations exist against it — the drop-in did not run that day.
+// even where allocations exist against it — the Organisation did not run that day.
 func TestListShifts_ClosedShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
