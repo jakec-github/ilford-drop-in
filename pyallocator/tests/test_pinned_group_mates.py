@@ -37,7 +37,7 @@ def _couple(key: str, a: str, b: str, *, available, historical_count=0):
 
 
 def _service_shift(index: int, seats: int, pinned: tuple[str, ...] = ()) -> ShiftSpec:
-    # Only Service volunteer Seats, and no male_required to leave one open:
+    # Only Service volunteer Seats, and no shift_requires to leave one open:
     # every Seat here is one somebody fills.
     return ShiftSpec(
         index=index,

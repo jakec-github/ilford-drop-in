@@ -27,13 +27,13 @@ from . import (
     availability,
     closed_shifts,
     grouping,
-    male_required,
     max_frequency,
     monthly_cap,
     no_duplicate_allocation,
     preallocations,
     seat_capacity,
     shift_gap,
+    shift_requires,
 )
 from .base import Constraint, Vars
 
@@ -50,7 +50,7 @@ RULE_KINDS: dict[str, Callable[[Rule], Constraint]] = {
     "max_frequency": max_frequency.MaxFrequencyConstraint,
     "shift_gap": shift_gap.ShiftGapConstraint,
     "monthly_cap": monthly_cap.MonthlyCapConstraint,
-    "male_required": male_required.for_rule,
+    "shift_requires": shift_requires.for_rule,
 }
 
 

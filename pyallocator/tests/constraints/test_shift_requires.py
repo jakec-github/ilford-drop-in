@@ -16,10 +16,10 @@ from conftest import (
     make_shift,
     solve_with,
 )
-from pyallocator.constraints import male_required, preallocations, seat_capacity
-from pyallocator.domain import Preallocation, Seat
+from pyallocator.constraints import shift_requires, preallocations, seat_capacity
+from pyallocator.domain import Preallocation, Rule, Seat
 
-ONLY = [male_required.CONSTRAINT]
+ONLY = [shift_requires.ShiftRequiresConstraint("Male")]
 
 
 def test_all_female_shift_fills_while_the_team_lead_seat_is_open():
@@ -259,3 +259,25 @@ def test_one_role_overfilled_does_not_hide_another_roles_open_seat():
     )
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["la", "lb"]
+
+
+def test_the_gender_is_the_rules_choice():
+    # One Service volunteer Seat and one male to fill it: a "Male" rule
+    # takes him, and a "Female" rule must leave the Seat open instead.
+    one_seat = dataclasses.replace(
+        make_shift(0), shape=(Seat(role=SERVICE_VOLUNTEER, count=1),)
+    )
+    inp = make_input(
+        groups=[make_group("m1", members=[make_member("m1", gender="Male")], available=[0])],
+        shifts=[one_seat],
+    )
+    for_males = solve_with(inp, [shift_requires.ShiftRequiresConstraint("Male")])
+    for_females = solve_with(inp, [shift_requires.ShiftRequiresConstraint("Female")])
+    assert for_males.success and for_females.success
+    assert allocations_by_shift(for_males)[0] == ("m1",)
+    assert allocations_by_shift(for_females)[0] == ()
+
+
+def test_for_rule_reads_the_gender_from_the_rule():
+    constraint = shift_requires.for_rule(Rule(kind="shift_requires", option="Female"))
+    assert constraint.gender == "Female"

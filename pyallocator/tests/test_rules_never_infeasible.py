@@ -23,7 +23,7 @@ KINDS = {
     "max_frequency": (1, 6),
     "shift_gap": (1, 52),
     "monthly_cap": (1, 31),
-    "male_required": (0, 0),
+    "shift_requires": (0, 0),
 }
 NUM_SHIFTS = 6
 
@@ -68,10 +68,11 @@ def random_input(rng: random.Random, kinds: tuple[str, ...]):
     rules = []
     for kind in kinds:
         low, high = KINDS[kind]
-        covered = () if kind == "male_required" else tuple(rng.sample(ids, rng.randint(0, len(ids))))
+        covered = () if kind == "shift_requires" else tuple(rng.sample(ids, rng.randint(0, len(ids))))
         # Mostly the tightest values, which are the ones pins collide with.
         value = rng.choice((low, low, low + 1, rng.randint(low, high))) if high else 0
-        rules.append(Rule(kind=kind, volunteer_ids=covered, value=value))
+        option = rng.choice(("Male", "Female")) if kind == "shift_requires" else ""
+        rules.append(Rule(kind=kind, volunteer_ids=covered, value=value, option=option))
 
     return make_input(groups=groups, shifts=shifts, historical_shifts=history, rules=rules)
 

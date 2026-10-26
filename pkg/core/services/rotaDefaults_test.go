@@ -219,7 +219,7 @@ func TestAddAllocationRule(t *testing.T) {
 func TestAKindCanBeAddedMoreThanOnce(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
 	for range 2 {
-		_, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+		_, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_requires", Option: "Male"}, zap.NewNop())
 		require.NoError(t, err)
 	}
 
@@ -246,7 +246,7 @@ func TestEditAllocationRule(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
 	added, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_gap", Value: 1}, zap.NewNop())
 	require.NoError(t, err)
-	other, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+	other, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_requires", Option: "Male"}, zap.NewNop())
 	require.NoError(t, err)
 
 	edited, err := EditAllocationRule(context.Background(), store, added.ID, model.AllocationRule{
@@ -284,7 +284,7 @@ func TestEditingOrRemovingAMissingRuleIsNotFound(t *testing.T) {
 
 func TestRemoveAllocationRule(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
-	first, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+	first, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_requires", Option: "Male"}, zap.NewNop())
 	require.NoError(t, err)
 	second, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_gap", Value: 2}, zap.NewNop())
 	require.NoError(t, err)
@@ -307,7 +307,7 @@ func TestEditsLeaveWhatThisBuildDoesNotUnderstandAlone(t *testing.T) {
 
 	_, err := EditAllocationRule(context.Background(), store, "gap", model.AllocationRule{Value: 2}, zap.NewNop())
 	require.NoError(t, err)
-	_, err = AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+	_, err = AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_requires", Option: "Male"}, zap.NewNop())
 	require.NoError(t, err)
 
 	var doc struct {

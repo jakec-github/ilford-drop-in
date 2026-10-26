@@ -150,7 +150,11 @@ def make_input(
 
 
 # The Shift Rule kinds: they carry no Scope, so Go sends them naming nobody.
-SHIFT_KINDS = {"male_required"}
+SHIFT_KINDS = {"shift_requires"}
+
+# The choice a pair names nothing of: a shift_requires rule from a pair asks
+# for a male, as the rule did before it took a gender.
+PAIR_OPTIONS = {"shift_requires": "Male"}
 
 
 def covering_everyone(groups: Sequence[Group], *rules: tuple[str, int]) -> tuple[Rule, ...]:
@@ -159,7 +163,12 @@ def covering_everyone(groups: Sequence[Group], *rules: tuple[str, int]) -> tuple
     empty one."""
     everyone = tuple(m.id for g in groups for m in g.members)
     return tuple(
-        Rule(kind=kind, volunteer_ids=() if kind in SHIFT_KINDS else everyone, value=value)
+        Rule(
+            kind=kind,
+            volunteer_ids=() if kind in SHIFT_KINDS else everyone,
+            value=value,
+            option=PAIR_OPTIONS.get(kind, ""),
+        )
         for kind, value in rules
     )
 

@@ -19,7 +19,7 @@ import (
 // written against.
 var halfFrequencyWithMaleCover = model.AllocationSettings{Rules: []model.AllocationRule{
 	{ID: "cap", Kind: model.MaxFrequencyKind, Value: 50},
-	{ID: "male", Kind: model.MaleRequiredKind},
+	{ID: "male", Kind: model.ShiftRequiresKind, Option: "Male"},
 }}
 
 // openShifts turns bare dates into specs for the ordinary case, where every
@@ -44,7 +44,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 		},
 		Rules: []allocator.CpsatRule{
 			{Kind: "shift_gap", VolunteerIDs: []string{"vol-1"}, Value: 2},
-			{Kind: "male_required", VolunteerIDs: []string{}},
+			{Kind: "shift_requires", VolunteerIDs: []string{}, Option: "Male"},
 		},
 		Shifts: []allocator.CpsatShift{{
 			Index:  0,
@@ -82,7 +82,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 		],
 		"rules": [
 			{"kind": "shift_gap", "volunteer_ids": ["vol-1"], "value": 2},
-			{"kind": "male_required", "volunteer_ids": [], "value": 0}
+			{"kind": "shift_requires", "volunteer_ids": [], "value": 0, "option": "Male"}
 		],
 		"shifts": [{
 			"index": 0, "date": "2026-07-13", "closed": false,
@@ -231,7 +231,7 @@ func TestBuildCpsatInput(t *testing.T) {
 	// cap is a count, floor(4 * 50%), and covers everyone in the problem.
 	assert.Equal(t, []allocator.CpsatRule{
 		{Kind: "max_frequency", VolunteerIDs: []string{"diana", "alice", "bob"}, Value: 2},
-		{Kind: "male_required", VolunteerIDs: []string{}},
+		{Kind: "shift_requires", VolunteerIDs: []string{}, Option: "Male"},
 	}, input.Rules)
 
 	// Historical shifts sorted ascending by date with derived group keys.

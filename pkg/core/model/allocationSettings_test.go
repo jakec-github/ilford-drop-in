@@ -53,8 +53,8 @@ func TestTheRuleLibraryIsTheFourDayOneKinds(t *testing.T) {
 		assert.NotEmpty(t, k.Description, k.ID)
 	}
 
-	assert.Equal(t, []string{"max_frequency", "shift_gap", "monthly_cap", "male_required"}, ids)
-	assert.Equal(t, model.ShiftRuleFamily, families["male_required"])
+	assert.Equal(t, []string{"max_frequency", "shift_gap", "monthly_cap", "shift_requires"}, ids)
+	assert.Equal(t, model.ShiftRuleFamily, families["shift_requires"])
 	assert.Equal(t, model.VolunteerRuleFamily, families["shift_gap"])
 }
 
@@ -63,7 +63,8 @@ func TestValidateAcceptsEveryKindWithASensibleValue(t *testing.T) {
 		{Kind: "max_frequency", Value: 34},
 		{Kind: "shift_gap", Value: 1, Scope: model.Scope{Exclude: []string{"alice"}}},
 		{Kind: "monthly_cap", Value: 2, Scope: model.Scope{Include: []string{"bob"}}},
-		{Kind: "male_required"},
+		{Kind: "shift_requires", Option: "Male"},
+		{Kind: "shift_requires", Option: "Female"},
 	} {
 		assert.NoError(t, rule.Validate(), rule.Kind)
 	}
@@ -71,12 +72,15 @@ func TestValidateAcceptsEveryKindWithASensibleValue(t *testing.T) {
 
 func TestValidateRefusesWhatCannotBeRepresented(t *testing.T) {
 	for name, rule := range map[string]model.AllocationRule{
-		"an unknown kind":             {Kind: "phase_of_the_moon"},
-		"a missing value":             {Kind: "shift_gap"},
-		"a percentage over 100":       {Kind: "max_frequency", Value: 101},
-		"a negative gap":              {Kind: "shift_gap", Value: -1},
-		"a value on a valueless rule": {Kind: "male_required", Value: 1},
-		"a Scope on a Shift Rule":     {Kind: "male_required", Scope: model.Scope{Include: []string{"alice"}}},
+		"an unknown kind":               {Kind: "phase_of_the_moon"},
+		"a missing value":               {Kind: "shift_gap"},
+		"a percentage over 100":         {Kind: "max_frequency", Value: 101},
+		"a negative gap":                {Kind: "shift_gap", Value: -1},
+		"a value on a valueless rule":   {Kind: "shift_requires", Option: "Male", Value: 1},
+		"a missing choice":              {Kind: "shift_requires"},
+		"a choice it does not offer":    {Kind: "shift_requires", Option: "male"},
+		"a choice on a choiceless rule": {Kind: "shift_gap", Value: 1, Option: "Male"},
+		"a Scope on a Shift Rule":       {Kind: "shift_requires", Option: "Male", Scope: model.Scope{Include: []string{"alice"}}},
 		"including and excluding": {Kind: "monthly_cap", Value: 1, Scope: model.Scope{
 			Include: []string{"alice"}, Exclude: []string{"bob"},
 		}},
@@ -104,7 +108,7 @@ func TestRulesThisBuildCannotApplyAreIgnoredAndNamed(t *testing.T) {
 	settings := model.AllocationSettings{Rules: []model.AllocationRule{
 		{ID: "1", Kind: "shift_gap", Value: 1},
 		{ID: "2", Kind: "phase_of_the_moon", Value: 3},
-		{ID: "3", Kind: "male_required"},
+		{ID: "3", Kind: "shift_requires", Option: "Male"},
 		{ID: "4", Kind: "max_frequency", Value: 0},
 	}}
 

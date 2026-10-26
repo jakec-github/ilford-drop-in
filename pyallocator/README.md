@@ -43,7 +43,7 @@ in Go — Python enforces and counts):
             {"name": "Service volunteer", "max": null, "priority": 2}],
   "rules": [{"kind": "max_frequency", "volunteer_ids": ["vol-1", "vol-9"], "value": 4},
             {"kind": "shift_gap", "volunteer_ids": ["vol-1"], "value": 2},
-            {"kind": "male_required", "volunteer_ids": [], "value": 0}],
+            {"kind": "shift_requires", "volunteer_ids": [], "value": 0, "option": "Male"}],
   "shifts": [{"index": 0, "date": "2026-07-13", "closed": false,
               "shape": [{"role": "Team lead", "count": 1},
                         {"role": "Service volunteer", "count": 4}],
@@ -131,8 +131,9 @@ read `x.role`. Modularity is the point of this package:
     binding only the volunteers it covers: max_frequency (a cap on a
     rota's shifts), shift_gap (shifts off between any two worked, Closed
     ones and the previous rota counting), monthly_cap (shifts in a
-    calendar month, history counting), male_required (a shift without a
-    male keeps a Seat open so one can be added manually). That registry is
+    calendar month, history counting), shift_requires (a shift without a
+    volunteer of the rule's gender keeps a Seat open so one can be added
+    manually). That registry is
     the authority on what a kind does; Go's Rule Library is what an
     Organiser is offered. There is no default list on this side — no rules
     means the fundamentals only — and an unrecognised kind is ignored

@@ -27,7 +27,7 @@ def test_the_registry_is_the_four_day_one_kinds():
         "max_frequency",
         "shift_gap",
         "monthly_cap",
-        "male_required",
+        "shift_requires",
     ]
 
 

@@ -109,12 +109,15 @@ class Rule:
     have is ignored. volunteer_ids is the rule's Scope, resolved in Go to the
     volunteers it covers — empty for a Shift Rule, which has none. value is
     the one number the kind asks for, already in the solver's terms: a
-    max_frequency percentage arrives as a count of shifts.
+    max_frequency percentage arrives as a count of shifts. option is the
+    kind's one choice — the gender a shift_requires rule asks for — and empty
+    for a kind with none.
     """
 
     kind: str
     volunteer_ids: tuple[str, ...] = ()
     value: int = 0
+    option: str = ""
 
 
 @dataclass(frozen=True)
