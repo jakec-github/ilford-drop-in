@@ -14,23 +14,13 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// The Allocation Settings these tests build inputs under. They cap a volunteer
-// at half a rota, which is the number the assertions on max_allocation_count
-// read; the male-cover variant is what the tests that predate the toggles were
+// The Allocation Settings these tests build inputs under: a cap at half a
+// rota, and male cover, which is what the tests that predate the rules were
 // written against.
-var (
-	halfFrequency = model.AllocationSettings{
-		Enabled:      map[string]bool{model.MaxFrequencyConstraint: true},
-		MaxFrequency: 0.5,
-	}
-	halfFrequencyWithMaleCover = model.AllocationSettings{
-		Enabled: map[string]bool{
-			model.MaxFrequencyConstraint: true,
-			"male_required":              true,
-		},
-		MaxFrequency: 0.5,
-	}
-)
+var halfFrequencyWithMaleCover = model.AllocationSettings{Rules: []model.AllocationRule{
+	{ID: "cap", Kind: model.MaxFrequencyKind, Value: 50},
+	{ID: "male", Kind: model.MaleRequiredKind},
+}}
 
 // openShifts turns bare dates into specs for the ordinary case, where every
 // shift is open, asks for the same Shape and only the closed ones are worth
@@ -48,12 +38,14 @@ func openShifts(shape []allocator.Seat, dates ...string) []allocator.ShiftSpec {
 // lockstep (see pyallocator/README.md).
 func TestCpsatInputContractGolden(t *testing.T) {
 	input := &allocator.CpsatInput{
-		MaxAllocationCount: 2,
 		Roles: []allocator.CpsatRole{
 			{Name: "Team lead", Priority: 1},
 			{Name: "Service volunteer", Priority: 2},
 		},
-		EnabledConstraints: []string{"max_frequency", "male_required"},
+		Rules: []allocator.CpsatRule{
+			{Kind: "shift_gap", VolunteerIDs: []string{"vol-1"}, Value: 2},
+			{Kind: "male_required", VolunteerIDs: []string{}},
+		},
 		Shifts: []allocator.CpsatShift{{
 			Index:  0,
 			Date:   "2026-07-13",
@@ -84,12 +76,14 @@ func TestCpsatInputContractGolden(t *testing.T) {
 	}
 
 	golden := `{
-		"max_allocation_count": 2,
 		"roles": [
 			{"name": "Team lead", "priority": 1},
 			{"name": "Service volunteer", "priority": 2}
 		],
-		"enabled_constraints": ["max_frequency", "male_required"],
+		"rules": [
+			{"kind": "shift_gap", "volunteer_ids": ["vol-1"], "value": 2},
+			{"kind": "male_required", "volunteer_ids": [], "value": 0}
+		],
 		"shifts": [{
 			"index": 0, "date": "2026-07-13", "closed": false,
 			"shape": [
@@ -202,9 +196,6 @@ func TestBuildCpsatInput(t *testing.T) {
 	input, err := allocator.BuildCpsatInput(volunteers, groupAvailability, shiftSpecs, overrides, historical, halfFrequencyWithMaleCover, roles)
 	require.NoError(t, err)
 
-	// max = floor(4 * 0.5)
-	assert.Equal(t, 2, input.MaxAllocationCount)
-
 	// Grouping via InitVolunteerGroups: couple grouped, individual keyed
 	// by name, group nobody answered for discarded; sorted by group key.
 	require.Len(t, input.Groups, 2)
@@ -236,9 +227,12 @@ func TestBuildCpsatInput(t *testing.T) {
 		{Name: "Team lead", Priority: 1},
 		{Name: "Service volunteer", Priority: 2},
 	}, input.Roles)
-	// The optional rules travel with the problem too, in registry order, so
-	// the solver applies exactly what an Organiser switched on.
-	assert.Equal(t, []string{"max_frequency", "male_required"}, input.EnabledConstraints)
+	// The rules travel with the problem too, in the order they were added. The
+	// cap is a count, floor(4 * 50%), and covers everyone in the problem.
+	assert.Equal(t, []allocator.CpsatRule{
+		{Kind: "max_frequency", VolunteerIDs: []string{"diana", "alice", "bob"}, Value: 2},
+		{Kind: "male_required", VolunteerIDs: []string{}},
+	}, input.Rules)
 
 	// Historical shifts sorted ascending by date with derived group keys.
 	require.Len(t, input.HistoricalShifts, 2)
@@ -465,7 +459,7 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	_, err := allocator.BuildCpsatInput(volunteers, groupAvailability,
 		openShifts([]allocator.Seat{{Role: "Service volunteer", Count: 2}}, "2026-07-13", "2026-07-20"),
-		overrides, nil, halfFrequency, roles)
+		overrides, nil, halfFrequencyWithMaleCover, roles)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string][]int{"Alice Smith": {1}}, groupAvailability)
@@ -534,4 +528,39 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 	}
 	_, err = allocator.CpsatOutputToShifts(output, volunteers)
 	assert.ErrorContains(t, err, "nobody")
+}
+
+// Each rule reaches the solver as the volunteers it covers, worked out here so
+// the solver never has to know what a Scope is (ADR 0012). A rule covers
+// volunteers, not groups: naming Alice leaves Bob uncovered, and the solver's
+// grouping is what binds him in effect. A name that has left the roster
+// covers nobody, and a rule this build cannot apply never reaches the solver.
+func TestBuildCpsatInputResolvesEachRulesScope(t *testing.T) {
+	volunteers := []allocator.Volunteer{
+		{ID: "alice", FirstName: "Alice", LastName: "Smith", GroupKey: "couple_ab"},
+		{ID: "bob", FirstName: "Bob", LastName: "Smith", GroupKey: "couple_ab"},
+		{ID: "diana", FirstName: "Diana", LastName: "Green"},
+	}
+	availability := map[string][]int{"couple_ab": {0, 1}, "Diana Green": {0, 1}}
+	shape := []allocator.Seat{{Role: "Service volunteer", Count: 2}}
+	roles := []allocator.Role{{Name: "Service volunteer", Priority: 1}}
+	settings := model.AllocationSettings{Rules: []model.AllocationRule{
+		{ID: "1", Kind: "shift_gap", Value: 2, Scope: model.Scope{Exclude: []string{"alice"}}},
+		{ID: "2", Kind: "monthly_cap", Value: 1, Scope: model.Scope{Include: []string{"alice", "left-the-roster"}}},
+		{ID: "3", Kind: "phase_of_the_moon", Value: 1},
+		{ID: "4", Kind: "monthly_cap", Value: 1, Scope: model.Scope{Include: []string{"left-the-roster"}}},
+		{ID: "5", Kind: "max_frequency", Value: 10},
+	}}
+
+	input, err := allocator.BuildCpsatInput(volunteers, availability,
+		openShifts(shape, "2026-07-13", "2026-07-20"), nil, nil, settings, roles)
+	require.NoError(t, err)
+
+	assert.Equal(t, []allocator.CpsatRule{
+		{Kind: "shift_gap", VolunteerIDs: []string{"diana", "bob"}, Value: 2},
+		{Kind: "monthly_cap", VolunteerIDs: []string{"alice"}, Value: 1},
+		{Kind: "monthly_cap", VolunteerIDs: []string{}, Value: 1},
+		// 10% of two shifts rounds down to none, and is held at one.
+		{Kind: "max_frequency", VolunteerIDs: []string{"diana", "alice", "bob"}, Value: 1},
+	}, input.Rules)
 }

@@ -30,14 +30,14 @@ type RotaDefaults struct {
 	// ShiftTimezone is an IANA zone name, e.g. "Europe/London". Empty means
 	// unset; the domain falls back rather than guessing at read time.
 	ShiftTimezone string
-	// AllocationSettings is which optional allocator rules apply, as the JSON
+	// AllocationSettings is the Organiser's Allocation Rules, as the JSON
 	// document the column holds. Empty means an Organiser has never saved the
-	// section, which reads as every rule off.
+	// section, which reads as no rules.
 	//
 	// Carried verbatim rather than decoded here: what the answers mean is the
 	// domain's business (model.AllocationSettings), and the whole reason the
 	// column is JSON is that this layer should not need changing when a
-	// constraint arrives or leaves (ADR 0006).
+	// Rule Kind arrives or leaves (ADR 0006).
 	AllocationSettings string
 }
 
@@ -79,7 +79,7 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 // is the first time anyone has saved it.
 //
 // It names the columns it sets rather than replacing the row, so a later
-// section of the settings — the default Shape, the allocation toggles — cannot
+// section of the settings — the default Shape, the Allocation Rules — cannot
 // be blanked by a save of this one.
 //
 // An empty field is written as NULL. "Not set" has to survive the round trip:
@@ -100,28 +100,56 @@ func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error 
 	return nil
 }
 
-// SaveAllocationSettings writes which optional allocator rules apply, creating
+// UpdateAllocationSettings edits the Allocation Settings document, creating
 // the settings record if this is the first time anyone has saved it.
+//
+// The edit is handed the document as it stands ("" when there is none) and
+// returns the one to store, inside one transaction holding the record's row
+// lock. So an edit to one Allocation Rule always starts from every other rule
+// as it now is: two Organisers adding rules at once both land, and a stored
+// rule of a kind this build does not know survives an edit to its neighbour
+// (ADR 0012). An edit that returns an error writes nothing.
 //
 // Its own method rather than a field of SaveRotaDefaults, for the reason that
 // one names the columns it sets: the settings screen is sections, and saving
 // one must not blank another.
 //
 // The document is written as given. The database checks it is an object and
-// nothing more — the answers inside it are the domain's, and a column that
-// vetted them would have to be migrated every time a constraint arrived, which
+// nothing more — the rules inside it are the domain's, and a column that
+// vetted them would have to be migrated every time a Rule Kind arrived, which
 // is precisely what storing them as JSON avoids.
-// Which rules apply is an allocator input, so saving them makes the rota in
-// flight's draft stale (issue #142).
-func (d *DB) SaveAllocationSettings(ctx context.Context, settings string) error {
+//
+// The rules are an allocator input, so editing them makes the rota in
+// flight's draft dirty (issue #142).
+func (d *DB) UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error {
 	return d.inTx(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO rota_defaults (organisation_id, allocation_settings)
-			VALUES ($2, NULLIF($1, '')::jsonb)
-			ON CONFLICT (organisation_id) DO UPDATE SET
-				allocation_settings = EXCLUDED.allocation_settings
-		`, settings, d.org())
+		// The row must exist to be locked, so the first edit creates it
+		// before reading it back FOR UPDATE.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO rota_defaults (organisation_id) VALUES ($1)
+			ON CONFLICT (organisation_id) DO NOTHING
+		`, d.org()); err != nil {
+			return fmt.Errorf("failed to create the settings record: %w", err)
+		}
+
+		var current *string
+		if err := tx.QueryRow(ctx, `
+			SELECT allocation_settings::text FROM rota_defaults
+			WHERE organisation_id = $1
+			FOR UPDATE
+		`, d.org()).Scan(&current); err != nil {
+			return fmt.Errorf("failed to read allocation settings: %w", err)
+		}
+
+		next, err := edit(deref(current))
 		if err != nil {
+			return err
+		}
+
+		if _, err := tx.Exec(ctx, `
+			UPDATE rota_defaults SET allocation_settings = NULLIF($1, '')::jsonb
+			WHERE organisation_id = $2
+		`, next, d.org()); err != nil {
 			return fmt.Errorf("failed to save allocation settings: %w", err)
 		}
 		return markAllRotaInputsChanged(ctx, tx, d.org())

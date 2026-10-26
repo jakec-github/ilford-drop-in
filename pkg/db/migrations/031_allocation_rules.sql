@@ -1,0 +1,14 @@
+-- Allocation Rules are added from a library rather than switched on and off
+-- (ADR 0012, issue #271).
+--
+-- The column keeps its name and its type: it still holds the Allocation
+-- Settings document, now as a list of rules rather than a map of switches.
+-- What changes is the shape inside it, which is the domain's business, so the
+-- only thing this migration does is drop the switches.
+--
+-- They are dropped, not carried over as rules. An Organiser rebuilds the rules
+-- by hand, and until then the deployment solves with no optional rules, the
+-- same as a new one. Left in place the old document would do no harm — a
+-- build reading rules ignores keys it does not know — but nobody could see or
+-- remove it, so it goes.
+UPDATE rota_defaults SET allocation_settings = NULL;

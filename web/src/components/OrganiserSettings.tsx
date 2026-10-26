@@ -2,19 +2,17 @@ import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { useRoles } from "../hooks/useRoles";
-import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useStandingPreallocations } from "../hooks/useStandingPreallocations";
 import { useVolunteers } from "../hooks/useVolunteers";
+import AllocationRulesSettings from "./AllocationRules";
 import RotaDefaultsCard from "./RotaDefaultsCard";
 import SettingsSection from "./SettingsSection";
 import StandingPreallocationForm from "./StandingPreallocationForm";
 import { describeRule } from "./standingRules";
 import type {
-  AllocationSettings,
   ConfiguredRole,
   RoleColour,
   RoleEdit,
-  SwitchableConstraint,
 } from "../types";
 import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./OrganiserSettings.css";
@@ -374,208 +372,10 @@ function StandingPreallocationsSettings() {
   );
 }
 
-// AllocationRulesForm switches the optional allocator rules on and off, and
-// asks for the one value a rule carries.
-//
-// Every rule the server offered is drawn from the list it sent, so a rule
-// arriving or leaving needs no change here: the registry lives in Go and this
-// renders it (ADR 0006).
-function AllocationRulesForm({
-  settings,
-  constraints,
-  onSave,
-  onClose,
-}: {
-  settings: AllocationSettings;
-  constraints: SwitchableConstraint[];
-  onSave: (settings: AllocationSettings) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [enabled, setEnabled] = useState<Record<string, boolean>>(
-    settings.enabled,
-  );
-  // The share is held as a percentage because that is how anybody says it —
-  // "a third of the rota", not "0.34" — and as a string so the box can be
-  // emptied while it is being retyped. It converts on the way out.
-  const savedPercent =
-    settings.maxFrequency > 0
-      ? String(Math.round(settings.maxFrequency * 100))
-      : "";
-  const [percent, setPercent] = useState(savedPercent);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Saving the rules as they stand would change nothing (issue #149). The share
-  // is compared as it was shown rather than as a fraction, so a stored share
-  // that does not round to a whole percent is not "changed" by being looked at.
-  // A rule that carries a value cannot go on without one — the server refuses
-  // a share of nothing — so an emptied box holds Save back rather than earning
-  // a refusal (issue #149).
-  const valueMissing =
-    percent.trim() === "" &&
-    constraints.some((c) => c.valueLabel && (enabled[c.name] ?? false));
-  const changed =
-    percent !== savedPercent ||
-    constraints.some(
-      (c) => (enabled[c.name] ?? false) !== (settings.enabled[c.name] ?? false),
-    );
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave({
-        enabled,
-        maxFrequency: percent === "" ? 0 : Number(percent) / 100,
-      });
-      onClose();
-    } catch (err: unknown) {
-      // The server's own message names what was wrong with it, so it is shown
-      // as-is and the form stays open on what was typed.
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to save the allocation rules",
-      );
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog title="Allocation rules" onClose={onClose} dismissable={!saving}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        {constraints.map((constraint) => (
-          <div key={constraint.name} className="rule-choice">
-            <label className="rule-switch">
-              <input
-                type="checkbox"
-                checked={enabled[constraint.name] ?? false}
-                onChange={(e) =>
-                  setEnabled({
-                    ...enabled,
-                    [constraint.name]: e.target.checked,
-                  })
-                }
-              />
-              {constraint.label}
-            </label>
-            <p className="settings-hint rule-description">
-              {constraint.description}
-            </p>
-
-            {/* The value a rule carries belongs to that rule, so it sits under
-                it and appears only when the rule is on — an answer to a
-                question nobody asked is one more box to wonder about. */}
-            {constraint.valueLabel && enabled[constraint.name] && (
-              <label className="settings-field rule-value">
-                {constraint.valueLabel}
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={percent}
-                  onChange={(e) => setPercent(e.target.value)}
-                />
-              </label>
-            )}
-          </div>
-        ))}
-
-        {error && <p className="settings-error">{error}</p>}
-
-        <div className="settings-actions">
-          <Button onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={!changed || valueMissing || saving}>
-            {saving ? "Saving\u2026" : "Save rules"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-// AllocationRulesSettings is which optional rules the solver applies. The
-// fundamental ones are deliberately absent: a rota without them is not a rota,
-// so they are not an Organiser's decision to make.
-function AllocationRulesSettings() {
-  const { defaults, saveAllocationRules } = useRotaDefaults();
-  const [editing, setEditing] = useState(false);
-
-  const onRules =
-    defaults?.switchableConstraints.filter(
-      (c) => defaults.allocationSettings.enabled[c.name],
-    ) ?? [];
-
-  return (
-    <SettingsSection
-      title="Allocation rules"
-      blurb="The optional rules the allocator keeps. The ones that make a rota a rota are always on and are not listed."
-      action={
-        defaults && (
-          <Button size="small" onClick={() => setEditing(true)}>
-            Edit rules
-          </Button>
-        )
-      }
-    >
-      {defaults === null && <p className="settings-empty">Loading\u2026</p>}
-
-      {defaults !== null && (
-        <>
-          <dl className="settings-facts rule-facts">
-            {defaults.switchableConstraints.map((constraint) => (
-              <div key={constraint.name} className="settings-fact">
-                <dt>{constraint.label}</dt>
-                <dd>
-                  {defaults.allocationSettings.enabled[constraint.name] ? (
-                    "On"
-                  ) : (
-                    <span className="settings-unset">Off</span>
-                  )}
-                  {/* The value reads on the same line as the rule it belongs
-                      to, and only while that rule is on. */}
-                  {constraint.valueLabel &&
-                    defaults.allocationSettings.enabled[constraint.name] &&
-                    ` \u2014 at most ${Math.round(
-                      defaults.allocationSettings.maxFrequency * 100,
-                    )}% of a rota`}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {onRules.length === 0 && (
-            <p className="settings-caption">
-              Nothing optional is switched on, so the allocator will keep only
-              the rules a rota cannot be made without.
-            </p>
-          )}
-        </>
-      )}
-
-      {editing && defaults && (
-        <AllocationRulesForm
-          settings={defaults.allocationSettings}
-          constraints={defaults.switchableConstraints}
-          onSave={saveAllocationRules}
-          onClose={() => setEditing(false)}
-        />
-      )}
-    </SettingsSection>
-  );
-}
-
 // OrganiserSettings is everything an Organiser decides about how the drop-in runs, as
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
 // of independent sections: the Rota Defaults the whole drop-in runs on, the
-// Roles volunteers hold, and the pins made every rota.
+// Allocation Rules the allocator keeps, the Roles volunteers hold, and the pins made every rota.
 //
 // The Rota Defaults card is the one section that is not only here — the define
 // screen shows the same component, because defining a rota is spending it

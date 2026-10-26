@@ -1,20 +1,21 @@
-"""Solving with ONLY the max-frequency constraint."""
+"""Solving with ONLY a max-frequency rule.
+
+The rule's value arrives as a count of shifts: Go turns the Organiser's
+percentage into one against the rota's length (model.MaxAllocationCount).
+"""
 
 from __future__ import annotations
 
-from conftest import allocations_by_shift, make_group, make_input, make_shift, solve_with
-from pyallocator.constraints import max_frequency, preallocations
+from conftest import allocations_by_shift, make_group, make_input, make_shift, rules_of, solve_with
+from pyallocator.constraints import preallocations
 
-ONLY = [max_frequency.CONSTRAINT]
-
-
-def test_group_capped_at_max_allocation_count():
+def test_group_capped_at_the_rules_cap():
     inp = make_input(
         groups=[make_group("g1", available=[0, 1, 2, 3])],
         shifts=[make_shift(i) for i in range(4)],
-        max_allocation_count=2,
+        rules=[("max_frequency", 2)],
     )
-    out = solve_with(inp, ONLY)
+    out = solve_with(inp, rules_of(inp))
     assert out.success
     total = sum(len(keys) for keys in allocations_by_shift(out).values())
     assert total == 2
@@ -24,9 +25,9 @@ def test_zero_cap_means_no_allocations():
     inp = make_input(
         groups=[make_group("g1", available=[0, 1])],
         shifts=[make_shift(0), make_shift(1)],
-        max_allocation_count=0,
+        rules=[("max_frequency", 0)],
     )
-    out = solve_with(inp, ONLY)
+    out = solve_with(inp, rules_of(inp))
     assert out.success
     assert all(keys == () for keys in allocations_by_shift(out).values())
 
@@ -41,9 +42,9 @@ def test_preallocations_count_toward_cap():
             make_shift(1),
             make_shift(2),
         ],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, rules_of(inp) + [preallocations.CONSTRAINT])
     assert out.success
     by_shift = allocations_by_shift(out)
     assert by_shift[0] == ("g1",)
@@ -60,9 +61,9 @@ def test_pins_past_the_cap_are_honoured_and_nothing_more_is_added():
             make_shift(2, preallocated_volunteer_ids=["g1"]),
             make_shift(3),
         ],
-        max_allocation_count=1,
+        rules=[("max_frequency", 1)],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, rules_of(inp) + [preallocations.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out) == {0: ("g1",), 1: (), 2: ("g1",), 3: ()}
 
@@ -71,8 +72,8 @@ def test_pins_past_a_zero_cap_are_honoured():
     inp = make_input(
         groups=[make_group("g1", available=[0, 1])],
         shifts=[make_shift(0, preallocated_volunteer_ids=["g1"]), make_shift(1)],
-        max_allocation_count=0,
+        rules=[("max_frequency", 0)],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, rules_of(inp) + [preallocations.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out) == {0: ("g1",), 1: ()}

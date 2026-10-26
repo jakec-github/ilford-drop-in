@@ -39,10 +39,11 @@ in Go — Python enforces and counts):
 
 ```json
 {
-  "max_allocation_count": 4,
   "roles": [{"name": "Team lead", "max": 1, "priority": 1},
             {"name": "Service volunteer", "max": null, "priority": 2}],
-  "enabled_constraints": ["max_frequency", "male_required", "no_back_to_back"],
+  "rules": [{"kind": "max_frequency", "volunteer_ids": ["vol-1", "vol-9"], "value": 4},
+            {"kind": "shift_gap", "volunteer_ids": ["vol-1"], "value": 2},
+            {"kind": "male_required", "volunteer_ids": [], "value": 0}],
   "shifts": [{"index": 0, "date": "2026-07-13", "closed": false,
               "shape": [{"role": "Team lead", "count": 1},
                         {"role": "Service volunteer", "count": 4}],
@@ -72,6 +73,14 @@ volunteer fills the named Role on that shift whether or not they hold it, and
 attends whether or not their group said it was available. Both grants are
 confined to the pinned shift. Pinning to a Role the shift's `shape` has no Seat
 for is still an error — that is a statement about the shift, not the person.
+
+Each of `rules` is one Allocation Rule an Organiser added (ADR 0012), in the
+order they were added; a kind may appear more than once. Go resolves its Scope
+to `volunteer_ids` — the volunteers it covers — and sends a Shift Rule naming
+nobody. `value` is already in the solver's terms: a `max_frequency` percentage
+arrives as a count of shifts. `historical_shifts` is every shift of the
+previous rota, Closed ones and ones nobody worked included, so a position in it
+is a count of shifts back.
 
 Output:
 
@@ -118,16 +127,20 @@ read `x.role`. Modularity is the point of this package:
     (a Role's Seats on a shift are never oversubscribed — where "at most
     one team lead" now comes from, that Role having one Seat),
     closed_shifts, preallocations, no_duplicate_allocation.
-  - `SWITCHABLE_CONSTRAINTS` apply only when named: max_frequency,
-    male_required (a shift without a male keeps a Seat open so one can be
-    added manually), no_back_to_back, one_shift_per_month. That list is
-    the authority on which toggles exist; an admin answers them in the
-    Allocation Settings and Go sends the answers as
-    `enabled_constraints`. There is no default list on this side —
-    a rule nobody switched on is off, and an unrecognised name is
-    ignored rather than refused.
+  - `RULE_KINDS` build one constraint per Allocation Rule in the input,
+    binding only the volunteers it covers: max_frequency (a cap on a
+    rota's shifts), shift_gap (shifts off between any two worked, Closed
+    ones and the previous rota counting), monthly_cap (shifts in a
+    calendar month, history counting), male_required (a shift without a
+    male keeps a Seat open so one can be added manually). That registry is
+    the authority on what a kind does; Go's Rule Library is what an
+    Organiser is offered. There is no default list on this side — no rules
+    means the fundamentals only — and an unrecognised kind is ignored
+    rather than refused. Every kind can be met by leaving Seats empty and
+    exempts pins, so no set of rules makes a solve infeasible
+    (`tests/test_rules_never_infeasible.py`).
 
-  Rules that are off must not be asserted in tests.
+  Rules not in the input must not be asserted in tests.
 - `preferences/` — one file per **soft goal**, contributing weighted
   terms to a single maximised objective. Production set:
   `DEFAULT_PREFERENCES` in `preferences/__init__.py`. The shaping

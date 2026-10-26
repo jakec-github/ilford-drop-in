@@ -7,9 +7,9 @@ a custom (free-text) preallocation.
 Two oracles here, answering different questions.
 
 verify_solution re-checks every hard rule directly against the input,
-independently of CP-SAT — "is this rota legal?". It covers E2E_ENABLED
-only: one_shift_per_month is switched off in this scenario, so verifying
-it here would assert a rule the rota is not built to keep.
+independently of CP-SAT — "is this rota legal?". It covers E2E_RULES
+only: there is no monthly cap in this scenario, so verifying one here would
+assert a rule the rota is not built to keep.
 
 The golden in testdata/e2e_rota.json answers "is this the same rota as
 before?". Many rotas are legal, so verify_solution alone would not notice
@@ -36,6 +36,7 @@ from conftest import (
     make_shift,
     team_lead_id,
     volunteer_ids,
+    with_rules,
 )
 from pyallocator.api import solve
 from pyallocator.domain import (
@@ -52,11 +53,16 @@ from pyallocator.domain import (
 
 GOLDEN_PATH = Path(__file__).parent / "testdata" / "e2e_rota.json"
 
-# The Allocation Settings this scenario runs under. They are the three rules
-# that used to be the hardcoded default list, so the golden rota below is the
-# same rota it was before the toggles existed — one_shift_per_month stays off,
-# as it was when it sat unused in STRICT_CONSTRAINTS.
-E2E_ENABLED = ("max_frequency", "male_required", "no_back_to_back")
+# The Allocation Rules this scenario runs under, besides a max_frequency cap
+# each input sets for itself. With the cap they are the three rules that used
+# to be the hardcoded default list — a gap of one being no_back_to_back — so
+# the golden rota below is the same rota it was before rules existed. No
+# monthly cap, as one_shift_per_month was off when it sat unused in
+# STRICT_CONSTRAINTS.
+E2E_RULES = (("male_required", 0), ("shift_gap", 1))
+
+# Every day-one kind, a monthly cap of one being one_shift_per_month.
+EVERY_RULE = E2E_RULES + (("monthly_cap", 1),)
 
 
 # The spec no longer carries a size or three preallocation lists; it carries a
@@ -209,8 +215,9 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     last_historical = (
         set(inp.historical_shifts[-1].group_keys) if inp.historical_shifts else set()
     )
+    cap = next(r.value for r in inp.rules if r.kind == "max_frequency")
     for key, indices in allocated.items():
-        if len(indices) > inp.max_allocation_count:
+        if len(indices) > cap:
             problems.append(f"{key}: exceeds max allocation count")
         indices = sorted(indices)
         for a, b in zip(indices, indices[1:]):
@@ -291,13 +298,15 @@ def make_e2e_input() -> AllocationInput:
         # Alice/Bob and Diana worked the shift immediately before this rota.
         HistoricalShift(date="2026-07-06", group_keys=("couple_alice_bob", "Diana Green")),
     )
-    return AllocationInput(
-        max_allocation_count=2,  # 33% of 7 shifts, as computed in Go
-        shifts=shifts,
-        groups=groups,
-        roles=DEFAULT_ROLES,
-        enabled_constraints=E2E_ENABLED,
-        historical_shifts=historical,
+    return with_rules(
+        AllocationInput(
+            shifts=shifts,
+            groups=groups,
+            roles=DEFAULT_ROLES,
+            historical_shifts=historical,
+        ),
+        ("max_frequency", 2),
+        *E2E_RULES,
     )
 
 
@@ -336,7 +345,7 @@ def test_end_to_end_scenario():
         "max_frequency",
         "seat_capacity",
         "male_required",
-        "no_back_to_back",
+        "shift_gap",
         "closed_shifts",
         "preallocations",
     }
@@ -432,17 +441,19 @@ def test_pin_with_no_seat_for_the_partner_solves():
     # Alice pinned into a shift's only Seat leaves her partner nowhere to
     # sit. A pin pins one person (#234), so Alice works it alone — this was
     # once INFEASIBLE, the last way a pin could make it so.
-    inp = AllocationInput(
-        max_allocation_count=2,
-        shifts=(
-            make_shift(
-                0, size=1, roles=(DEFAULT_ROLES[1],), preallocated_volunteer_ids=["alice"]
+    inp = with_rules(
+        AllocationInput(
+            shifts=(
+                make_shift(
+                    0, size=1, roles=(DEFAULT_ROLES[1],), preallocated_volunteer_ids=["alice"]
+                ),
             ),
+            groups=(_plain_couple("couple", "alice", "bob", available=[0]),),
+            roles=DEFAULT_ROLES,
+            historical_shifts=(),
         ),
-        groups=(_plain_couple("couple", "alice", "bob", available=[0]),),
-        roles=DEFAULT_ROLES,
-        enabled_constraints=E2E_ENABLED,
-        historical_shifts=(),
+        ("max_frequency", 2),
+        *E2E_RULES,
     )
     out = solve(inp)
     assert out.success, out.solver_status
@@ -469,21 +480,18 @@ def test_pin_to_a_role_nobody_holds_solves():
             Preallocation(volunteer_id="alice", custom="", role=food.name),
         ),
     )
-    inp = AllocationInput(
-        max_allocation_count=2,
-        shifts=(shift,),
-        groups=(
-            _individual("alice", available=[0]),
-            _individual("charlie", available=[0], gender="Male"),
+    inp = with_rules(
+        AllocationInput(
+            shifts=(shift,),
+            groups=(
+                _individual("alice", available=[0]),
+                _individual("charlie", available=[0], gender="Male"),
+            ),
+            roles=roles,
+            historical_shifts=(),
         ),
-        roles=roles,
-        enabled_constraints=(
-            "max_frequency",
-            "male_required",
-            "no_back_to_back",
-            "one_shift_per_month",
-        ),
-        historical_shifts=(),
+        ("max_frequency", 2),
+        *EVERY_RULE,
     )
     out = solve(inp)
     assert out.success, out.error or out.solver_status
@@ -496,19 +504,21 @@ def test_inactive_pinned_volunteer_is_placed_on_their_pin_only():
     # one with no answers read (#235). The pin is their only availability, so
     # the solver places them there and, however much room is left and however
     # the objective rewards placing people, nowhere else.
-    inp = AllocationInput(
-        max_allocation_count=4,
-        shifts=tuple(
-            make_shift(i, size=3, preallocated_volunteer_ids=["inactive"] if i == 1 else [])
-            for i in range(4)
+    inp = with_rules(
+        AllocationInput(
+            shifts=tuple(
+                make_shift(i, size=3, preallocated_volunteer_ids=["inactive"] if i == 1 else [])
+                for i in range(4)
+            ),
+            groups=(
+                _individual("inactive", available=[1]),
+                _individual("charlie", available=[0, 1, 2, 3], gender="Male"),
+            ),
+            roles=DEFAULT_ROLES,
+            historical_shifts=(),
         ),
-        groups=(
-            _individual("inactive", available=[1]),
-            _individual("charlie", available=[0, 1, 2, 3], gender="Male"),
-        ),
-        roles=DEFAULT_ROLES,
-        enabled_constraints=E2E_ENABLED,
-        historical_shifts=(),
+        ("max_frequency", 4),
+        *E2E_RULES,
     )
     out = solve(inp)
     assert out.success, out.error or out.solver_status
@@ -532,18 +542,15 @@ def test_pins_breaking_every_spacing_and_frequency_rule_at_once_solve():
         make_shift(i, preallocated_volunteer_ids=["alice"] if i < 3 else [])
         for i in range(4)
     )
-    inp = AllocationInput(
-        max_allocation_count=1,
-        shifts=shifts,
-        groups=(couple, _individual("diana", available=[0, 1, 2, 3])),
-        roles=DEFAULT_ROLES,
-        enabled_constraints=(
-            "max_frequency",
-            "male_required",
-            "no_back_to_back",
-            "one_shift_per_month",
+    inp = with_rules(
+        AllocationInput(
+            shifts=shifts,
+            groups=(couple, _individual("diana", available=[0, 1, 2, 3])),
+            roles=DEFAULT_ROLES,
+            historical_shifts=(HistoricalShift(date="2026-07-06", group_keys=("couple",)),),
         ),
-        historical_shifts=(HistoricalShift(date="2026-07-06", group_keys=("couple",)),),
+        ("max_frequency", 1),
+        *EVERY_RULE,
     )
     out = solve(inp)
     assert out.success, out.error or out.solver_status
@@ -574,24 +581,21 @@ def test_pins_past_the_shape_solve_with_every_rule_on():
             Preallocation(volunteer_id="cat", custom="", role=food.name),
         ),
     )
-    inp = AllocationInput(
-        max_allocation_count=2,
-        shifts=(shift,),
-        groups=(
-            Group("Ann", (Member("ann", "Ann", "G", "Ann", "Female", lead),), (0,), 0),
-            Group("Bea", (Member("bea", "Bea", "G", "Bea", "Female", lead),), (0,), 0),
-            _individual("cat", available=[0]),
-            _individual("diana", available=[0]),
-            _individual("charlie", available=[0], gender="Male"),
+    inp = with_rules(
+        AllocationInput(
+            shifts=(shift,),
+            groups=(
+                Group("Ann", (Member("ann", "Ann", "G", "Ann", "Female", lead),), (0,), 0),
+                Group("Bea", (Member("bea", "Bea", "G", "Bea", "Female", lead),), (0,), 0),
+                _individual("cat", available=[0]),
+                _individual("diana", available=[0]),
+                _individual("charlie", available=[0], gender="Male"),
+            ),
+            roles=DEFAULT_ROLES + (food,),
+            historical_shifts=(),
         ),
-        roles=DEFAULT_ROLES + (food,),
-        enabled_constraints=(
-            "max_frequency",
-            "male_required",
-            "no_back_to_back",
-            "one_shift_per_month",
-        ),
-        historical_shifts=(),
+        ("max_frequency", 2),
+        *EVERY_RULE,
     )
     out = solve(inp)
     assert out.success, out.error or out.solver_status

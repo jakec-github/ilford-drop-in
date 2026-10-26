@@ -1,8 +1,8 @@
 """Public solve() entrypoint: input -> problem -> model -> solver -> output.
 
-The constraint list comes from the input's enabled_constraints — the Organiser's
-Allocation Settings, decided in the app and sent by Go — rather than from a
-default list held here. Preferences still default to the production registry:
+The constraint list comes from the input's rules — the Organiser's Allocation
+Rules, decided in the app and sent by Go — rather than from a default list
+held here. Preferences still default to the production registry:
 they are a weighted objective rather than a rule, and are not switchable.
 Tests pass subsets of either to exercise one module at a time.
 """
@@ -26,7 +26,7 @@ def solve(
     preferences: Sequence[Preference] | None = None,
 ) -> AllocationOutput:
     if constraints is None:
-        constraints = constraints_for(input_.enabled_constraints)
+        constraints = constraints_for(input_.rules)
     if preferences is None:
         preferences = DEFAULT_PREFERENCES
 

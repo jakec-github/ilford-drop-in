@@ -72,18 +72,29 @@ type CpsatHistoricalShift struct {
 	GroupKeys []string `json:"group_keys"`
 }
 
+// CpsatRule is one Allocation Rule as the solver applies it (ADR 0012).
+//
+// The Scope is already worked out: VolunteerIDs is every volunteer in the
+// problem the rule covers, so Python never needs to know what a Scope is. It is
+// always empty for a Shift Rule, which applies to every Shift. Value is the
+// kind's one number in the units the solver works in — for max_frequency the
+// percentage has already become a count of this rota's shifts.
+type CpsatRule struct {
+	Kind         string   `json:"kind"`
+	VolunteerIDs []string `json:"volunteer_ids"`
+	Value        int      `json:"value"`
+}
+
 // CpsatInput is the full problem sent to Python on stdin.
 type CpsatInput struct {
-	MaxAllocationCount int         `json:"max_allocation_count"`
-	Roles              []CpsatRole `json:"roles"`
-	// EnabledConstraints names the optional solver rules this run applies —
-	// the Organiser's Allocation Settings, in registry order. Python applies
-	// exactly these on top of its fundamentals and holds no default list of
-	// its own (ADR 0006, issue #130); a name it does not know it ignores.
-	EnabledConstraints []string               `json:"enabled_constraints"`
-	Shifts             []CpsatShift           `json:"shifts"`
-	Groups             []CpsatGroup           `json:"groups"`
-	HistoricalShifts   []CpsatHistoricalShift `json:"historical_shifts"`
+	Roles []CpsatRole `json:"roles"`
+	// Rules are the Organiser's Allocation Rules, in the order they were added.
+	// Python applies exactly these on top of its fundamentals and holds no
+	// default list of its own (ADR 0006); a kind it does not know it ignores.
+	Rules            []CpsatRule            `json:"rules"`
+	Shifts           []CpsatShift           `json:"shifts"`
+	Groups           []CpsatGroup           `json:"groups"`
+	HistoricalShifts []CpsatHistoricalShift `json:"historical_shifts"`
 }
 
 // CpsatAssignment is one filled Seat: who is in it, and what Role it is.
@@ -164,12 +175,11 @@ func BuildCpsatInput(
 	})
 
 	input := &CpsatInput{
-		MaxAllocationCount: allocationSettings.MaxAllocationCount(len(shiftSpecs)),
-		Roles:              contractRoles(roles),
-		EnabledConstraints: allocationSettings.EnabledConstraints(),
-		Shifts:             make([]CpsatShift, len(initialised)),
-		Groups:             make([]CpsatGroup, len(volunteerState.VolunteerGroups)),
-		HistoricalShifts:   make([]CpsatHistoricalShift, len(historicalShifts)),
+		Roles:            contractRoles(roles),
+		Rules:            contractRules(allocationSettings, volunteerState.VolunteerGroups, len(shiftSpecs)),
+		Shifts:           make([]CpsatShift, len(initialised)),
+		Groups:           make([]CpsatGroup, len(volunteerState.VolunteerGroups)),
+		HistoricalShifts: make([]CpsatHistoricalShift, len(historicalShifts)),
 	}
 
 	for i, shift := range initialised {
@@ -220,6 +230,36 @@ func BuildCpsatInput(
 	})
 
 	return input, nil
+}
+
+// contractRules turns the Allocation Rules this build can apply into what the
+// solver is sent, each Scope worked out against the volunteers in the problem,
+// in their canonical order.
+func contractRules(settings model.AllocationSettings, groups []*VolunteerGroup, shiftCount int) []CpsatRule {
+	applicable := settings.Applicable()
+	rules := make([]CpsatRule, 0, len(applicable))
+	for _, rule := range applicable {
+		kind, _ := model.RuleKindByID(rule.Kind)
+
+		covered := []string{}
+		if kind.Family == model.VolunteerRuleFamily {
+			for _, group := range groups {
+				for _, member := range group.Members {
+					if rule.Scope.Covers(member.ID) {
+						covered = append(covered, member.ID)
+					}
+				}
+			}
+		}
+
+		value := rule.Value
+		if rule.Kind == model.MaxFrequencyKind {
+			value = model.MaxAllocationCount(rule.Value, shiftCount)
+		}
+
+		rules = append(rules, CpsatRule{Kind: rule.Kind, VolunteerIDs: covered, Value: value})
+	}
+	return rules
 }
 
 // CpsatOutputToShifts rebuilds Shift values from the solver output so

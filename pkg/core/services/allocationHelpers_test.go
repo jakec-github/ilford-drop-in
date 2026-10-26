@@ -866,3 +866,34 @@ func TestFetchGroupAvailability_NoRoundMinted(t *testing.T) {
 	assert.Contains(t, err.Error(), "availability round")
 	assert.NotContains(t, err.Error(), "rota-1", "no row id in a message an Organiser reads")
 }
+
+// Every Shift of the previous rota is history, a Closed one and one nobody
+// worked included: a gap counts Closed Shifts, so the solver must see where
+// they fell (ADR 0012). A previous rota with no allocations at all still
+// yields its Shifts.
+func TestBuildHistoricalShifts_KeepsShiftsNobodyWorked(t *testing.T) {
+	store := &mockAllocateRotaStore{
+		rotations: []db.Rotation{
+			{ID: "rota-0", Start: "2024-12-01", ShiftCount: 3},
+			{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3},
+		},
+		shifts: shiftsOnDates("rota-0", "2024-12-01", "2024-12-08", "2024-12-15"),
+		allocations: []db.Allocation{
+			{ID: "alloc-1", ShiftID: "2024-12-01", VolunteerID: "alice", RoleID: "role-service-volunteer"},
+		},
+	}
+	volunteers := []allocator.Volunteer{{ID: "alice", FirstName: "Alice", LastName: "A"}}
+	targetRota := &db.Rotation{ID: "rota-1", Start: "2025-01-05", ShiftCount: 3}
+
+	historicalShifts, err := buildHistoricalShifts(context.Background(), store, store.rotations, targetRota, volunteers, zap.NewNop())
+	require.NoError(t, err)
+
+	require.Len(t, historicalShifts, 3)
+	assert.Equal(t, "2024-12-15", historicalShifts[2].Date)
+	assert.Empty(t, historicalShifts[2].AllocatedGroups)
+
+	store.allocations = nil
+	historicalShifts, err = buildHistoricalShifts(context.Background(), store, store.rotations, targetRota, volunteers, zap.NewNop())
+	require.NoError(t, err)
+	assert.Len(t, historicalShifts, 3)
+}

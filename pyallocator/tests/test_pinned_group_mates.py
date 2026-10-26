@@ -19,11 +19,12 @@ from conftest import (
     volunteer_ids,
 )
 from pyallocator.api import solve
-from pyallocator.constraints import SWITCHABLE_CONSTRAINTS
 from pyallocator.domain import HistoricalShift, Preallocation, Seat, ShiftSpec
 from pyallocator.problem import Problem
 
-EVERY_RULE = tuple(c.name for c in SWITCHABLE_CONSTRAINTS)
+# Every Volunteer Rule kind, at the values that were the old switchable rules:
+# no cap to speak of, no back-to-back shifts, one shift a month.
+EVERY_RULE = (("max_frequency", 99), ("shift_gap", 1), ("monthly_cap", 1))
 
 
 def _couple(key: str, a: str, b: str, *, available, historical_count=0):
@@ -50,8 +51,8 @@ def _service_shift(index: int, seats: int, pinned: tuple[str, ...] = ()) -> Shif
     )
 
 
-def _rules(*without: str) -> tuple[str, ...]:
-    return tuple(r for r in EVERY_RULE if r not in without and r != "male_required")
+def _rules(*without: str) -> tuple[tuple[str, int], ...]:
+    return tuple(r for r in EVERY_RULE if r[0] not in without)
 
 
 def test_available_partner_joins_over_every_preference():
@@ -64,7 +65,7 @@ def test_available_partner_joins_over_every_preference():
             make_group("carol", available=[0]),
         ],
         shifts=[_service_shift(0, seats=2, pinned=("alice",))],
-        enabled_constraints=_rules(),
+        rules=_rules(),
     )
     out = solve(inp)
     assert out.success
@@ -75,7 +76,7 @@ def test_unavailable_partner_stays_home():
     inp = make_input(
         groups=[_couple("couple", "alice", "bob", available=[])],
         shifts=[_service_shift(0, seats=2, pinned=("alice",))],
-        enabled_constraints=_rules(),
+        rules=_rules(),
     )
     out = solve(inp)
     assert out.success
@@ -87,7 +88,7 @@ def test_partner_with_no_seat_left_stays_home():
     inp = make_input(
         groups=[_couple("couple", "alice", "bob", available=[0])],
         shifts=[_service_shift(0, seats=1, pinned=("alice",))],
-        enabled_constraints=_rules(),
+        rules=_rules(),
     )
     out = solve(inp)
     assert out.success
@@ -101,7 +102,7 @@ def test_partner_stays_home_rather_than_work_back_to_back():
         groups=[_couple("couple", "alice", "bob", available=[0])],
         shifts=[_service_shift(0, seats=2, pinned=("alice",))],
         historical_shifts=[HistoricalShift(date="2026-06-29", group_keys=("couple",))],
-        enabled_constraints=_rules("one_shift_per_month"),
+        rules=_rules("monthly_cap"),
     )
     out = solve(inp)
     assert out.success
@@ -118,7 +119,7 @@ def test_mates_competing_for_one_seat_one_joins():
             make_group("carol", available=[0]),
         ],
         shifts=[_service_shift(0, seats=3, pinned=("alice", "dana"))],
-        enabled_constraints=_rules(),
+        rules=_rules(),
     )
     out = solve(inp)
     assert out.success
@@ -140,7 +141,7 @@ def test_each_mate_counts_on_their_own():
     inp = make_input(
         groups=[trio, make_group("carol", available=[0])],
         shifts=[_service_shift(0, seats=2, pinned=("a",))],
-        enabled_constraints=_rules(),
+        rules=_rules(),
     )
     out = solve(inp)
     assert out.success
@@ -157,7 +158,7 @@ def test_group_stays_together_on_shifts_without_a_pin():
             _service_shift(1, seats=4),
             _service_shift(2, seats=4),
         ],
-        enabled_constraints=_rules(),
+        rules=_rules(),
     )
     out = solve(inp)
     assert out.success

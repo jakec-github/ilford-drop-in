@@ -238,7 +238,7 @@ func solveRotaInFlight(
 	logger.Debug("Built cpsat input",
 		zap.Int("groups", len(input.Groups)),
 		zap.Int("shifts", len(input.Shifts)),
-		zap.Int("max_allocation_count", input.MaxAllocationCount))
+		zap.Int("rules", len(input.Rules)))
 
 	pythonPath := allocator.ResolvePythonInterpreter(pythonFlag)
 	logger.Info("Running CP-SAT allocator", zap.String("python", pythonPath))

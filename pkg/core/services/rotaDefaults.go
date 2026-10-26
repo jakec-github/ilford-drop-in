@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
@@ -29,7 +31,7 @@ type RotaDefaultsStore interface {
 // of one must not blank another.
 type RotaDefaultsWriteStore interface {
 	SaveRotaDefaults(ctx context.Context, defaults db.RotaDefaults) error
-	SaveAllocationSettings(ctx context.Context, settings string) error
+	UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error
 }
 
 // RotaDefaults reads what an Organiser has decided about how the drop-in runs.
@@ -60,12 +62,13 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 //
 // It never fails, which is the rule from ADR 0006 read to its conclusion: a
 // document this build cannot understand must not be able to take down the one
-// screen an Organiser could fix it on. Every rule reading as off is a safe answer
-// — allocation still runs, with nothing optional applied — and the section
-// re-saves cleanly over it.
+// screen an Organiser could fix it on. No rules is a safe answer — allocation
+// still runs, with nothing optional applied.
 //
 // Keys this build does not know need no handling at all: encoding/json ignores
-// them, which is the leniency the ADR asks for, for free.
+// them, which is the leniency the ADR asks for, for free. A rule of a kind it
+// does not know still reads; AllocationSettings.Applicable is what leaves it
+// out of a solve.
 func parseAllocationSettings(document string) model.AllocationSettings {
 	if document == "" {
 		return model.AllocationSettings{}
@@ -99,22 +102,20 @@ func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger 
 		return model.RotaDefaults{}, err
 	}
 
-	// Every section at once, so an Organiser is told everything they have to go
-	// and fill in rather than one thing per attempt.
-	missing := append(defaults.MissingShiftTimes(), defaults.AllocationSettings.Missing()...)
-
-	if len(missing) > 0 {
+	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
 		return model.RotaDefaults{}, wrapf(ErrInvalidInput,
 			"the drop-in's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
 			joinWithAnd(missing), plural(len(missing), "has", "have"))
 	}
 
-	// An answer for a rule this build no longer has is dropped, not refused —
-	// but it is worth saying so once, here, because the rota about to be
-	// allocated is not the one an Organiser who switched that rule on expected.
-	if unknown := defaults.AllocationSettings.UnknownConstraints(); len(unknown) > 0 {
-		logger.Warn("Ignoring allocation settings for rules this build does not have",
-			zap.Strings("rules", unknown))
+	// A rule this build cannot apply is dropped, not refused — but it is worth
+	// saying so once, here, because the rota about to be allocated is not the
+	// one an Organiser who added that rule expected.
+	for _, rule := range defaults.AllocationSettings.Ignored() {
+		logger.Warn("Ignoring an Allocation Rule this build cannot apply",
+			zap.String("rule_id", rule.ID),
+			zap.String("kind", rule.Kind),
+			zap.Error(rule.Validate()))
 	}
 
 	return defaults, nil
@@ -262,75 +263,170 @@ func SaveShiftTimeDefaults(ctx context.Context, store RotaDefaultsWriteStore, pa
 	}, nil
 }
 
-// AllocationSettingsParams is the allocation-settings section of the settings
-// screen as an Organiser states it: an answer for every rule they were offered,
-// plus the one value a rule carries.
+// allocationDocument is the stored Allocation Settings document as an edit
+// sees it: every key kept verbatim, and the rules as they were written.
 //
-// Stated whole, like the shift times: the screen shows every rule at once, and
-// a partial save could not express switching one off.
-type AllocationSettingsParams struct {
-	// Enabled is one answer per rule, keyed by the constraint's name. A rule
-	// left out is off.
-	Enabled map[string]bool
-	// MaxFrequency is the share of a rota's shifts one volunteer may work.
-	// Required when max_frequency is on, and kept as given when it is off.
-	MaxFrequency float64
+// Raw rather than decoded into model.AllocationSettings, so that an edit
+// touches only the one rule it is about. A rule of a kind this build does not
+// know, a field a newer build added to a rule, and any key beside the rules
+// all survive an edit byte for byte (ADR 0006).
+type allocationDocument struct {
+	keys  map[string]json.RawMessage
+	rules []json.RawMessage
 }
 
-// validate turns an Organiser's answers into the settings to store, or says why it
-// will not.
-//
-// Answers for rules this build does not have are dropped rather than refused.
-// Storing one would mean nothing to anything that later read it — the registry
-// is the authority on which rules exist (ADR 0006) — and the caller is told
-// what was kept, so a client working from an older list can see what happened.
-func (p AllocationSettingsParams) validate() (model.AllocationSettings, error) {
-	enabled := make(map[string]bool, len(p.Enabled))
-	for _, constraint := range model.SwitchableConstraints {
-		if p.Enabled[constraint.Name] {
-			enabled[constraint.Name] = true
+// readAllocationDocument reads what the column holds. A document this build
+// cannot read at all is started over: it already reads as no rules
+// everywhere else, and refusing to edit it would leave an Organiser no way
+// to replace it.
+func readAllocationDocument(document string) allocationDocument {
+	doc := allocationDocument{keys: map[string]json.RawMessage{}}
+	if document == "" || json.Unmarshal([]byte(document), &doc.keys) != nil {
+		doc.keys = map[string]json.RawMessage{}
+		return doc
+	}
+	if raw, ok := doc.keys["rules"]; ok {
+		if json.Unmarshal(raw, &doc.rules) != nil {
+			doc.rules = nil
 		}
 	}
-
-	settings := model.AllocationSettings{Enabled: enabled, MaxFrequency: p.MaxFrequency}
-
-	// The value is only asked for when the rule that reads it is on. Off, it
-	// is kept as given: it constrains nothing there, and blanking it would
-	// lose the number an Organiser would want back on switching the rule on again.
-	if settings.IsEnabled(model.MaxFrequencyConstraint) && (p.MaxFrequency <= 0 || p.MaxFrequency > 1) {
-		return model.AllocationSettings{}, wrapf(ErrInvalidInput,
-			"the maximum allocation frequency is a share of a rota between 0 and 1, and %v is not one", p.MaxFrequency)
-	}
-
-	return settings, nil
+	return doc
 }
 
-// SaveAllocationSettings writes which optional allocator rules apply, and
-// returns the settings as they now stand — including any answer that was
-// dropped for naming a rule this build does not have.
-func SaveAllocationSettings(
+// find returns the position of the rule with this id, or -1.
+func (d allocationDocument) find(id string) int {
+	for i, raw := range d.rules {
+		var rule struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(raw, &rule) == nil && rule.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (d allocationDocument) encode() (string, error) {
+	rules := d.rules
+	if rules == nil {
+		rules = []json.RawMessage{}
+	}
+	raw, err := json.Marshal(rules)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode allocation rules: %w", err)
+	}
+	d.keys["rules"] = raw
+
+	document, err := json.Marshal(d.keys)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode allocation settings: %w", err)
+	}
+	return string(document), nil
+}
+
+// validRule normalises a rule and says why it cannot be stored, as an
+// Organiser's mistake rather than a failure.
+func validRule(rule model.AllocationRule) (model.AllocationRule, error) {
+	rule = rule.Normalised()
+	if err := rule.Validate(); err != nil {
+		return model.AllocationRule{}, wrapf(ErrInvalidInput, "%s", err.Error())
+	}
+	return rule, nil
+}
+
+// AddAllocationRule adds a rule from the library, minting its id, and returns
+// it as stored.
+func AddAllocationRule(
 	ctx context.Context,
 	store RotaDefaultsWriteStore,
-	params AllocationSettingsParams,
+	rule model.AllocationRule,
 	logger *zap.Logger,
-) (model.AllocationSettings, error) {
-	settings, err := params.validate()
+) (model.AllocationRule, error) {
+	rule.ID = uuid.New().String()
+	rule, err := validRule(rule)
 	if err != nil {
-		return model.AllocationSettings{}, err
+		return model.AllocationRule{}, err
 	}
 
-	document, err := json.Marshal(settings)
+	raw, err := json.Marshal(rule)
 	if err != nil {
-		return model.AllocationSettings{}, fmt.Errorf("failed to encode allocation settings: %w", err)
+		return model.AllocationRule{}, fmt.Errorf("failed to encode allocation rule: %w", err)
 	}
 
-	if err := store.SaveAllocationSettings(ctx, string(document)); err != nil {
-		return model.AllocationSettings{}, fmt.Errorf("failed to save allocation settings: %w", err)
+	if err := store.UpdateAllocationSettings(ctx, func(current string) (string, error) {
+		doc := readAllocationDocument(current)
+		doc.rules = append(doc.rules, raw)
+		return doc.encode()
+	}); err != nil {
+		return model.AllocationRule{}, fmt.Errorf("failed to add allocation rule: %w", err)
 	}
 
-	logger.Info("Allocation settings saved",
-		zap.Strings("enabled", settings.EnabledConstraints()),
-		zap.Float64("max_frequency", settings.MaxFrequency))
+	logger.Info("Allocation Rule added", zap.String("rule_id", rule.ID), zap.String("kind", rule.Kind))
+	return rule, nil
+}
 
-	return settings, nil
+// EditAllocationRule replaces a rule's value, Scope and note in place and
+// returns it as stored. Its id and kind are what it is, so whatever the edit
+// says of them is ignored.
+func EditAllocationRule(
+	ctx context.Context,
+	store RotaDefaultsWriteStore,
+	id string,
+	edit model.AllocationRule,
+	logger *zap.Logger,
+) (model.AllocationRule, error) {
+	var edited model.AllocationRule
+	err := store.UpdateAllocationSettings(ctx, func(current string) (string, error) {
+		doc := readAllocationDocument(current)
+		i := doc.find(id)
+		if i < 0 {
+			return "", wrapf(ErrNotFound, "there is no Allocation Rule %q", id)
+		}
+
+		var stored model.AllocationRule
+		if err := json.Unmarshal(doc.rules[i], &stored); err != nil {
+			return "", fmt.Errorf("failed to read allocation rule %q: %w", id, err)
+		}
+
+		edit.ID = stored.ID
+		edit.Kind = stored.Kind
+		rule, err := validRule(edit)
+		if err != nil {
+			return "", err
+		}
+
+		raw, err := json.Marshal(rule)
+		if err != nil {
+			return "", fmt.Errorf("failed to encode allocation rule: %w", err)
+		}
+		doc.rules[i] = raw
+		edited = rule
+		return doc.encode()
+	})
+	if err != nil {
+		return model.AllocationRule{}, err
+	}
+
+	logger.Info("Allocation Rule edited", zap.String("rule_id", id), zap.String("kind", edited.Kind))
+	return edited, nil
+}
+
+// RemoveAllocationRule removes a rule, whatever its kind — a rule this build
+// does not understand can still be taken off.
+func RemoveAllocationRule(ctx context.Context, store RotaDefaultsWriteStore, id string, logger *zap.Logger) error {
+	err := store.UpdateAllocationSettings(ctx, func(current string) (string, error) {
+		doc := readAllocationDocument(current)
+		i := doc.find(id)
+		if i < 0 {
+			return "", wrapf(ErrNotFound, "there is no Allocation Rule %q", id)
+		}
+		doc.rules = slices.Delete(doc.rules, i, i+1)
+		return doc.encode()
+	})
+	if err != nil {
+		return err
+	}
+
+	logger.Info("Allocation Rule removed", zap.String("rule_id", id))
+	return nil
 }

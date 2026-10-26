@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -23,12 +24,16 @@ type stubRotaDefaultsStore struct {
 	savedAllocation []string
 }
 
-func (s *stubRotaDefaultsStore) SaveAllocationSettings(_ context.Context, settings string) error {
+func (s *stubRotaDefaultsStore) UpdateAllocationSettings(_ context.Context, edit func(string) (string, error)) error {
 	if s.writeErr != nil {
 		return s.writeErr
 	}
-	s.savedAllocation = append(s.savedAllocation, settings)
-	s.defaults.AllocationSettings = settings
+	next, err := edit(s.defaults.AllocationSettings)
+	if err != nil {
+		return err
+	}
+	s.savedAllocation = append(s.savedAllocation, next)
+	s.defaults.AllocationSettings = next
 	return nil
 }
 
@@ -157,110 +162,174 @@ func TestSaveShiftTimeDefaultsSurfacesAWriteFailure(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrInvalidInput)
 }
 
-// The allocation settings are stored as a JSON document, and reading them is
-// what turns it back into answers the domain can act on (issue #130).
-func TestRotaDefaultsReadsTheAllocationSettings(t *testing.T) {
+// The rules are stored as a JSON document, and reading them is what turns it
+// back into rules the domain can act on (ADR 0012).
+func TestRotaDefaultsReadsTheAllocationRules(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
-		AllocationSettings: `{"enabled":{"no_back_to_back":true,"male_required":false},"maxFrequency":0.34}`,
+		AllocationSettings: `{"rules":[{"id":"r1","kind":"shift_gap","value":2,"scope":{"exclude":["alice"]},"note":"why"}]}`,
 	}}
 
 	defaults, err := RotaDefaults(context.Background(), store)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"no_back_to_back"}, defaults.AllocationSettings.EnabledConstraints())
-	assert.Equal(t, 0.34, defaults.AllocationSettings.MaxFrequency)
+	assert.Equal(t, []model.AllocationRule{{
+		ID: "r1", Kind: "shift_gap", Value: 2, Scope: model.Scope{Exclude: []string{"alice"}}, Note: "why",
+	}}, defaults.AllocationSettings.Rules)
 }
 
 // A document this build cannot read is not allowed to take the settings screen
-// down with it: it reads as no answers, which is a state the screen renders and
-// an Organiser can fix by saving the section (ADR 0006 — never an error).
+// down with it: it reads as no rules (ADR 0006 — never an error).
 func TestRotaDefaultsToleratesUnreadableAllocationSettings(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
 		ShiftStartTime:     "19:30",
-		AllocationSettings: `{"enabled":"all of them"}`,
+		AllocationSettings: `{"rules":"all of them"}`,
 	}}
 
 	defaults, err := RotaDefaults(context.Background(), store)
 	require.NoError(t, err)
 
-	assert.Empty(t, defaults.AllocationSettings.EnabledConstraints())
+	assert.Empty(t, defaults.AllocationSettings.Rules)
 	assert.Equal(t, "19:30", defaults.ShiftStartTime, "the rest of the record still reads")
 }
 
-// Saving writes the answers as a document and reports what now stands, so the
-// screen shows what was stored rather than what was typed.
-func TestSaveAllocationSettings(t *testing.T) {
+func storedRules(t *testing.T, store *stubRotaDefaultsStore) []model.AllocationRule {
+	t.Helper()
+	defaults, err := RotaDefaults(context.Background(), store)
+	require.NoError(t, err)
+	return defaults.AllocationSettings.Rules
+}
+
+// Adding a rule mints its id, stores it cleaned up, and hands back what was
+// stored rather than what was typed.
+func TestAddAllocationRule(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
 
-	settings, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
-		Enabled:      map[string]bool{"max_frequency": true, "no_back_to_back": true},
-		MaxFrequency: 0.5,
+	added, err := AddAllocationRule(context.Background(), store, model.AllocationRule{
+		Kind: "shift_gap", Value: 1, Scope: model.Scope{Exclude: []string{" alice "}}, Note: " rest ",
 	}, zap.NewNop())
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"max_frequency", "no_back_to_back"}, settings.EnabledConstraints())
-	assert.Equal(t, 0.5, settings.MaxFrequency)
-
-	require.Len(t, store.savedAllocation, 1)
-	assert.JSONEq(t,
-		`{"enabled":{"max_frequency":true,"no_back_to_back":true},"maxFrequency":0.5}`,
-		store.savedAllocation[0])
+	assert.NotEmpty(t, added.ID)
+	assert.Equal(t, []string{"alice"}, added.Scope.Exclude)
+	assert.Equal(t, "rest", added.Note)
+	assert.Equal(t, []model.AllocationRule{added}, storedRules(t, store))
 }
 
-// An answer for a rule this build does not have is not stored. It would mean
-// nothing to anything that later read it, and the reply says what was kept so
-// a client working from an older list can see what happened.
-func TestSaveAllocationSettingsDropsUnknownRules(t *testing.T) {
+// Any kind may be added any number of times, Shift Rules included.
+func TestAKindCanBeAddedMoreThanOnce(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
-
-	settings, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
-		Enabled: map[string]bool{"male_required": true, "phase_of_the_moon": true},
-	}, zap.NewNop())
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"male_required"}, settings.EnabledConstraints())
-	require.Len(t, store.savedAllocation, 1)
-	assert.NotContains(t, store.savedAllocation[0], "phase_of_the_moon")
-}
-
-// The one rule that carries a value cannot be switched on without one. Refused
-// at the point of saving, where an Organiser can see the box they left empty.
-func TestSaveAllocationSettingsRefusesAnEnabledFrequencyWithNoValue(t *testing.T) {
-	store := &stubRotaDefaultsStore{}
-
-	_, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
-		Enabled: map[string]bool{"max_frequency": true},
-	}, zap.NewNop())
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Empty(t, store.savedAllocation, "a refused save writes nothing")
-}
-
-func TestSaveAllocationSettingsRefusesAFrequencyOutOfRange(t *testing.T) {
-	store := &stubRotaDefaultsStore{}
-
-	for _, frequency := range []float64{-0.1, 0, 1.5} {
-		_, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
-			Enabled:      map[string]bool{"max_frequency": true},
-			MaxFrequency: frequency,
-		}, zap.NewNop())
-		assert.ErrorIs(t, err, ErrInvalidInput, "frequency %v", frequency)
+	for range 2 {
+		_, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+		require.NoError(t, err)
 	}
+
+	rules := storedRules(t, store)
+	require.Len(t, rules, 2)
+	assert.NotEqual(t, rules[0].ID, rules[1].ID)
 }
 
-// A value left over from when the rule was on is stored as given rather than
-// refused: with the rule off it constrains nothing, and blanking it would lose
-// what an Organiser would want back when they switch the rule on again.
-func TestSaveAllocationSettingsKeepsTheValueWhenTheRuleIsOff(t *testing.T) {
+func TestAddAllocationRuleRefusesWhatCannotBeRepresented(t *testing.T) {
 	store := &stubRotaDefaultsStore{}
 
-	settings, err := SaveAllocationSettings(context.Background(), store, AllocationSettingsParams{
-		Enabled:      map[string]bool{"max_frequency": false},
-		MaxFrequency: 0.34,
+	_, err := AddAllocationRule(context.Background(), store, model.AllocationRule{
+		Kind: "monthly_cap", Value: 1,
+		Scope: model.Scope{Include: []string{"alice"}, Exclude: []string{"bob"}},
+	}, zap.NewNop())
+
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Empty(t, store.savedAllocation)
+}
+
+// Editing changes a rule's value, Scope and note in place. Its id and kind
+// are what it is, so they stay.
+func TestEditAllocationRule(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+	added, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_gap", Value: 1}, zap.NewNop())
+	require.NoError(t, err)
+	other, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+	require.NoError(t, err)
+
+	edited, err := EditAllocationRule(context.Background(), store, added.ID, model.AllocationRule{
+		Kind: "monthly_cap", Value: 3, Scope: model.Scope{Include: []string{"bob"}}, Note: "asked",
 	}, zap.NewNop())
 	require.NoError(t, err)
 
-	assert.Empty(t, settings.EnabledConstraints())
-	assert.Equal(t, 0.34, settings.MaxFrequency)
+	want := model.AllocationRule{
+		ID: added.ID, Kind: "shift_gap", Value: 3, Scope: model.Scope{Include: []string{"bob"}}, Note: "asked",
+	}
+	assert.Equal(t, want, edited)
+	assert.Equal(t, []model.AllocationRule{want, other}, storedRules(t, store), "in place, the order kept")
+}
+
+func TestEditAllocationRuleRefusesAnInvalidEdit(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+	added, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_gap", Value: 1}, zap.NewNop())
+	require.NoError(t, err)
+
+	_, err = EditAllocationRule(context.Background(), store, added.ID, model.AllocationRule{Value: 0}, zap.NewNop())
+
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Equal(t, []model.AllocationRule{added}, storedRules(t, store))
+}
+
+func TestEditingOrRemovingAMissingRuleIsNotFound(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+
+	_, err := EditAllocationRule(context.Background(), store, "nope", model.AllocationRule{Value: 1}, zap.NewNop())
+	require.ErrorIs(t, err, ErrNotFound)
+
+	err = RemoveAllocationRule(context.Background(), store, "nope", zap.NewNop())
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestRemoveAllocationRule(t *testing.T) {
+	store := &stubRotaDefaultsStore{}
+	first, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+	require.NoError(t, err)
+	second, err := AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "shift_gap", Value: 2}, zap.NewNop())
+	require.NoError(t, err)
+
+	require.NoError(t, RemoveAllocationRule(context.Background(), store, first.ID, zap.NewNop()))
+
+	assert.Equal(t, []model.AllocationRule{second}, storedRules(t, store))
+}
+
+// What this build does not understand is left exactly as it was: a rule of a
+// kind it does not know, a field on a rule it does not know, and anything
+// else in the document. Editing one rule must not lose what a newer build
+// wrote beside it (ADR 0006).
+func TestEditsLeaveWhatThisBuildDoesNotUnderstandAlone(t *testing.T) {
+	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
+		AllocationSettings: `{"weights":{"spread_males":3},"rules":[` +
+			`{"id":"future","kind":"phase_of_the_moon","value":3,"colour":"blue"},` +
+			`{"id":"gap","kind":"shift_gap","value":1,"scope":{}}]}`,
+	}}
+
+	_, err := EditAllocationRule(context.Background(), store, "gap", model.AllocationRule{Value: 2}, zap.NewNop())
+	require.NoError(t, err)
+	_, err = AddAllocationRule(context.Background(), store, model.AllocationRule{Kind: "male_required"}, zap.NewNop())
+	require.NoError(t, err)
+
+	var doc struct {
+		Weights json.RawMessage   `json:"weights"`
+		Rules   []json.RawMessage `json:"rules"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(store.defaults.AllocationSettings), &doc))
+	assert.JSONEq(t, `{"spread_males":3}`, string(doc.Weights))
+	require.Len(t, doc.Rules, 3)
+	assert.JSONEq(t, `{"id":"future","kind":"phase_of_the_moon","value":3,"colour":"blue"}`, string(doc.Rules[0]))
+}
+
+// A stored rule this build cannot apply is not refused at allocation: it is
+// left out, and the solve goes ahead (ADR 0006).
+func TestSettingsForAllocationIgnoresRulesItCannotApply(t *testing.T) {
+	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
+		ShiftStartTime:     "19:30",
+		ShiftEndTime:       "21:30",
+		AllocationSettings: `{"rules":[{"id":"a","kind":"phase_of_the_moon"},{"id":"b","kind":"shift_gap","value":0}]}`,
+	}}
+
+	defaults, err := settingsForAllocation(context.Background(), store, zap.NewNop())
+	require.NoError(t, err)
+	assert.Empty(t, defaults.AllocationSettings.Applicable())
 }

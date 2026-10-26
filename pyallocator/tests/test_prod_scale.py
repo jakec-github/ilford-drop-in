@@ -1,6 +1,6 @@
 """A solve at the size production asks for: 12 weekly shifts, each a Team
 lead and five Service volunteers, from about forty volunteers, with every
-switchable rule on.
+day-one Rule Kind applied to everyone.
 
 The e2e scenario is too small to notice how the solver is tuned: it is
 proved optimal in a moment whatever the parameters. This one is not. At
@@ -18,9 +18,8 @@ from __future__ import annotations
 import datetime
 import random
 
-from conftest import DEFAULT_ROLES, SERVICE_VOLUNTEER, TEAM_LEAD
+from conftest import DEFAULT_ROLES, SERVICE_VOLUNTEER, TEAM_LEAD, with_rules
 from pyallocator.api import solve
-from pyallocator.constraints import SWITCHABLE_CONSTRAINTS
 from pyallocator.domain import (
     AllocationInput,
     Group,
@@ -31,6 +30,11 @@ from pyallocator.domain import (
 )
 
 NUM_SHIFTS = 12
+
+# Every day-one kind but max_frequency, whose cap the input sets: a gap of one
+# and a monthly cap of one are what no_back_to_back and one_shift_per_month
+# were.
+EVERY_RULE = (("male_required", 0), ("shift_gap", 1), ("monthly_cap", 1))
 NUM_VOLUNTEERS = 40
 
 
@@ -85,13 +89,15 @@ def make_prod_scale_input(seed: int) -> AllocationInput:
         for i in range(NUM_SHIFTS)
     )
 
-    return AllocationInput(
-        max_allocation_count=3,
-        shifts=shifts,
-        groups=tuple(groups),
-        roles=DEFAULT_ROLES,
-        enabled_constraints=tuple(c.name for c in SWITCHABLE_CONSTRAINTS),
-        historical_shifts=historical,
+    return with_rules(
+        AllocationInput(
+            shifts=shifts,
+            groups=tuple(groups),
+            roles=DEFAULT_ROLES,
+            historical_shifts=historical,
+        ),
+        ("max_frequency", 3),
+        *EVERY_RULE,
     )
 
 

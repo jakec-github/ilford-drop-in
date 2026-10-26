@@ -115,6 +115,22 @@ func TestSaveRotaDefaultsEndpoint(t *testing.T) {
 	assert.Equal(t, "UTC", body.ShiftTimezone)
 }
 
+// Saving the times answers with the whole record, rules and all, so the screen
+// does not lose the rules it is showing by holding the answer.
+func TestSaveShiftTimesAnswersWithTheRules(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{
+		AllocationSettings: `{"rules":[{"id":"a","kind":"shift_gap","value":1,"scope":{}}]}`,
+	}}
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
+		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, organiserCookie())
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	body := rulesOf(t, rec)
+	require.Len(t, body.AllocationRules, 1)
+	assert.Equal(t, "a", body.AllocationRules[0].ID)
+}
+
 // The answer carries the zone that was filled in for an Organiser who left the
 // field blank, so the form shows what was actually stored rather than what was
 // typed.
@@ -156,99 +172,113 @@ func TestSaveRotaDefaultsEndpointRejectsBadInput(t *testing.T) {
 	}
 }
 
-// The settings record carries the rules there are as well as the answers to
-// them, because the screen cannot draw a list of switches from the answers
-// alone — a rule nobody has answered still has to appear, switched off.
-func TestGetRotaDefaultsCarriesTheConstraintRegistry(t *testing.T) {
+// rulesBody is the part of the settings record the rules section reads.
+type rulesBody struct {
+	AllocationRules []struct {
+		ID    string `json:"id"`
+		Kind  string `json:"kind"`
+		Value int    `json:"value"`
+		Scope struct {
+			Include []string `json:"include"`
+			Exclude []string `json:"exclude"`
+		} `json:"scope"`
+		Note    string `json:"note"`
+		Ignored bool   `json:"ignored"`
+	} `json:"allocationRules"`
+	RuleLibrary []struct {
+		ID         string `json:"id"`
+		Family     string `json:"family"`
+		Label      string `json:"label"`
+		ValueLabel string `json:"valueLabel"`
+		MinValue   int    `json:"minValue"`
+		MaxValue   int    `json:"maxValue"`
+	} `json:"ruleLibrary"`
+}
+
+func rulesOf(t *testing.T, rec *httptest.ResponseRecorder) rulesBody {
+	t.Helper()
+	var body rulesBody
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	return body
+}
+
+// The settings record carries the library as well as the rules, so the client
+// holds no copy of what kinds exist: the list in Go is the only one. A stored
+// rule this build cannot apply is still listed, marked ignored, so an Organiser
+// can see it and take it off.
+func TestGetRotaDefaultsCarriesTheRulesAndTheLibrary(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{
-		AllocationSettings: `{"enabled":{"no_back_to_back":true},"maxFrequency":0.34}`,
+		AllocationSettings: `{"rules":[` +
+			`{"id":"a","kind":"shift_gap","value":2,"scope":{"exclude":["alice"]},"note":"rest"},` +
+			`{"id":"b","kind":"phase_of_the_moon"}]}`,
 	}}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", organiserCookie())
-
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	body := rulesOf(t, rec)
 
-	var body struct {
-		AllocationSettings struct {
-			Enabled      map[string]bool `json:"enabled"`
-			MaxFrequency float64         `json:"maxFrequency"`
-		} `json:"allocationSettings"`
-		SwitchableConstraints []struct {
-			Name       string `json:"name"`
-			Label      string `json:"label"`
-			ValueLabel string `json:"valueLabel"`
-		} `json:"switchableConstraints"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.RuleLibrary, 4)
+	assert.Equal(t, "max_frequency", body.RuleLibrary[0].ID)
+	assert.Equal(t, "volunteer", body.RuleLibrary[0].Family)
+	assert.NotEmpty(t, body.RuleLibrary[0].ValueLabel)
+	assert.Equal(t, 100, body.RuleLibrary[0].MaxValue)
+	assert.Equal(t, "shift", body.RuleLibrary[3].Family)
 
-	require.Len(t, body.SwitchableConstraints, 4)
-	assert.Equal(t, "max_frequency", body.SwitchableConstraints[0].Name)
-	assert.NotEmpty(t, body.SwitchableConstraints[0].Label)
-	assert.NotEmpty(t, body.SwitchableConstraints[0].ValueLabel,
-		"the one rule carrying a value says so, so the screen knows to ask for one")
-
-	// Every rule has a definite answer, including the three nobody answered.
-	assert.Equal(t, map[string]bool{
-		"max_frequency":       false,
-		"male_required":       false,
-		"no_back_to_back":     true,
-		"one_shift_per_month": false,
-	}, body.AllocationSettings.Enabled)
-	assert.Equal(t, 0.34, body.AllocationSettings.MaxFrequency)
+	require.Len(t, body.AllocationRules, 2)
+	assert.Equal(t, "a", body.AllocationRules[0].ID)
+	assert.Equal(t, 2, body.AllocationRules[0].Value)
+	assert.Equal(t, []string{"alice"}, body.AllocationRules[0].Scope.Exclude)
+	assert.NotNil(t, body.AllocationRules[0].Scope.Include, "an empty list is a list, not null")
+	assert.Equal(t, "rest", body.AllocationRules[0].Note)
+	assert.False(t, body.AllocationRules[0].Ignored)
+	assert.True(t, body.AllocationRules[1].Ignored)
 }
 
-func TestSaveAllocationSettingsEndpoint(t *testing.T) {
-	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
+// Every change to a rule answers with the whole settings record, so the screen
+// holds one thing after any save.
+func TestAllocationRuleEndpoints(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{ShiftStartTime: "19:30"}}
+	handler := newTestHandler(store, testVolunteers())
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
-		"/api/rota-defaults/allocation-settings",
-		`{"enabled":{"male_required":true,"max_frequency":true},"maxFrequency":0.5}`, organiserCookie())
-
+	rec := doRequest(t, handler, http.MethodPost, "/api/rota-defaults/allocation-rules",
+		`{"kind":"monthly_cap","value":1,"scope":{"include":["alice"],"exclude":[]},"note":"once a month"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Len(t, store.savedAllocationSettings, 1)
-	assert.JSONEq(t,
-		`{"enabled":{"male_required":true,"max_frequency":true},"maxFrequency":0.5}`,
-		store.savedAllocationSettings[0])
+	rules := rulesOf(t, rec).AllocationRules
+	require.Len(t, rules, 1)
+	id := rules[0].ID
+	assert.NotEmpty(t, id)
+	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime, "it is the whole record")
 
-	// The reply is the whole section as it now stands, so the screen shows what
-	// was stored rather than what was typed.
-	assert.JSONEq(t, `{
-		"enabled": {"max_frequency": true, "male_required": true,
-		            "no_back_to_back": false, "one_shift_per_month": false},
-		"maxFrequency": 0.5
-	}`, rec.Body.String())
-}
-
-// Saving one section of the settings leaves the others alone — the store is
-// told about this section only.
-func TestSaveAllocationSettingsLeavesTheShiftTimesAlone(t *testing.T) {
-	store := &mockStore{}
-
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
-		"/api/rota-defaults/allocation-settings", `{"enabled":{"no_back_to_back":true}}`, organiserCookie())
-
+	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/allocation-rules/"+id,
+		`{"value":2,"scope":{"include":[],"exclude":["bob"]},"note":""}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Empty(t, store.savedRotaDefaults, "the shift-time section is not written")
+	rules = rulesOf(t, rec).AllocationRules
+	require.Len(t, rules, 1)
+	assert.Equal(t, "monthly_cap", rules[0].Kind)
+	assert.Equal(t, 2, rules[0].Value)
+	assert.Equal(t, []string{"bob"}, rules[0].Scope.Exclude)
 
-	rec = doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rota-defaults", "", organiserCookie())
-	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
+	rec = doRequest(t, handler, http.MethodDelete, "/api/rota-defaults/allocation-rules/"+id, "", organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Empty(t, rulesOf(t, rec).AllocationRules)
 }
 
 // An Organiser's mistake is a 400 carrying the service's own message, not a 500.
-func TestSaveAllocationSettingsRejectsBadInput(t *testing.T) {
+func TestAddAllocationRuleRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
-		"frequency on with no value": `{"enabled":{"max_frequency":true}}`,
-		"frequency out of range":     `{"enabled":{"max_frequency":true},"maxFrequency":4}`,
-		"unknown field":              `{"enabled":{},"maxAllocationFrequency":0.5}`,
-		"not json":                   `nonsense`,
+		"an unknown kind":         `{"kind":"phase_of_the_moon"}`,
+		"a value out of range":    `{"kind":"max_frequency","value":400}`,
+		"including and excluding": `{"kind":"shift_gap","value":1,"scope":{"include":["a"],"exclude":["b"]}}`,
+		"an unknown field":        `{"kind":"male_required","colour":"blue"}`,
+		"not json":                `nonsense`,
 	}
 
 	for name, request := range cases {
 		t.Run(name, func(t *testing.T) {
 			store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut,
-				"/api/rota-defaults/allocation-settings", request, organiserCookie())
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost,
+				"/api/rota-defaults/allocation-rules", request, organiserCookie())
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Empty(t, store.savedAllocationSettings)
@@ -256,11 +286,15 @@ func TestSaveAllocationSettingsRejectsBadInput(t *testing.T) {
 	}
 }
 
-func TestSaveAllocationSettingsIsOrganiserOnly(t *testing.T) {
-	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodPut,
-		"/api/rota-defaults/allocation-settings", `{"enabled":{}}`)
+func TestEditingAMissingAllocationRuleIsNotFound(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
+	handler := newTestHandler(store, testVolunteers())
 
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	rec := doRequest(t, handler, http.MethodPut, "/api/rota-defaults/allocation-rules/nope", `{"value":1}`, organiserCookie())
+	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+
+	rec = doRequest(t, handler, http.MethodDelete, "/api/rota-defaults/allocation-rules/nope", "", organiserCookie())
+	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
 // Saving the Shape answers with the whole settings record, so the screen holds

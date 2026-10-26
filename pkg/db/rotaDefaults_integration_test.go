@@ -2,6 +2,10 @@ package db_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,30 +92,90 @@ func TestSaveRotaDefaultsRefusesEndBeforeStart(t *testing.T) {
 	require.Error(t, err)
 }
 
-// The allocation settings are one section of the record, saved on their own.
-// The JSON is stored and returned verbatim: what the answers mean is the
-// domain's business, and the database only has to keep them (issue #130).
-func TestSaveAllocationSettings(t *testing.T) {
+// The allocation settings are one section of the record, edited on their own.
+// The document is stored and returned verbatim: what the rules in it mean is
+// the domain's business, and the database only has to keep them (ADR 0012).
+func TestUpdateAllocationSettings(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
-	require.NoError(t, database.SaveAllocationSettings(ctx,
-		`{"enabled":{"no_back_to_back":true},"maxFrequency":0.34}`))
+	var seen []string
+	edit := func(next string) func(string) (string, error) {
+		return func(current string) (string, error) {
+			seen = append(seen, current)
+			return next, nil
+		}
+	}
+
+	require.NoError(t, database.UpdateAllocationSettings(ctx, edit(`{"rules":[{"id":"1"}]}`)))
+	require.NoError(t, database.UpdateAllocationSettings(ctx, edit(`{"rules":[{"id":"2"}]}`)))
+
+	assert.Equal(t, "", seen[0], "the first edit starts from nothing")
+	assert.JSONEq(t, `{"rules":[{"id":"1"}]}`, seen[1], "each edit starts from the last one's document")
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"enabled":{"no_back_to_back":true},"maxFrequency":0.34}`,
-		defaults.AllocationSettings)
+	assert.JSONEq(t, `{"rules":[{"id":"2"}]}`, defaults.AllocationSettings)
+}
+
+// An edit that refuses writes nothing, so a refused rule leaves the others as
+// they were.
+func TestUpdateAllocationSettingsWritesNothingWhenTheEditRefuses(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+	require.NoError(t, database.UpdateAllocationSettings(ctx, func(string) (string, error) {
+		return `{"rules":[{"id":"1"}]}`, nil
+	}))
+
+	refused := errors.New("refused")
+	err := database.UpdateAllocationSettings(ctx, func(string) (string, error) {
+		return `{"rules":[]}`, refused
+	})
+	require.ErrorIs(t, err, refused)
+
+	defaults, err := database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"rules":[{"id":"1"}]}`, defaults.AllocationSettings)
+}
+
+// Two edits at once each see the other's result rather than overwriting it:
+// editing one rule must never lose a rule somebody else added meanwhile.
+func TestConcurrentAllocationSettingsEditsBothLand(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, database.UpdateAllocationSettings(ctx, func(current string) (string, error) {
+				count := 0
+				if current != "" {
+					count = len(strings.Split(current, "x")) - 1
+				}
+				return fmt.Sprintf(`{"rules":"%s"}`, strings.Repeat("x", count+1)), nil
+			}))
+		}()
+	}
+	wg.Wait()
+
+	defaults, err := database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"rules":"xxxxxxxx"}`, defaults.AllocationSettings)
 }
 
 // Each section of the settings is saved without touching the others, so an
-// Organiser editing the toggles cannot blank the shift times and the other way
+// Organiser editing the rules cannot blank the shift times and the other way
 // round.
 func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
+	write := func(document string) func(string) (string, error) {
+		return func(string) (string, error) { return document, nil }
+	}
 
-	require.NoError(t, database.SaveAllocationSettings(ctx, `{"enabled":{"male_required":true}}`))
+	require.NoError(t, database.UpdateAllocationSettings(ctx, write(`{"rules":[{"id":"1"}]}`)))
 	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
 		ShiftStartTime: "19:30",
 		ShiftEndTime:   "21:30",
@@ -121,10 +185,10 @@ func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "19:30", defaults.ShiftStartTime)
-	assert.JSONEq(t, `{"enabled":{"male_required":true}}`, defaults.AllocationSettings)
+	assert.JSONEq(t, `{"rules":[{"id":"1"}]}`, defaults.AllocationSettings)
 
-	// And the other way round: saving the toggles leaves the times alone.
-	require.NoError(t, database.SaveAllocationSettings(ctx, `{"enabled":{}}`))
+	// And the other way round: editing the rules leaves the times alone.
+	require.NoError(t, database.UpdateAllocationSettings(ctx, write(`{"rules":[]}`)))
 
 	defaults, err = database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
@@ -141,11 +205,13 @@ func TestGetAllocationSettingsUnset(t *testing.T) {
 	assert.Empty(t, defaults.AllocationSettings)
 }
 
-// The column holds a mapping of answers. Anything else is a bug in whatever
-// wrote it, and the database is what stops it being stored.
-func TestSaveAllocationSettingsRefusesANonObject(t *testing.T) {
+// The column holds a document. Anything else is a bug in whatever wrote it,
+// and the database is what stops it being stored.
+func TestUpdateAllocationSettingsRefusesANonObject(t *testing.T) {
 	database, _ := dbtest.New(t)
 
-	err := database.SaveAllocationSettings(context.Background(), `["no_back_to_back"]`)
+	err := database.UpdateAllocationSettings(context.Background(), func(string) (string, error) {
+		return `["no_back_to_back"]`, nil
+	})
 	require.Error(t, err)
 }

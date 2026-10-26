@@ -90,10 +90,31 @@ class ShiftSpec:
 
 @dataclass(frozen=True)
 class HistoricalShift:
-    """A past shift; group_keys are Go-derived. Sorted ascending by date."""
+    """A past shift; group_keys are Go-derived. Sorted ascending by date.
+
+    Every shift of the previous rota is sent, a Closed one or one nobody
+    worked with no group_keys, so that position in history is a count of
+    shifts back — what a shift gap is measured in.
+    """
 
     date: str
     group_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Rule:
+    """One Allocation Rule an Organiser added (ADR 0012).
+
+    kind names an entry in constraints.RULE_KINDS; a kind this build does not
+    have is ignored. volunteer_ids is the rule's Scope, resolved in Go to the
+    volunteers it covers — empty for a Shift Rule, which has none. value is
+    the one number the kind asks for, already in the solver's terms: a
+    max_frequency percentage arrives as a count of shifts.
+    """
+
+    kind: str
+    volunteer_ids: tuple[str, ...] = ()
+    value: int = 0
 
 
 @dataclass(frozen=True)
@@ -103,18 +124,16 @@ class AllocationInput:
     roles is the configured Role set every Seat, tick and pin is matched
     against.
 
-    enabled_constraints names the optional rules this run applies, from the
-    Organiser's Allocation Settings. Which rules those names may be is
-    constraints.SWITCHABLE_CONSTRAINTS' business; an unrecognised one is
-    ignored. Empty means the fundamentals only — a rule nobody has switched
-    on is off, and there is no default list on this side (ADR 0006).
+    rules are the Organiser's Allocation Rules, in the order they were added.
+    The solve applies one constraint for each on top of the fundamentals.
+    Empty means the fundamentals only — there is no default list on this side
+    (ADR 0006).
     """
 
-    max_allocation_count: int
     shifts: tuple[ShiftSpec, ...]
     groups: tuple[Group, ...]
     roles: tuple[Role, ...] = ()
-    enabled_constraints: tuple[str, ...] = ()
+    rules: tuple[Rule, ...] = ()
     historical_shifts: tuple[HistoricalShift, ...] = ()
 
 

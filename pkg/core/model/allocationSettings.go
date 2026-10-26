@@ -1,177 +1,271 @@
 package model
 
-import "slices"
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+)
 
-// SwitchableConstraint is one optional allocator rule an Organiser can switch on.
-//
-// Name is the contract: it is the key the settings record stores an answer
-// under, and the name the solver is sent. It matches a constraint in
-// pyallocator's SWITCHABLE_CONSTRAINTS exactly — that registry is the authority
-// on what the rule *does* (ADR 0006), and this list is what an Organiser is offered.
-// The two are pinned by a test on each side, because a name that drifts would
-// quietly switch a rule off on every deployment that had it on.
+// RuleFamily says what an Allocation Rule is about: what each Shift must
+// contain, or what any one volunteer may be given (ADR 0012).
+type RuleFamily string
+
+const (
+	// ShiftRuleFamily rules apply to every Shift and carry no Scope.
+	ShiftRuleFamily RuleFamily = "shift"
+	// VolunteerRuleFamily rules apply to the volunteers their Scope covers.
+	VolunteerRuleFamily RuleFamily = "volunteer"
+)
+
+// The Rule Kinds this build has. Each id is the contract: it is what a stored
+// rule names, and the kind the solver is sent. It matches a kind in
+// pyallocator's RULE_KINDS exactly — that registry is the authority on what a
+// kind *does*, and this library is what an Organiser is offered. The two are
+// pinned by a test on each side, because an id that drifts would quietly stop
+// every stored rule of that kind applying.
+const (
+	MaxFrequencyKind = "max_frequency"
+	ShiftGapKind     = "shift_gap"
+	MonthlyCapKind   = "monthly_cap"
+	MaleRequiredKind = "male_required"
+)
+
+// RuleKind is one entry in the Rule Library: a kind of rule an Organiser can
+// add, any number of times.
 //
 // Label and Description are the screen's words. They live here rather than in
-// the client so that adding a rule is one edit in one language, and so the
-// answer to "what does this toggle do?" is next to the name it is keyed by.
-type SwitchableConstraint struct {
-	Name        string
+// the client so that adding a kind is one edit in one language, next to the id
+// it is keyed by.
+type RuleKind struct {
+	ID          string
+	Family      RuleFamily
 	Label       string
 	Description string
-	// ValueLabel names the extra answer a rule needs beyond on-or-off, empty
-	// for the rules that need none. Only max_frequency has one, and the
-	// screen renders a field for it when the toggle is on.
+	// ValueLabel names the one value a rule of this kind carries, empty for a
+	// kind that carries none. MinValue and MaxValue bound it, inclusive.
 	ValueLabel string
+	MinValue   int
+	MaxValue   int
 }
 
-// SwitchableConstraints is the registry: the optional rules that exist, in the
-// order they are offered. Order is the solver's too — EnabledConstraints sorts
-// by it — so a run is built the same way whatever order the answers were saved
-// in.
+// HasValue reports whether a rule of this kind carries a value.
+func (k RuleKind) HasValue() bool {
+	return k.ValueLabel != ""
+}
+
+// RuleLibrary is every Rule Kind this build has, in the order they are offered.
+//
+// Every kind in it can be satisfied by leaving Seats empty, so no set of
+// Allocation Rules can stop a rota being allocated (ADR 0012). A kind that
+// demands something of a Shift must carry an escape before it may join.
 //
 // The fundamental constraints are deliberately absent. A rota without them is
 // not a rota, so they are not an Organiser's decision to make.
-var SwitchableConstraints = []SwitchableConstraint{
+var RuleLibrary = []RuleKind{
 	{
-		Name:        MaxFrequencyConstraint,
+		ID:          MaxFrequencyKind,
+		Family:      VolunteerRuleFamily,
 		Label:       "Cap how often somebody works",
-		Description: "No volunteer is allocated more than a set share of a rota's shifts.",
+		Description: "Nobody covered works more than a set share of a rota's shifts. Rounds down, but never to none.",
 		ValueLabel:  "Most of a rota one person may work (%)",
+		MinValue:    1,
+		MaxValue:    100,
 	},
 	{
-		Name:        "male_required",
-		Label:       "Always include a male on a shift",
+		ID:          ShiftGapKind,
+		Family:      VolunteerRuleFamily,
+		Label:       "A gap between shifts",
+		Description: "Between any two shifts somebody covered works, there are at least this many they do not. Closed shifts count, and so does the end of the previous rota. A gap of 1 means no back-to-back shifts.",
+		ValueLabel:  "Shifts off between two worked",
+		MinValue:    1,
+		MaxValue:    52,
+	},
+	{
+		ID:          MonthlyCapKind,
+		Family:      VolunteerRuleFamily,
+		Label:       "A limit on shifts a month",
+		Description: "Nobody covered works more than this many shifts in one calendar month, counting shifts already worked that month in the previous rota.",
+		ValueLabel:  "Most shifts in one month",
+		MinValue:    1,
+		MaxValue:    31,
+	},
+	{
+		ID:     MaleRequiredKind,
+		Family: ShiftRuleFamily,
+		Label:  "Require a male",
 		// Worded as what the rule asks for and what it costs when the roster
 		// cannot give it. The mechanism — a Seat held open for somebody to be
 		// added into by hand — is how "left unfilled" happens rather than a
 		// second thing the rule does, so it is said once, in those terms.
 		Description: "Every shift has a male volunteer on it. Where that is not possible the shift is left unfilled, with a seat kept open for one to be added by hand.",
 	},
-	{
-		Name:        "no_back_to_back",
-		Label:       "No back-to-back shifts",
-		Description: "Nobody works two shifts in a row, counting the last shift of the previous rota.",
-	},
-	{
-		Name:        "one_shift_per_month",
-		Label:       "At most one shift a month",
-		Description: "Nobody works twice in the same calendar month. Often impossible to satisfy at real volunteer numbers.",
-	},
 }
 
-// AllocationSettings is which optional allocator rules apply: an Organiser's
-// answers, not the rules themselves.
+// RuleKindByID finds a kind in the library. The second result is false for an
+// id this build does not have.
+func RuleKindByID(id string) (RuleKind, bool) {
+	for _, k := range RuleLibrary {
+		if k.ID == id {
+			return k, true
+		}
+	}
+	return RuleKind{}, false
+}
+
+// Scope is which volunteers a Volunteer Rule covers: an include list and an
+// exclude list, at most one of them naming anybody (ADR 0012). Both empty
+// covers everyone.
 //
-// Every field is a zero value until an Organiser saves the section, and that reads
-// as every rule off. Unset is the ordinary first state of a deployment rather
-// than a fault (ADR 0006) — a rota allocated with none of these switched on is
-// a legal rota, just an unconstrained one.
+// It names volunteers by roster id, and a name that has left the roster stays
+// on it, covering nobody, until somebody removes it.
+type Scope struct {
+	Include []string `json:"include,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
+}
+
+// Covers reports whether the rule applies to this volunteer.
+func (s Scope) Covers(volunteerID string) bool {
+	if len(s.Include) > 0 {
+		return slices.Contains(s.Include, volunteerID)
+	}
+	return !slices.Contains(s.Exclude, volunteerID)
+}
+
+// IsEmpty reports whether the Scope names nobody, and so covers everyone.
+func (s Scope) IsEmpty() bool {
+	return len(s.Include) == 0 && len(s.Exclude) == 0
+}
+
+// normalised trims each id, drops blanks and repeats, and keeps the order an
+// Organiser named them in.
+func (s Scope) normalised() Scope {
+	return Scope{Include: cleanIDs(s.Include), Exclude: cleanIDs(s.Exclude)}
+}
+
+func cleanIDs(ids []string) []string {
+	var cleaned []string
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" && !slices.Contains(cleaned, id) {
+			cleaned = append(cleaned, id)
+		}
+	}
+	return cleaned
+}
+
+// AllocationRule is one Rule Kind added by an Organiser, with its own value
+// and, for a Volunteer Rule, its own Scope.
 //
-// The JSON tags are the stored document: this type is what the
-// allocation_settings column holds, not a view of it. Decoding ignores keys it
-// does not know, which is exactly the leniency ADR 0006 asks for — a document
-// written by a build that had a rule this one does not still reads.
+// The JSON tags are the stored document: this type is what each entry of the
+// allocation_settings column's rules holds, not a view of it.
+type AllocationRule struct {
+	// ID identifies the rule so it can be edited or removed in place. It is
+	// minted when the rule is added and never changes.
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Value is the one number the kind asks for — a percentage, a gap, a
+	// monthly limit — and zero for a kind that asks for none.
+	Value int   `json:"value,omitempty"`
+	Scope Scope `json:"scope"`
+	// Note says why the rule was added. The allocator never reads it.
+	Note string `json:"note,omitempty"`
+}
+
+// Normalised is the rule as it is stored: Scope ids cleaned up and the note
+// trimmed.
+func (r AllocationRule) Normalised() AllocationRule {
+	r.Scope = r.Scope.normalised()
+	r.Note = strings.TrimSpace(r.Note)
+	return r
+}
+
+// Validate says why a rule cannot be stored, or nil when it can. It refuses only
+// what cannot be represented: a kind this build does not have, a value outside
+// what the kind means, a Scope including and excluding at once, or a Scope on a
+// rule that has nobody to scope.
+func (r AllocationRule) Validate() error {
+	kind, ok := RuleKindByID(r.Kind)
+	if !ok {
+		return fmt.Errorf("there is no rule called %q", r.Kind)
+	}
+
+	if kind.HasValue() {
+		if r.Value < kind.MinValue || r.Value > kind.MaxValue {
+			return fmt.Errorf("%q needs a value from %d to %d, and %d is not one",
+				kind.Label, kind.MinValue, kind.MaxValue, r.Value)
+		}
+	} else if r.Value != 0 {
+		return fmt.Errorf("%q takes no value", kind.Label)
+	}
+
+	if kind.Family == ShiftRuleFamily && !r.Scope.IsEmpty() {
+		return fmt.Errorf("%q applies to every shift, so it cannot name volunteers", kind.Label)
+	}
+	if len(r.Scope.Include) > 0 && len(r.Scope.Exclude) > 0 {
+		return errors.New("a rule can include volunteers or exclude them, not both at once")
+	}
+
+	return nil
+}
+
+// AllocationSettings is everything an Organiser decides about how the allocator
+// solves: its Allocation Rules today, and in time the weights on its
+// preferences.
+//
+// The JSON tags are the stored document. Decoding ignores keys it does not
+// know, which is the leniency ADR 0006 asks for: a document written by a build
+// with more in it still reads.
 type AllocationSettings struct {
-	// Enabled holds one answer per rule, keyed by SwitchableConstraint.Name.
-	// A missing key and a stored false mean the same thing: off. A key naming
-	// a rule this build does not have is ignored — see UnknownConstraints.
-	Enabled map[string]bool `json:"enabled,omitempty"`
-	// MaxFrequency is the share of a rota's shifts one volunteer may work,
-	// between 0 and 1. Read only when max_frequency is enabled; zero when an
-	// Organiser has never set it.
-	//
-	// It is a top-level field rather than something hanging off the toggle
-	// because it is the only rule that carries a value. A second one would get
-	// its own field here — a change to the document, which is a change to no
-	// schema at all.
-	MaxFrequency float64 `json:"maxFrequency,omitempty"`
+	Rules []AllocationRule `json:"rules,omitempty"`
 }
 
-// MaxFrequencyConstraint is the one switchable rule that carries a value as
-// well as a switch, named here so the places that special-case it say which
-// rule they mean.
-const MaxFrequencyConstraint = "max_frequency"
-
-// IsEnabled reports whether a rule applies. An unknown name is not enabled,
-// which is what makes a withdrawn rule harmless.
-func (s AllocationSettings) IsEnabled(name string) bool {
-	return s.Enabled[name]
-}
-
-// EnabledConstraints names the rules this allocation applies, in registry
-// order. It is what the solver is sent.
-//
-// It is built by walking the registry rather than the stored answers, so a key
-// naming a rule that no longer exists cannot reach the solver at all.
-func (s AllocationSettings) EnabledConstraints() []string {
-	var enabled []string
-	for _, c := range SwitchableConstraints {
-		if s.Enabled[c.Name] {
-			enabled = append(enabled, c.Name)
+// Applicable is the rules the solve applies, in the order they were added: every
+// stored rule this build understands. A rule of a kind it does not have, or one
+// whose stored values no longer validate, is left out rather than refused — see
+// Ignored.
+func (s AllocationSettings) Applicable() []AllocationRule {
+	var applicable []AllocationRule
+	for _, r := range s.Rules {
+		if r.Validate() == nil {
+			applicable = append(applicable, r)
 		}
 	}
-	return enabled
+	return applicable
 }
 
-// UnknownConstraints names stored answers this build has no rule for, so an
-// operator can be told why a rule they remember switching on stopped applying.
-//
-// Only answers that asked for something are named. A stored false for a
-// withdrawn rule asks for nothing, so dropping it is not news.
-func (s AllocationSettings) UnknownConstraints() []string {
-	known := make(map[string]bool, len(SwitchableConstraints))
-	for _, c := range SwitchableConstraints {
-		known[c.Name] = true
-	}
-
-	var unknown []string
-	for name, on := range s.Enabled {
-		if on && !known[name] {
-			unknown = append(unknown, name)
+// Ignored is the stored rules the solve leaves out, so an operator can be told
+// why a rule somebody added stopped applying.
+func (s AllocationSettings) Ignored() []AllocationRule {
+	var ignored []AllocationRule
+	for _, r := range s.Rules {
+		if r.Validate() != nil {
+			ignored = append(ignored, r)
 		}
 	}
-	slices.Sort(unknown)
-	return unknown
+	return ignored
 }
 
-// Missing names the answers an Organiser has yet to give that a rule they switched
-// on needs, worded as they read on the Settings screen. Empty means these
-// settings can be allocated against.
-//
-// Only max_frequency can be incomplete: it is the one rule carrying a value as
-// well as a switch, so it is the one that can be on and still say nothing.
-func (s AllocationSettings) Missing() []string {
-	var missing []string
-	if s.IsEnabled(MaxFrequencyConstraint) && !validFrequency(s.MaxFrequency) {
-		missing = append(missing, "the maximum allocation frequency")
+// RuleByID finds a stored rule. The second result is false when there is none.
+func (s AllocationSettings) RuleByID(id string) (AllocationRule, bool) {
+	for _, r := range s.Rules {
+		if r.ID == id {
+			return r, true
+		}
 	}
-	return missing
+	return AllocationRule{}, false
 }
 
-// MaxAllocationCount turns the frequency into the cap the solver works in: how
-// many of this rota's shifts one volunteer may be given.
+// MaxAllocationCount turns a "cap how often somebody works" percentage into the
+// cap the solver works in: how many of this rota's shifts one volunteer may be
+// given.
 //
-// With the rule off it is every shift in the rota — a cap nothing can trip
-// over. The solver is not sent the constraint at all in that case, so this is
-// belt and braces rather than the mechanism, and it means the number in the
-// contract is never a nonsense one.
-//
-// It rounds down, as the config-derived cap always did, but never to zero: a
-// frequency an Organiser set to mean "not often" must not come out meaning "never".
-func (s AllocationSettings) MaxAllocationCount(shiftCount int) int {
-	if !s.IsEnabled(MaxFrequencyConstraint) || !validFrequency(s.MaxFrequency) {
-		return shiftCount
-	}
-
-	count := int(float64(shiftCount) * s.MaxFrequency)
+// It rounds down, as the cap always has, but never to zero: a share an Organiser
+// set to mean "not often" must not come out meaning "never".
+func MaxAllocationCount(percent, shiftCount int) int {
+	count := shiftCount * percent / 100
 	if count < 1 {
 		return 1
 	}
 	return count
-}
-
-// validFrequency reports whether a share of a rota is one an Organiser could have
-// meant: more than none of it, and no more than all of it.
-func validFrequency(frequency float64) bool {
-	return frequency > 0 && frequency <= 1
 }

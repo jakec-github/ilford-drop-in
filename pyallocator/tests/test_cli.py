@@ -66,7 +66,7 @@ def test_infeasible_exit_zero(tmp_path, monkeypatch):
     # still has to report rather than crash should one ever reach it, so a
     # contradiction is patched in as the run's only rule.
     monkeypatch.setattr(
-        "pyallocator.api.constraints_for", lambda enabled: [_Contradiction()]
+        "pyallocator.api.constraints_for", lambda rules: [_Contradiction()]
     )
     code, out = run_cli(tmp_path, VALID_INPUT)
     assert code == 0
@@ -79,11 +79,12 @@ def test_no_groups_solves_with_every_seat_unfilled(tmp_path):
     # (issue #188). The solve is as ordinary as any other, and the rota it
     # answers with is empty but for the pins, which need nobody to answer.
     payload = json.loads(json.dumps(VALID_INPUT))
-    payload["enabled_constraints"] = [
-        "max_frequency",
-        "male_required",
-        "no_back_to_back",
-        "one_shift_per_month",
+    # Every kind, naming nobody: with no groups there is nobody to cover.
+    payload["rules"] = [
+        {"kind": "max_frequency", "volunteer_ids": [], "value": 1},
+        {"kind": "male_required", "volunteer_ids": [], "value": 0},
+        {"kind": "shift_gap", "volunteer_ids": [], "value": 1},
+        {"kind": "monthly_cap", "volunteer_ids": [], "value": 1},
     ]
     payload["groups"] = []
     payload["shifts"].append(

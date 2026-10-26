@@ -19,6 +19,7 @@ from .domain import (
     OutputShift,
     Preallocation,
     Role,
+    Rule,
     Seat,
     ShiftSpec,
 )
@@ -159,6 +160,18 @@ def _parse_historical_shift(d: dict[str, Any], where: str) -> HistoricalShift:
     )
 
 
+def _parse_rule(d: dict[str, Any], where: str) -> Rule:
+    if not isinstance(d, dict):
+        raise InputError(f"{where}: expected object, got {type(d).__name__}")
+    # The kind is not checked against the registry: one this build does not
+    # have is ignored by the solve, not refused (ADR 0006).
+    return Rule(
+        kind=_require(d, "kind", str, where),
+        volunteer_ids=_str_tuple(d, "volunteer_ids", where),
+        value=_optional(d, "value", int, 0, where),
+    )
+
+
 def parse_input(data: Any) -> AllocationInput:
     """Convert a decoded-JSON dict into an AllocationInput, validating shape."""
     if not isinstance(data, dict):
@@ -168,6 +181,7 @@ def parse_input(data: Any) -> AllocationInput:
     groups_raw = _require(data, "groups", list, "input")
     roles_raw = _require(data, "roles", list, "input")
     historical_raw = _optional(data, "historical_shifts", list, [], "input")
+    rules_raw = _optional(data, "rules", list, [], "input")
 
     roles = tuple(_parse_role(r, f"input.roles[{i}]") for i, r in enumerate(roles_raw))
     role_names = {r.name for r in roles}
@@ -213,11 +227,10 @@ def parse_input(data: Any) -> AllocationInput:
                 )
 
     return AllocationInput(
-        max_allocation_count=_require(data, "max_allocation_count", int, "input"),
         shifts=shifts,
         groups=groups,
         roles=roles,
-        enabled_constraints=_str_tuple(data, "enabled_constraints", "input"),
+        rules=tuple(_parse_rule(r, f"input.rules[{i}]") for i, r in enumerate(rules_raw)),
         historical_shifts=tuple(
             _parse_historical_shift(h, f"input.historical_shifts[{i}]")
             for i, h in enumerate(historical_raw)

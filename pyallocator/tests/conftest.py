@@ -15,6 +15,7 @@ customs read the solved shift back the same way round.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Sequence
 
 from pyallocator.api import solve
@@ -27,10 +28,11 @@ from pyallocator.domain import (
     OutputShift,
     Preallocation,
     Role,
+    Rule,
     Seat,
     ShiftSpec,
 )
-from pyallocator.constraints import grouping
+from pyallocator.constraints import grouping, rule_constraints
 from pyallocator.preferences import maximize_allocations
 
 # The two Roles the system had before they were configurable. Tests that do
@@ -130,19 +132,46 @@ def make_input(
     groups: Sequence[Group],
     shifts: Sequence[ShiftSpec],
     *,
-    max_allocation_count: int = 99,
     historical_shifts: Sequence[HistoricalShift] = (),
     roles: Sequence[Role] = DEFAULT_ROLES,
-    enabled_constraints: Sequence[str] = (),
+    rules: Sequence[Rule | tuple[str, int]] = (),
 ) -> AllocationInput:
+    """rules takes a Rule, or a (kind, value) pair for a rule covering
+    everyone (see covering_everyone)."""
     return AllocationInput(
-        max_allocation_count=max_allocation_count,
         shifts=tuple(shifts),
         groups=tuple(groups),
         roles=tuple(roles),
-        enabled_constraints=tuple(enabled_constraints),
+        rules=tuple(
+            r if isinstance(r, Rule) else covering_everyone(groups, r)[0] for r in rules
+        ),
         historical_shifts=tuple(historical_shifts),
     )
+
+
+# The Shift Rule kinds: they carry no Scope, so Go sends them naming nobody.
+SHIFT_KINDS = {"male_required"}
+
+
+def covering_everyone(groups: Sequence[Group], *rules: tuple[str, int]) -> tuple[Rule, ...]:
+    """Rules from (kind, value) pairs, each covering every volunteer in
+    `groups` — the Scope most tests mean, resolved the way Go resolves an
+    empty one."""
+    everyone = tuple(m.id for g in groups for m in g.members)
+    return tuple(
+        Rule(kind=kind, volunteer_ids=() if kind in SHIFT_KINDS else everyone, value=value)
+        for kind, value in rules
+    )
+
+
+def with_rules(input_: AllocationInput, *rules: tuple[str, int]) -> AllocationInput:
+    """The input with these rules, each covering everyone in it."""
+    return replace(input_, rules=covering_everyone(input_.groups, *rules))
+
+
+def rules_of(input_: AllocationInput) -> list:
+    """The constraints the input's rules make, for solve_with."""
+    return rule_constraints(input_.rules)
 
 
 def solve_with(

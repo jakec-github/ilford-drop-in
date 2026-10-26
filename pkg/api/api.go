@@ -200,7 +200,9 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("GET /rota-defaults", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaDefaults)))
 	api.Handle("PUT /rota-defaults/shift-times", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
 	api.Handle("PUT /rota-defaults/shape", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveDefaultShape)))
-	api.Handle("PUT /rota-defaults/allocation-settings", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveAllocationSettings)))
+	api.Handle("POST /rota-defaults/allocation-rules", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddAllocationRule)))
+	api.Handle("PUT /rota-defaults/allocation-rules/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleEditAllocationRule)))
+	api.Handle("DELETE /rota-defaults/allocation-rules/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleRemoveAllocationRule)))
 	// The rota's own lifecycle. One rota is in flight at a time, so the read is
 	// a singleton at a fixed path rather than a listing: there is nothing to
 	// pick between, which is the whole point of the rule (issue #139). It does
