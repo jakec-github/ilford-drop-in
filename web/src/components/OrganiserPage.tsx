@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useAuth } from "../auth-context";
 import { BASE_PATH } from "../basePath";
+import { ChipSelectionProvider } from "../ui/ChipSelection";
 import { ORGANISER_TABS, type OrganiserTab } from "./organiserTabs";
 import Loading from "./Loading";
 import "./OrganiserPage.css";
@@ -75,7 +76,10 @@ export default function OrganiserPage({ tab }: { tab: OrganiserTab }) {
         ))}
       </nav>
 
-      {Panel ? <Panel /> : <WipPanel title={tab.label} />}
+      {/* Keyed by tab so a chip picked out on one tab is let go of on leaving it. */}
+      <ChipSelectionProvider key={tab.path}>
+        {Panel ? <Panel /> : <WipPanel title={tab.label} />}
+      </ChipSelectionProvider>
     </main>
   );
 }

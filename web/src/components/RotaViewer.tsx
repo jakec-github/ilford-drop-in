@@ -16,6 +16,7 @@ import { useOrganisation } from "../hooks/useOrganisation";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
+import { ChipSelectionProvider } from "../ui/ChipSelection";
 import type { AssigneeChange } from "./RotaEditDialogs";
 import {
   AssigneeDialog,
@@ -36,6 +37,7 @@ import {
   formatShiftDateLong,
   isUnallocated,
   leavingRoleId,
+  personKey,
   personRef,
   samePerson,
 } from "./shifts";
@@ -76,22 +78,44 @@ function getAllNames(shifts: RotaShift[]): string[] {
   return Array.from(names).sort();
 }
 
-function getUpcomingShifts(shifts: RotaShift[], name: string): RotaShift[] {
-  if (!name) return [];
-  return shifts.filter((shift) => shift.assignees.some((a) => a.name === name));
+function getUpcomingShifts(shifts: RotaShift[], key: string | null): RotaShift[] {
+  if (!key) return [];
+  return shifts.filter((shift) =>
+    shift.assignees.some((a) => personKey(personRef(a)) === key),
+  );
 }
 
-// The id of the real volunteer behind a selected name, or null when the name
-// belongs only to custom (manual) entries. Custom entries have no calendar
-// feed, so they get no copy button.
-function getVolunteerId(shifts: RotaShift[], name: string): string | null {
-  if (!name) return null;
+// The person behind a selection key, as the rota names them: who the search
+// box shows and whose calendar the copy button offers. Custom entries have no
+// calendar feed, so they get no volunteer id.
+function findPerson(
+  shifts: RotaShift[],
+  key: string | null,
+): { name: string; volunteerId: string | null } | null {
+  if (!key) return null;
   for (const shift of shifts) {
     for (const a of shift.assignees) {
-      if (a.name === name && a.volunteerId) return a.volunteerId;
+      if (personKey(personRef(a)) === key) {
+        return { name: a.name, volunteerId: a.volunteerId };
+      }
     }
   }
   return null;
+}
+
+// The selection key for a name picked from the search. The search lists names,
+// so one shared by two volunteers picks the first of them; a volunteer is
+// preferred to a custom entry of the same name.
+function keyForName(shifts: RotaShift[], name: string): string | null {
+  let custom: string | null = null;
+  for (const shift of shifts) {
+    for (const a of shift.assignees) {
+      if (a.name !== name) continue;
+      if (a.volunteerId) return personKey(personRef(a));
+      custom ??= personKey(personRef(a));
+    }
+  }
+  return custom;
 }
 
 // Copies the volunteer's ICS subscription URL to the clipboard. One link
@@ -203,7 +227,9 @@ export default function RotaViewer({
   onSetTimes,
   onSetShape,
 }: RotaViewerProps) {
-  const [selectedName, setSelectedName] = useState("");
+  // Who the reader has picked out, by chip or by search. Held here rather than
+  // left to the chips, since the search box and the upcoming strip follow it.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -320,13 +346,15 @@ export default function RotaViewer({
 
   const allNames = useMemo(() => getAllNames(visibleShifts), [visibleShifts]);
   const upcomingShifts = useMemo(
-    () => getUpcomingShifts(visibleShifts, selectedName),
-    [visibleShifts, selectedName],
+    () => getUpcomingShifts(visibleShifts, selectedKey),
+    [visibleShifts, selectedKey],
   );
-  const selectedVolunteerId = useMemo(
-    () => getVolunteerId(visibleShifts, selectedName),
-    [visibleShifts, selectedName],
+  const selectedPerson = useMemo(
+    () => findPerson(visibleShifts, selectedKey),
+    [visibleShifts, selectedKey],
   );
+  const selectedName = selectedPerson?.name ?? "";
+  const selectedVolunteerId = selectedPerson?.volunteerId ?? null;
 
   const filteredNames = allNames.filter((n) =>
     n.toLowerCase().includes(inputValue.toLowerCase()),
@@ -357,13 +385,13 @@ export default function RotaViewer({
   }
 
   function handleSelect(name: string) {
-    setSelectedName(name);
+    setSelectedKey(keyForName(visibleShifts, name));
     close();
   }
 
   function handleClear(e: React.MouseEvent) {
     e.stopPropagation();
-    setSelectedName("");
+    setSelectedKey(null);
     setInputValue("");
     setOpen(false);
     inputRef.current?.focus();
@@ -737,316 +765,316 @@ export default function RotaViewer({
   }
 
   return (
-    <div className="rota-viewer">
-      <div className="rota-heading">
-        <h1>{organisation ? `${organisation.displayName} Rota` : "Rota"}</h1>
-        {signedIn && (
-          <Button
-            size="small"
-            aria-pressed={editing}
-            onClick={() => (editing ? stopEditing() : setEditRequested(true))}
-          >
-            {editing ? "Done" : "Edit rota"}
-          </Button>
-        )}
-      </div>
-
-      <div className="rota-search-wrap" ref={containerRef}>
-        <div className={`rota-search-input-wrap${open ? " open" : ""}`}>
-          <input
-            ref={inputRef}
-            type="text"
-            className="rota-search"
-            placeholder="Search by name…"
-            value={open ? inputValue : selectedName}
-            onChange={(e) => {
-              setInputValue(e.target.value);
-              setActiveIndex(-1);
-            }}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-          />
-          {selectedName && !open && (
-            <button
-              className="rota-search-clear"
-              onMouseDown={handleClear}
-              tabIndex={-1}
-              aria-label="Clear"
+    <ChipSelectionProvider value={selectedKey} onChange={setSelectedKey}>
+      <div className="rota-viewer">
+        <div className="rota-heading">
+          <h1>{organisation ? `${organisation.displayName} Rota` : "Rota"}</h1>
+          {signedIn && (
+            <Button
+              size="small"
+              aria-pressed={editing}
+              onClick={() => (editing ? stopEditing() : setEditRequested(true))}
             >
-              <svg viewBox="0 0 14 14" width="14" height="14">
-                <path
-                  d="M13 1L1 13M1 1l12 12"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+              {editing ? "Done" : "Edit rota"}
+            </Button>
           )}
         </div>
 
-        {open && (
-          <ul className="rota-search-dropdown" role="listbox">
-            {filteredNames.length === 0 ? (
-              <li className="rota-search-no-options">No names found</li>
-            ) : (
-              filteredNames.map((name, i) => (
-                <li
-                  key={name}
-                  role="option"
-                  aria-selected={name === selectedName}
-                  className={`rota-search-option${i === activeIndex ? " active" : ""}${name === selectedName ? " selected" : ""}`}
-                  onMouseDown={() => handleSelect(name)}
-                  onMouseEnter={() => setActiveIndex(i)}
-                >
-                  {name}
-                </li>
-              ))
+        <div className="rota-search-wrap" ref={containerRef}>
+          <div className={`rota-search-input-wrap${open ? " open" : ""}`}>
+            <input
+              ref={inputRef}
+              type="text"
+              className="rota-search"
+              placeholder="Search by name…"
+              value={open ? inputValue : selectedName}
+              onChange={(e) => {
+                setInputValue(e.target.value);
+                setActiveIndex(-1);
+              }}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+            />
+            {selectedName && !open && (
+              <button
+                className="rota-search-clear"
+                onMouseDown={handleClear}
+                tabIndex={-1}
+                aria-label="Clear"
+              >
+                <svg viewBox="0 0 14 14" width="14" height="14">
+                  <path
+                    d="M13 1L1 13M1 1l12 12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
             )}
-          </ul>
+          </div>
+
+          {open && (
+            <ul className="rota-search-dropdown" role="listbox">
+              {filteredNames.length === 0 ? (
+                <li className="rota-search-no-options">No names found</li>
+              ) : (
+                filteredNames.map((name, i) => (
+                  <li
+                    key={name}
+                    role="option"
+                    aria-selected={name === selectedName}
+                    className={`rota-search-option${i === activeIndex ? " active" : ""}${name === selectedName ? " selected" : ""}`}
+                    onMouseDown={() => handleSelect(name)}
+                    onMouseEnter={() => setActiveIndex(i)}
+                  >
+                    {name}
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+        </div>
+
+        {selectedName && (
+          <div className="upcoming-strip">
+            {upcomingShifts.length > 0 ? (
+              <>
+                <span className="upcoming-strip-label">Upcoming: </span>
+                <span className="upcoming-dates">
+                  {upcomingShifts
+                    .slice(0, 5)
+                    .map((s) => formatShiftDate(s.date))
+                    .join(" · ")}
+                </span>
+                {selectedVolunteerId && (
+                  <CalendarCopyButton volunteerId={selectedVolunteerId} />
+                )}
+              </>
+            ) : (
+              <span className="upcoming-none">
+                No upcoming shifts for {selectedName}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Says what carrying someone means, and gives a way out of it that is
+            not "drop them somewhere". aria-live because entering this mode moves
+            no focus, so a screen reader would otherwise not hear about it. */}
+        {editing && pending && !pending.dragging && (
+          <div
+            className="rota-edit-banner"
+            role="status"
+            ref={bannerRef}
+            tabIndex={-1}
+          >
+            <span>
+              Carrying <strong>{pending.name}</strong> from{" "}
+              {formatShiftDateLong(pending.date)}. Choose a shift to move them to,
+              or a person to swap them with.
+            </span>
+            <Button size="small" onClick={() => setPending(null)}>
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {editing && !pending && (
+          <p className="rota-edit-hint">
+            Drag a name to another shift to move them, or onto another name to
+            swap. Tap a name for everything else you can do to one person on one
+            shift: move or swap, change their role, replace them, or remove them.
+            {/* Only where there is a shift it applies to. On a rota that has all
+                been allocated there is nothing to pin to, and the sentence would
+                send someone looking for a button that is not on any row. */}
+            {hasUnallocated && (
+              <>
+                {" "}
+                Shifts the rota has not been run for take pins instead: whoever
+                you pin there is guaranteed the shift when it is allocated.
+                {canEditShifts &&
+                  " Shape changes how many places of each Role that shift has."}
+              </>
+            )}
+            {hasClosable && (
+              <>
+                {" "}
+                Close one for a date the organisation is not running, up until the rota
+                is allocated.
+              </>
+            )}{" "}
+            {/* Not conditional on allocation, unlike the two above: the times
+                only describe the shift, so every row takes the edit whether or
+                not it has been allocated. Only on who may make it. */}
+            {canEditShifts &&
+              "Select a row\u2019s date to change when the shift takes place."}
+          </p>
+        )}
+
+        {/* A failed pin load leaves the unallocated rows looking empty when they
+            may not be, so it is said out loud rather than swallowed. It does not
+            stop the rota itself being read. */}
+        {preallocationsError && (
+          <p className="rota-notice" role="alert">
+            Could not load who is already pinned to unallocated shifts:{" "}
+            {preallocationsError}
+          </p>
+        )}
+
+        {/* Where the dashed rows are coming from and what is done about them.
+            signedIn as well as there being any, for the reason `editing` above is
+            derived rather than trusted: losing the session takes the sentence
+            away in the same render. A Rota Editor is told only what they can do
+            here: the Organiser area is not theirs, so it is not pointed at. */}
+        {canEditShifts && hasUnallocated && (
+          <p className="rota-notice">
+            The dashed shifts are the rota in flight — nobody has been placed on
+            them yet. Pins, closures and what a shift asks for can be set here;
+            the draft the solver makes of them, asking volunteers about it and
+            allocating it all happen on{" "}
+            <Link href="/organiser/allocation">Organiser &rarr; Allocation</Link>.
+          </p>
+        )}
+        {signedIn && !canEditShifts && hasUnallocated && (
+          <p className="rota-notice">
+            The dashed shifts are the rota in flight — nobody has been placed on
+            them yet. Pin someone to one to guarantee them that shift when the
+            rota is allocated.
+          </p>
+        )}
+
+        <ShiftList
+          shifts={visibleShifts}
+          pinsByDate={pinsByDate}
+          colourOf={colourOf}
+          rowEdit={editing ? rowEdit : null}
+        />
+
+        {editing && dialog?.kind === "confirm" && (
+          <ConfirmChangeDialog
+            title={dialog.title}
+            summary={dialog.summary}
+            confirmLabel={dialog.confirmLabel}
+            // The Roles are read at render rather than stored with the dialog, so
+            // a list that arrives while it is open fills the picker in.
+            role={
+              dialog.role && {
+                initial: dialog.role.initial,
+                required: dialog.role.required,
+                roles: roleNames,
+              }
+            }
+            reasonRequired={dialog.reasonRequired}
+            busy={saving}
+            onCancel={() => {
+              setDialog(null);
+              setPending(null);
+            }}
+            onConfirm={(reason, role) =>
+              void submit({ ...dialog.change, reason }, role)
+            }
+          />
+        )}
+
+        {editing && dialog?.kind === "assignee" && (
+          <AssigneeDialog
+            dateLabel={formatShiftDateLong(dialog.date)}
+            change={dialog.change}
+            volunteers={addableTo(dialog.date)}
+            volunteersError={volunteersError}
+            roles={roleNames}
+            busy={saving}
+            onCancel={() => setDialog(null)}
+            onConfirm={(person, reason, role) =>
+              void submit(
+                {
+                  date: dialog.date,
+                  in: person,
+                  ...(dialog.change.kind === "replace" && {
+                    out: personRef(dialog.change.outgoing),
+                    ...leaving(
+                      "outRoleId",
+                      personRef(dialog.change.outgoing),
+                      dialog.change.outgoing.roleId,
+                    ),
+                  }),
+                  reason,
+                },
+                role,
+              )
+            }
+          />
+        )}
+
+        {editing && dialog?.kind === "pin" && (
+          <PinDialog
+            dateLabel={formatShiftDateLong(dialog.date)}
+            volunteers={pinnableTo(dialog.date)}
+            volunteersError={volunteersError}
+            roles={roleNames}
+            // This shift's own Shape, with the pins already made against it
+            // counted, whichever way each came to be made.
+            seats={seatsOn(dialog.date)}
+            pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
+            busy={saving}
+            onCancel={() => setDialog(null)}
+            onConfirm={(person, role) =>
+              void submitPin(dialog.date, person, role)
+            }
+          />
+        )}
+
+        {editing && dialog?.kind === "closure" && (
+          <ClosureDialog
+            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            closing={!dialog.shift.closed}
+            pinnedCount={(pinsByDate.get(dialog.shift.date) ?? []).length}
+            busy={saving}
+            onCancel={() => setDialog(null)}
+            onConfirm={() => void submitClosure(dialog.shift)}
+          />
+        )}
+
+        {editing && dialog?.kind === "times" && (
+          <ShiftTimesDialog
+            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            start={dialog.shift.start}
+            end={dialog.shift.end}
+            busy={saving}
+            onCancel={() => setDialog(null)}
+            onConfirm={(start, end) => void submitTimes(dialog.shift, start, end)}
+          />
+        )}
+
+        {/* Its own dialog rather than one of the confirm ones, and its errors are
+            its own too: a refusal here (an allocated rota, a count it cannot
+            take) is shown in the form, which stays open on what was typed so
+            the number can be corrected rather than retyped. */}
+        {editing && dialog?.kind === "shape" && roles && (
+          <ShapeForm
+            title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
+            intro="How many places of each Role this shift has. It starts from the default shape and can differ from every other shift; leave a Role at 0 if this one does not need it."
+            saveLabel="Save shape"
+            roles={roles}
+            shape={dialog.shift.shape}
+            onSave={(seats) => onSetShape(dialog.shift.id, seats)}
+            onClose={() => setDialog(null)}
+          />
+        )}
+
+        {editing && dialog?.kind === "unpin" && (
+          <UnpinDialog
+            name={dialog.pin.name}
+            dateLabel={formatShiftDateLong(dialog.pin.date)}
+            busy={saving}
+            onCancel={() => setDialog(null)}
+            onConfirm={() => void submitUnpin(dialog.pin)}
+          />
         )}
       </div>
-
-      {selectedName && (
-        <div className="upcoming-strip">
-          {upcomingShifts.length > 0 ? (
-            <>
-              <span className="upcoming-strip-label">Upcoming: </span>
-              <span className="upcoming-dates">
-                {upcomingShifts
-                  .slice(0, 5)
-                  .map((s) => formatShiftDate(s.date))
-                  .join(" · ")}
-              </span>
-              {selectedVolunteerId && (
-                <CalendarCopyButton volunteerId={selectedVolunteerId} />
-              )}
-            </>
-          ) : (
-            <span className="upcoming-none">
-              No upcoming shifts for {selectedName}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Says what carrying someone means, and gives a way out of it that is
-          not "drop them somewhere". aria-live because entering this mode moves
-          no focus, so a screen reader would otherwise not hear about it. */}
-      {editing && pending && !pending.dragging && (
-        <div
-          className="rota-edit-banner"
-          role="status"
-          ref={bannerRef}
-          tabIndex={-1}
-        >
-          <span>
-            Carrying <strong>{pending.name}</strong> from{" "}
-            {formatShiftDateLong(pending.date)}. Choose a shift to move them to,
-            or a person to swap them with.
-          </span>
-          <Button size="small" onClick={() => setPending(null)}>
-            Cancel
-          </Button>
-        </div>
-      )}
-
-      {editing && !pending && (
-        <p className="rota-edit-hint">
-          Drag a name to another shift to move them, or onto another name to
-          swap. Tap a name for everything else you can do to one person on one
-          shift: move or swap, change their role, replace them, or remove them.
-          {/* Only where there is a shift it applies to. On a rota that has all
-              been allocated there is nothing to pin to, and the sentence would
-              send someone looking for a button that is not on any row. */}
-          {hasUnallocated && (
-            <>
-              {" "}
-              Shifts the rota has not been run for take pins instead: whoever
-              you pin there is guaranteed the shift when it is allocated.
-              {canEditShifts &&
-                " Shape changes how many places of each Role that shift has."}
-            </>
-          )}
-          {hasClosable && (
-            <>
-              {" "}
-              Close one for a date the organisation is not running, up until the rota
-              is allocated.
-            </>
-          )}{" "}
-          {/* Not conditional on allocation, unlike the two above: the times
-              only describe the shift, so every row takes the edit whether or
-              not it has been allocated. Only on who may make it. */}
-          {canEditShifts &&
-            "Select a row\u2019s date to change when the shift takes place."}
-        </p>
-      )}
-
-      {/* A failed pin load leaves the unallocated rows looking empty when they
-          may not be, so it is said out loud rather than swallowed. It does not
-          stop the rota itself being read. */}
-      {preallocationsError && (
-        <p className="rota-notice" role="alert">
-          Could not load who is already pinned to unallocated shifts:{" "}
-          {preallocationsError}
-        </p>
-      )}
-
-      {/* Where the dashed rows are coming from and what is done about them.
-          signedIn as well as there being any, for the reason `editing` above is
-          derived rather than trusted: losing the session takes the sentence
-          away in the same render. A Rota Editor is told only what they can do
-          here: the Organiser area is not theirs, so it is not pointed at. */}
-      {canEditShifts && hasUnallocated && (
-        <p className="rota-notice">
-          The dashed shifts are the rota in flight — nobody has been placed on
-          them yet. Pins, closures and what a shift asks for can be set here;
-          the draft the solver makes of them, asking volunteers about it and
-          allocating it all happen on{" "}
-          <Link href="/organiser/allocation">Organiser &rarr; Allocation</Link>.
-        </p>
-      )}
-      {signedIn && !canEditShifts && hasUnallocated && (
-        <p className="rota-notice">
-          The dashed shifts are the rota in flight — nobody has been placed on
-          them yet. Pin someone to one to guarantee them that shift when the
-          rota is allocated.
-        </p>
-      )}
-
-      <ShiftList
-        shifts={visibleShifts}
-        pinsByDate={pinsByDate}
-        colourOf={colourOf}
-        selectedName={selectedName}
-        onSelectName={setSelectedName}
-        rowEdit={editing ? rowEdit : null}
-      />
-
-      {editing && dialog?.kind === "confirm" && (
-        <ConfirmChangeDialog
-          title={dialog.title}
-          summary={dialog.summary}
-          confirmLabel={dialog.confirmLabel}
-          // The Roles are read at render rather than stored with the dialog, so
-          // a list that arrives while it is open fills the picker in.
-          role={
-            dialog.role && {
-              initial: dialog.role.initial,
-              required: dialog.role.required,
-              roles: roleNames,
-            }
-          }
-          reasonRequired={dialog.reasonRequired}
-          busy={saving}
-          onCancel={() => {
-            setDialog(null);
-            setPending(null);
-          }}
-          onConfirm={(reason, role) =>
-            void submit({ ...dialog.change, reason }, role)
-          }
-        />
-      )}
-
-      {editing && dialog?.kind === "assignee" && (
-        <AssigneeDialog
-          dateLabel={formatShiftDateLong(dialog.date)}
-          change={dialog.change}
-          volunteers={addableTo(dialog.date)}
-          volunteersError={volunteersError}
-          roles={roleNames}
-          busy={saving}
-          onCancel={() => setDialog(null)}
-          onConfirm={(person, reason, role) =>
-            void submit(
-              {
-                date: dialog.date,
-                in: person,
-                ...(dialog.change.kind === "replace" && {
-                  out: personRef(dialog.change.outgoing),
-                  ...leaving(
-                    "outRoleId",
-                    personRef(dialog.change.outgoing),
-                    dialog.change.outgoing.roleId,
-                  ),
-                }),
-                reason,
-              },
-              role,
-            )
-          }
-        />
-      )}
-
-      {editing && dialog?.kind === "pin" && (
-        <PinDialog
-          dateLabel={formatShiftDateLong(dialog.date)}
-          volunteers={pinnableTo(dialog.date)}
-          volunteersError={volunteersError}
-          roles={roleNames}
-          // This shift's own Shape, with the pins already made against it
-          // counted, whichever way each came to be made.
-          seats={seatsOn(dialog.date)}
-          pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
-          busy={saving}
-          onCancel={() => setDialog(null)}
-          onConfirm={(person, role) =>
-            void submitPin(dialog.date, person, role)
-          }
-        />
-      )}
-
-      {editing && dialog?.kind === "closure" && (
-        <ClosureDialog
-          dateLabel={formatShiftDateLong(dialog.shift.date)}
-          closing={!dialog.shift.closed}
-          pinnedCount={(pinsByDate.get(dialog.shift.date) ?? []).length}
-          busy={saving}
-          onCancel={() => setDialog(null)}
-          onConfirm={() => void submitClosure(dialog.shift)}
-        />
-      )}
-
-      {editing && dialog?.kind === "times" && (
-        <ShiftTimesDialog
-          dateLabel={formatShiftDateLong(dialog.shift.date)}
-          start={dialog.shift.start}
-          end={dialog.shift.end}
-          busy={saving}
-          onCancel={() => setDialog(null)}
-          onConfirm={(start, end) => void submitTimes(dialog.shift, start, end)}
-        />
-      )}
-
-      {/* Its own dialog rather than one of the confirm ones, and its errors are
-          its own too: a refusal here (an allocated rota, a count it cannot
-          take) is shown in the form, which stays open on what was typed so
-          the number can be corrected rather than retyped. */}
-      {editing && dialog?.kind === "shape" && roles && (
-        <ShapeForm
-          title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
-          intro="How many places of each Role this shift has. It starts from the default shape and can differ from every other shift; leave a Role at 0 if this one does not need it."
-          saveLabel="Save shape"
-          roles={roles}
-          shape={dialog.shift.shape}
-          onSave={(seats) => onSetShape(dialog.shift.id, seats)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {editing && dialog?.kind === "unpin" && (
-        <UnpinDialog
-          name={dialog.pin.name}
-          dateLabel={formatShiftDateLong(dialog.pin.date)}
-          busy={saving}
-          onCancel={() => setDialog(null)}
-          onConfirm={() => void submitUnpin(dialog.pin)}
-        />
-      )}
-    </div>
+    </ChipSelectionProvider>
   );
 }
 

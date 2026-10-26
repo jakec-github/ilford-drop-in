@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
+import { personKey } from "./shifts";
 import Dialog from "../ui/Dialog";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
@@ -186,6 +187,7 @@ export function ScopeEditor({
             <Chip
               key={id}
               label={nameOf(id, volunteers)}
+              selectionKey={personKey({ volunteerId: id })}
               className={known ? undefined : "chip--stale"}
               onRemove={disabled ? undefined : () => remove(id)}
             />
