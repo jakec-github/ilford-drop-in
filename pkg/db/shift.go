@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -155,6 +156,11 @@ func shiftDateWhere(organisationID string, from, to time.Time) (string, []any) {
 // exists and whether its rota has been allocated are the two things that decide
 // whether the flag may move at all.
 func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error) {
+	// A shift id is a UUID, so anything else names no shift — and the column
+	// would refuse it with a syntax error rather than match nothing.
+	if uuid.Validate(id) != nil {
+		return nil, nil
+	}
 	var s ShiftInRange
 	var date, startAt, endAt time.Time
 	err := d.pool.QueryRow(ctx, `

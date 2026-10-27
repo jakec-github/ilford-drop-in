@@ -186,9 +186,11 @@ func TestShiftClosedRoundTrips(t *testing.T) {
 func TestGetShiftByIDUnknownReturnsNil(t *testing.T) {
 	database, _ := dbtest.New(t)
 
-	shift, err := database.GetShiftByID(context.Background(), uuid.New().String())
-	require.NoError(t, err)
-	assert.Nil(t, shift)
+	for _, id := range []string{uuid.New().String(), "not-a-uuid"} {
+		shift, err := database.GetShiftByID(context.Background(), id)
+		require.NoError(t, err, id)
+		assert.Nil(t, shift, id)
+	}
 }
 
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
