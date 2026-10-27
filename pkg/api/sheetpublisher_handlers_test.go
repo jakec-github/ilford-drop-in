@@ -57,11 +57,11 @@ func allocatableStore() *mockStore {
 // already holds, so allocating confirms it.
 func draftedSolve() allocator.CpsatOutput {
 	return allocator.CpsatOutput{SolverStatus: "OPTIMAL", Success: true, Shifts: []allocator.CpsatOutputShift{
-		{Index: 0, Date: "2026-08-02", Assignments: []allocator.CpsatAssignment{
+		{Index: 0, ID: "shift-1", Date: "2026-08-02", Assignments: []allocator.CpsatAssignment{
 			{VolunteerID: "bob", Role: "Service volunteer"},
 			{VolunteerID: "alice", Role: "Team lead"},
 		}},
-		{Index: 1, Date: "2026-08-09"},
+		{Index: 1, ID: "shift-2", Date: "2026-08-09"},
 	}}
 }
 

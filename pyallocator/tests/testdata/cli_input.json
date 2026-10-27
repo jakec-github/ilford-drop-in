@@ -27,6 +27,7 @@
   "shifts": [
     {
       "index": 0,
+      "id": "shift-0",
       "date": "2026-07-13",
       "shape": [
         {

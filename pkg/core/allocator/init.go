@@ -186,15 +186,15 @@ func calculateHistoricalAllocationCount(groupKey string, historicalShifts []*Shi
 	return count
 }
 
-// ShiftOverride allows customizing specific shifts based on date patterns.
+// ShiftOverride pins people to one shift.
 //
 // All it can say now is who is pinned: it carried a shift size until the Shape
 // stopped being a number (issue #129), and closures and config pins left before
-// that. Every override that reaches InitShifts is a Pin wearing a
-// date matcher.
+// that. It names its Shift by id: a date stopped identifying a Shift once a
+// day could hold more than one (issue #293).
 type ShiftOverride struct {
-	// AppliesTo is a function that returns true if this override applies to the given shift date
-	AppliesTo func(date string) bool
+	// ShiftID is the Shift this override applies to.
+	ShiftID string
 
 	// Pins are the pins this override contributes, each naming a Role.
 	Pins []Pin
@@ -205,6 +205,10 @@ type ShiftOverride struct {
 // the Organisation runs that day. Closed arrives here rather than being derived from
 // an override because it is a field on the Shift, set by hand (issue #132).
 type ShiftSpec struct {
+	// ID is the Shift's own id. It is what the solved shift comes back under,
+	// so it is how a solution finds its way back to its Shift.
+	ID string
+
 	Date string
 
 	// Shape is the Seats this shift asks for: which Roles, and how many of
@@ -236,14 +240,14 @@ type InitShiftsInput struct {
 // Returns a slice of initialised Shift objects with:
 //   - Sequential indices
 //   - The Shape each shift arrived asking for (issue #137)
-//   - Pins unioned from every override applying to the date
+//   - Pins unioned from every override applying to the shift
 //   - AvailableGroups populated based on volunteer group availability
 //
-// Every override applying to a date contributes its pins. Pins used to be three
+// Every override applying to a shift contributes its pins. Pins used to be three
 // separate fields with three merge rules — the single team lead was
 // last-one-wins where the two lists appended. They are one list now, so
 // appending is the only rule, and two overrides pinning the same Role for one
-// date are both kept rather than one silently disappearing. The Shift's Shape
+// shift are both kept rather than one silently disappearing. The Shift's Shape
 // is what catches that: pinning past a Role's Seats is refused when the pin is
 // made, and the solver refuses an input that gets past it anyway.
 //
@@ -257,9 +261,9 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	for i, spec := range input.Shifts {
 		var pins []Pin
 
-		// Apply overrides for this date
+		// Apply overrides for this shift
 		for _, override := range input.Overrides {
-			if override.AppliesTo(spec.Date) {
+			if override.ShiftID == spec.ID {
 				pins = append(pins, override.Pins...)
 			}
 		}
@@ -277,6 +281,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 		}
 
 		shifts[i] = &Shift{
+			ID:              spec.ID,
 			Date:            spec.Date,
 			Index:           i,
 			Shape:           spec.Shape,
@@ -284,7 +289,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			MaleCount:       0, // Will be updated when groups are allocated
 			AvailableGroups: availableGroups,
 			Closed:          spec.Closed,
-			Pins:  pins,
+			Pins:            pins,
 		}
 	}
 

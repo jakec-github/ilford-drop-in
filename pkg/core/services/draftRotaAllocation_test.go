@@ -277,11 +277,10 @@ func TestASolveCarriesTheRotasInputsStamp(t *testing.T) {
 			// A closed Shift asks for nobody however it is shaped.
 			"shift-2": {{Role: model.Role{Name: "Team lead"}, Count: 1}},
 		},
-		output:        &allocator.CpsatOutput{Success: true, SolverStatus: "FEASIBLE", ObjectiveValue: 12},
-		shiftIDByDate: map[string]string{"2026-08-02": "shift-1", "2026-08-09": "shift-2"},
+		output: &allocator.CpsatOutput{Success: true, SolverStatus: "FEASIBLE", ObjectiveValue: 12},
 		solvedShifts: []*allocator.Shift{
-			{Date: "2026-08-02", Assignments: []allocator.Assignment{{Role: "Team lead"}, {Role: "Service volunteer"}, {Role: "Service volunteer"}}},
-			{Date: "2026-08-09"},
+			{ID: "shift-1", Date: "2026-08-02", Assignments: []allocator.Assignment{{Role: "Team lead"}, {Role: "Service volunteer"}, {Role: "Service volunteer"}}},
+			{ID: "shift-2", Date: "2026-08-09"},
 		},
 	}
 
@@ -306,9 +305,9 @@ func TestSeatsFilledStopsAtTheShape(t *testing.T) {
 		shapes: map[string]model.Shape{
 			"shift-1": {{Role: model.Role{Name: "Team lead"}, Count: 1}, {Role: model.Role{Name: "Service volunteer"}, Count: 2}},
 		},
-		shiftIDByDate: map[string]string{"2026-08-02": "shift-1"},
-		output:        &allocator.CpsatOutput{Success: true, SolverStatus: "OPTIMAL"},
+		output: &allocator.CpsatOutput{Success: true, SolverStatus: "OPTIMAL"},
 		solvedShifts: []*allocator.Shift{{
+			ID:   "shift-1",
 			Date: "2026-08-02",
 			Assignments: []allocator.Assignment{
 				{Role: "Team lead"}, {Role: "Team lead"},

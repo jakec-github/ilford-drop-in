@@ -24,7 +24,7 @@ type Store interface {
 	services.DefineRotaStore
 	services.DraftRotaAllocationStore
 	services.ListShiftsStore
-	services.Pinstore
+	services.PinStore
 	services.RoleWriteStore
 	services.RotaDefaultsStore
 	services.RotaLifecycleStore

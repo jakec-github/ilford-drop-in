@@ -95,7 +95,7 @@ type shiftSeats struct {
 // whatever the settings screen happened to say at the moment it was opened.
 //
 // The pins are resolved through the same two helpers allocation uses —
-// buildPinOverrides, then pinsForDate over the result, which
+// buildPinOverrides, then pinsForShift over the result, which
 // mirrors InitShifts. That is deliberate: the page must show the Seats the solve
 // will actually see, and a second implementation of it is how the three copies
 // of the group rule happened.
@@ -105,11 +105,11 @@ func buildShiftSeats(
 	pins []db.Pin,
 	roles model.Roles,
 ) (map[string]shiftSeats, error) {
-	dateByShiftID := make(map[string]string, len(shifts))
-	for _, s := range shifts {
-		dateByShiftID[s.ID] = s.Date
+	shiftIDs := make([]string, len(shifts))
+	for i, s := range shifts {
+		shiftIDs[i] = s.ID
 	}
-	overrides, err := buildPinOverrides(pins, dateByShiftID, roles)
+	overrides, err := buildPinOverrides(pins, shiftIDs, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func buildShiftSeats(
 
 		pinned := make(map[string]int)
 		pinnedVolunteers := make(map[string]bool)
-		effectivePins := pinsForDate(shift.Date, overrides)
+		effectivePins := pinsForShift(shift.ID, overrides)
 		for _, pin := range effectivePins {
 			pinned[pin.Role]++
 			if pin.VolunteerID != "" {

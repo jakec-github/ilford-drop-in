@@ -14,15 +14,15 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// Pinstore defines the database operations the pin flows
+// PinStore defines the database operations the pin flows
 // need. The mutating flows do their state read, validation, and write inside
 // WithRotaPinLock so a concurrent mutation or allocation of the same
 // rota cannot slip between the duplicate/frozen checks and the write (issue #39,
 // mirroring the changeRota locking discipline). ListPins reads outside
 // any lock.
-type Pinstore interface {
+type PinStore interface {
 	RoleStore
-	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
+	GetShiftByID(ctx context.Context, id string) (*db.ShiftInRange, error)
 	GetPinByID(ctx context.Context, id string) (*db.Pin, *db.Shift, error)
 	GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error)
 	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
@@ -33,14 +33,15 @@ type Pinstore interface {
 // Exactly one of VolunteerID or Custom is set. RoleID names the Seat the pin
 // fills and is required — a pin is a promise about a job.
 type AddPinParams struct {
-	Date        string // Target shift date (YYYY-MM-DD)
+	ShiftID     string // Id of the shift to pin to
 	VolunteerID string // Volunteer to pin
 	Custom      string // Custom (non-volunteer) entry to pin
 	RoleID      string // Id of the Role the pin fills
 }
 
 // PinView is the read model for one pin: who is pinned, to
-// which date, in which role.
+// which shift, in which role. Date is the shift's, carried for display and
+// ordering; ShiftID is what identifies it.
 //
 // Role carries both the id and the name, as StandingPreallocationView does and
 // for the same reason: the id is what the row references and what an edit would
@@ -52,6 +53,7 @@ type AddPinParams struct {
 // it came from, and nothing downstream branches on it.
 type PinView struct {
 	ID          string
+	ShiftID     string
 	Date        string
 	RoleID      string
 	Role        string // the Role's name today
@@ -72,14 +74,14 @@ type ListPinsParams struct {
 // duplicate-assignee checks and the insert happen inside it.
 func AddPin(
 	ctx context.Context,
-	store Pinstore,
+	store PinStore,
 	volunteerClient VolunteerClient,
 	organisation *config.Organisation,
 	params AddPinParams,
 	logger *zap.Logger,
 ) (*PinView, error) {
 	logger.Debug("Starting AddPin",
-		zap.String("date", params.Date),
+		zap.String("shift_id", params.ShiftID),
 		zap.String("volunteer_id", params.VolunteerID),
 		zap.String("custom", params.Custom),
 		zap.String("role_id", params.RoleID))
@@ -128,23 +130,24 @@ func AddPin(
 		name = vol.DisplayName
 	}
 
-	// Step 3: resolve the date to its shift (unknown date → not found).
-	date, err := time.Parse("2006-01-02", params.Date)
+	// Step 3: resolve the shift (unknown id → not found).
+	if params.ShiftID == "" {
+		return nil, wrapf(ErrInvalidInput, "shiftId is required")
+	}
+	found, err := store.GetShiftByID(ctx, params.ShiftID)
 	if err != nil {
-		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", params.Date)
+		return nil, fmt.Errorf("failed to look up shift %s: %w", params.ShiftID, err)
 	}
-	shift, err := store.GetShiftByDate(ctx, date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up shift for date %s: %w", params.Date, err)
+	if found == nil {
+		return nil, wrapf(ErrNotFound, "shift %s not found", params.ShiftID)
 	}
-	if shift == nil {
-		return nil, wrapf(ErrNotFound, "date %s is not in any rota", params.Date)
-	}
+	shift := found.Shift
+	label := shiftLabel(shift)
 
-	// A closed shift is a day the Organisation does not run, so there is no Seat to
-	// promise anyone. Reopening it is the way to make one.
+	// A closed shift is one the Organisation does not run, so there is no Seat
+	// to promise anyone. Reopening it is the way to make one.
 	if shift.Closed {
-		return nil, wrapf(ErrConflict, "shift for %s is closed", params.Date)
+		return nil, wrapf(ErrConflict, "the shift on %s is closed", label)
 	}
 
 	// Step 4: state read, duplicate/frozen checks, and insert under the rota
@@ -163,7 +166,7 @@ func AddPin(
 			return err
 		}
 		if allocated {
-			return wrapf(ErrConflict, "rota for %s is already allocated", params.Date)
+			return wrapf(ErrConflict, "the rota for %s is already allocated", label)
 		}
 
 		existing, err := tx.GetPinsByShiftIDs(ctx, []string{shift.ID})
@@ -181,7 +184,7 @@ func AddPin(
 		// else in that Role.
 		for _, p := range existing {
 			if params.VolunteerID != "" && p.VolunteerID == params.VolunteerID {
-				return wrapf(ErrConflict, "volunteer %s is already pinned to %s", params.VolunteerID, params.Date)
+				return wrapf(ErrConflict, "volunteer %s is already pinned to %s", params.VolunteerID, label)
 			}
 		}
 
@@ -198,6 +201,7 @@ func AddPin(
 
 	return &PinView{
 		ID:          created.ID,
+		ShiftID:     shift.ID,
 		Date:        shift.Date,
 		RoleID:      created.RoleID,
 		Role:        role.Name,
@@ -213,7 +217,7 @@ func AddPin(
 // before the lock; the frozen check and the delete happen inside it.
 func DeletePin(
 	ctx context.Context,
-	store Pinstore,
+	store PinStore,
 	id string,
 	logger *zap.Logger,
 ) error {
@@ -260,7 +264,7 @@ func DeletePin(
 // and the id→date mapping stays honest.
 func ListPins(
 	ctx context.Context,
-	store Pinstore,
+	store PinStore,
 	volunteerClient VolunteerClient,
 	organisation *config.Organisation,
 	params ListPinsParams,
@@ -279,13 +283,13 @@ func ListPins(
 	// A closed shift carries no pins: the Organisation is not running, so nobody is
 	// promised it, and InitShifts strips whatever it was carrying. Dropping them
 	// here is what stops the rota page listing people against a shut date.
-	dateByShiftID := make(map[string]string, len(shifts))
+	shiftsByID := make(map[string]db.Shift, len(shifts))
 	shiftIDs := make([]string, 0, len(shifts))
 	for _, s := range shifts {
 		if s.Closed {
 			continue
 		}
-		dateByShiftID[s.ID] = s.Date
+		shiftsByID[s.ID] = s.Shift
 		shiftIDs = append(shiftIDs, s.ID)
 	}
 
@@ -313,7 +317,8 @@ func ListPins(
 	for _, p := range pins {
 		views = append(views, PinView{
 			ID:          p.ID,
-			Date:        dateByShiftID[p.ShiftID],
+			ShiftID:     p.ShiftID,
+			Date:        shiftsByID[p.ShiftID].Date,
 			RoleID:      p.RoleID,
 			Role:        roleName(roles, p.RoleID),
 			VolunteerID: p.VolunteerID,
@@ -322,7 +327,7 @@ func ListPins(
 		})
 	}
 
-	sortPinViews(views, roles)
+	sortPinViews(views, shiftsByID, roles)
 	return views, nil
 }
 
@@ -343,15 +348,21 @@ func pinName(volunteerID, custom string, volunteersByID map[string]model.Volunte
 	return volunteer.DisplayName
 }
 
-// sortPinViews puts the pins in reading order — by date, then by Role
-// priority, then by name — so a listing is stable whatever order the rows came
-// back in. Role priority is the order Seats are filled in, which is the order a
-// shift reads in everywhere else.
-func sortPinViews(views []PinView, roles model.Roles) {
+// sortPinViews puts the pins in reading order — by when their shift starts,
+// then by Role priority, then by name — so a listing is stable whatever order
+// the rows came back in. Role priority is the order Seats are filled in, which
+// is the order a shift reads in everywhere else.
+func sortPinViews(views []PinView, shiftsByID map[string]db.Shift, roles model.Roles) {
 	sort.Slice(views, func(i, j int) bool {
 		a, b := views[i], views[j]
 		if a.Date != b.Date {
 			return a.Date < b.Date
+		}
+		if sa, sb := shiftsByID[a.ShiftID].StartAt, shiftsByID[b.ShiftID].StartAt; sa != sb {
+			return sa < sb
+		}
+		if a.ShiftID != b.ShiftID {
+			return a.ShiftID < b.ShiftID
 		}
 		if pa, pb := rolePriority(roles, a.RoleID), rolePriority(roles, b.RoleID); pa != pb {
 			return pa < pb

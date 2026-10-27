@@ -81,6 +81,10 @@ class ShiftSpec:
 
     shape is the Shift's Seats, override-resolved in Go. It replaced a bare
     size, which could only describe a rota with one Role.
+
+    id is the Shift's own id, echoed back on its OutputShift: Go matches a
+    solution to its Shift by id, never by date. date is data — what
+    monthly_cap buckets by.
     """
 
     index: int
@@ -88,6 +92,7 @@ class ShiftSpec:
     closed: bool
     shape: tuple[Seat, ...] = ()
     pins: tuple[Pin, ...] = ()
+    id: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,6 +106,7 @@ class HistoricalShift:
 
     date: str
     group_keys: tuple[str, ...]
+    id: str = ""
 
 
 @dataclass(frozen=True)
@@ -171,6 +177,7 @@ class OutputShift:
     """
 
     index: int
+    id: str
     date: str
     closed: bool
     assignments: tuple[Assignment, ...]

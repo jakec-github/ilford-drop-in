@@ -153,7 +153,7 @@ func SolveDraftRotaAllocation(
 	// is allocated — so there is one converter and this lifts its answer across
 	// rather than walking the solved shifts a second way. Two walks would be two
 	// chances to disagree about what the solver said.
-	allocations, err := convertToDBAllocations(solve.shiftIDByDate, solve.solvedShifts, solve.roles)
+	allocations, err := convertToDBAllocations(solve.shifts, solve.solvedShifts, solve.roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert the solved rota: %w", err)
 	}

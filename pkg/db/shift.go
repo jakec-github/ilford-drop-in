@@ -53,7 +53,7 @@ func localTimestamp(t time.Time) string {
 	return t.Format(shiftTimestampLayout)
 }
 
-// GetShiftsByRotaID retrieves a rotation's shifts, ordered by date ascending.
+// GetShiftsByRotaID retrieves a rotation's shifts, ordered by start ascending.
 // Consumers that once recomputed a rota's dates by arithmetic read them here
 // instead (ADR 0001).
 func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, error) {
@@ -61,7 +61,7 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
 		FROM shift s
 		WHERE s.rota_id = $1 AND s.organisation_id = $2
-		ORDER BY `+shiftDateExpr+`
+		ORDER BY s.start_at
 	`, rotaID, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts for rota %s: %w", rotaID, err)
@@ -97,7 +97,7 @@ type ShiftInRange struct {
 }
 
 // GetShiftsInRange retrieves the minted shifts whose date falls between from and
-// to (inclusive), allocated or not, ordered by date ascending. A zero time
+// to (inclusive), allocated or not, ordered by start ascending. A zero time
 // leaves that bound open, mirroring GetAllocationsInRange. Each shift carries
 // its rota's allocated state, joined from rotation.allocated_datetime.
 func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
@@ -107,7 +107,7 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 	`+where+`
-		ORDER BY `+shiftDateExpr+`
+		ORDER BY s.start_at
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts in range: %w", err)

@@ -22,12 +22,12 @@ import (
 
 // mockStore implements Store for testing
 type mockStore struct {
-	shifts               []db.Shift
-	shiftsInRange        []db.ShiftInRange
-	rotations            []db.Rotation
-	allocations          []db.Allocation
-	alterations          []db.Alteration
-	manualPins []db.Pin
+	shifts        []db.Shift
+	shiftsInRange []db.ShiftInRange
+	rotations     []db.Rotation
+	allocations   []db.Allocation
+	alterations   []db.Alteration
+	manualPins    []db.Pin
 	// standingPreallocations are the Rota Defaults' Standing Preallocations,
 	// which seed ordinary ones when a rota is defined.
 	standingPreallocations []db.StandingPreallocation
@@ -37,18 +37,18 @@ type mockStore struct {
 	repliedRequestIDs map[string]bool
 	allocatedRotas    map[string]bool
 
-	insertedCover           *db.Cover
-	insertedAlterations     []db.Alteration
-	insertedPins  []db.Pin
-	insertedRotations       []db.Rotation
-	insertedShifts          []db.Shift
-	deletedPinIDs []string
-	insertedStanding        []db.StandingPreallocation
-	deletedStandingIDs      []string
-	storedDrafts            []db.DraftRotaAllocation
-	storedDraftSeats        [][]db.DraftAllocation
-	insertedAllocations     []db.Allocation
-	allocatedRotaIDs        []string
+	insertedCover       *db.Cover
+	insertedAlterations []db.Alteration
+	insertedPins        []db.Pin
+	insertedRotations   []db.Rotation
+	insertedShifts      []db.Shift
+	deletedPinIDs       []string
+	insertedStanding    []db.StandingPreallocation
+	deletedStandingIDs  []string
+	storedDrafts        []db.DraftRotaAllocation
+	storedDraftSeats    [][]db.DraftAllocation
+	insertedAllocations []db.Allocation
+	allocatedRotaIDs    []string
 	// draftSeats are the Seats of the draft held in storedDrafts: who the solve
 	// put where, which is the rota the read endpoint reports.
 	draftSeats       []db.DraftAllocation
@@ -121,7 +121,8 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 
 	seen := make(map[string]bool)
 	var out []db.ShiftInRange
-	add := func(id, date string) {
+	add := func(shift db.Shift) {
+		id, date := shift.ID, shift.Date
 		if id == "" {
 			id = date
 		}
@@ -133,17 +134,18 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 		// it with, as a real one does — every Shift has them (ADR 0007). An
 		// explicit shiftsInRange is left exactly as the test wrote it.
 		// apiTestDefaults always answers, so there is no error a test can reach.
+		// Its rota and whether it is closed are kept from the fixture.
 		startAt, endAt, _ := model.ShiftTimestamps(date, apiTestDefaults.ShiftStartTime, apiTestDefaults.ShiftEndTime)
 		out = append(out, db.ShiftInRange{
-			Shift:     db.Shift{ID: id, Date: date, StartAt: startAt, EndAt: endAt},
+			Shift:     db.Shift{ID: id, RotaID: shift.RotaID, Date: date, Closed: shift.Closed, StartAt: startAt, EndAt: endAt},
 			Allocated: true,
 		})
 	}
 	for _, s := range m.shifts {
-		add(s.ID, s.Date)
+		add(s)
 	}
 	for _, a := range m.allocations {
-		add(a.ShiftID, a.ShiftID)
+		add(db.Shift{ID: a.ShiftID, Date: a.ShiftID})
 	}
 	return out
 }

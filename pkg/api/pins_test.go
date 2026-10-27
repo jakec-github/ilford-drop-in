@@ -36,13 +36,14 @@ func pinTestStore() *mockStore {
 
 func TestCreatePinEndpoint(t *testing.T) {
 	store := pinTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`
+	body := `{"shiftId":"s1","volunteerId":"bob","roleId":"role-service-volunteer"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/pins", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp struct {
 		ID          string `json:"id"`
+		ShiftID     string `json:"shiftId"`
 		Date        string `json:"date"`
 		RoleID      string `json:"roleId"`
 		Role        string `json:"role"`
@@ -50,6 +51,7 @@ func TestCreatePinEndpoint(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.NotEmpty(t, resp.ID)
+	assert.Equal(t, "s1", resp.ShiftID)
 	assert.Equal(t, "2026-01-11", resp.Date)
 	// Both, as a standing pin answers: the id is what the row references, the
 	// name is what an Organiser recognises.
@@ -65,7 +67,7 @@ func TestCreatePinEndpoint(t *testing.T) {
 
 func TestCreatePinEndpoint_TeamLead(t *testing.T) {
 	store := pinTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"alice","roleId":"role-team-lead"}`
+	body := `{"shiftId":"s1","volunteerId":"alice","roleId":"role-team-lead"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/pins", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -76,7 +78,7 @@ func TestCreatePinEndpoint_TeamLead(t *testing.T) {
 // A pin may name a Role the volunteer does not hold (ADR 0010).
 func TestCreatePinEndpoint_RoleNotHeld(t *testing.T) {
 	store := pinTestStore()
-	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-team-lead"}`
+	body := `{"shiftId":"s1","volunteerId":"bob","roleId":"role-team-lead"}`
 
 	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/pins", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -101,37 +103,37 @@ func TestCreatePinEndpoint_Errors(t *testing.T) {
 	}{
 		{
 			name:       "malformed JSON",
-			body:       `{"date":`,
+			body:       `{"shiftId":`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown field",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","bogus":true}`,
+			body:       `{"shiftId":"s1","volunteerId":"bob","bogus":true}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "neither volunteer nor custom",
-			body:       `{"date":"2026-01-11","roleId":"role-service-volunteer"}`,
+			body:       `{"shiftId":"s1","roleId":"role-service-volunteer"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "both volunteer and custom",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper","roleId":"role-service-volunteer"}`,
+			body:       `{"shiftId":"s1","volunteerId":"bob","custom":"Helper","roleId":"role-service-volunteer"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "no role at all",
-			body:       `{"date":"2026-01-11","volunteerId":"charlie"}`,
+			body:       `{"shiftId":"s1","volunteerId":"charlie"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "a role id nothing answers to",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-food-collector"}`,
+			body:       `{"shiftId":"s1","volunteerId":"bob","roleId":"role-food-collector"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
@@ -139,31 +141,39 @@ func TestCreatePinEndpoint_Errors(t *testing.T) {
 			// The wire named a Role by name until #195. A body still doing so
 			// is refused rather than quietly pinning nobody to nothing.
 			name:       "a role named the old way",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
+			body:       `{"shiftId":"s1","volunteerId":"bob","role":"Service volunteer"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","volunteerId":"nobody","roleId":"role-service-volunteer"}`,
+			body:       `{"shiftId":"s1","volunteerId":"nobody","roleId":"role-service-volunteer"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:       "unknown date",
-			body:       `{"date":"2026-02-01","volunteerId":"bob","roleId":"role-service-volunteer"}`,
+			name:       "unknown shift",
+			body:       `{"shiftId":"s-ghost","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store:      pinTestStore(),
 			wantStatus: http.StatusNotFound,
+		},
+		{
+			// The wire named a Shift by its date until #293. A body still doing
+			// so is refused rather than pinning to whichever Shift a date finds.
+			name:       "a shift named by its date",
+			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
+			store:      pinTestStore(),
+			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "duplicate assignee",
-			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
+			body:       `{"shiftId":"s1","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store:      seeded(),
 			wantStatus: http.StatusConflict,
 		},
 		{
 			name: "already allocated",
-			body: `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
+			body: `{"shiftId":"s1","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store: func() *mockStore {
 				s := pinTestStore()
 				s.allocatedRotas = map[string]bool{"rota-1": true}
@@ -173,7 +183,7 @@ func TestCreatePinEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name: "store insert failure",
-			body: `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
+			body: `{"shiftId":"s1","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store: func() *mockStore {
 				s := pinTestStore()
 				s.insertErr = errors.New("disk full")
@@ -297,7 +307,7 @@ func TestPinsRequireASession(t *testing.T) {
 	}
 	handler := newTestHandler(store, activeVolunteers())
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/pins", `{"date":"2026-01-11","volunteerId":"bob"}`)
+	rec := doRequest(t, handler, http.MethodPost, "/api/pins", `{"shiftId":"s1","volunteerId":"bob"}`)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, store.insertedPins, "an unauthenticated request must not pin anyone")
 

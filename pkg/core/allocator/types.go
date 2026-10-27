@@ -94,6 +94,9 @@ type Volunteer struct {
 
 // Shift represents a single shift that needs to be filled
 type Shift struct {
+	// ID is the Shift's own id: what identifies it, where Date is only data.
+	ID string
+
 	// Date of the shift
 	Date string
 

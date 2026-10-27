@@ -139,6 +139,7 @@ def _parse_shift(d: dict[str, Any], where: str) -> ShiftSpec:
     pins_raw = _optional(d, "pins", list, [], where)
     return ShiftSpec(
         index=_require(d, "index", int, where),
+        id=_require(d, "id", str, where),
         date=_require(d, "date", str, where),
         closed=_optional(d, "closed", bool, False, where),
         shape=tuple(
@@ -155,6 +156,7 @@ def _parse_historical_shift(d: dict[str, Any], where: str) -> HistoricalShift:
     if not isinstance(d, dict):
         raise InputError(f"{where}: expected object, got {type(d).__name__}")
     return HistoricalShift(
+        id=_require(d, "id", str, where),
         date=_require(d, "date", str, where),
         group_keys=_str_tuple(d, "group_keys", where),
     )
@@ -249,6 +251,7 @@ def output_to_dict(output: AllocationOutput) -> dict[str, Any]:
         "shifts": [
             {
                 "index": s.index,
+                "id": s.id,
                 "date": s.date,
                 "closed": s.closed,
                 "assignments": [

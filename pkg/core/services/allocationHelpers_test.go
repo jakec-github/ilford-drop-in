@@ -119,7 +119,7 @@ type mockAllocateRotaStore struct {
 	generations              map[string]db.AvailabilityGeneration // keyed by request id
 	allocations              []db.Allocation
 	alterations              []db.Alteration
-	manualPins     []db.Pin
+	manualPins               []db.Pin
 	insertedAllocations      []db.Allocation
 	storedDrafts             []db.DraftRotaAllocation
 	storedDraftSeats         [][]db.DraftAllocation
@@ -130,7 +130,7 @@ type mockAllocateRotaStore struct {
 	getLatestAvailabilityErr error
 	getAllocationsErr        error
 	getAlterationsErr        error
-	getPinsErr     error
+	getPinsErr               error
 	insertAllocationsErr     error
 }
 
@@ -330,6 +330,7 @@ func TestConvertToDBAllocations(t *testing.T) {
 	bob := allocator.Volunteer{ID: "bob"}
 	shifts := []*allocator.Shift{
 		{
+			ID:    "shift-jan-5",
 			Date:  "2025-01-05",
 			Index: 0,
 			AllocatedGroups: []*allocator.VolunteerGroup{
@@ -346,8 +347,8 @@ func TestConvertToDBAllocations(t *testing.T) {
 		},
 	}
 
-	shiftIDByDate := map[string]string{"2025-01-05": "shift-jan-5"}
-	allocations, err := convertToDBAllocations(shiftIDByDate, shifts, conversionRoles)
+	rotaShifts := []db.Shift{{ID: "shift-jan-5", Date: "2025-01-05"}}
+	allocations, err := convertToDBAllocations(rotaShifts, shifts, conversionRoles)
 	require.NoError(t, err)
 	require.Len(t, allocations, 3)
 
@@ -374,12 +375,14 @@ func TestConvertToDBAllocations(t *testing.T) {
 }
 
 func TestConvertToDBAllocations_MissingShiftFails(t *testing.T) {
-	// The solver only ever sees minted dates, so a date absent from the shift
-	// map is a broken invariant: convertToDBAllocations must fail loudly rather
-	// than emit an allocation that would trip the shift_id FK on insert.
+	// The solver only ever sees the rota's own shifts, so an id that is not
+	// one of them is a broken invariant: convertToDBAllocations must fail
+	// loudly rather than emit an allocation that would trip the shift_id FK on
+	// insert.
 	alice := allocator.Volunteer{ID: "alice"}
 	shifts := []*allocator.Shift{
 		{
+			ID:   "shift-jan-5",
 			Date: "2025-01-05",
 			Assignments: []allocator.Assignment{
 				{Volunteer: &alice, Role: "Team lead"},
@@ -387,9 +390,9 @@ func TestConvertToDBAllocations_MissingShiftFails(t *testing.T) {
 		},
 	}
 
-	_, err := convertToDBAllocations(map[string]string{"2025-01-12": "shift-other"}, shifts, conversionRoles)
+	_, err := convertToDBAllocations([]db.Shift{{ID: "shift-other", Date: "2025-01-12"}}, shifts, conversionRoles)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "2025-01-05")
+	assert.Contains(t, err.Error(), "shift-jan-5")
 }
 
 func TestConvertToDBAllocations_UnknownRoleFails(t *testing.T) {
@@ -399,6 +402,7 @@ func TestConvertToDBAllocations_UnknownRoleFails(t *testing.T) {
 	alice := allocator.Volunteer{ID: "alice"}
 	shifts := []*allocator.Shift{
 		{
+			ID:   "shift-jan-5",
 			Date: "2025-01-05",
 			Assignments: []allocator.Assignment{
 				{Volunteer: &alice, Role: "Greeter"},
@@ -406,7 +410,7 @@ func TestConvertToDBAllocations_UnknownRoleFails(t *testing.T) {
 		},
 	}
 
-	_, err := convertToDBAllocations(map[string]string{"2025-01-05": "shift-jan-5"}, shifts, conversionRoles)
+	_, err := convertToDBAllocations([]db.Shift{{ID: "shift-jan-5", Date: "2025-01-05"}}, shifts, conversionRoles)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Greeter")
 }

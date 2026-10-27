@@ -162,7 +162,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	roles, err := database.ListRoles(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, roles)
-	pin := `{"date":"` + defined.Shifts[0].Date + `","volunteerId":"alice","roleId":"` + roles[0].ID + `"}`
+	pin := `{"shiftId":"` + defined.Shifts[0].ID + `","volunteerId":"alice","roleId":"` + roles[0].ID + `"}`
 	rec = doRequest(t, handler, http.MethodPost, "/api/pins", pin, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 

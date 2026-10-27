@@ -46,6 +46,7 @@ def test_valid_input_exit_zero(tmp_path):
     assert code == 0
     assert out["success"] is True
     assert out["solver_status"] == "OPTIMAL"
+    assert out["shifts"][0]["id"] == "shift-0"
     assert out["shifts"][0]["assignments"] == [
         {"volunteer_id": "v1", "custom": "", "role": "Service volunteer"}
     ]
@@ -90,6 +91,7 @@ def test_no_groups_solves_with_every_seat_unfilled(tmp_path):
     payload["shifts"].append(
         {
             "index": 1,
+            "id": "shift-1",
             "date": "2026-07-20",
             "shape": shape(2),
             "pins": [
