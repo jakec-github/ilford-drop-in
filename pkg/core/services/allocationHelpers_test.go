@@ -119,7 +119,7 @@ type mockAllocateRotaStore struct {
 	generations              map[string]db.AvailabilityGeneration // keyed by request id
 	allocations              []db.Allocation
 	alterations              []db.Alteration
-	manualPreallocations     []db.Preallocation
+	manualPins     []db.Pin
 	insertedAllocations      []db.Allocation
 	storedDrafts             []db.DraftRotaAllocation
 	storedDraftSeats         [][]db.DraftAllocation
@@ -130,7 +130,7 @@ type mockAllocateRotaStore struct {
 	getLatestAvailabilityErr error
 	getAllocationsErr        error
 	getAlterationsErr        error
-	getPreallocationsErr     error
+	getPinsErr     error
 	insertAllocationsErr     error
 }
 
@@ -210,13 +210,13 @@ func (m *mockAllocateRotaStore) GetAlterationsByShiftIDs(ctx context.Context, sh
 	return filtered, nil
 }
 
-func (m *mockAllocateRotaStore) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error) {
-	if m.getPreallocationsErr != nil {
-		return nil, m.getPreallocationsErr
+func (m *mockAllocateRotaStore) GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error) {
+	if m.getPinsErr != nil {
+		return nil, m.getPinsErr
 	}
 	want := idSet(shiftIDs)
-	var filtered []db.Preallocation
-	for _, p := range m.manualPreallocations {
+	var filtered []db.Pin
+	for _, p := range m.manualPins {
 		if want[p.ShiftID] {
 			filtered = append(filtered, p)
 		}

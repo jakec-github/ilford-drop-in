@@ -130,7 +130,7 @@ if ! (cd "$REPO_ROOT" && go run ./cmd/server -env "$ENV" -validate-config "$CONF
 fi
 
 # 2. Confirm. The counts above are what an operator checks against what they
-#    meant to change — a dropped preallocation validates perfectly well.
+#    meant to change — a dropped pin validates perfectly well.
 echo ""
 if [[ "$ASSUME_YES" != true ]]; then
     if [[ ! -t 0 ]]; then

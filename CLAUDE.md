@@ -20,7 +20,7 @@ does not apply to you.
   first parameterised route); then wouter, not react-router.
 - Domain rules: a screen mirrors what the endpoint behind it accepts and
   invents nothing. In particular, the config's rules bind the allocator and
-  nothing else: a Preallocation or Alteration is refused only for what cannot
+  nothing else: a Pin or Alteration is refused only for what cannot
   be represented (one person twice on a Shift, no Role, a Closed Shift), never
   for breaking a rule — see
   [ADR 0010](docs/adr/0010-config-allows-the-allocator-obeys-people-decide.md). Never write

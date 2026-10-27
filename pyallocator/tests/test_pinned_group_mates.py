@@ -19,7 +19,7 @@ from conftest import (
     volunteer_ids,
 )
 from pyallocator.api import solve
-from pyallocator.domain import HistoricalShift, Preallocation, Seat, ShiftSpec
+from pyallocator.domain import HistoricalShift, Pin, Seat, ShiftSpec
 from pyallocator.problem import Problem
 
 # Every Volunteer Rule kind, at the values that were the old switchable rules:
@@ -44,8 +44,8 @@ def _service_shift(index: int, seats: int, pinned: tuple[str, ...] = ()) -> Shif
         date=f"2026-0{7 + index}-13",
         closed=False,
         shape=(Seat(role=SERVICE_VOLUNTEER, count=seats),),
-        preallocations=tuple(
-            Preallocation(volunteer_id=v, custom="", role=SERVICE_VOLUNTEER)
+        pins=tuple(
+            Pin(volunteer_id=v, custom="", role=SERVICE_VOLUNTEER)
             for v in pinned
         ),
     )
@@ -174,12 +174,12 @@ def test_only_pinned_volunteers_with_mates_need_a_second_pass():
             make_group("g1", available=[0]),
             _couple("couple", "alice", "bob", available=[0]),
         ],
-        shifts=[make_shift(0, preallocated_volunteer_ids=["g1", "alice", "bob"])],
+        shifts=[make_shift(0, pinned_volunteer_ids=["g1", "alice", "bob"])],
     )
     assert Problem(lone).pinned_mates == ()
 
     paired = make_input(
         groups=[_couple("couple", "alice", "bob", available=[0])],
-        shifts=[make_shift(0, preallocated_volunteer_ids=["alice"])],
+        shifts=[make_shift(0, pinned_volunteer_ids=["alice"])],
     )
     assert Problem(paired).pinned_mates == (("bob", 0),)

@@ -109,10 +109,10 @@ func TestEveryAllocatorInputStampsTheRota(t *testing.T) {
 			},
 		},
 		{
-			name: "a Preallocation",
+			name: "a Pin",
 			move: func(t *testing.T) {
-				require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(tx db.PreallocationTxStore) error {
-					return tx.InsertPreallocation(ctx, db.Preallocation{
+				require.NoError(t, database.WithRotaPinLock(ctx, []string{rota.ID}, func(tx db.PinTxStore) error {
+					return tx.InsertPin(ctx, db.Pin{
 						ID:          pinID,
 						ShiftID:     first.ID,
 						RoleID:      roles[0].ID,
@@ -123,10 +123,10 @@ func TestEveryAllocatorInputStampsTheRota(t *testing.T) {
 		},
 		{
 			// Unpinning changes the problem exactly as pinning does.
-			name: "a Preallocation being removed",
+			name: "a Pin being removed",
 			move: func(t *testing.T) {
-				require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(tx db.PreallocationTxStore) error {
-					deleted, err := tx.DeletePreallocationByID(ctx, pinID)
+				require.NoError(t, database.WithRotaPinLock(ctx, []string{rota.ID}, func(tx db.PinTxStore) error {
+					deleted, err := tx.DeletePinByID(ctx, pinID)
 					require.NoError(t, err)
 					require.True(t, deleted)
 					return nil

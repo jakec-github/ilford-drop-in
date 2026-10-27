@@ -13,11 +13,11 @@ import type {
   ConfiguredRole,
   DefinedRota,
   DraftRotaState,
-  NewPreallocation,
+  NewPin,
   NewRota,
   NewStandingPreallocation,
   PersonRef,
-  Preallocation,
+  Pin,
   RoleColour,
   RoleEdit,
   RotaChange,
@@ -358,7 +358,7 @@ export async function removeAllocationRule(id: string): Promise<RotaDefaults> {
   return (await res.json()) as RotaDefaults;
 }
 
-interface ApiPreallocation {
+interface ApiPin {
   id: string;
   date: string;
   roleId: string;
@@ -368,11 +368,11 @@ interface ApiPreallocation {
   name: string;
 }
 
-interface ListPreallocationsResponse {
-  preallocations: ApiPreallocation[];
+interface ListPinsResponse {
+  pins: ApiPin[];
 }
 
-function toPreallocation(p: ApiPreallocation): Preallocation {
+function toPin(p: ApiPin): Pin {
   return {
     id: p.id,
     date: p.date,
@@ -384,20 +384,20 @@ function toPreallocation(p: ApiPreallocation): Preallocation {
   };
 }
 
-// fetchPreallocations returns everyone already pinned to a shift from today
+// fetchPins returns everyone already pinned to a shift from today
 // onwards, ordered by date. Behind a session: a pin names someone against a date the
 // rota has not published.
-export async function fetchPreallocations(): Promise<Preallocation[]> {
+export async function fetchPins(): Promise<Pin[]> {
   const today = new Date().toLocaleDateString("en-CA");
-  const res = await fetch(`${BASE_PATH}/api/preallocations?from=${today}`);
+  const res = await fetch(`${BASE_PATH}/api/pins?from=${today}`);
   if (!res.ok) {
-    throw new Error(await errorMessage(res, "Failed to load preallocations"));
+    throw new Error(await errorMessage(res, "Failed to load pins"));
   }
-  const data = (await res.json()) as ListPreallocationsResponse;
-  return data.preallocations.map(toPreallocation);
+  const data = (await res.json()) as ListPinsResponse;
+  return data.pins.map(toPin);
 }
 
-// createPreallocation pins one person to a shift ahead of allocation, so the
+// createPin pins one person to a shift ahead of allocation, so the
 // allocator has to place them there. Behind a session, and refused once the rota has
 // been allocated — a pin can only promise something that has not happened yet.
 //
@@ -405,8 +405,8 @@ export async function fetchPreallocations(): Promise<Preallocation[]> {
 // is showing them sorted server-side, so it re-reads the listing rather than
 // splicing this one in. Throws the server's own message,
 // which names what it clashed with ("every … seat for … is already pinned").
-export async function createPreallocation(
-  pin: NewPreallocation,
+export async function createPin(
+  pin: NewPin,
 ): Promise<void> {
   // Every pin names the Role it fills, by id — a pin is a promise about a job,
   // and may name one the pinned volunteer does not hold (ADR 0010).
@@ -420,7 +420,7 @@ export async function createPreallocation(
     body.custom = pin.person.custom;
   }
 
-  const res = await fetch(`${BASE_PATH}/api/preallocations`, {
+  const res = await fetch(`${BASE_PATH}/api/pins`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -430,12 +430,12 @@ export async function createPreallocation(
   }
 }
 
-// deletePreallocation removes one pin by id. Any of them can go: there is one
+// deletePin removes one pin by id. Any of them can go: there is one
 // kind of pin, and an Organiser or a Rota Editor may take back any promise the rota has not been
 // allocated on.
-export async function deletePreallocation(id: string): Promise<void> {
+export async function deletePin(id: string): Promise<void> {
   const res = await fetch(
-    `${BASE_PATH}/api/preallocations/${encodeURIComponent(id)}`,
+    `${BASE_PATH}/api/pins/${encodeURIComponent(id)}`,
     {
       method: "DELETE",
     },

@@ -7,17 +7,17 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
-// createPreallocationRequest names the Seat a pin fills by its Role id, as the
+// createPinRequest names the Seat a pin fills by its Role id, as the
 // standing-preallocation request does. A pin outlives any number of renames, so
 // the id is the only reference to a Role that survives one (issue #195).
-type createPreallocationRequest struct {
+type createPinRequest struct {
 	Date        string `json:"date"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
 	RoleID      string `json:"roleId"`
 }
 
-// preallocationResponse is one pin. Role comes back twice for the reason a
+// pinResponse is one pin. Role comes back twice for the reason a
 // standing one does: roleId is what the row references, role is what an Organiser
 // recognises.
 //
@@ -25,7 +25,7 @@ type createPreallocationRequest struct {
 // pin a Standing Preallocation seeded at definition are the same row — so it
 // says nothing about where it came from and every one of them carries an id a
 // DELETE can be addressed at.
-type preallocationResponse struct {
+type pinResponse struct {
 	ID          string `json:"id"`
 	Date        string `json:"date"`
 	RoleID      string `json:"roleId"`
@@ -35,14 +35,14 @@ type preallocationResponse struct {
 	Name        string `json:"name"`
 }
 
-type listPreallocationsResponse struct {
-	Preallocations []preallocationResponse `json:"preallocations"`
+type listPinsResponse struct {
+	Pins []pinResponse `json:"pins"`
 }
 
-// handleCreatePreallocation pins one assignee to a shift. Set-time validation
+// handleCreatePin pins one assignee to a shift. Set-time validation
 // lives in the service; rejections map to 400/404/409 via writeServiceError.
-func (h *Handler) handleCreatePreallocation(w http.ResponseWriter, r *http.Request) {
-	var req createPreallocationRequest
+func (h *Handler) handleCreatePin(w http.ResponseWriter, r *http.Request) {
+	var req createPinRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
@@ -50,7 +50,7 @@ func (h *Handler) handleCreatePreallocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	view, err := services.AddPreallocation(r.Context(), h.store, h.volunteers, h.org, services.AddPreallocationParams{
+	view, err := services.AddPin(r.Context(), h.store, h.volunteers, h.org, services.AddPinParams{
 		Date:        req.Date,
 		VolunteerID: req.VolunteerID,
 		Custom:      req.Custom,
@@ -61,25 +61,25 @@ func (h *Handler) handleCreatePreallocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, toPreallocationResponse(*view))
+	h.writeJSON(w, http.StatusCreated, toPinResponse(*view))
 }
 
-// handleDeletePreallocation removes one pin by id. 204 on success; a missing
+// handleDeletePin removes one pin by id. 204 on success; a missing
 // pin or a frozen rota surfaces via writeServiceError (404/409).
-func (h *Handler) handleDeletePreallocation(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleDeletePin(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := services.DeletePreallocation(r.Context(), h.store, id, h.logger); err != nil {
+	if err := services.DeletePin(r.Context(), h.store, id, h.logger); err != nil {
 		h.writeServiceError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleListPreallocations returns every pin whose shift falls in the optional
+// handleListPins returns every pin whose shift falls in the optional
 // from/to date range. Behind a session: it names people against dates the rota has not
 // published yet.
-func (h *Handler) handleListPreallocations(w http.ResponseWriter, r *http.Request) {
-	views, err := services.ListPreallocations(r.Context(), h.store, h.volunteers, h.org, services.ListPreallocationsParams{
+func (h *Handler) handleListPins(w http.ResponseWriter, r *http.Request) {
+	views, err := services.ListPins(r.Context(), h.store, h.volunteers, h.org, services.ListPinsParams{
 		From: r.URL.Query().Get("from"),
 		To:   r.URL.Query().Get("to"),
 	}, h.logger)
@@ -88,15 +88,15 @@ func (h *Handler) handleListPreallocations(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp := listPreallocationsResponse{Preallocations: make([]preallocationResponse, 0, len(views))}
+	resp := listPinsResponse{Pins: make([]pinResponse, 0, len(views))}
 	for _, v := range views {
-		resp.Preallocations = append(resp.Preallocations, toPreallocationResponse(v))
+		resp.Pins = append(resp.Pins, toPinResponse(v))
 	}
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-func toPreallocationResponse(v services.PreallocationView) preallocationResponse {
-	return preallocationResponse{
+func toPinResponse(v services.PinView) pinResponse {
+	return pinResponse{
 		ID:          v.ID,
 		Date:        v.Date,
 		RoleID:      v.RoleID,

@@ -77,7 +77,7 @@ func getStandingPreallocations(ctx context.Context, q querier, organisationID st
 // whatever Role either names — a person fills at most one Seat on a Shift, so
 // the second is a slip rather than a second promise.
 //
-// The nullable volunteer_id / custom_value follow the preallocation pattern: an
+// The nullable volunteer_id / custom_value follow the pin pattern: an
 // empty string is stored as NULL, and the table's own CHECK refuses a row that
 // names both or neither. An unknown role_id trips the foreign key.
 func (d *DB) InsertStandingPreallocation(ctx context.Context, s StandingPreallocation) error {
@@ -110,8 +110,8 @@ func (d *DB) InsertStandingPreallocation(ctx context.Context, s StandingPrealloc
 // DeleteStandingPreallocationByID removes one, reporting whether a row was
 // actually deleted so a caller can tell a missing one from a successful delete.
 //
-// Nothing cascades. The Preallocations a Standing Preallocation has already
-// seeded are ordinary Preallocations belonging to the rotas that minted them,
+// Nothing cascades. The Pins a Standing Preallocation has already
+// seeded are ordinary Pins belonging to the rotas that minted them,
 // and they outlive it: it is a convenience at definition, not a standing fact.
 func (d *DB) DeleteStandingPreallocationByID(ctx context.Context, id string) (bool, error) {
 	tag, err := d.pool.Exec(ctx, `DELETE FROM standing_preallocation WHERE id = $1 AND organisation_id = $2`, id, d.org())

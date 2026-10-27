@@ -33,7 +33,7 @@ type Level string
 
 const (
 	// LevelRotaEditor changes shifts and nothing else: Alterations and Cover
-	// on an allocated rota, Preallocations on the rota in flight.
+	// on an allocated rota, Pins on the rota in flight.
 	LevelRotaEditor Level = "rotaEditor"
 	// LevelOrganiser makes every edit the app offers.
 	LevelOrganiser Level = "organiser"

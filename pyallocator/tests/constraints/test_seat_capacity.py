@@ -21,8 +21,8 @@ from conftest import (
     solve_with,
     team_lead_id,
 )
-from pyallocator.constraints import preallocations, seat_capacity
-from pyallocator.domain import Preallocation, Seat, ShiftSpec
+from pyallocator.constraints import pins, seat_capacity
+from pyallocator.domain import Pin, Seat, ShiftSpec
 
 ONLY = [seat_capacity.CONSTRAINT]
 
@@ -30,10 +30,10 @@ ONLY = [seat_capacity.CONSTRAINT]
 def pin_team_lead(shift: ShiftSpec, *volunteer_ids: str) -> ShiftSpec:
     """make_shift takes a single team-lead pin; these tests need two."""
     pins = tuple(
-        Preallocation(volunteer_id=v, custom="", role=TEAM_LEAD)
+        Pin(volunteer_id=v, custom="", role=TEAM_LEAD)
         for v in volunteer_ids
     )
-    return dataclasses.replace(shift, preallocations=shift.preallocations + pins)
+    return dataclasses.replace(shift, pins=shift.pins + pins)
 
 
 def test_shift_never_overfilled():
@@ -106,46 +106,46 @@ def test_two_volunteers_pinned_to_one_team_lead_seat_are_both_honoured():
         ],
         shifts=[pin_team_lead(make_shift(0), "tl_a", "tl_b")],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["tl_a", "tl_b"]
 
 
 def test_allocator_adds_nobody_to_a_role_its_pins_have_filled():
     one_seat = dataclasses.replace(
-        make_shift(0, preallocated_volunteer_ids=["p1", "p2"]),
+        make_shift(0, pinned_volunteer_ids=["p1", "p2"]),
         shape=(Seat(role=SERVICE_VOLUNTEER, count=1),),
     )
     inp = make_input(
         groups=[make_group(k, available=[0]) for k in ("p1", "p2", "free")],
         shifts=[one_seat],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["p1", "p2"]
 
 
 def test_custom_and_volunteer_pins_both_take_seats():
     two_seats = dataclasses.replace(
-        make_shift(0, custom_preallocations=["ext"], preallocated_volunteer_ids=["p1"]),
+        make_shift(0, custom_pins=["ext"], pinned_volunteer_ids=["p1"]),
         shape=(Seat(role=SERVICE_VOLUNTEER, count=2),),
     )
     inp = make_input(
         groups=[make_group(k, available=[0]) for k in ("p1", "free")],
         shifts=[two_seats],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out)[0] == ("p1",)
 
 
 def test_volunteer_pin_past_a_role_custom_pins_already_fill():
     full = dataclasses.replace(
-        make_shift(0, custom_preallocations=["e1", "e2"], preallocated_volunteer_ids=["p1"]),
+        make_shift(0, custom_pins=["e1", "e2"], pinned_volunteer_ids=["p1"]),
         shape=(Seat(role=SERVICE_VOLUNTEER, count=1),),
     )
     inp = make_input(groups=[make_group("p1", available=[0])], shifts=[full])
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out)[0] == ("p1",)
 
@@ -161,7 +161,7 @@ def test_a_role_with_free_seats_still_fills_beside_an_overfilled_one():
         ],
         shifts=[pin_team_lead(make_shift(0, size=1), "tl_a", "tl_b")],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["free", "tl_a", "tl_b"]
 
@@ -182,15 +182,15 @@ def test_a_shape_asking_for_more_of_a_role_gets_more():
         ],
         shifts=[pin_team_lead(roomy, "tl_a", "tl_b")],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["tl_a", "tl_b"]
 
 
-def test_custom_preallocations_consume_seats():
+def test_custom_pins_consume_seats():
     inp = make_input(
         groups=[make_group(f"g{i}", available=[0]) for i in range(3)],
-        shifts=[make_shift(0, size=3, custom_preallocations=["ext1", "ext2"])],
+        shifts=[make_shift(0, size=3, custom_pins=["ext1", "ext2"])],
     )
     out = solve_with(inp, ONLY)
     assert out.success
@@ -198,10 +198,10 @@ def test_custom_preallocations_consume_seats():
     assert len(allocations_by_shift(out)[0]) == 1
 
 
-def test_more_custom_preallocations_than_size_floors_at_zero():
+def test_more_custom_pins_than_size_floors_at_zero():
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0, size=1, custom_preallocations=["e1", "e2", "e3"])],
+        shifts=[make_shift(0, size=1, custom_pins=["e1", "e2", "e3"])],
     )
     out = solve_with(inp, ONLY)
     assert out.success

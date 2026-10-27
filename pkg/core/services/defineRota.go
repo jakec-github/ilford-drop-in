@@ -15,16 +15,16 @@ import (
 )
 
 // RotaResult represents the result of defining a new rota: the rotation, the
-// shifts it minted, in date order, and the Preallocations its Standing
+// shifts it minted, in date order, and the Pins its Standing
 // Preallocations seeded. Callers get the shifts themselves rather than bare
 // dates, because a shift's id is its identity everywhere downstream (ADR 0001).
 type RotaResult struct {
 	Rotation *db.Rotation
 	Shifts   []db.Shift
-	// Preallocations are ordinary Preallocations from the moment they are
+	// Pins are ordinary Pins from the moment they are
 	// written: nothing marks them as having been seeded, and an Organiser may
 	// remove any of them (issue #131).
-	Preallocations []db.Preallocation
+	Pins []db.Pin
 	// Asked is how many volunteers were given a link by the round this
 	// definition opened. Zero where the roster could not be read — the rota is
 	// defined either way, and the Allocation tab offers to start the round.
@@ -67,7 +67,7 @@ type DefineRotaStore interface {
 	MintRequestsStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
-	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error
+	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, pins []db.Pin, requirements []db.ShiftRequirement) error
 }
 
 // definition is a validated DefineRotaParams: the same rota, in the spellings
@@ -231,7 +231,7 @@ func DefineRota(
 		}
 	}
 
-	// Spend the Standing Preallocations: they become ordinary Preallocations on
+	// Spend the Standing Preallocations: they become ordinary Pins on
 	// the Shifts their rules land on. Defining is the only moment they are read,
 	// which is what makes them a convenience rather than a standing fact —
 	// editing one later changes what the next rota starts from, never what this
@@ -247,14 +247,14 @@ func DefineRota(
 	if err != nil {
 		return nil, err
 	}
-	preallocations, err := seedPreallocations(standing, shifts, roles, logger)
+	pins, err := seedPins(standing, shifts, roles, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Insert the rotation, its shifts, their Shapes and its seeded pins
 	// atomically, so a rota can never exist half-formed.
-	if err := database.InsertDefinedRota(ctx, rotation, shifts, preallocations, requirements); err != nil {
+	if err := database.InsertDefinedRota(ctx, rotation, shifts, pins, requirements); err != nil {
 		// The one-Shift-per-date index answering. Reachable by hand now that the
 		// start date is an Organiser's to state — a rota begun a week too early
 		// overlaps the last one — so it is answered as the ordinary mistake it
@@ -268,14 +268,14 @@ func DefineRota(
 	logger.Debug("Rotation created successfully",
 		zap.String("rotation_id", rotation.ID),
 		zap.Int("shift_count", stated.shiftCount),
-		zap.Int("preallocation_count", len(preallocations)),
+		zap.Int("pin_count", len(pins)),
 		zap.String("first_shift", shifts[0].Date),
 		zap.String("last_shift", shifts[len(shifts)-1].Date))
 
 	return &RotaResult{
 		Rotation:       rotation,
 		Shifts:         shifts,
-		Preallocations: preallocations,
+		Pins: pins,
 		Asked:          openRound(ctx, database, volunteerClient, organisation, logger, rotation.ID),
 	}, nil
 }

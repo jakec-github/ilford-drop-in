@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type {
   Assignee,
   PersonRef,
-  Preallocation,
+  Pin,
   Role,
   RotaShift,
 } from "../types";
@@ -147,7 +147,7 @@ export interface RowEdit {
   // them to drag, and what can be changed there is who allocation will be
   // made to place.
   onPin: () => void;
-  onUnpin: (pin: Preallocation) => void;
+  onUnpin: (pin: Pin) => void;
   // Whether this row may be shut or opened at all. False once the rota has been
   // allocated: closure is an allocator input, and the rota was solved around it.
   canSetClosed: boolean;
@@ -336,7 +336,7 @@ function swapBlockedReason(
 // What a pin means. There is one kind, whether somebody made it here or a
 // Standing Preallocation seeded it when the rota was defined, so there is one
 // thing to say about it.
-function pinTitle(pin: Preallocation): string {
+function pinTitle(pin: Pin): string {
   return `${pin.name} is pinned${roleSuffix(pin.role)} to this shift, and will be placed here when the rota is allocated.`;
 }
 
@@ -355,12 +355,12 @@ function draftTitle(assignee: Assignee): string {
 // these under their Roles without caring which kind each one is — the two say
 // the same thing about which job is being done, and differ only in how firmly.
 type Planned =
-  | { kind: "pin"; roleId: string; role: Role; pin: Preallocation }
+  | { kind: "pin"; roleId: string; role: Role; pin: Pin }
   | { kind: "draft"; roleId: string; role: Role; assignee: Assignee };
 
 // How the alterations API would name the person a pin is for. The same shape
 // personRef gives an assignee, so the two can be compared.
-function pinRef(pin: Preallocation): PersonRef {
+function pinRef(pin: Pin): PersonRef {
   return pin.volunteerId
     ? { volunteerId: pin.volunteerId }
     : { custom: pin.name };
@@ -376,7 +376,7 @@ function pinRef(pin: Preallocation): PersonRef {
 // Matched by person and consumed as it goes, so two customs of the same name —
 // two people from one visiting group — line up one pin each rather than both
 // folding into the first.
-function plannedFor(pins: Preallocation[], drafted: Assignee[]): Planned[] {
+function plannedFor(pins: Pin[], drafted: Assignee[]): Planned[] {
   const unmatched = [...drafted];
 
   const planned: Planned[] = pins.map((pin) => {
@@ -435,7 +435,7 @@ function PlannedList({
   // as true after the edit as it was before.
   stale: boolean;
   // Absent unless editing is on.
-  onUnpin?: (pin: Preallocation) => void;
+  onUnpin?: (pin: Pin) => void;
 }) {
   return (
     // No heading on the row. "Draft" was the only thing it ever said and it is
@@ -599,7 +599,7 @@ function ShiftRow({
   shift: RotaShift;
   // Everyone already pinned to this shift. Only ever non-empty when signed in
   // looking at a shift whose rota has not been allocated.
-  pins: Preallocation[];
+  pins: Pin[];
   // Who the last solve put on this shift. Only ever non-empty on the same rows
   // as pins, and for the same reason: a draft only exists for a rota that has
   // not been allocated, and only the signed in are shown one.
@@ -989,7 +989,7 @@ export default function ShiftList({
   // allocated to, and the Allocation tab shows only those.
   shifts: RotaShift[];
   // Who is pinned to each shift, keyed by date as the pins themselves are.
-  pinsByDate: Map<string, Preallocation[]>;
+  pinsByDate: Map<string, Pin[]>;
   // Who the last solve put on each shift, keyed by shift id (ADR 0001). Absent
   // where the caller shows no draft at all — the rota page, which shows what has
   // been decided and leaves the solver's guess to the Allocation tab.

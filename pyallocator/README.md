@@ -47,7 +47,7 @@ in Go — Python enforces and counts):
   "shifts": [{"index": 0, "date": "2026-07-13", "closed": false,
               "shape": [{"role": "Team lead", "count": 1},
                         {"role": "Service volunteer", "count": 4}],
-              "preallocations": [
+              "pins": [
                 {"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"},
                 {"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
                 {"volunteer_id": "vol-9", "custom": "", "role": "Team lead"}]}],
@@ -64,10 +64,10 @@ in Go — Python enforces and counts):
 A **Role** is a job on a shift; volunteers hold the Roles they will do, and
 only a holder may fill a Seat asking for that Role. `max` is the ceiling on a
 Role's Seats per shift — `null` means uncapped, and exactly one Role is
-uncapped. `shape` is the shift's Seats, resolved in Go. Every preallocation
+uncapped. `shape` is the shift's Seats, resolved in Go. Every pin
 names the Role it fills and sets exactly one of `volunteer_id` and `custom`.
 
-A preallocation is the exception to both eligibility rules, because it records
+A pin is the exception to both eligibility rules, because it records
 a decision already taken rather than asking the solver to make one: the pinned
 volunteer fills the named Role on that shift whether or not they hold it, and
 attends whether or not their group said it was available. Both grants are
@@ -99,7 +99,7 @@ Output:
 ```
 
 `assignments` are the Seats that ended up filled, mirroring the
-preallocations going in: exactly one of `volunteer_id` and `custom` is
+pins going in: exactly one of `volunteer_id` and `custom` is
 set. A Seat nobody filled is simply absent, which is how "this shift has
 no team lead" is said — expected and common, and filled in manually
 later.
@@ -126,7 +126,7 @@ read `x.role`. Modularity is the point of this package:
     work each shift together or not at all), availability, seat_capacity
     (a Role's Seats on a shift are never oversubscribed — where "at most
     one team lead" now comes from, that Role having one Seat),
-    closed_shifts, preallocations, no_duplicate_allocation.
+    closed_shifts, pins, no_duplicate_allocation.
   - `RULE_KINDS` build one constraint per Allocation Rule in the input,
     binding only the volunteers it covers: max_frequency (a cap on a
     rota's shifts), shift_gap (shifts off between any two worked, Closed
@@ -153,14 +153,14 @@ read `x.role`. Modularity is the point of this package:
     in each Role before pushing any shift to N+1, and fill a
     higher-priority Role's Seat before a lower one's; the lighter
     headcount term then breaks ties towards even totals, so per-Role
-    remainders do not pile onto one shift (#242). Custom preallocations
+    remainders do not pile onto one shift (#242). Custom pins
     occupy their Role's early Seats and a shift's first heads.
   - `spread_genders` (30 // man or woman, scaled by shift size) — match each shift's split between men and women to the roster's; other genders do not count.
   - `fairness` (20 // lifetime allocation, historical + this rota) —
     reach for under-used groups before frequently-allocated ones.
   - `maximize_allocations` (1) — base reward so shifts fill where they
     can; the unit other weights are measured against.
-- `problem.py` — normalised solver view; preallocation resolution and
+- `problem.py` — normalised solver view; pin resolution and
   its error cases live here because several constraints need them.
 - `model_builder.py` / `solver.py` / `solution.py` — model assembly,
   deterministic solve (fixed seed, single worker, 30s limit), extraction.

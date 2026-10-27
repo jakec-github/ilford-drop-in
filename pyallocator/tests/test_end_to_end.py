@@ -1,8 +1,8 @@
 """End-to-end solve at realistic scale, modeled on the Go allocator's
 e2e scenario (pkg/core/allocator/e2e/allocator_test.go): ~24 volunteers,
 7 shifts, couples, team-lead couples, a closed shift, a volunteer
-preallocation that overrides availability, a preallocated team lead and
-a custom (free-text) preallocation.
+pin that overrides availability, a pinned team lead and
+a custom (free-text) pin.
 
 Two oracles here, answering different questions.
 
@@ -45,7 +45,7 @@ from pyallocator.domain import (
     Group,
     HistoricalShift,
     Member,
-    Preallocation,
+    Pin,
     Role,
     Seat,
     ShiftSpec,
@@ -65,7 +65,7 @@ E2E_RULES = (("shift_requires", 0), ("shift_gap", 1))
 EVERY_RULE = E2E_RULES + (("monthly_cap", 1),)
 
 
-# The spec no longer carries a size or three preallocation lists; it carries a
+# The spec no longer carries a size or three pin lists; it carries a
 # Shape and one role-named pin list. These read the same facts back out, so
 # verify_solution keeps checking exactly the rules it checked before.
 def spec_size(spec) -> int:
@@ -73,11 +73,11 @@ def spec_size(spec) -> int:
 
 
 def spec_customs(spec) -> list[str]:
-    return [p.custom for p in spec.preallocations if p.custom]
+    return [p.custom for p in spec.pins if p.custom]
 
 
 def spec_team_lead_id(spec) -> str:
-    for pin in spec.preallocations:
+    for pin in spec.pins:
         if pin.role == TEAM_LEAD and pin.volunteer_id:
             return pin.volunteer_id
     return ""
@@ -86,7 +86,7 @@ def spec_team_lead_id(spec) -> str:
 def spec_volunteer_ids(spec) -> list[str]:
     return [
         p.volunteer_id
-        for p in spec.preallocations
+        for p in spec.pins
         if p.volunteer_id and p.role != TEAM_LEAD
     ]
 
@@ -103,15 +103,15 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
     # they need not hold. Both exemptions below are the same rule read twice:
     # a pin is a decision already taken, and it binds one shift only. It
     # binds one person too (#234): their group may split on that shift.
-    preallocated_roles: dict[tuple[str, int], str] = {}
+    pinned_roles: dict[tuple[str, int], str] = {}
     member_to_group = {m.id: g.group_key for g in inp.groups for m in g.members}
     roles_held = {m.id: set(m.roles) for g in inp.groups for m in g.members}
     for spec in inp.shifts:
-        for p in spec.preallocations:
+        for p in spec.pins:
             if p.volunteer_id:
-                preallocated_roles[(p.volunteer_id, spec.index)] = p.role
+                pinned_roles[(p.volunteer_id, spec.index)] = p.role
     pinned_group_shifts = {
-        (member_to_group[vid], index) for vid, index in preallocated_roles
+        (member_to_group[vid], index) for vid, index in pinned_roles
     }
 
     allocated: dict[str, list[int]] = {key: [] for key in groups}
@@ -123,7 +123,7 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
         ):
             problems.append(f"shift {spec.index}: spec fields not echoed faithfully")
         if spec_customs(spec) != list(customs(shift)):
-            problems.append(f"shift {spec.index}: custom preallocations not echoed")
+            problems.append(f"shift {spec.index}: custom pins not echoed")
 
         keys = shift.allocated_group_keys
         if len(set(keys)) != len(keys):
@@ -154,7 +154,7 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             for m in on:
                 if (
                     shift.index not in group.available_shift_indices
-                    and (m.id, shift.index) not in preallocated_roles
+                    and (m.id, shift.index) not in pinned_roles
                 ):
                     problems.append(f"shift {shift.index}: {m.id} not available")
 
@@ -186,7 +186,7 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             if (
                 a.volunteer_id
                 and a.role not in roles_held.get(a.volunteer_id, set())
-                and preallocated_roles.get((a.volunteer_id, shift.index)) != a.role
+                and pinned_roles.get((a.volunteer_id, shift.index)) != a.role
             ):
                 problems.append(
                     f"shift {shift.index}: {a.volunteer_id} assigned role "
@@ -204,13 +204,13 @@ def verify_solution(inp: AllocationInput, out: AllocationOutput) -> list[str]:
             if tl_group not in keys:
                 problems.append(f"shift {shift.index}: team lead outside the rota")
         if spec_team_lead_id(spec) and lead_id != spec_team_lead_id(spec):
-            problems.append(f"shift {shift.index}: preallocated TL not in the TL Seat")
+            problems.append(f"shift {shift.index}: pinned TL not in the TL Seat")
 
-    for vol_id, shift_index in preallocated_roles:
+    for vol_id, shift_index in pinned_roles:
         if vol_id not in volunteer_ids(out.shifts[shift_index]) and vol_id != team_lead_id(
             out.shifts[shift_index]
         ):
-            problems.append(f"preallocation ({vol_id}, {shift_index}) not honoured")
+            problems.append(f"pin ({vol_id}, {shift_index}) not honoured")
 
     last_historical = (
         set(inp.historical_shifts[-1].group_keys) if inp.historical_shifts else set()
@@ -285,13 +285,13 @@ def make_e2e_input() -> AllocationInput:
     )
     shifts = (
         make_shift(0, size=3),  # override-enlarged first shift
-        make_shift(1, size=2, preallocated_team_lead_id="george"),
+        make_shift(1, size=2, pinned_team_lead_id="george"),
         make_shift(2, size=2),
         make_shift(3, size=2),
-        # charlie is NOT available for shift 4: preallocation overrides.
-        make_shift(4, size=2, preallocated_volunteer_ids=["charlie"]),
+        # charlie is NOT available for shift 4: pin overrides.
+        make_shift(4, size=2, pinned_volunteer_ids=["charlie"]),
         make_shift(5, size=2, closed=True),
-        make_shift(6, size=2, custom_preallocations=["external_john"]),
+        make_shift(6, size=2, custom_pins=["external_john"]),
     )
     historical = (
         HistoricalShift(date="2026-06-29", group_keys=("couple_mike_nancy",)),
@@ -321,11 +321,11 @@ def test_end_to_end_scenario():
     by_shift = {s.index: s for s in out.shifts}
     # Closed shift untouched.
     assert by_shift[5].allocated_group_keys == ()
-    # Custom preallocation echoed back for persistence.
+    # Custom pin echoed back for persistence.
     assert customs(by_shift[6]) == ("external_john",)
-    # The preallocated team lead is in shift 1's Team lead Seat.
+    # The pinned team lead is in shift 1's Team lead Seat.
     assert team_lead_id(by_shift[1]) == "george"
-    # Availability-overriding volunteer preallocation honoured.
+    # Availability-overriding volunteer pin honoured.
     assert "Charlie Green" in by_shift[4].allocated_group_keys
     # Back-to-back boundary: Alice/Bob and Diana sat out shift 0.
     assert "couple_alice_bob" not in by_shift[0].allocated_group_keys
@@ -347,7 +347,7 @@ def test_end_to_end_scenario():
         "shift_requires",
         "shift_gap",
         "closed_shifts",
-        "preallocations",
+        "pins",
     }
 
 
@@ -445,7 +445,7 @@ def test_pin_with_no_seat_for_the_partner_solves():
         AllocationInput(
             shifts=(
                 make_shift(
-                    0, size=1, roles=(DEFAULT_ROLES[1],), preallocated_volunteer_ids=["alice"]
+                    0, size=1, roles=(DEFAULT_ROLES[1],), pinned_volunteer_ids=["alice"]
                 ),
             ),
             groups=(_plain_couple("couple", "alice", "bob", available=[0]),),
@@ -476,8 +476,8 @@ def test_pin_to_a_role_nobody_holds_solves():
             Seat(role=SERVICE_VOLUNTEER, count=2),
             Seat(role=food.name, count=1),
         ),
-        preallocations=(
-            Preallocation(volunteer_id="alice", custom="", role=food.name),
+        pins=(
+            Pin(volunteer_id="alice", custom="", role=food.name),
         ),
     )
     inp = with_rules(
@@ -507,7 +507,7 @@ def test_inactive_pinned_volunteer_is_placed_on_their_pin_only():
     inp = with_rules(
         AllocationInput(
             shifts=tuple(
-                make_shift(i, size=3, preallocated_volunteer_ids=["inactive"] if i == 1 else [])
+                make_shift(i, size=3, pinned_volunteer_ids=["inactive"] if i == 1 else [])
                 for i in range(4)
             ),
             groups=(
@@ -539,7 +539,7 @@ def test_pins_breaking_every_spacing_and_frequency_rule_at_once_solve():
     charlie = Member("charlie", "Charlie", "Green", "Charlie", "Male", (SERVICE_VOLUNTEER,))
     couple = Group("couple", (alice, charlie), (0, 1, 2, 3), 0)
     shifts = tuple(
-        make_shift(i, preallocated_volunteer_ids=["alice"] if i < 3 else [])
+        make_shift(i, pinned_volunteer_ids=["alice"] if i < 3 else [])
         for i in range(4)
     )
     inp = with_rules(
@@ -575,10 +575,10 @@ def test_pins_past_the_shape_solve_with_every_rule_on():
         date="2026-07-13",
         closed=False,
         shape=(Seat(role=TEAM_LEAD, count=1), Seat(role=SERVICE_VOLUNTEER, count=1)),
-        preallocations=(
-            Preallocation(volunteer_id="ann", custom="", role=TEAM_LEAD),
-            Preallocation(volunteer_id="bea", custom="", role=TEAM_LEAD),
-            Preallocation(volunteer_id="cat", custom="", role=food.name),
+        pins=(
+            Pin(volunteer_id="ann", custom="", role=TEAM_LEAD),
+            Pin(volunteer_id="bea", custom="", role=TEAM_LEAD),
+            Pin(volunteer_id="cat", custom="", role=food.name),
         ),
     )
     inp = with_rules(

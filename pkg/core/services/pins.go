@@ -14,32 +14,32 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// PreallocationStore defines the database operations the preallocation flows
+// Pinstore defines the database operations the pin flows
 // need. The mutating flows do their state read, validation, and write inside
-// WithRotaPreallocationLock so a concurrent mutation or allocation of the same
+// WithRotaPinLock so a concurrent mutation or allocation of the same
 // rota cannot slip between the duplicate/frozen checks and the write (issue #39,
-// mirroring the changeRota locking discipline). ListPreallocations reads outside
+// mirroring the changeRota locking discipline). ListPins reads outside
 // any lock.
-type PreallocationStore interface {
+type Pinstore interface {
 	RoleStore
 	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
-	GetPreallocationByID(ctx context.Context, id string) (*db.Preallocation, *db.Shift, error)
-	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
+	GetPinByID(ctx context.Context, id string) (*db.Pin, *db.Shift, error)
+	GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error)
 	GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error)
-	WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store db.PreallocationTxStore) error) error
+	WithRotaPinLock(ctx context.Context, rotaIDs []string, fn func(store db.PinTxStore) error) error
 }
 
-// AddPreallocationParams holds the input for pinning one assignee to a shift.
+// AddPinParams holds the input for pinning one assignee to a shift.
 // Exactly one of VolunteerID or Custom is set. RoleID names the Seat the pin
 // fills and is required — a pin is a promise about a job.
-type AddPreallocationParams struct {
+type AddPinParams struct {
 	Date        string // Target shift date (YYYY-MM-DD)
 	VolunteerID string // Volunteer to pin
 	Custom      string // Custom (non-volunteer) entry to pin
 	RoleID      string // Id of the Role the pin fills
 }
 
-// PreallocationView is the read model for one preallocation: who is pinned, to
+// PinView is the read model for one pin: who is pinned, to
 // which date, in which role.
 //
 // Role carries both the id and the name, as StandingPreallocationView does and
@@ -50,7 +50,7 @@ type AddPreallocationParams struct {
 // pin a Standing Preallocation seeded when the rota was defined are the same
 // row, read the same way, and either may be removed — so nothing here says where
 // it came from, and nothing downstream branches on it.
-type PreallocationView struct {
+type PinView struct {
 	ID          string
 	Date        string
 	RoleID      string
@@ -60,25 +60,25 @@ type PreallocationView struct {
 	Name        string // volunteer display name, or the custom entry verbatim
 }
 
-// ListPreallocationsParams bounds a preallocation listing by shift date,
+// ListPinsParams bounds a pin listing by shift date,
 // mirroring ListShifts. A zero bound is left open.
-type ListPreallocationsParams struct {
+type ListPinsParams struct {
 	From string // inclusive lower bound (YYYY-MM-DD), optional
 	To   string // inclusive upper bound (YYYY-MM-DD), optional
 }
 
-// AddPreallocation validates and records a single preallocation. The volunteer
+// AddPin validates and records a single pin. The volunteer
 // fetch (network) happens outside the rota lock; the frozen-rota and
 // duplicate-assignee checks and the insert happen inside it.
-func AddPreallocation(
+func AddPin(
 	ctx context.Context,
-	store PreallocationStore,
+	store Pinstore,
 	volunteerClient VolunteerClient,
 	organisation *config.Organisation,
-	params AddPreallocationParams,
+	params AddPinParams,
 	logger *zap.Logger,
-) (*PreallocationView, error) {
-	logger.Debug("Starting AddPreallocation",
+) (*PinView, error) {
+	logger.Debug("Starting AddPin",
 		zap.String("date", params.Date),
 		zap.String("volunteer_id", params.VolunteerID),
 		zap.String("custom", params.Custom),
@@ -149,7 +149,7 @@ func AddPreallocation(
 
 	// Step 4: state read, duplicate/frozen checks, and insert under the rota
 	// lock.
-	created := db.Preallocation{
+	created := db.Pin{
 		ID:          uuid.New().String(),
 		ShiftID:     shift.ID,
 		RoleID:      role.ID,
@@ -157,7 +157,7 @@ func AddPreallocation(
 		CustomValue: params.Custom,
 	}
 
-	err = store.WithRotaPreallocationLock(ctx, []string{shift.RotaID}, func(tx db.PreallocationTxStore) error {
+	err = store.WithRotaPinLock(ctx, []string{shift.RotaID}, func(tx db.PinTxStore) error {
 		allocated, err := tx.RotaAllocated(ctx, shift.RotaID)
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func AddPreallocation(
 			return wrapf(ErrConflict, "rota for %s is already allocated", params.Date)
 		}
 
-		existing, err := tx.GetPreallocationsByShiftIDs(ctx, []string{shift.ID})
+		existing, err := tx.GetPinsByShiftIDs(ctx, []string{shift.ID})
 		if err != nil {
 			return err
 		}
@@ -185,18 +185,18 @@ func AddPreallocation(
 			}
 		}
 
-		return tx.InsertPreallocation(ctx, created)
+		return tx.InsertPin(ctx, created)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("Preallocation recorded",
+	logger.Info("Pin recorded",
 		zap.String("id", created.ID),
 		zap.String("shift_id", created.ShiftID),
 		zap.String("role", role.Name))
 
-	return &PreallocationView{
+	return &PinView{
 		ID:          created.ID,
 		Date:        shift.Date,
 		RoleID:      created.RoleID,
@@ -207,27 +207,27 @@ func AddPreallocation(
 	}, nil
 }
 
-// DeletePreallocation removes a preallocation by id, rejecting a delete on an
+// DeletePin removes a pin by id, rejecting a delete on an
 // already-allocated (frozen) rota. Any of them may be removed, however it came
 // to exist (issue #131). Resolving the pin to its rota happens
 // before the lock; the frozen check and the delete happen inside it.
-func DeletePreallocation(
+func DeletePin(
 	ctx context.Context,
-	store PreallocationStore,
+	store Pinstore,
 	id string,
 	logger *zap.Logger,
 ) error {
-	logger.Debug("Starting DeletePreallocation", zap.String("id", id))
+	logger.Debug("Starting DeletePin", zap.String("id", id))
 
-	_, shift, err := store.GetPreallocationByID(ctx, id)
+	_, shift, err := store.GetPinByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to look up preallocation %s: %w", id, err)
+		return fmt.Errorf("failed to look up pin %s: %w", id, err)
 	}
 	if shift == nil {
-		return wrapf(ErrNotFound, "preallocation %s not found", id)
+		return wrapf(ErrNotFound, "pin %s not found", id)
 	}
 
-	err = store.WithRotaPreallocationLock(ctx, []string{shift.RotaID}, func(tx db.PreallocationTxStore) error {
+	err = store.WithRotaPinLock(ctx, []string{shift.RotaID}, func(tx db.PinTxStore) error {
 		allocated, err := tx.RotaAllocated(ctx, shift.RotaID)
 		if err != nil {
 			return err
@@ -235,13 +235,13 @@ func DeletePreallocation(
 		if allocated {
 			return wrapf(ErrConflict, "rota is already allocated")
 		}
-		deleted, err := tx.DeletePreallocationByID(ctx, id)
+		deleted, err := tx.DeletePinByID(ctx, id)
 		if err != nil {
 			return err
 		}
 		if !deleted {
 			// Lost a race with a concurrent delete under the same lock.
-			return wrapf(ErrNotFound, "preallocation %s not found", id)
+			return wrapf(ErrNotFound, "pin %s not found", id)
 		}
 		return nil
 	})
@@ -249,23 +249,23 @@ func DeletePreallocation(
 		return err
 	}
 
-	logger.Info("Preallocation deleted", zap.String("id", id))
+	logger.Info("Pin deleted", zap.String("id", id))
 	return nil
 }
 
-// ListPreallocations returns every preallocation whose shift falls in the given
+// ListPins returns every pin whose shift falls in the given
 // date range.
 //
 // It resolves the range to shifts first, so every pin comes back with its date
 // and the id→date mapping stays honest.
-func ListPreallocations(
+func ListPins(
 	ctx context.Context,
-	store PreallocationStore,
+	store Pinstore,
 	volunteerClient VolunteerClient,
 	organisation *config.Organisation,
-	params ListPreallocationsParams,
+	params ListPinsParams,
 	logger *zap.Logger,
-) ([]PreallocationView, error) {
+) ([]PinView, error) {
 	from, to, err := parseDateRange(params.From, params.To)
 	if err != nil {
 		return nil, err
@@ -305,49 +305,49 @@ func ListPreallocations(
 		volunteersByID[v.ID] = v
 	}
 
-	pins, err := store.GetPreallocationsByShiftIDs(ctx, shiftIDs)
+	pins, err := store.GetPinsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
+		return nil, fmt.Errorf("failed to fetch pins: %w", err)
 	}
-	views := make([]PreallocationView, 0, len(pins))
+	views := make([]PinView, 0, len(pins))
 	for _, p := range pins {
-		views = append(views, PreallocationView{
+		views = append(views, PinView{
 			ID:          p.ID,
 			Date:        dateByShiftID[p.ShiftID],
 			RoleID:      p.RoleID,
 			Role:        roleName(roles, p.RoleID),
 			VolunteerID: p.VolunteerID,
 			Custom:      p.CustomValue,
-			Name:        preallocationName(p.VolunteerID, p.CustomValue, volunteersByID, logger),
+			Name:        pinName(p.VolunteerID, p.CustomValue, volunteersByID, logger),
 		})
 	}
 
-	sortPreallocationViews(views, roles)
+	sortPinViews(views, roles)
 	return views, nil
 }
 
-// preallocationName resolves a pin to something a person can read. A custom
+// pinName resolves a pin to something a person can read. A custom
 // entry is its own name; an unknown volunteer id degrades to the raw id rather
 // than an empty chip, since that pin is exactly what will fail the pre-solve
 // check and hiding it hides the fix.
-func preallocationName(volunteerID, custom string, volunteersByID map[string]model.Volunteer, logger *zap.Logger) string {
+func pinName(volunteerID, custom string, volunteersByID map[string]model.Volunteer, logger *zap.Logger) string {
 	if custom != "" {
 		return custom
 	}
 	volunteer, ok := volunteersByID[volunteerID]
 	if !ok || volunteer.DisplayName == "" {
-		logger.Warn("Preallocated volunteer not found in roster, using raw ID",
+		logger.Warn("Pinned volunteer not found in roster, using raw ID",
 			zap.String("volunteer_id", volunteerID))
 		return volunteerID
 	}
 	return volunteer.DisplayName
 }
 
-// sortPreallocationViews puts the pins in reading order — by date, then by Role
+// sortPinViews puts the pins in reading order — by date, then by Role
 // priority, then by name — so a listing is stable whatever order the rows came
 // back in. Role priority is the order Seats are filled in, which is the order a
 // shift reads in everywhere else.
-func sortPreallocationViews(views []PreallocationView, roles model.Roles) {
+func sortPinViews(views []PinView, roles model.Roles) {
 	sort.Slice(views, func(i, j int) bool {
 		a, b := views[i], views[j]
 		if a.Date != b.Date {

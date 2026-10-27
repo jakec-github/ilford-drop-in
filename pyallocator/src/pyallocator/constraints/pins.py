@@ -1,4 +1,4 @@
-"""Ensures preallocated volunteers are always on their shift, in the Role
+"""Ensures pinned volunteers are always on their shift, in the Role
 they were pinned to. Forcing the Role forces attendance with it: the model
 equates the two. A pin says what someone will do and not merely that they
 will be there.
@@ -29,13 +29,13 @@ from ..problem import Problem
 from .base import Vars
 
 
-class PreallocationsConstraint:
-    name = "preallocations"
-    description = "preallocated volunteers are always on their shift, in their Role"
+class PinsConstraint:
+    name = "pins"
+    description = "pinned volunteers are always on their shift, in their Role"
 
     def apply(self, model: cp_model.CpModel, x: Vars, problem: Problem) -> None:
-        for (vol_id, shift_index), role in sorted(problem.preallocated_roles.items()):
+        for (vol_id, shift_index), role in sorted(problem.pinned_roles.items()):
             model.Add(x.role[(vol_id, shift_index, role)] == 1)
 
 
-CONSTRAINT = PreallocationsConstraint()
+CONSTRAINT = PinsConstraint()

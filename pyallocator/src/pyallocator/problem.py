@@ -5,7 +5,7 @@ Go are flattened into VolunteerViews (canonical order: group input
 order, then member order), and group atomicity is enforced by the
 grouping constraint rather than the variable structure. Availability
 is group-resolved in Go, so every member inherits its group's shifts.
-Preallocation resolution (volunteer id -> owning group) and its error
+Pin resolution (volunteer id -> owning group) and its error
 cases live here because multiple constraints need the resolved pins
 (e.g. availability exempts pinned volunteers, grouping their groups).
 """
@@ -19,7 +19,7 @@ from .domain import GENDER_FEMALE, GENDER_MALE, AllocationInput, Group, Member, 
 
 class ProblemError(ValueError):
     """Raised when the input is well-formed JSON but semantically invalid
-    (e.g. a preallocated volunteer id that doesn't exist)."""
+    (e.g. a pinned volunteer id that doesn't exist)."""
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,7 @@ class Problem:
         shifts: the input shift specs, index order.
         roles: the configured Roles, priority order.
         role_by_name: {name: Role}.
-        preallocated_roles: {(volunteer_id, shift_index): role} the pinned
+        pinned_roles: {(volunteer_id, shift_index): role} the pinned
             person must fill — and, through may_fill, may fill there even
             if they do not hold the Role. A pin pins this one person (ADR
             0010); nobody else is forced.
@@ -119,15 +119,15 @@ class Problem:
                 )
         self.volunteers: tuple[VolunteerView, ...] = tuple(volunteers)
 
-        self.preallocated_roles: dict[tuple[str, int], str] = {}
+        self.pinned_roles: dict[tuple[str, int], str] = {}
         self.pinned_group_shifts: set[tuple[str, int]] = set()
-        self._resolve_preallocations()
+        self._resolve_pins()
         self.pinned_mates: tuple[tuple[str, int], ...] = tuple(
             (v.id, shift.index)
             for shift in self.shifts
             for v in self.volunteers
             if (v.group_key, shift.index) in self.pinned_group_shifts
-            and (v.id, shift.index) not in self.preallocated_roles
+            and (v.id, shift.index) not in self.pinned_roles
         )
 
         self.historical_group_keys: tuple[frozenset[str], ...] = tuple(
@@ -145,7 +145,7 @@ class Problem:
     def may_fill(self, volunteer: VolunteerView, shift_index: int, role: str) -> bool:
         """Whether this volunteer may take a Seat in this Role on this shift.
 
-        Holding the Role is the ordinary answer. A preallocation is the
+        Holding the Role is the ordinary answer. A pin is the
         other: a pin records a decision already taken off-system — someone
         has been asked to do this job on this shift — so it grants the Seat
         rather than being refused for a roster that has not caught up.
@@ -158,7 +158,7 @@ class Problem:
         """
         return (
             volunteer.holds(role)
-            or self.preallocated_roles.get((volunteer.id, shift_index)) == role
+            or self.pinned_roles.get((volunteer.id, shift_index)) == role
         )
 
     def forced_by_pin(self, volunteer: VolunteerView, shift_index: int) -> bool:
@@ -170,7 +170,7 @@ class Problem:
         do not apply to them there. A pin pins this one person: their
         group-mates are allocator choices, held to every rule.
         """
-        return (volunteer.id, shift_index) in self.preallocated_roles
+        return (volunteer.id, shift_index) in self.pinned_roles
 
     def stand_in(self, group: Group, shift_index: int) -> Member:
         """The member whose attendance says whether this group works this
@@ -181,7 +181,7 @@ class Problem:
         one certainly there.
         """
         for m in group.members:
-            if (m.id, shift_index) in self.preallocated_roles:
+            if (m.id, shift_index) in self.pinned_roles:
                 return m
         return group.members[0]
 
@@ -198,7 +198,7 @@ class Problem:
             for seat in shift.shape
             if seat.count > 0 and self.may_fill(volunteer, shift.index, seat.role)
         ]
-        pinned = self.preallocated_roles.get((volunteer.id, shift.index))
+        pinned = self.pinned_roles.get((volunteer.id, shift.index))
         if pinned is not None and pinned not in roles:
             roles.append(pinned)
         return tuple(roles)
@@ -212,7 +212,7 @@ class Problem:
         volunteers pinned to it by name."""
         volunteers = sum(
             1
-            for (_, index), pinned in self.preallocated_roles.items()
+            for (_, index), pinned in self.pinned_roles.items()
             if index == shift.index and pinned == role
         )
         return len(self.customs_for(shift, role)) + volunteers
@@ -227,7 +227,7 @@ class Problem:
 
     def is_pinned_to(self, volunteer_id: str, shift_index: int, role: str) -> bool:
         """Whether a pin names this volunteer for this Role on this shift."""
-        return self.preallocated_roles.get((volunteer_id, shift_index)) == role
+        return self.pinned_roles.get((volunteer_id, shift_index)) == role
 
     def customs_for(self, shift: ShiftSpec, role: str) -> tuple[str, ...]:
         """The shift's custom (non-volunteer) pins on the named Role.
@@ -236,7 +236,7 @@ class Problem:
         Role's Seats before the solver sees the Shape.
         """
         return tuple(
-            p.custom for p in shift.preallocations if p.custom and p.role == role
+            p.custom for p in shift.pins if p.custom and p.role == role
         )
 
     def pins_fill_every_seat(self, shift: ShiftSpec) -> bool:
@@ -253,16 +253,16 @@ class Problem:
     def _shape_roles(shift: ShiftSpec) -> tuple[str, ...]:
         return tuple(dict.fromkeys(seat.role for seat in shift.shape))
 
-    def _resolve_preallocations(self) -> None:
+    def _resolve_pins(self) -> None:
         for shift in self.shifts:
-            # Go strips preallocations from closed shifts before sending;
+            # Go strips pins from closed shifts before sending;
             # reject rather than silently ignore if any slip through.
-            if shift.closed and shift.preallocations:
+            if shift.closed and shift.pins:
                 raise ProblemError(
-                    f"shift {shift.index} is closed but has preallocations"
+                    f"shift {shift.index} is closed but has pins"
                 )
 
-            for pin in shift.preallocations:
+            for pin in shift.pins:
                 if not pin.volunteer_id:
                     # A custom entry names a Role but no person, so there is
                     # nobody to force onto the shift; it just occupies a Seat.
@@ -271,11 +271,11 @@ class Problem:
                 group_key = self._group_key_by_member.get(pin.volunteer_id)
                 if group_key is None:
                     raise ProblemError(
-                        f"preallocated volunteer '{pin.volunteer_id}' on shift "
+                        f"pinned volunteer '{pin.volunteer_id}' on shift "
                         f"{shift.index} does not match any volunteer"
                     )
                 # A Role the Shape has no Seat of is no reason to refuse: a
                 # Shape bounds the allocator, not people's decisions (ADR
                 # 0010), so the pin sits past it (seat_roles).
-                self.preallocated_roles[(pin.volunteer_id, shift.index)] = pin.role
+                self.pinned_roles[(pin.volunteer_id, shift.index)] = pin.role
                 self.pinned_group_shifts.add((group_key, shift.index))

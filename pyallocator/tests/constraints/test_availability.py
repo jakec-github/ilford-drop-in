@@ -31,15 +31,15 @@ def test_fully_unavailable_group_gets_nothing():
     assert all(keys == () for keys in allocations_by_shift(out).values())
 
 
-def test_preallocation_overrides_availability():
-    # g1 is NOT available for shift 1, but is preallocated there: the
-    # availability constraint must exempt the preallocated pair.
+def test_pin_overrides_availability():
+    # g1 is NOT available for shift 1, but is pinned there: the
+    # availability constraint must exempt the pinned pair.
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0), make_shift(1, preallocated_volunteer_ids=["g1"])],
+        shifts=[make_shift(0), make_shift(1, pinned_volunteer_ids=["g1"])],
     )
     out = solve_with(inp, ONLY)
     assert out.success
-    # availability alone doesn't force the preallocation, but it must
+    # availability alone doesn't force the pin, but it must
     # ALLOW it — with maximise-allocations, the solver takes it.
     assert allocations_by_shift(out)[1] == ("g1",)

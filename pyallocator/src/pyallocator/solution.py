@@ -62,7 +62,7 @@ def _extract_shift(
     # Seats on the way in, and come back out unchanged.
     assignments.extend(
         Assignment(volunteer_id="", custom=pin.custom, role=pin.role)
-        for pin in spec.preallocations
+        for pin in spec.pins
         if pin.custom
     )
 

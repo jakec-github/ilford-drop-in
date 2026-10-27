@@ -398,7 +398,7 @@ func TestDiscardRotaEndpoint(t *testing.T) {
 		shifts: []db.Shift{
 			{ID: "shift-1", RotaID: "live", Date: "2026-08-02"},
 		},
-		manualPreallocations: []db.Preallocation{
+		manualPins: []db.Pin{
 			{ID: "pin-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 		},
 		availabilityRequests: []db.AvailabilityRequest{
@@ -412,7 +412,7 @@ func TestDiscardRotaEndpoint(t *testing.T) {
 	assert.Equal(t, []string{"live"}, store.discardedRotaIDs)
 	assert.Empty(t, store.rotations)
 	assert.Empty(t, store.shifts)
-	assert.Empty(t, store.manualPreallocations, "the pins go with the shifts they were on")
+	assert.Empty(t, store.manualPins, "the pins go with the shifts they were on")
 	assert.Empty(t, store.availabilityRequests, "and the round goes with the rota it asked about")
 
 	// Nothing is in flight any more, so the next rota can be defined.

@@ -17,7 +17,7 @@ class AvailabilityConstraint:
     name = "availability"
     description = (
         "volunteers are only allocated to shifts they are available for "
-        "(unless preallocated)"
+        "(unless pinned)"
     )
 
     def apply(

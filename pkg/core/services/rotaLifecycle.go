@@ -28,7 +28,7 @@ func RotaInFlight(ctx context.Context, database RotaLifecycleStore) (*db.RotaInF
 }
 
 // DiscardRota destroys an unallocated Rotation and everything hanging off it:
-// its Shifts, their Shapes, its Preallocations, its Draft Rota Allocation, its
+// its Shifts, their Shapes, its Pins, its Draft Rota Allocation, its
 // availability round and every response given to it.
 //
 // It is the release valve the one-rota-in-flight rule requires. Allocation is

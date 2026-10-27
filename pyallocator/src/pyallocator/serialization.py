@@ -17,7 +17,7 @@ from .domain import (
     HistoricalShift,
     Member,
     OutputShift,
-    Preallocation,
+    Pin,
     Role,
     Rule,
     Seat,
@@ -116,7 +116,7 @@ def _parse_seat(d: dict[str, Any], where: str) -> Seat:
     return Seat(role=_require(d, "role", str, where), count=count)
 
 
-def _parse_preallocation(d: dict[str, Any], where: str) -> Preallocation:
+def _parse_pin(d: dict[str, Any], where: str) -> Pin:
     if not isinstance(d, dict):
         raise InputError(f"{where}: expected object, got {type(d).__name__}")
     volunteer_id = _optional(d, "volunteer_id", str, "", where)
@@ -125,7 +125,7 @@ def _parse_preallocation(d: dict[str, Any], where: str) -> Preallocation:
         raise InputError(
             f"{where}: expected exactly one of 'volunteer_id' and 'custom'"
         )
-    return Preallocation(
+    return Pin(
         volunteer_id=volunteer_id,
         custom=custom,
         role=_require(d, "role", str, where),
@@ -136,7 +136,7 @@ def _parse_shift(d: dict[str, Any], where: str) -> ShiftSpec:
     if not isinstance(d, dict):
         raise InputError(f"{where}: expected object, got {type(d).__name__}")
     shape_raw = _optional(d, "shape", list, [], where)
-    pins_raw = _optional(d, "preallocations", list, [], where)
+    pins_raw = _optional(d, "pins", list, [], where)
     return ShiftSpec(
         index=_require(d, "index", int, where),
         date=_require(d, "date", str, where),
@@ -144,8 +144,8 @@ def _parse_shift(d: dict[str, Any], where: str) -> ShiftSpec:
         shape=tuple(
             _parse_seat(s, f"{where}.shape[{i}]") for i, s in enumerate(shape_raw)
         ),
-        preallocations=tuple(
-            _parse_preallocation(p, f"{where}.preallocations[{i}]")
+        pins=tuple(
+            _parse_pin(p, f"{where}.pins[{i}]")
             for i, p in enumerate(pins_raw)
         ),
     )
@@ -206,10 +206,10 @@ def parse_input(data: Any) -> AllocationInput:
                 raise InputError(
                     f"input.shifts[{i}]: shape names unknown role '{seat.role}'"
                 )
-        for pin in shift.preallocations:
+        for pin in shift.pins:
             if pin.role not in role_names:
                 raise InputError(
-                    f"input.shifts[{i}]: preallocation names unknown role "
+                    f"input.shifts[{i}]: pin names unknown role "
                     f"'{pin.role}'"
                 )
 

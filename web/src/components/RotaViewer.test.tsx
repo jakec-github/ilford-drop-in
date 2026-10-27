@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type {
   ConfiguredRole,
-  Preallocation,
+  Pin,
   RotaChange,
   RotaShift,
   Volunteer,
@@ -24,7 +24,7 @@ const GREETER = "Greeter";
 const fetchRoles = mock<() => Promise<ConfiguredRole[]>>();
 const fetchVolunteers = mock<() => Promise<Volunteer[]>>();
 const fetchDraftRotaAllocation = mock(async () => null);
-const fetchPreallocations = mock<() => Promise<Preallocation[]>>();
+const fetchPins = mock<() => Promise<Pin[]>>();
 
 mock.module("../api", () => ({
   fetchOrganisation: mock(async () => ({
@@ -42,9 +42,9 @@ mock.module("../api", () => ({
     outcome: "allocated",
     allocatedAt: "2026-01-01T00:00:00Z",
   })),
-  fetchPreallocations,
-  createPreallocation: mock(async () => {}),
-  deletePreallocation: mock(async () => {}),
+  fetchPins,
+  createPin: mock(async () => {}),
+  deletePin: mock(async () => {}),
 }));
 
 const { default: RotaViewer } = await import("./RotaViewer");
@@ -156,7 +156,7 @@ function shifts(): RotaShift[] {
 }
 
 // Mounting kicks off four hook-driven fetches (roles, volunteers, the draft,
-// preallocations) that resolve a tick later than render() itself returns —
+// pins) that resolve a tick later than render() itself returns —
 // flushing them here, before a test's own synchronous clicks, is what keeps
 // React from settling them mid-assertion with an unwrapped "not wrapped in
 // act(...)" warning.
@@ -245,8 +245,8 @@ describe("RotaViewer placement", () => {
     fetchVolunteers.mockResolvedValue(VOLUNTEERS);
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
-    fetchPreallocations.mockClear();
-    fetchPreallocations.mockResolvedValue([]);
+    fetchPins.mockClear();
+    fetchPins.mockResolvedValue([]);
   });
 
   // One build serves every Organisation, so the rota is headed with the name the
@@ -475,8 +475,8 @@ describe("RotaViewer role pickers", () => {
     fetchVolunteers.mockResolvedValue(VOLUNTEERS);
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
-    fetchPreallocations.mockClear();
-    fetchPreallocations.mockResolvedValue([]);
+    fetchPins.mockClear();
+    fetchPins.mockResolvedValue([]);
   });
 
   // Adding to a published rota records what happened on the day, so the roster
@@ -568,8 +568,8 @@ describe("RotaViewer access levels", () => {
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockClear();
     fetchVolunteers.mockResolvedValue(VOLUNTEERS);
-    fetchPreallocations.mockClear();
-    fetchPreallocations.mockResolvedValue([]);
+    fetchPins.mockClear();
+    fetchPins.mockResolvedValue([]);
   });
 
   test("an Organiser can pin, close, reshape and retime a shift of the rota in flight", async () => {
@@ -673,8 +673,8 @@ describe("RotaViewer expanded shift view", () => {
     fetchVolunteers.mockResolvedValue(VOLUNTEERS);
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
-    fetchPreallocations.mockClear();
-    fetchPreallocations.mockResolvedValue([]);
+    fetchPins.mockClear();
+    fetchPins.mockResolvedValue([]);
   });
 
   test("a row expands to name each role, and collapses again", async () => {
@@ -757,7 +757,7 @@ describe("RotaViewer expanded shift view", () => {
   // A shift of the rota in flight has pins and drafted names rather than
   // assignees, and they group under their Roles the same way.
   test("a shift of the rota in flight groups who is expected on it by role", async () => {
-    fetchPreallocations.mockResolvedValue([
+    fetchPins.mockResolvedValue([
       {
         id: "pin-1",
         date: "2026-01-25",
@@ -855,8 +855,8 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     fetchVolunteers.mockResolvedValue(VOLUNTEERS);
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
-    fetchPreallocations.mockClear();
-    fetchPreallocations.mockResolvedValue([]);
+    fetchPins.mockClear();
+    fetchPins.mockResolvedValue([]);
   });
 
   test("a custom entry can be moved onto a shift it is already on", async () => {
@@ -1002,7 +1002,7 @@ describe("RotaViewer chip selection", () => {
   beforeEach(() => {
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockResolvedValue(VOLUNTEERS);
-    fetchPreallocations.mockResolvedValue([]);
+    fetchPins.mockResolvedValue([]);
   });
 
   test("selecting a chip highlights the same volunteer, not another of the same name", async () => {

@@ -26,7 +26,7 @@ from pyallocator.domain import (
     HistoricalShift,
     Member,
     OutputShift,
-    Preallocation,
+    Pin,
     Role,
     Rule,
     Seat,
@@ -95,9 +95,9 @@ def make_shift(
     date: str | None = None,
     size: int = 4,
     closed: bool = False,
-    custom_preallocations: Sequence[str] = (),
-    preallocated_volunteer_ids: Sequence[str] = (),
-    preallocated_team_lead_id: str = "",
+    custom_pins: Sequence[str] = (),
+    pinned_volunteer_ids: Sequence[str] = (),
+    pinned_team_lead_id: str = "",
     roles: Sequence[Role] = DEFAULT_ROLES,
 ) -> ShiftSpec:
     # size buys Seats in every Role DEFAULT_SEATS does not fix a count for.
@@ -105,17 +105,17 @@ def make_shift(
         Seat(role=r.name, count=DEFAULT_SEATS.get(r.name, size)) for r in roles
     )
     pins = [
-        Preallocation(volunteer_id="", custom=c, role=SERVICE_VOLUNTEER)
-        for c in custom_preallocations
+        Pin(volunteer_id="", custom=c, role=SERVICE_VOLUNTEER)
+        for c in custom_pins
     ]
     pins += [
-        Preallocation(volunteer_id=v, custom="", role=SERVICE_VOLUNTEER)
-        for v in preallocated_volunteer_ids
+        Pin(volunteer_id=v, custom="", role=SERVICE_VOLUNTEER)
+        for v in pinned_volunteer_ids
     ]
-    if preallocated_team_lead_id:
+    if pinned_team_lead_id:
         pins.append(
-            Preallocation(
-                volunteer_id=preallocated_team_lead_id, custom="", role=TEAM_LEAD
+            Pin(
+                volunteer_id=pinned_team_lead_id, custom="", role=TEAM_LEAD
             )
         )
     # Default dates are weekly in July; pass date= to cross a month boundary.
@@ -124,7 +124,7 @@ def make_shift(
         date=date if date is not None else f"2026-07-{13 + 7 * index:02d}",
         closed=closed,
         shape=shape,
-        preallocations=tuple(pins),
+        pins=tuple(pins),
     )
 
 

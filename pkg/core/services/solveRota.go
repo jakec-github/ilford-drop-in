@@ -140,13 +140,13 @@ func solveRotaInFlight(
 	logger.Debug("Active volunteers", zap.Int("count", len(activeVolunteers)))
 
 	// Read before anything is sent to the solver, because a pin decides who is:
-	// an inactive volunteer it names goes too (ADR 0010). The `preallocation`
+	// an inactive volunteer it names goes too (ADR 0010). The `pin`
 	// table is the whole set — pins an Organiser made by hand and pins a
 	// Standing Preallocation seeded when the rota was defined are the same rows
 	// (issue #131).
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
+	pins, err := database.GetPinsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
+		return nil, fmt.Errorf("failed to fetch pins: %w", err)
 	}
 	allocatorVolunteers := solverVolunteers(allVolunteers, pins, shifts)
 
@@ -205,19 +205,19 @@ func solveRotaInFlight(
 		return nil, fmt.Errorf("failed to build historical shifts: %w", err)
 	}
 
-	// Preallocations (issue #39): each pin becomes a synthetic exact-date
+	// Pins (issue #39): each pin becomes a synthetic exact-date
 	// override, so InitShifts applies them with no new merge logic.
 	rosterIDs := make(map[string]bool, len(allVolunteers))
 	for _, v := range allVolunteers {
 		rosterIDs[v.ID] = true
 	}
 	// Pre-solve stale-pin check: fail loudly, naming the pin, rather than letting
-	// a preallocated volunteer who has left the roster surface as the solver's
+	// a pinned volunteer who has left the roster surface as the solver's
 	// opaque ProblemError.
-	if err := checkPreallocationsResolve(pins, shifts, rosterIDs); err != nil {
+	if err := checkPinsResolve(pins, shifts, rosterIDs); err != nil {
 		return nil, err
 	}
-	allocatorOverrides, err := buildPreallocationOverrides(pins, dateByShiftID, roles)
+	allocatorOverrides, err := buildPinOverrides(pins, dateByShiftID, roles)
 	if err != nil {
 		return nil, err
 	}

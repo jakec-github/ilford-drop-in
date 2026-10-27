@@ -30,7 +30,7 @@ from . import (
     max_frequency,
     monthly_cap,
     no_duplicate_allocation,
-    preallocations,
+    pins,
     seat_capacity,
     shift_gap,
     shift_requires,
@@ -43,7 +43,7 @@ FUNDAMENTAL_CONSTRAINTS: list[Constraint] = [
     availability.CONSTRAINT,
     seat_capacity.CONSTRAINT,
     closed_shifts.CONSTRAINT,
-    preallocations.CONSTRAINT,
+    pins.CONSTRAINT,
 ]
 
 RULE_KINDS: dict[str, Callable[[Rule], Constraint]] = {

@@ -580,14 +580,14 @@ export interface RotaShift {
   assignees: Assignee[];
 }
 
-// Preallocation is one person the allocator is already committed to placing on a
+// Pin is one person the allocator is already committed to placing on a
 // shift, before allocation has run. name is what to show — a volunteer's display
 // name, or a custom entry (an outside group, say) verbatim.
 //
 // There is one kind of these however it came to exist: a pin somebody made by
 // hand and a pin a Standing Preallocation seeded when the rota was defined are
 // the same thing, both carry an id, and an Organiser or a Rota Editor may remove either.
-export interface Preallocation {
+export interface Pin {
   id: string;
   date: string;
   // The Role by id and by name, as a standing pin carries it: the id is what
@@ -599,20 +599,20 @@ export interface Preallocation {
   volunteerId: string | null;
 }
 
-// NewPreallocation is one person to pin to a shift the rota has not been run
+// NewPin is one person to pin to a shift the rota has not been run
 // for.
 //
 // roleId is the Seat they are pinned into, by id — a pin outlives any number of
 // renames, so the id is the only reference to a Role that survives one. Every
 // pin names one, and the API accepts it only for a volunteer the roster records
 // as holding that Role.
-export interface NewPreallocation {
+export interface NewPin {
   date: string;
   person: PersonRef;
   roleId: string;
 }
 
-// StandingPreallocation is a Preallocation an Organiser expects to make every rota —
+// StandingPreallocation is a Pin an Organiser expects to make every rota —
 // the team who always take the first Sunday — kept with the Rota Defaults and
 // used to seed ordinary ones when a rota is defined. It is a convenience at
 // definition, not a standing fact: the pins it has already made are ordinary and

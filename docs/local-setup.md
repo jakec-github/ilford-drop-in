@@ -255,7 +255,7 @@ the Roles and the shift times, nothing seeds them, and a rule nobody has
 switched on is off — so a fresh database allocates with none of them.
 
 The rules that make a rota a rota — availability, seat capacity, grouping,
-closed shifts, preallocations — are not listed and cannot be switched off.
+closed shifts, pins — are not listed and cannot be switched off.
 
 `maxAllocationFrequency` and `requiresMale` used to be config keys. They are
 these settings now (ADR 0006): both were an Organiser's decision rather than an
@@ -309,7 +309,7 @@ Volunteers.
 
 The rota page is public — no login needed to view it. Changing it needs a Google account on one of
 that Organisation's allowlists, via the web OAuth client from step 2: `rotaEditorEmails` to make
-alterations and preallocations, `organiserEmails` for those and everything else.
+alterations and pins, `organiserEmails` for those and everything else.
 
 To run the frontend alone (assuming the server is already up), see
 [`web/README.md`](../web/README.md).

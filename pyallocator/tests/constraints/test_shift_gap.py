@@ -16,7 +16,7 @@ from conftest import (
     solve_with,
 )
 from pyallocator.domain import HistoricalShift
-from pyallocator.constraints import closed_shifts, preallocations
+from pyallocator.constraints import closed_shifts, pins
 
 
 
@@ -82,7 +82,7 @@ def test_only_last_historical_shift_matters():
 # Pins are people's decisions, not the allocator's choices (ADR 0010): a
 # pinned pair is exempt from the rule, but still counts against the shifts
 # either side of it.
-WITH_PINS = [preallocations.CONSTRAINT]
+WITH_PINS = [pins.CONSTRAINT]
 
 
 def test_pins_on_consecutive_shifts_are_honoured():
@@ -91,8 +91,8 @@ def test_pins_on_consecutive_shifts_are_honoured():
         groups=[make_group("g1", available=[0, 1, 2, 3])],
         shifts=[
             make_shift(0),
-            make_shift(1, preallocated_volunteer_ids=["g1"]),
-            make_shift(2, preallocated_volunteer_ids=["g1"]),
+            make_shift(1, pinned_volunteer_ids=["g1"]),
+            make_shift(2, pinned_volunteer_ids=["g1"]),
             make_shift(3),
         ],
     )
@@ -113,7 +113,7 @@ def test_allocator_stays_off_the_shifts_beside_a_pin():
         shifts=[
             make_shift(0),
             make_shift(1),
-            make_shift(2, preallocated_volunteer_ids=["g1"]),
+            make_shift(2, pinned_volunteer_ids=["g1"]),
             make_shift(3),
             make_shift(4),
         ],
@@ -132,7 +132,7 @@ def test_pin_on_shift_zero_is_exempt_from_the_history_boundary():
         rules=[RULE],
         groups=[make_group("g1", available=[0, 1, 2])],
         shifts=[
-            make_shift(0, preallocated_volunteer_ids=["g1"]),
+            make_shift(0, pinned_volunteer_ids=["g1"]),
             make_shift(1),
             make_shift(2),
         ],
@@ -154,8 +154,8 @@ def test_exemption_covers_every_group_member_the_pin_forces():
         rules=[RULE],
         groups=[pair],
         shifts=[
-            make_shift(0, preallocated_volunteer_ids=["a"]),
-            make_shift(1, preallocated_volunteer_ids=["a"]),
+            make_shift(0, pinned_volunteer_ids=["a"]),
+            make_shift(1, pinned_volunteer_ids=["a"]),
         ],
     )
     out = solve_with(inp, rules_of(inp) + WITH_PINS)
@@ -258,9 +258,9 @@ def test_pins_inside_a_wide_gap_are_honoured_and_bar_their_neighbours():
         groups=[make_group("g1", available=list(range(6)))],
         shifts=[
             make_shift(0),
-            make_shift(1, preallocated_volunteer_ids=["g1"]),
+            make_shift(1, pinned_volunteer_ids=["g1"]),
             make_shift(2),
-            make_shift(3, preallocated_volunteer_ids=["g1"]),
+            make_shift(3, pinned_volunteer_ids=["g1"]),
             make_shift(4),
             make_shift(5),
         ],

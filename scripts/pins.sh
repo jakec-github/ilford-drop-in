@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# Preallocation test helper: create, list and delete preallocations against a
+# Pin test helper: create, list and delete pins against a
 # running web server (see scripts/dev.sh). This is for local/test poking only —
 # not a production tool.
 #
 # Usage:
-#   scripts/preallocs.sh login
-#   scripts/preallocs.sh list [from] [to]
-#   scripts/preallocs.sh create <date> volunteer <volunteerId> [teamlead]
-#   scripts/preallocs.sh create <date> custom "<value>"
-#   scripts/preallocs.sh delete <id>
+#   scripts/pins.sh login
+#   scripts/pins.sh list [from] [to]
+#   scripts/pins.sh create <date> volunteer <volunteerId> [teamlead]
+#   scripts/pins.sh create <date> custom "<value>"
+#   scripts/pins.sh delete <id>
 #
 # Every endpoint here needs a session, so run `login` first: against the
 # credential-free dev stack it mints a session with no Google round trip (see
@@ -23,15 +23,15 @@
 #
 # Dates are YYYY-MM-DD. API_URL is the Organisation's own address, under /org/<id>;
 # it defaults to the dev config's http://localhost:8080/org/dev-org. Override it,
-# e.g. API_URL=http://localhost:9090/org/dev-org scripts/preallocs.sh list
+# e.g. API_URL=http://localhost:9090/org/dev-org scripts/pins.sh list
 #
 # Examples:
-#   scripts/preallocs.sh login
-#   scripts/preallocs.sh create 2026-08-02 volunteer vol-123
-#   scripts/preallocs.sh create 2026-08-02 volunteer vol-123 teamlead
-#   scripts/preallocs.sh create 2026-08-02 custom "Guest chef"
-#   scripts/preallocs.sh list 2026-08-01 2026-08-31
-#   scripts/preallocs.sh delete 7f3c...-id
+#   scripts/pins.sh login
+#   scripts/pins.sh create 2026-08-02 volunteer vol-123
+#   scripts/pins.sh create 2026-08-02 volunteer vol-123 teamlead
+#   scripts/pins.sh create 2026-08-02 custom "Guest chef"
+#   scripts/pins.sh list 2026-08-01 2026-08-31
+#   scripts/pins.sh delete 7f3c...-id
 #
 
 set -euo pipefail
@@ -84,7 +84,7 @@ case "$cmd" in
         query=""
         [[ -n "$from" ]] && query="from=${from}"
         [[ -n "$to" ]] && query="${query:+${query}&}to=${to}"
-        url="${API_URL}/api/preallocations${query:+?${query}}"
+        url="${API_URL}/api/pins${query:+?${query}}"
         api "$url" | pretty
         ;;
 
@@ -119,7 +119,7 @@ case "$cmd" in
                 ;;
         esac
 
-        api -X POST "${API_URL}/api/preallocations" \
+        api -X POST "${API_URL}/api/pins" \
             -H 'Content-Type: application/json' \
             -d "$body" | pretty
         ;;
@@ -132,7 +132,7 @@ case "$cmd" in
         fi
         # DELETE returns 204 No Content on success; surface the status code so an
         # empty body is not mistaken for a silent failure.
-        code=$(api -o /dev/null -w '%{http_code}' -X DELETE "${API_URL}/api/preallocations/${id}")
+        code=$(api -o /dev/null -w '%{http_code}' -X DELETE "${API_URL}/api/pins/${id}")
         echo "HTTP ${code}"
         ;;
 
