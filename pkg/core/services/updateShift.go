@@ -119,8 +119,8 @@ func UpdateShift(
 
 		if startAt != "" {
 			written, err := tx.SetShiftTimes(ctx, shiftID, startAt, endAt)
-			if errors.Is(err, db.ErrShiftDateTaken) {
-				return dateTakenConflict(startAt)
+			if errors.Is(err, db.ErrShiftOverlap) {
+				return overlapConflict(err)
 			}
 			if err != nil {
 				return err
@@ -205,10 +205,15 @@ func dayOf(timestamp string) string {
 	return timestamp[:len("2006-01-02")]
 }
 
-// dateTakenConflict turns the one-Shift-per-date index refusing a write into
-// the refusal an Organiser reads, naming the day two shifts would have shared.
-func dateTakenConflict(startAt string) error {
+// overlapConflict turns a move onto another Shift's hours into the refusal an
+// Organiser reads, naming the Shift in the way by its date and times. Two Shifts
+// may share a day (issue #294); they may not run at once.
+func overlapConflict(err error) error {
+	var overlap *db.ShiftOverlapError
+	if !errors.As(err, &overlap) || overlap.Other == nil {
+		return wrapf(ErrConflict, "another shift runs at those times, and two shifts cannot run at once")
+	}
 	return wrapf(ErrConflict,
-		"the organisation already runs on %s, and it cannot run twice on one day — move that shift first",
-		readableDate(dayOf(startAt)))
+		"that overlaps the shift on %s, and two shifts cannot run at once — move one of them first",
+		shiftSpan(*overlap.Other))
 }

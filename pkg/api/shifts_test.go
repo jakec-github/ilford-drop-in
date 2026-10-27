@@ -142,16 +142,26 @@ func TestUpdateShiftMovesTheDate(t *testing.T) {
 	assert.Equal(t, "2026-12-23T19:30:00", listing.Shifts[0].Start)
 }
 
-// Two shifts cannot share a day, and the refusal names the day rather than
-// reporting a broken index.
-func TestUpdateShiftRefusesADateAnotherShiftHolds(t *testing.T) {
+// Two shifts cannot run at once, and the refusal names the one in the way by
+// its day and times rather than reporting a broken constraint.
+func TestUpdateShiftRefusesHoursAnotherShiftHolds(t *testing.T) {
 	store := shiftEditTestStore()
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPatch,
-		"/api/shifts/s1", `{"start":"2026-12-27T19:30:00","end":"2026-12-27T21:30:00"}`, organiserCookie())
+		"/api/shifts/s1", `{"start":"2026-12-27T21:00:00","end":"2026-12-27T23:00:00"}`, organiserCookie())
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
-	assert.Contains(t, rec.Body.String(), "27 December 2026")
+	assert.Contains(t, rec.Body.String(), "27 December 2026 from 19:30 to 21:30")
 	assert.Equal(t, "2026-12-20T19:30:00", store.shiftsInRange[0].StartAt, "the shift stays where it was")
+}
+
+// Two shifts may share a day (issue #294) as long as they do not run at once.
+func TestUpdateShiftMovesBesideAnotherShiftOnItsDay(t *testing.T) {
+	store := shiftEditTestStore()
+
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPatch,
+		"/api/shifts/s1", `{"start":"2026-12-27T10:00:00","end":"2026-12-27T12:00:00"}`, organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, "2026-12-27T10:00:00", store.shiftsInRange[0].StartAt)
 }
 
 // The browser's datetime-local field leaves the seconds off; what comes back is

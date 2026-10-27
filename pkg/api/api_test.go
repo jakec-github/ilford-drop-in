@@ -445,19 +445,20 @@ func (m *mockStore) SetShiftClosed(ctx context.Context, shiftID string, closed b
 }
 
 // SetShiftTimes likewise, with the date following the start as the derived
-// column does. dateTaken stands in for the one-Shift-per-date index.
+// column does. The other shifts' hours stand in for the no-overlap constraint;
+// the layout sorts as it reads, so the times compare as strings.
 func (m *mockStore) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt string) (bool, error) {
-	day := startAt[:len("2006-01-02")]
 	for _, s := range m.shiftsInRange {
-		if s.ID != shiftID && s.Date == day {
-			return false, db.ErrShiftDateTaken
+		if s.ID != shiftID && s.StartAt < endAt && startAt < s.EndAt {
+			other := s.Shift
+			return false, &db.ShiftOverlapError{Other: &other}
 		}
 	}
 	found := false
 	for i := range m.shiftsInRange {
 		if m.shiftsInRange[i].ID == shiftID {
 			m.shiftsInRange[i].StartAt, m.shiftsInRange[i].EndAt = startAt, endAt
-			m.shiftsInRange[i].Date = day
+			m.shiftsInRange[i].Date = startAt[:len("2006-01-02")]
 			found = true
 		}
 	}

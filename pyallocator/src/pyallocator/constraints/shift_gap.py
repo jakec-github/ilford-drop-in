@@ -4,7 +4,8 @@ covered by a shift_gap rule works. A gap of one is no back-to-back shifts.
 The gap is counted by shift index, not calendar distance, so in any run of
 gap + 1 consecutive shifts a covered volunteer works at most one. A Closed
 Shift is still a shift in that count — a week the organisation did not open is a
-week off.
+week off. Two Shifts on one day are two in the count, so a gap of one also
+keeps somebody off the evening Shift after the morning one (ADR 0013).
 
 The boundary with the previous rota counts as far back as the gap reaches.
 History arrives as every shift of the previous rota, Closed ones included,

@@ -194,17 +194,16 @@ func TestGetShiftByIDUnknownReturnsNil(t *testing.T) {
 }
 
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
-// one-Shift-per-date unique index (issue #41, hazard B1): two rotas minting the
-// same shift date cannot both commit. The index exists for ADR 0001 reasons,
+// no-overlap constraint (issue #41, hazard B1): two rotas minting the same
+// shift time cannot both commit. The constraint exists for ADR 0013 reasons,
 // but it is also the only thing making concurrent DefineRota runs safe — the
 // losing insert fails wholesale, writing neither the rotation nor its
-// non-overlapping shifts. If a schema change ever relaxes it (e.g. multiple
-// shifts per day), this test flags that the define-rota race needs a
-// replacement guard.
+// non-overlapping shifts. If a schema change ever relaxes it, this test flags
+// that the define-rota race needs a replacement guard.
 //
-// The index moved from the stored date column onto `start_at::date` in the
-// contract phase (issue #135, ADR 0007); the guarantee it gives here did not.
-func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
+// The guard was a one-Shift-per-date index until two Shifts could share a day
+// (issue #294); the guarantee it gives here did not change.
+func TestShiftOverlapRejectsOverlappingRotas(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
@@ -224,7 +223,7 @@ func TestShiftDateUniqueRejectsOverlappingRotas(t *testing.T) {
 	// Named rather than merely refused: an Organiser who started a rota a week too
 	// early has made an ordinary mistake, and the define service turns this into
 	// a message pointing at the day and the rota holding it (issue #140).
-	require.ErrorIs(t, err, db.ErrShiftDateTaken)
+	require.ErrorIs(t, err, db.ErrShiftOverlap)
 
 	rotations, err := database.GetRotations(ctx)
 	require.NoError(t, err)
@@ -414,11 +413,10 @@ func TestSetShiftTimes(t *testing.T) {
 	}))
 }
 
-// Moving a Shift onto a day another Shift already starts on is refused by the
-// one-Shift-per-date index, and comes back named rather than as a driver error
-// code — including when the Shift in the way belongs to another rota, which no
-// read taken under this rota's lock could have seen.
-func TestSetShiftTimesRejectsTakenDate(t *testing.T) {
+// Moving a Shift onto hours another Shift runs in is refused, and comes back
+// naming that Shift rather than as a driver error code — including when the
+// Shift in the way belongs to another rota.
+func TestSetShiftTimesRejectsAnOverlap(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
@@ -428,30 +426,64 @@ func TestSetShiftTimesRejectsTakenDate(t *testing.T) {
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{first, second}, nil, nil))
 
 	other := &db.Rotation{ID: uuid.New().String()}
-	require.NoError(t, database.InsertDefinedRota(ctx, other, []db.Shift{
-		dbtest.Shift(other.ID, "2026-08-16"),
-	}, nil, nil))
+	inOther := dbtest.Shift(other.ID, "2026-08-16")
+	require.NoError(t, database.InsertDefinedRota(ctx, other, []db.Shift{inOther}, nil, nil))
 
-	err := database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
-		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-02T18:00:00", "2026-08-02T20:00:00")
-		return err
-	})
-	require.ErrorIs(t, err, db.ErrShiftDateTaken)
+	move := func(startAt, endAt string) error {
+		return database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+			_, err := tx.SetShiftTimes(ctx, second.ID, startAt, endAt)
+			return err
+		})
+	}
 
-	err = database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
-		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-16T18:00:00", "2026-08-16T20:00:00")
-		return err
-	})
-	require.ErrorIs(t, err, db.ErrShiftDateTaken, "a clash in another rota is still a clash")
+	var overlap *db.ShiftOverlapError
+	err := move("2026-08-02T18:00:00", "2026-08-02T20:00:00")
+	require.ErrorIs(t, err, db.ErrShiftOverlap)
+	require.ErrorAs(t, err, &overlap)
+	require.NotNil(t, overlap.Other)
+	assert.Equal(t, first.ID, overlap.Other.ID)
+	assert.Equal(t, "2026-08-02T19:30:00", overlap.Other.StartAt)
+	assert.Equal(t, "2026-08-02T21:30:00", overlap.Other.EndAt)
+
+	err = move("2026-08-16T18:00:00", "2026-08-16T20:00:00")
+	require.ErrorAs(t, err, &overlap, "a clash in another rota is still a clash")
+	assert.Equal(t, inOther.ID, overlap.Other.ID)
 
 	// The refusal left the shift where it was.
 	unmoved, err := database.GetShiftByID(ctx, second.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-08-09", unmoved.Date)
 
-	// Moving it onto its own date is not a clash: the index sees one row.
-	require.NoError(t, database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
-		_, err := tx.SetShiftTimes(ctx, second.ID, "2026-08-09T18:00:00", "2026-08-09T20:00:00")
-		return err
-	}))
+	// Moving it within its own hours is not a clash: it does not overlap itself.
+	require.NoError(t, move("2026-08-09T18:00:00", "2026-08-09T20:00:00"))
+}
+
+// Two Shifts may share a day (issue #294): what the constraint refuses is two
+// running at once. Ranges are half-open, so one ending as the next begins is
+// fine.
+func TestSetShiftTimesAllowsTwoShiftsOnOneDay(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	evening := dbtest.Shift(rota.ID, "2026-08-02")
+	morning := dbtest.Shift(rota.ID, "2026-08-09")
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{evening, morning}, nil, nil))
+
+	move := func(startAt, endAt string) error {
+		return database.WithRotaShiftLock(ctx, []string{rota.ID}, func(tx db.ShiftTxStore) error {
+			_, err := tx.SetShiftTimes(ctx, morning.ID, startAt, endAt)
+			return err
+		})
+	}
+
+	require.NoError(t, move("2026-08-02T10:00:00", "2026-08-02T12:00:00"))
+	require.NoError(t, move("2026-08-02T17:30:00", "2026-08-02T19:30:00"), "ending as the evening begins")
+
+	shifts, err := database.GetShiftsByRotaID(ctx, rota.ID)
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+	assert.Equal(t, "2026-08-02", shifts[0].Date)
+	assert.Equal(t, "2026-08-02", shifts[1].Date)
+	assert.Equal(t, morning.ID, shifts[0].ID, "in start order")
 }

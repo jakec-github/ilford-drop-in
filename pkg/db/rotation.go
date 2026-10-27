@@ -10,9 +10,9 @@ import (
 )
 
 // ErrRotaAllocated reports that a write was refused because the Rotation has
-// already been allocated. Named here rather than checked by the caller for the
-// reason ErrShiftDateTaken is: the refusal is decided inside the transaction
-// that holds the rota's row lock, so no read outside it can stand in for it.
+// already been allocated. Named here rather than checked by the caller: the
+// refusal is decided inside the transaction that holds the rota's row lock, so
+// no read outside it can stand in for it.
 var ErrRotaAllocated = errors.New("rota has already been allocated")
 
 // RotaInFlight is the rota being worked on: the one Rotation that has not been

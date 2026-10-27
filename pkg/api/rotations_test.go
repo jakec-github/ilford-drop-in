@@ -240,7 +240,7 @@ func TestDefineRotaEndpoint_Errors(t *testing.T) {
 			body: defineBody(6, "2026-08-02"),
 			store: func() *mockStore {
 				s := &mockStore{}
-				s.insertErr = db.ErrShiftDateTaken
+				s.insertErr = db.ErrShiftOverlap
 				return s
 			}(),
 			wantStatus: http.StatusConflict,

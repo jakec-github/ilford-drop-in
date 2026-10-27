@@ -173,9 +173,9 @@ func DefineRota(
 	// Rotation is unallocated. Refusing here is what makes it true.
 	//
 	// Read-then-insert, without a lock, is enough: a concurrent define that has
-	// not committed yet is invisible to this read, but the one-Shift-per-date
-	// unique index refuses whichever of the two commits second wherever their
-	// dates overlap (hazard B1, InsertDefinedRota).
+	// not committed yet is invisible to this read, but the no-overlap
+	// constraint refuses whichever of the two commits second wherever their
+	// times overlap (hazard B1, InsertDefinedRota).
 	if inFlight := unallocatedRota(rotations); inFlight != nil {
 		return nil, wrapf(ErrConflict,
 			"a rota is already in flight - the one running %s to %s has not been allocated yet; allocate it or discard it before defining another",
@@ -190,8 +190,8 @@ func DefineRota(
 
 	// Mint this rotation's shifts, weekly from the stated start. Rota
 	// definition is the sole place shift-date arithmetic lives, and the cadence
-	// is not offered: anything richer than "the same weekday, every week" would
-	// put pressure on the one-Shift-per-date rule.
+	// is not offered: anything richer than "the same weekday, every week" is
+	// the Shift pattern's job (ADR 0013).
 	shifts := make([]db.Shift, stated.shiftCount)
 	for i := range shifts {
 		date := stated.startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
@@ -255,11 +255,11 @@ func DefineRota(
 	// Insert the rotation, its shifts, their Shapes and its seeded pins
 	// atomically, so a rota can never exist half-formed.
 	if err := database.InsertDefinedRota(ctx, rotation, shifts, pins, requirements); err != nil {
-		// The one-Shift-per-date index answering. Reachable by hand now that the
+		// The no-overlap constraint answering. Reachable by hand now that the
 		// start date is an Organiser's to state — a rota begun a week too early
 		// overlaps the last one — so it is answered as the ordinary mistake it
 		// is rather than as a failed insert.
-		if errors.Is(err, db.ErrShiftDateTaken) {
+		if errors.Is(err, db.ErrShiftOverlap) {
 			return nil, datesAlreadyTaken(shifts, rotations)
 		}
 		return nil, fmt.Errorf("failed to insert rotation and shifts: %w", err)
@@ -321,11 +321,11 @@ func openRound(
 	return asked
 }
 
-// datesAlreadyTaken says that this rota would have run on a day the Organisation
-// already runs, and points at the rota in the way.
+// datesAlreadyTaken says that this rota would have run a shift at the same time
+// as one the Organisation already runs, and points at the rota in the way.
 //
-// The index names no date, so this works out which day it must have been: the
-// first minted date that falls inside a rota that already exists. That is the
+// The constraint names no shift, so this works out which day it must have been:
+// the first minted date that falls inside a rota that already exists. That is the
 // day an Organiser has to move off, and naming the wrong one would be worse than
 // naming none — so where nothing overlaps, the refusal says only what is
 // certain.
@@ -334,13 +334,13 @@ func datesAlreadyTaken(shifts []db.Shift, rotations []db.Rotation) error {
 		for _, r := range rotations {
 			if r.Start <= s.Date && s.Date <= r.End {
 				return wrapf(ErrConflict,
-					"the organisation already runs on %s, and it cannot run twice on one day - the rota running %s to %s covers it, so start after %s",
+					"the organisation already runs a shift at that time on %s, and two shifts cannot run at once - the rota running %s to %s covers it, so start after %s",
 					readableDate(s.Date), readableDate(r.Start), readableDate(r.End), readableDate(r.End))
 			}
 		}
 	}
 	return wrapf(ErrConflict,
-		"one of those dates already has a shift on it, and the organisation cannot run twice on one day - start the rota on a different date")
+		"a shift already runs at one of those times, and two shifts cannot run at once - start the rota on a different date")
 }
 
 // unallocatedRota returns the earliest-starting rota that has not been

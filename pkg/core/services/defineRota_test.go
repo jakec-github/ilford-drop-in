@@ -390,15 +390,15 @@ func TestDefineRota_NamesTheEarliestRotaInFlight(t *testing.T) {
 	assert.NotContains(t, err.Error(), "2026-09-06")
 }
 
-// A start date an Organiser chose can land on a day the Organisation already runs, which
-// the one-Shift-per-date index refuses. It is an ordinary mistake, so it is
+// A start date an Organiser chose can land on hours the Organisation already runs, which
+// the no-overlap constraint refuses. It is an ordinary mistake, so it is
 // answered as one: the day, the rota covering it, and where to start instead.
 func TestDefineRota_RefusesADateAlreadyTaken(t *testing.T) {
 	mock := definable()
 	mock.rotations = []db.Rotation{
 		{ID: "allocated", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, AllocatedDatetime: "2026-06-28T09:00:00Z"},
 	}
-	mock.insertErr = db.ErrShiftDateTaken
+	mock.insertErr = db.ErrShiftOverlap
 
 	// Starts a fortnight before the last rota ends, so its first two shifts land
 	// on days that already have one.
@@ -414,11 +414,11 @@ func TestDefineRota_RefusesADateAlreadyTaken(t *testing.T) {
 // day it would be guessing at.
 func TestDefineRota_ADateTakenByNothingItCanSee(t *testing.T) {
 	mock := definable()
-	mock.insertErr = db.ErrShiftDateTaken
+	mock.insertErr = db.ErrShiftOverlap
 
 	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
 	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "already has a shift on it")
+	assert.Contains(t, err.Error(), "already runs at one of those times")
 }
 
 // Anything else the insert reports is a fault rather than a mistake, so it
