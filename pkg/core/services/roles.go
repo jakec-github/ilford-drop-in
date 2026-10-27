@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -43,4 +44,23 @@ func RoleTable(ctx context.Context, store RoleStore) (model.Roles, error) {
 	}
 
 	return model.NewRoles(roles), nil
+}
+
+// roleName reads a Role id as the name an Organiser knows it by, degrading to the
+// raw id rather than to an empty string — a Role that has vanished under a Pin
+// is exactly what needs to be visible.
+func roleName(roles model.Roles, roleID string) string {
+	if role, ok := roles.ByID(roleID); ok {
+		return role.Name
+	}
+	return roleID
+}
+
+// rolePriority is the order a Role's Seats are filled in; a Role the table does
+// not know sorts last.
+func rolePriority(roles model.Roles, roleID string) int {
+	if role, ok := roles.ByID(roleID); ok {
+		return role.Priority
+	}
+	return math.MaxInt
 }

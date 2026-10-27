@@ -247,9 +247,13 @@ export interface Volunteer {
 }
 
 // PlannedShift is a Shift by its wall-clock times, "2026-11-01T19:30:00".
+//
+// overrides are the Overrides that matched it, in the order they applied; only
+// a planned Shift carries them.
 export interface PlannedShift {
   start: string;
   end: string;
+  overrides?: OverrideTouch[];
 }
 
 // DefinedRota is a rota that has just been defined: the span it covers and the
@@ -279,6 +283,8 @@ export interface RotaPlan {
     tail: PlannedShift[];
   } | null;
   shifts: PlannedShift[];
+  // How far each Override reached across those Shifts, in list order.
+  overrides: OverrideReach[];
   // Why defining this would be refused — no pattern, a pattern run out, a
   // clash — or empty when it would not. A refused plan still carries whatever
   // Shifts could be worked out, so the screen can show the clash it names.
@@ -632,7 +638,7 @@ export interface RotaShift {
 // name, or a custom entry (an outside group, say) verbatim.
 //
 // There is one kind of these however it came to exist: a pin somebody made by
-// hand and a pin a Standing Preallocation seeded when the rota was defined are
+// hand and a pin an Override made when the rota was defined are
 // the same thing, both carry an id, and an Organiser or a Rota Editor may remove either.
 export interface Pin {
   id: string;
@@ -660,31 +666,75 @@ export interface NewPin {
   roleId: string;
 }
 
-// StandingPreallocation is a Pin an Organiser expects to make every rota —
-// the team who always take the first Sunday — kept with the Rota Defaults and
-// used to seed ordinary ones when a rota is defined. It is a convenience at
-// definition, not a standing fact: the pins it has already made are ordinary and
-// outlive any later change to it.
+// Override is one of the Rota Defaults' Overrides (ADR 0013): a rule picking
+// out some of the Shifts the pattern generates, and what it changes on them as
+// a rota is defined. They are a list, numbered from one, and a later one wins.
 //
-// rrule says which of a rota's shifts it lands on, in the same recurrence-rule
-// vocabulary a calendar uses. role names the Seat by id, because these outlive
-// any number of renames; roleName is that Role as it reads today.
-export interface StandingPreallocation {
+// description is the rule in plain English, read by the server; problems is
+// set instead for a rule this build cannot read. granularity says how it
+// matches: "time" the Shift generated at the time the rule names, "date" every
+// Shift on its dates. shape is null when it leaves the default Shape, and an
+// empty list when it asks for nobody.
+export interface Override {
   id: string;
+  number: number;
   rrule: string;
-  roleId: string;
-  role: Role;
-  name: string;
-  custom: boolean;
-  volunteerId: string | null;
+  startFrom: string;
+  granularity: OverrideGranularity;
+  description: string;
+  problems: string[];
+  shape: ShapeSeat[] | null;
+  pins: OverridePin[];
 }
 
-// NewStandingPreallocation is one promise to add. There is no edit: a promise is
-// made or it is not, and changing one is removing it and making the one meant.
-export interface NewStandingPreallocation {
-  rrule: string;
+export type OverrideGranularity = "time" | "date";
+
+// OverridePin is one Pin an Override makes, with its Role and its person both
+// by id, as an edit sends them back, and by name, as an Organiser reads them.
+export interface OverridePin {
+  id: string;
   roleId: string;
-  person: PersonRef;
+  role: Role;
+  volunteerId?: string;
+  custom?: string;
+  name: string;
+}
+
+// OverrideDraft is an Override as an edit states it, whole. shape null leaves
+// the default Shape.
+export interface OverrideDraft {
+  rrule: string;
+  startFrom: string;
+  shape: { roleId: string; count: number }[] | null;
+  pins: { roleId: string; person: PersonRef }[];
+}
+
+// OverrideRuleReading is what a rule still being written says. granularity is
+// empty while it has problems.
+export interface OverrideRuleReading {
+  startFrom: string;
+  granularity: OverrideGranularity | "";
+  description: string;
+  problems: string[];
+}
+
+// OverrideTouch is one Override matching one planned Shift, and what it set
+// there.
+export interface OverrideTouch {
+  number: number;
+  shape: boolean;
+  pins: number;
+}
+
+// OverrideReach is how many of a planned rota's Shifts one Override matched.
+// missedByTime marks an exact-time one that matched none though it falls on a
+// date the rota has a Shift on: the pattern's time has likely changed.
+export interface OverrideReach {
+  number: number;
+  description: string;
+  granularity: OverrideGranularity;
+  matched: number;
+  missedByTime: boolean;
 }
 
 // Organisation is the Organisation this site is, as GET /api/organisation reports it.

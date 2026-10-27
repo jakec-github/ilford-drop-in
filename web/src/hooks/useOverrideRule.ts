@@ -1,0 +1,48 @@
+import { useEffect, useState } from "react";
+import { readOverrideRule } from "../api";
+import type { OverrideRuleReading } from "../types";
+
+// How long typing has to pause before the rule is read again, as for the
+// Shift pattern.
+const SETTLE_MS = 300;
+
+// useOverrideRule reads an Override's rule while it is being written: what it
+// says, whether it matches a time or whole dates, or what is wrong with it.
+// The server does the reading, by the evaluator that mints a rota, so the
+// description is what defining will do (ADR 0013).
+//
+// The last reading is kept while a newer one is on its way, so the
+// description does not blink out between keystrokes.
+export function useOverrideRule(
+  rrule: string,
+  startFrom: string,
+): { reading: OverrideRuleReading | null; error: string | null } {
+  const [reading, setReading] = useState<OverrideRuleReading | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const blank = rrule.trim() === "";
+
+  useEffect(() => {
+    if (blank) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      readOverrideRule(rrule, startFrom, controller.signal)
+        .then((loaded) => {
+          setReading(loaded);
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          if (controller.signal.aborted) return;
+          setError(
+            err instanceof Error ? err.message : "Failed to read the rule",
+          );
+        });
+    }, SETTLE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [blank, rrule, startFrom]);
+
+  if (blank) return { reading: null, error: null };
+  return { reading, error };
+}

@@ -122,6 +122,40 @@
   font-style: italic;
 }
 
+/* The Overrides that touched a planned Shift, in the third column where a
+   tail Shift says "already defined". */
+.define-rota-shift-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.define-rota-shift-tag {
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 999px;
+}
+
+/* An Override matching nothing is worth a look, not a refusal: amber, like
+   the warning above, and listed above the Shifts it did not land on. */
+.define-rota-override-warnings {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.define-rota-override-warnings li {
+  margin-bottom: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  color: #92400e;
+  background: rgba(180, 83, 9, 0.1);
+}
+
 .define-rota-actions {
   display: flex;
 }

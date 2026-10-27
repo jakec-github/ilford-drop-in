@@ -1,0 +1,208 @@
+/* The Overrides card, after the prototype in
+   docs/design/issue-23/shift-patterns.html: each Override its own bordered
+   article, numbered, because the number is how the define preview names it. */
+
+.overrides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.override {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.override--editing {
+  border-color: var(--accent);
+}
+
+.override-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.override-number {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 50%;
+}
+
+.override-head .override-description {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.override-description {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.875rem;
+  color: var(--text-h);
+}
+
+.override-description code,
+.override-rule {
+  font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.override-rule {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.375rem 0.5rem;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.override-rule:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.override-actions {
+  display: flex;
+  flex: none;
+  gap: 0.25rem;
+}
+
+.override-badge {
+  display: inline-block;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--role-blue);
+  background: color-mix(in srgb, var(--role-blue) 14%, transparent);
+  border-radius: 999px;
+}
+
+.override-badge--time {
+  color: var(--role-teal);
+  background: color-mix(in srgb, var(--role-teal) 14%, transparent);
+}
+
+.override-problems {
+  margin: 0.5rem 0 0.25rem;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--role-rose);
+}
+
+.override-reading {
+  min-height: 1.75rem;
+}
+
+/* The facts of a saved one, label then value, as the Rota Defaults card reads. */
+.override-facts {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.override-facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+
+.override-facts dt {
+  flex: none;
+  width: 5.5rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.override-facts dd {
+  margin: 0;
+}
+
+/* The editor's properties: a label column and what it sets. */
+.override-props {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.625rem 1rem;
+  align-items: start;
+  font-size: 0.875rem;
+}
+
+.override-props > label,
+.override-label {
+  padding-top: 0.25rem;
+  color: var(--text-h);
+}
+
+.override-props input[type="date"],
+.override-adder select,
+.override-adder input {
+  padding: 0.25rem 0.375rem;
+  font: 0.875rem/1.4 var(--sans);
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.override-off {
+  display: inline-block;
+  padding-top: 0.25rem;
+  font-style: italic;
+}
+
+.override-shape {
+  max-width: 18rem;
+}
+
+.override-pins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.override-pin .chip {
+  --chip: var(--role-colour, var(--role-slate));
+  cursor: default;
+}
+
+.override-adder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.override-adder .settings-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* On a phone the actions drop under the rule rather than squeezing it. */
+@media (max-width: 30rem) {
+  .override-head {
+    flex-wrap: wrap;
+  }
+
+  .override-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .override-props {
+    grid-template-columns: 1fr;
+  }
+}

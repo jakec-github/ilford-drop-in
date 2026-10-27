@@ -188,7 +188,7 @@ type Config struct {
 	// rotaOverrides is gone too (#136), and with it the last domain setting in
 	// this file. Everything an override could say has a home an Organiser can reach:
 	// whether the Organisation runs on a date is Closed on the Shift (#132), who is
-	// pinned to it comes from the Standing Preallocations (#131), and how big it
+	// pinned to it comes from the Overrides (#296), and how big it
 	// is comes from the default Shape (#129). It was a list of recurrence rules
 	// because there was no screen to state any of that on; there is one now.
 	//

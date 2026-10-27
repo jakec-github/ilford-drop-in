@@ -32,7 +32,7 @@ type Store interface {
 	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
 	services.VolunteerHistoryStore
-	services.StandingPreallocationStore
+	services.OverrideWriteStore
 }
 
 // MailerFunc builds a mail client from an Organiser's freshly-granted Gmail access
@@ -203,6 +203,16 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("POST /rota-defaults/allocation-rules", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddAllocationRule)))
 	api.Handle("PUT /rota-defaults/allocation-rules/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleEditAllocationRule)))
 	api.Handle("DELETE /rota-defaults/allocation-rules/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleRemoveAllocationRule)))
+	// The Overrides, part of the Rota Defaults: rules that change some of the
+	// Shifts a rota is minted with (ADR 0013). Organiser-only, like the settings
+	// screen they live on. Every write answers with the whole list, since one
+	// Override's number depends on every other's place.
+	api.Handle("GET /rota-defaults/overrides", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListOverrides)))
+	api.Handle("POST /rota-defaults/overrides", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddOverride)))
+	api.Handle("POST /rota-defaults/overrides/reading", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleReadOverrideRule)))
+	api.Handle("PUT /rota-defaults/overrides/order", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleReorderOverrides)))
+	api.Handle("PUT /rota-defaults/overrides/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateOverride)))
+	api.Handle("DELETE /rota-defaults/overrides/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleRemoveOverride)))
 	// The rota's own lifecycle. One rota is in flight at a time, so the read is
 	// a singleton at a fixed path rather than a listing: there is nothing to
 	// pick between, which is the whole point of the rule (issue #139). It does
@@ -248,14 +258,6 @@ func (h *Handler) Routes() http.Handler {
 	// nothing a logged-out visitor sees has any use for it. Pins are a Rota
 	// Editor's to make as well as an Organiser's, and so are the reads beside
 	// them: the roster to pick someone from, and the rota in flight to pin to.
-	// The Standing Preallocations, part of the Rota Defaults: the pins an Organiser
-	// expects to make every rota, which seed ordinary Pins when one is
-	// defined. Organiser-only throughout, like the settings screen they live on.
-	// There is no PUT — a promise is made or it is not, and editing one is
-	// removing it and making the one that was meant.
-	api.Handle("GET /standing-preallocations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListStandingPreallocations)))
-	api.Handle("POST /standing-preallocations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateStandingPreallocation)))
-	api.Handle("DELETE /standing-preallocations/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDeleteStandingPreallocation)))
 	api.Handle("GET /pins", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListPins)))
 	api.Handle("POST /pins", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePin)))
 	api.Handle("DELETE /pins/{id}", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePin)))

@@ -537,8 +537,8 @@ func TestListPins_SkipsClosedShifts(t *testing.T) {
 
 // A pin naming someone the roster no longer knows still has to be visible — it
 // is the reason allocation will fail, and hiding it hides the fix. It is the
-// pins nobody typed recently that reach this state: a Standing Preallocation
-// seeds one at definition and the person can have left by allocation.
+// pins nobody typed recently that reach this state: an Override
+// makes one at definition and the person can have left by allocation.
 func TestListPins_UnknownVolunteerShowsID(t *testing.T) {
 	store := twoSundayStore()
 	store.pins = []db.Pin{

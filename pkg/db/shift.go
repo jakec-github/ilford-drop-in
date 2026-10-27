@@ -337,7 +337,7 @@ func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, 
 }
 
 // InsertDefinedRota inserts a rotation, all of its minted shifts, the Shapes
-// those shifts ask for and the Pins its Standing Preallocations
+// those shifts ask for and the Pins its Overrides
 // seeded, in a single transaction — so a rotation can never exist without its
 // shifts, a shift can never exist without the Shape it was minted with, and a
 // rota can never be defined with only some of the pins an Organiser was promised.

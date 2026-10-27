@@ -1,5 +1,4 @@
-/* What only the settings screen has: its Roles list and its
-   Standing Preallocations. The chrome every settings card
+/* What only the settings screen has: its Roles list. The chrome every settings card
    shares — heads, facts, fields — is in SettingsSection.css, because the Rota
    Defaults card is read on the Allocation tab too (issue #176). */
 
@@ -44,20 +43,6 @@
   text-align: right;
 }
 
-/* A standing preallocation's facts are words rather than figures — a Role name
-   and a recurrence read as sentences — so they take the room to say themselves
-   and align left. Right-aligning them, as the Role ceilings are, would leave the
-   column ragged down its reading edge. */
-.role-fact.standing-role {
-  min-width: 9rem;
-  text-align: left;
-}
-
-.role-fact.standing-rule {
-  min-width: 14rem;
-  text-align: left;
-}
-
 /* The desk is the design target for Organiser tools, but the facts are the first
    thing to give: on a phone they drop under the name rather than squeezing it
    to nothing. */
@@ -76,14 +61,6 @@
 
   .role-fact {
     text-align: left;
-  }
-
-  /* The wide columns a standing preallocation's sentences need on the desk are
-     wider than a phone, so they give up their width and wrap rather than
-     running off the edge of the card. */
-  .role-fact.standing-role,
-  .role-fact.standing-rule {
-    min-width: 0;
   }
 }
 

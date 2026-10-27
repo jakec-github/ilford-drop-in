@@ -11,7 +11,7 @@ import (
 // RotaDefaults is the Organisation's settings record as the database holds it: one
 // set of answers about how the Organisation as a whole runs, edited on the Settings
 // screen: the Shift pattern, and the Allocation Settings. The default Shape and
-// the Standing Preallocations are tables of their own.
+// the Overrides are tables of their own.
 //
 // Every field is a zero value until an Organiser fills it in. Nothing is seeded
 // (ADR 0006), so unset is the ordinary first state of a deployment rather than

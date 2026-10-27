@@ -93,13 +93,16 @@ func describe(option rrule.ROption, anchor time.Time) string {
 		fmt.Fprintf(&b, " on %d %s (the date it starts from)", anchor.Day(), anchor.Month())
 	}
 
+	// An Override's rule may name no time, and then it means the whole day.
 	var times []string
 	for _, h := range option.Byhour {
 		for _, m := range option.Byminute {
 			times = append(times, fmt.Sprintf("%02d:%02d", h, m))
 		}
 	}
-	b.WriteString(" at " + joinWithAnd(times))
+	if len(times) > 0 {
+		b.WriteString(" at " + joinWithAnd(times))
+	}
 
 	if option.Freq == rrule.MONTHLY && noDay && anchor.Day() > 28 {
 		b.WriteString(", skipping months without one")
