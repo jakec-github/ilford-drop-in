@@ -30,7 +30,7 @@ type RotaDefaultsStore interface {
 // One method per section, because the settings screen is sections and a save
 // of one must not blank another.
 type RotaDefaultsWriteStore interface {
-	SaveRotaDefaults(ctx context.Context, defaults db.RotaDefaults) error
+	SaveShiftPattern(ctx context.Context, defaults db.RotaDefaults) error
 	UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error
 }
 
@@ -50,8 +50,9 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 	}
 
 	return model.RotaDefaults{
-		ShiftStartTime:     row.ShiftStartTime,
-		ShiftEndTime:       row.ShiftEndTime,
+		ShiftPattern:       row.ShiftPattern,
+		PatternStartFrom:   row.PatternStartFrom,
+		ShiftLengthMinutes: row.ShiftLengthMinutes,
 		ShiftTimezone:      row.ShiftTimezone,
 		AllocationSettings: parseAllocationSettings(row.AllocationSettings),
 	}, nil
@@ -81,31 +82,17 @@ func parseAllocationSettings(document string) model.AllocationSettings {
 	return settings
 }
 
-// settingsForAllocation refuses when the Organisation's settings are too
-// incomplete to allocate against, naming what is missing.
+// settingsForAllocation reads the settings a solve runs against, and warns
+// about any Allocation Rule this build cannot apply.
 //
-// This is where the rule from ADR 0006 is enforced: incomplete settings block
-// allocation and **nothing else**. The rota still renders, availability still
-// works, and the calendar feed still answers — because a value nobody has
-// filled in yet is the ordinary first state of a deployment, not a fault, and
-// the site should not fall over on it. Allocation is the exception because it
-// is the one act that turns the settings into a rota people are told to turn up
-// for: a rota allocated against times nobody has chosen is one nobody can be
-// given the hours of.
-//
-// It reads the settings itself and hands back what it read, so a caller cannot
-// allocate by forgetting to check — the only way to get the settings for a
-// solve is to go through the gate.
+// Nothing in the settings can block an allocation any more. It used to refuse
+// until the shift times were set, because the times came from the settings;
+// a Shift has carried its own since it was minted (ADR 0007), and with the
+// Shift pattern a rota cannot be defined at all without them (ADR 0013).
 func settingsForAllocation(ctx context.Context, store RotaDefaultsStore, logger *zap.Logger) (model.RotaDefaults, error) {
 	defaults, err := RotaDefaults(ctx, store)
 	if err != nil {
 		return model.RotaDefaults{}, err
-	}
-
-	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
-		return model.RotaDefaults{}, wrapf(ErrInvalidInput,
-			"the organisation's settings are incomplete - %s %s not been set; fill them in on the settings screen before allocating",
-			joinWithAnd(missing), plural(len(missing), "has", "have"))
 	}
 
 	// A rule this build cannot apply is dropped, not refused — but it is worth
@@ -151,116 +138,6 @@ func readableDate(date string) string {
 		return date
 	}
 	return parsed.Format("2 January 2006")
-}
-
-// ShiftTimeParams is the shift-time settings as an Organiser states them: a start,
-// an end and the zone they are read in. All three together, because they are
-// one form and one idea — a start with no end describes nothing.
-type ShiftTimeParams struct {
-	// Start and End are times of day in model.ShiftTimeLayout ("19:30").
-	Start string
-	End   string
-	// Timezone is an IANA zone name. Empty means the default, so an Organiser who
-	// never touches the field still saves settings that compute a time.
-	Timezone string
-}
-
-// shiftTimesOfDay reads a pair of stated shift times, or says why it will not,
-// and hands them back spelled in ShiftTimeLayout.
-//
-// Both places an Organiser states shift times come here: the settings screen, which
-// says what every rota starts from, and the define form, which says what one
-// rota runs (issue #140). It is the same question in both, so it has one answer
-// and one wording.
-func shiftTimesOfDay(statedStart, statedEnd string) (start, end string, err error) {
-	from, err := parseShiftTime(strings.TrimSpace(statedStart), "start")
-	if err != nil {
-		return "", "", err
-	}
-
-	to, err := parseShiftTime(strings.TrimSpace(statedEnd), "end")
-	if err != nil {
-		return "", "", err
-	}
-
-	// A shift ends the evening it starts. Forbidding one that runs past
-	// midnight is deliberate: the times become a start and an end on the
-	// Shift's own date, so "22:00 to 00:30" would describe a shift ending
-	// before it began rather than one lasting half an hour.
-	if !to.After(from) {
-		return "", "", wrapf(ErrInvalidInput, "a shift has to end after it starts, and %s is not after %s", statedEnd, statedStart)
-	}
-
-	return from.Format(model.ShiftTimeLayout), to.Format(model.ShiftTimeLayout), nil
-}
-
-// validate turns an Organiser's answers into the row to write, or says why it will
-// not.
-func (p ShiftTimeParams) validate() (db.RotaDefaults, error) {
-	start, end, err := shiftTimesOfDay(p.Start, p.End)
-	if err != nil {
-		return db.RotaDefaults{}, err
-	}
-
-	timezone := strings.TrimSpace(p.Timezone)
-	if timezone == "" {
-		timezone = model.DefaultShiftTimezone
-	}
-	if _, err := time.LoadLocation(timezone); err != nil {
-		return db.RotaDefaults{}, wrapf(ErrInvalidInput, "%q is not a timezone this app knows — use a name like %s", timezone, model.DefaultShiftTimezone)
-	}
-
-	return db.RotaDefaults{
-		ShiftStartTime: start,
-		ShiftEndTime:   end,
-		ShiftTimezone:  timezone,
-	}, nil
-}
-
-// parseShiftTime reads one time of day, naming which one it was when it cannot.
-//
-// Blank is refused rather than stored as unset: the settings record starts
-// empty and an Organiser filling in the form is filling it in. Clearing a time an
-// allocation may already be gated on is not an edit anybody wants to make by
-// leaving a box blank.
-func parseShiftTime(value, which string) (time.Time, error) {
-	if value == "" {
-		return time.Time{}, wrapf(ErrInvalidInput, "a shift needs both a start and an end time, and the %s is missing", which)
-	}
-
-	parsed, err := time.Parse(model.ShiftTimeLayout, value)
-	if err != nil {
-		return time.Time{}, wrapf(ErrInvalidInput, "%q is not a time of day — write the %s as 24-hour HH:MM, e.g. 19:30", value, which)
-	}
-	return parsed, nil
-}
-
-// SaveShiftTimeDefaults writes the default shift start, end and timezone, and
-// returns the settings as they now stand.
-//
-// This is the whole of the shift-time section of the settings screen. It writes
-// all three at once because they are read all at once: a time of day means
-// nothing without the zone it is read in.
-func SaveShiftTimeDefaults(ctx context.Context, store RotaDefaultsWriteStore, params ShiftTimeParams, logger *zap.Logger) (model.RotaDefaults, error) {
-	row, err := params.validate()
-	if err != nil {
-		return model.RotaDefaults{}, err
-	}
-
-	if err := store.SaveRotaDefaults(ctx, row); err != nil {
-		return model.RotaDefaults{}, fmt.Errorf("failed to save shift time defaults: %w", err)
-	}
-
-	logger.Info("Shift time defaults saved",
-		zap.String("start", row.ShiftStartTime),
-		zap.String("end", row.ShiftEndTime),
-		zap.String("timezone", row.ShiftTimezone))
-
-	return model.RotaDefaults{
-		ShiftStartTime: row.ShiftStartTime,
-		ShiftEndTime:   row.ShiftEndTime,
-		ShiftTimezone:  row.ShiftTimezone,
-	}, nil
 }
 
 // allocationDocument is the stored Allocation Settings document as an edit

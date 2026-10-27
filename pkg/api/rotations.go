@@ -1,24 +1,25 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
+	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// defineRotaRequest is the rota being made: the two things about it that are
-// nobody's setting.
+// defineRotaRequest is the rota being made: how many Shifts, and optionally a
+// date none of them may start before.
 //
-// The hours every minted shift runs and what each of them asks for are not
-// here. They are the Rota Defaults, which are the only place they are stated
-// (issue #176), and defining spends whatever they say at the moment it runs.
-// The screen shows the settings card itself, so what an Organiser is looking at
-// when they press the button is the setting rather than a copy of it.
+// Which Shifts they are is not here. They are the next the Shift pattern
+// generates after where the previous rota stopped (ADR 0013), and what each
+// asks for is the default Shape: both are the Rota Defaults, and defining
+// spends whatever they say at the moment it runs.
 type defineRotaRequest struct {
 	ShiftCount int `json:"shiftCount"`
-	// StartDate is the first shift's date, "2026-08-02". The rest follow weekly.
-	StartDate string `json:"startDate"`
+	// NotBefore is a date, "2026-08-02", leaving a gap before the rota. Empty
+	// or absent means none.
+	NotBefore string `json:"notBefore"`
 }
 
 type rotationResponse struct {
@@ -29,8 +30,10 @@ type rotationResponse struct {
 }
 
 type mintedShiftResponse struct {
-	ID   string `json:"id"`
-	Date string `json:"date"`
+	ID    string `json:"id"`
+	Date  string `json:"date"`
+	Start string `json:"start"`
+	End   string `json:"end"`
 }
 
 type defineRotaResponseBody struct {
@@ -38,8 +41,8 @@ type defineRotaResponseBody struct {
 	Shifts   []mintedShiftResponse `json:"shifts"`
 }
 
-// handleDefineRota defines the rota the request states, mints its weekly
-// shifts, and opens its availability round.
+// handleDefineRota defines the rota the request asks for, mints the Shifts the
+// pattern generates next, and opens its availability round.
 //
 // The round is not in the response: what it did is read back by GET
 // /availability-rounds, which the screen an Organiser lands on after defining is
@@ -54,16 +57,14 @@ type defineRotaResponseBody struct {
 // visible to the caller.
 func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 	var req defineRotaRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeStrict(r, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 
 	result, err := services.DefineRota(r.Context(), h.store, h.volunteers, h.org, h.logger, services.DefineRotaParams{
 		ShiftCount: req.ShiftCount,
-		StartDate:  req.StartDate,
+		NotBefore:  req.NotBefore,
 	})
 	if err != nil {
 		h.writeServiceError(w, err)
@@ -80,39 +81,86 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 		Shifts: make([]mintedShiftResponse, 0, len(result.Shifts)),
 	}
 	for _, s := range result.Shifts {
-		resp.Shifts = append(resp.Shifts, mintedShiftResponse{ID: s.ID, Date: s.Date})
+		resp.Shifts = append(resp.Shifts, mintedShiftResponse{ID: s.ID, Date: s.Date, Start: s.StartAt, End: s.EndAt})
 	}
 
 	h.writeJSON(w, http.StatusCreated, resp)
 }
 
-// rotaProposalResponse is the define form before anybody has touched it: where
-// the rota made by defining one right now would begin.
+// rotaPlanResponse is the rota defining one now would make: the Define Rota
+// screen's preview, from the same arithmetic as the definition.
 //
-// The shift count is not here, and the form has no default for it either: no
-// rota implies how long the next one should be, so it is the one field an Organiser
-// has to state (issue #174). Neither are the hours or the Shape, which the form
-// no longer states at all — they are the Rota Defaults, read by the settings
-// card the define screen shows (issue #176).
-type rotaProposalResponse struct {
-	StartDate string `json:"startDate"`
+// Refusal is why defining it would be refused, or empty when it would not.
+// It is part of the answer rather than an error status, because a plan that
+// cannot be defined is still a plan the screen shows — the Shifts that would
+// clash, beside the sentence saying so.
+type rotaPlanResponse struct {
+	PatternSet bool                   `json:"patternSet"`
+	Previous   *previousRotaResponse  `json:"previous"`
+	Shifts     []plannedShiftResponse `json:"shifts"`
+	Refusal    string                 `json:"refusal"`
 }
 
-// handleGetRotaProposal reports what the define form starts from.
+// previousRotaResponse is where the rota before stopped: the generated start
+// of its last Shift, and its last few Shifts as they now stand.
+type previousRotaResponse struct {
+	ShiftCount   int                    `json:"shiftCount"`
+	StoppedAfter string                 `json:"stoppedAfter"`
+	Tail         []plannedShiftResponse `json:"tail"`
+}
+
+// plannedShiftResponse is a Shift by its wall-clock times. A planned one has
+// no id yet; a tail Shift's id is left off too, since nothing here acts on it.
+type plannedShiftResponse struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+// handleGetRotaPlan answers what defining a rota of shiftCount Shifts, none
+// before notBefore, would make right now.
 //
-// A read of its own rather than a field of GET /rotations/in-flight, though the
-// screen shows one or the other: this is arithmetic over the rotas that exist
-// plus the settings, where that is the state of one rota and the numbers a
-// discard would destroy. Tying them together would make each re-read whenever
-// the other changed.
-func (h *Handler) handleGetRotaProposal(w http.ResponseWriter, r *http.Request) {
-	proposal, err := services.ProposeRota(r.Context(), h.store)
+// It answers whether or not a rota is in flight. That rule is DefineRota's to
+// enforce and GET /rotations/in-flight's to report; this is the arithmetic.
+func (h *Handler) handleGetRotaPlan(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	count, err := strconv.Atoi(query.Get("shiftCount"))
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "shiftCount must be a whole number")
+		return
+	}
+
+	plan, err := services.PlanRota(r.Context(), h.store, services.DefineRotaParams{
+		ShiftCount: count,
+		NotBefore:  query.Get("notBefore"),
+	})
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, rotaProposalResponse{StartDate: proposal.StartDate})
+	resp := rotaPlanResponse{
+		PatternSet: plan.PatternSet,
+		Shifts:     toPlannedShifts(plan.Shifts),
+	}
+	if plan.Previous != nil {
+		resp.Previous = &previousRotaResponse{
+			ShiftCount:   plan.Previous.ShiftCount,
+			StoppedAfter: plan.Previous.StoppedAfter,
+			Tail:         toPlannedShifts(plan.Previous.Tail),
+		}
+	}
+	if plan.Refusal != nil {
+		resp.Refusal = plan.Refusal.Error()
+	}
+	h.writeJSON(w, http.StatusOK, resp)
+}
+
+func toPlannedShifts(shifts []db.Shift) []plannedShiftResponse {
+	out := make([]plannedShiftResponse, 0, len(shifts))
+	for _, s := range shifts {
+		out = append(out, plannedShiftResponse{Start: s.StartAt, End: s.EndAt})
+	}
+	return out
 }
 
 // rotaInFlightResponse is the rota being worked on, or nothing.

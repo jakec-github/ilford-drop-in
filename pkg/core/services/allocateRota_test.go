@@ -268,47 +268,6 @@ func TestAllocateRotaInFlightSurfacesTheStoresRefusal(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to save allocations")
 }
 
-// Incomplete settings block allocation and nothing else (ADR 0006). The refusal
-// has to name what is missing: an Organiser who has not filled the settings in has
-// nothing else telling them which box is empty, and this fires before the
-// solver so nothing is written.
-func TestAllocateRotaInFlightRefusesWhenTheShiftTimesAreNotSet(t *testing.T) {
-	cases := map[string]struct {
-		defaults db.RotaDefaults
-		names    []string
-	}{
-		"nothing set": {
-			defaults: db.RotaDefaults{},
-			names:    []string{"start time", "end time"},
-		},
-		"only the start set": {
-			defaults: db.RotaDefaults{ShiftStartTime: "19:30"},
-			names:    []string{"end time"},
-		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			store, volunteers := allocatableRota()
-			store.rotaDefaults = &tc.defaults
-			store.storedDrafts = []db.DraftRotaAllocation{{RotaID: "rota-1"}}
-
-			outcome, err := AllocateRotaInFlight(
-				context.Background(), store, volunteers, testCfg, zap.NewNop(),
-				"a-hash", "",
-			)
-
-			require.ErrorIs(t, err, ErrInvalidInput)
-			assert.Nil(t, outcome)
-			assert.Contains(t, err.Error(), "settings screen", "the refusal says where to go")
-			for _, named := range tc.names {
-				assert.Contains(t, err.Error(), named)
-			}
-			assert.Empty(t, store.insertedAllocations, "nothing is written")
-		})
-	}
-}
-
 // A Shift asking for nobody is the one gap that would not fail loudly: the
 // solve succeeds and staffs nobody. Since Shifts own their Shapes the question
 // is asked of the rota's Shifts rather than of the settings (issue #137), and

@@ -80,24 +80,49 @@ export interface RoleEdit {
   colour: RoleColour;
 }
 
-// ShiftTimes is when the Organisation runs: one section of the settings record, and
-// the whole of what the shift-time form states.
+// ShiftPattern is when the Organisation runs (ADR 0013): one section of the
+// settings record, and the whole of what the Shift pattern section states.
 //
 // Its own type rather than a slice of RotaDefaults because the server takes it
 // whole and refuses fields it does not expect — sending the rest of the record
 // back at it would be rejected, not ignored.
 //
-// Times are 24-hour "HH:MM" — the same thing an <input type="time"> reads and
-// writes — not timestamps: a time of day is not a moment until it is read
-// against a date. Empty means an Organiser has not set it, which is where every
+// Empty fields mean an Organiser has not set the pattern, which is where every
 // deployment starts and is a state the screen renders rather than an error.
-export interface ShiftTimes {
-  shiftStartTime: string;
-  shiftEndTime: string;
+export interface ShiftPattern {
+  // RRULE lines, one per line. Each says when Shifts start, wall-clock.
+  shiftPattern: string;
+  // "2026-11-01": where "every other week" counts from, and what a line that
+  // leaves the weekday or the day of the month out fills it in from. Blank on
+  // a save means today.
+  patternStartFrom: string;
+  // How long every Shift runs, in minutes. 0 when nobody has said.
+  shiftLengthMinutes: number;
   // An IANA zone name. Never empty on the way out of the server: it answers
   // with the default when an Organiser has not chosen one, so there is one answer
   // to what zone the Organisation runs in.
   shiftTimezone: string;
+}
+
+// PatternLine is one non-blank line of a pattern being written: what it means
+// in plain English, or what is wrong with it. number counts blank lines too,
+// so it is the line an Organiser would count to.
+export interface PatternLine {
+  number: number;
+  text: string;
+  description: string;
+  problems: string[];
+}
+
+// ShiftPatternPreview is what a pattern says, line by line, and where its
+// Shifts start between two dates — worked out by the server, by the same
+// arithmetic that mints a rota, so what the calendar shows is what defining
+// does. starts are wall-clock "2026-11-01T19:30:00", and empty while any line
+// has a problem.
+export interface ShiftPatternPreview {
+  patternStartFrom: string;
+  lines: PatternLine[];
+  starts: string[];
 }
 
 // ShapeSeat is one line of a Shape: this many places of one Role. roleId is what
@@ -175,7 +200,7 @@ export type AllocationRuleEdit = Omit<AllocationRuleDraft, "kind">;
 
 // The settings record as the screen reads it: the answers, plus the library
 // the Allocation Rules are added from.
-export interface RotaDefaults extends ShiftTimes {
+export interface RotaDefaults extends ShiftPattern {
   // What every shift asks for, in the order its Seats are filled. Empty means
   // an Organiser has not stated one — the state every deployment starts in, and the
   // one thing that stops a rota being allocated without saying anything else.
@@ -221,36 +246,53 @@ export interface Volunteer {
   active: boolean;
 }
 
+// PlannedShift is a Shift by its wall-clock times, "2026-11-01T19:30:00".
+export interface PlannedShift {
+  start: string;
+  end: string;
+}
+
 // DefinedRota is a rota that has just been defined: the span it covers and the
-// dates of the shifts it minted, in order. Returned by the define call so the
-// Organiser can see what they created — defining is not idempotent, so what came
-// back is the only confirmation of which weeks were taken.
+// shifts it minted, in order. Returned by the define call so the Organiser can
+// see what they created — defining is not idempotent, so what came back is the
+// only confirmation of which shifts were taken.
 export interface DefinedRota {
   id: string;
   start: string;
   end: string;
-  shiftDates: string[];
+  shifts: PlannedShift[];
 }
 
-// RotaProposal is the define form before anybody has touched it: where the rota
-// made by defining one right now would begin.
-//
-// The Sunday after the last rota, worked out by the server because counting
-// forward from the rotas that exist is its arithmetic to do. It binds nothing —
-// a rota may begin after a break, and the form may say so.
-export interface RotaProposal {
-  startDate: string;
+// RotaPlan is the rota defining one now would make (ADR 0013): the next
+// however many Shifts the Shift pattern generates after the exact Shift the
+// previous rota stopped after. Worked out by the server, by the arithmetic
+// defining uses, so the preview cannot disagree with the definition.
+export interface RotaPlan {
+  // Whether the Rota Defaults hold a Shift pattern at all.
+  patternSet: boolean;
+  // The rota this one carries on from, or null for the first.
+  previous: {
+    shiftCount: number;
+    // The generated start of its last Shift.
+    stoppedAfter: string;
+    // Its last few Shifts, as they now stand.
+    tail: PlannedShift[];
+  } | null;
+  shifts: PlannedShift[];
+  // Why defining this would be refused — no pattern, a pattern run out, a
+  // clash — or empty when it would not. A refused plan still carries whatever
+  // Shifts could be worked out, so the screen can show the clash it names.
+  refusal: string;
 }
 
-// NewRota is a rota an Organiser has stated, as POST /api/rotations takes it: how
-// many shifts, and from when.
+// NewRota is a rota an Organiser has stated, as POST /api/rotations takes it:
+// how many shifts, and optionally a date none of them may start before.
 //
-// The hours and the Shape are not here. They are the Rota Defaults, stated on
-// the settings card and nowhere else, and defining spends whatever they say
-// (issue #176).
+// Which shifts, their hours and their Shape are not here. They are the Rota
+// Defaults', and defining spends whatever those say (issue #176, ADR 0013).
 export interface NewRota {
   shiftCount: number;
-  startDate: string;
+  notBefore?: string;
 }
 
 // RotaInFlight is the rota being worked on: the one Rotation that has not been

@@ -1,0 +1,96 @@
+.rota-defaults-editor {
+  margin-top: 0.25rem;
+}
+
+/* RRULE is read character by character, so it is set in a fixed width and
+   wraps nowhere it was not broken. */
+.shift-pattern-text {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.shift-pattern-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The reading of each line: a tick and what it means, or a cross, the line
+   and what is wrong with it. */
+.shift-pattern-lines {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.shift-pattern-lines li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.1875rem 0;
+  color: var(--text-h);
+}
+
+.shift-pattern-lines li::before {
+  content: "✓";
+  color: var(--positive);
+  font-weight: 700;
+}
+
+.shift-pattern-lines li.problem {
+  color: var(--role-rose);
+}
+
+.shift-pattern-lines li.problem::before {
+  content: "✕";
+  color: var(--role-rose);
+}
+
+.shift-pattern-lines code {
+  font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+/* Start from, the zone and the length on one line on a desk, wrapping one at
+   a time as the card narrows. */
+.shift-pattern-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+}
+
+.shift-pattern-fields .settings-field {
+  flex: 1 1 10rem;
+}
+
+.shift-pattern-fields input[type="date"] {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  font: 16px/1.4 var(--sans);
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.shift-pattern-heading {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* The Shape's rows read as a column of numbers; across the whole card the
+   count would sit a long way from its Role. */
+.rota-defaults-shape {
+  max-width: 24rem;
+}

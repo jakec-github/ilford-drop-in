@@ -18,23 +18,25 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// defineFromProposal defines a rota the way the define screen does: read where
-// the next one would begin, and define that many shifts from there.
+// defineFromProposal defines a rota the way the define screen does: read the
+// plan for that many shifts, and define it if it can be.
 //
-// Every integration test below defines one this way rather than writing a start
-// date out, because the round trip is the thing worth exercising — a proposal
+// Every integration test below defines one this way rather than posting
+// straight away, because the round trip is the thing worth exercising — a plan
 // the define call would refuse would be a broken screen rather than a broken
 // test.
 func defineFromProposal(t *testing.T, handler http.Handler, shiftCount int) *httptest.ResponseRecorder {
 	t.Helper()
 
-	rec := doRequest(t, handler, http.MethodGet, "/api/rotations/proposed", "", organiserCookie())
+	rec := doRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/rotations/next?shiftCount=%d", shiftCount), "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	var proposal rotaProposalBody
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &proposal))
+	var plan rotaPlanBody
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &plan))
+	require.Empty(t, plan.Refusal)
+	require.Len(t, plan.Shifts, shiftCount)
 
-	body := fmt.Sprintf(`{"shiftCount":%d,"startDate":%q}`, shiftCount, proposal.StartDate)
+	body := fmt.Sprintf(`{"shiftCount":%d}`, shiftCount)
 	return doRequest(t, handler, http.MethodPost, "/api/rotations", body, organiserCookie())
 }
 

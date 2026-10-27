@@ -72,32 +72,33 @@ Organisation, and each checks its own lists. What you are looking at is the real
 ## Define a rota
 
 The database starts empty, so nothing downstream of a shift is reachable until a
-rota exists. Defining one says how many shifts and from when; the hours they run
-and what each asks for are the Rota Defaults, which defining spends (issue
-#176):
+rota exists. Defining one says how many shifts; which shifts they are, their
+hours and what each asks for are the Rota Defaults, which defining spends
+(issue #176, ADR 0013):
 
 ```bash
-curl -b cookies.txt localhost:8080/org/dev-org/api/rotations/proposed
+curl -b cookies.txt 'localhost:8080/org/dev-org/api/rotations/next?shiftCount=6'
 curl -b cookies.txt -X POST localhost:8080/org/dev-org/api/rotations -d '{
-  "shiftCount": 6,
-  "startDate": "2026-09-06"
+  "shiftCount": 6
 }'
 ```
 
-`GET /api/rotations/proposed` answers with the Sunday after the last rota, which
-is what the form's date box starts from. A body naming anything else — the
-hours, the shape — is a 400 rather than a setting quietly overridden.
+`GET /api/rotations/next` answers with the shifts defining would mint — the
+next six the Shift pattern generates after the one the previous rota stopped
+after — and why it would be refused, if it would. Add `notBefore` (a date) to
+either to leave a gap. A body naming anything else — a start date, the hours,
+the shape — is a 400 rather than a setting quietly overridden.
 
-That mints six weekly shifts and returns them with their ids; `GET /api/shifts`
+That mints six shifts and returns them with their ids; `GET /api/shifts`
 then serves them. It also opens the rota's availability round — one link per
 active volunteer, none of them sent — so the draft has something to solve
 against from the first read. The Allocation tab in the Organiser area does the same
-thing through the UI, with the proposed date already in the form.
+thing through the UI, listing the shifts as the count is typed.
 
-The shift times and the default Shape come from the settings, which a fresh dev
+The Shift pattern and the default Shape come from the settings, which a fresh dev
 database has none of, so defining is refused until they are stated. Set them on
 Organiser → Settings — the same card sits under the define form on the Allocation
-tab — or over `PUT /api/rota-defaults/shift-times` and
+tab — or over `PUT /api/rota-defaults/shift-pattern` and
 `PUT /api/rota-defaults/shape`.
 
 Seed through the endpoints rather than by writing rows into Postgres by hand:
@@ -311,7 +312,7 @@ one (#144). The whole journey is reachable here, end to end. So:
 | Login and logout | The header shows the signed-in address and a Log out button |
 | Header nav | Rota ↔ Organiser, for an Organiser. A Rota Editor gets no link at all |
 | `/organiser` tab routing | Redirects to `/organiser/volunteers`. Three tabs: Volunteers, Settings, Allocation. A Rota Editor sees only "This page is for organisers" |
-| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form on its own, prefilled from `GET /api/rotations/proposed` and editable — except the shift count, which starts empty. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireLevel(LevelOrganiser)` |
+| The Allocation tab | The whole journey, in two states. Nothing in flight: the define form on its own: an empty shift count, the shifts it would take listed from `GET /api/rotations/next` as it is typed, and Leave a gap… for a Not before date. A rota in flight: the rota named with its round's progress and a Discard button, the draft panel with Solve and Allocate, the shift table (what each asks for, who is pinned, who the draft put there, and the edits to all of it), and the availability round below. Behind `requireLevel(LevelOrganiser)` |
 | The availability round | Part of the Allocation tab. Defining the rota opened the round; this shows it as a grid, and tops it up for anyone who has joined the roster since — groups down the side, shifts along the top, each Role's surplus or deficit above the answers. Rows open to their members' links. Desktop first: it scrolls sideways on a phone |
 | The volunteer's form | `/availability/<token>`, public — no session, no header, mobile first |
 | Volunteer sync | The Volunteers tab's Sync button re-reads the CSV and returns 204 |

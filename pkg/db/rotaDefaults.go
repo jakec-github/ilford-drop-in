@@ -10,23 +10,22 @@ import (
 
 // RotaDefaults is the Organisation's settings record as the database holds it: one
 // set of answers about how the Organisation as a whole runs, edited on the Settings
-// screen. It arrives holding the shift times; the default Shape, the allocation
-// toggles and the Standing Preallocations join it in later tickets.
+// screen: the Shift pattern, and the Allocation Settings. The default Shape and
+// the Standing Preallocations are tables of their own.
 //
 // Every field is a zero value until an Organiser fills it in. Nothing is seeded
 // (ADR 0006), so unset is the ordinary first state of a deployment rather than
 // a fault — the settings' emptiness blocks allocation and nothing else.
-//
-// The times are held as "15:04" strings rather than as time.Time, because a
-// time of day with no date is not a moment: it becomes one only when read
-// against a Shift's date in the Organisation's timezone, which is
-// model.RotaDefaults' job. The column is a real TIME, so the round trip is
-// through Postgres's own parser rather than the app's.
 type RotaDefaults struct {
-	// ShiftStartTime and ShiftEndTime are wall-clock times of day in
-	// ShiftTimezone, e.g. "19:30". Empty means an Organiser has not set them.
-	ShiftStartTime string
-	ShiftEndTime   string
+	// ShiftPattern is the Organiser's RRULE lines, as typed (ADR 0013). Empty
+	// means no pattern has been set, and no rota can be defined.
+	ShiftPattern string
+	// PatternStartFrom is the date the pattern counts from, "2006-01-02".
+	// Empty means unset.
+	PatternStartFrom string
+	// ShiftLengthMinutes is how long each generated Shift runs. Zero means
+	// unset.
+	ShiftLengthMinutes int
 	// ShiftTimezone is an IANA zone name, e.g. "Europe/London". Empty means
 	// unset; the domain falls back rather than guessing at read time.
 	ShiftTimezone string
@@ -48,18 +47,19 @@ type RotaDefaults struct {
 // That matters because the table is deliberately unseeded: the first save
 // creates the row, and every read before it lands here.
 func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
-	// to_char renders the TIME the way the app states it. Doing the formatting
-	// in SQL keeps a time of day a string on this side of the boundary, where
-	// scanning into a time.Time would attach a meaningless date to it.
-	var start, end, timezone, allocation *string
+	// to_char keeps the date a date: scanned into a time.Time it would arrive
+	// as a midnight in some zone, which is not what Start from means.
+	var pattern, startFrom, timezone, allocation *string
+	var length *int
 	err := d.pool.QueryRow(ctx, `
-		SELECT to_char(shift_start_time, 'HH24:MI'),
-		       to_char(shift_end_time, 'HH24:MI'),
+		SELECT shift_pattern,
+		       to_char(pattern_start_from, 'YYYY-MM-DD'),
+		       shift_length_minutes,
 		       shift_timezone,
 		       allocation_settings::text
 		FROM rota_defaults
 		WHERE organisation_id = $1
-	`, d.org()).Scan(&start, &end, &timezone, &allocation)
+	`, d.org()).Scan(&pattern, &startFrom, &length, &timezone, &allocation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RotaDefaults{}, nil
 	}
@@ -68,34 +68,39 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 	}
 
 	return RotaDefaults{
-		ShiftStartTime:     deref(start),
-		ShiftEndTime:       deref(end),
+		ShiftPattern:       deref(pattern),
+		PatternStartFrom:   deref(startFrom),
+		ShiftLengthMinutes: derefInt(length),
 		ShiftTimezone:      deref(timezone),
 		AllocationSettings: deref(allocation),
 	}, nil
 }
 
-// SaveRotaDefaults writes the shift-time settings, creating the record if this
-// is the first time anyone has saved it.
+// SaveShiftPattern writes the Shift pattern section — the pattern, its Start
+// from, the time zone and the length — creating the record if this is the
+// first time anyone has saved it.
 //
 // It names the columns it sets rather than replacing the row, so a later
 // section of the settings — the default Shape, the Allocation Rules — cannot
 // be blanked by a save of this one.
 //
-// An empty field is written as NULL. "Not set" has to survive the round trip:
-// stored as a zero TIME it would read back as midnight, which is a time the
-// Organisation could plausibly be told to start at.
-func (d *DB) SaveRotaDefaults(ctx context.Context, defaults RotaDefaults) error {
+// An empty field is written as NULL, so "not set" survives the round trip.
+//
+// The pattern is not an allocator input — it decides which Shifts the next
+// rota is minted with, and a rota already defined keeps the ones it has — so
+// saving it leaves the rota in flight's draft alone.
+func (d *DB) SaveShiftPattern(ctx context.Context, defaults RotaDefaults) error {
 	_, err := d.pool.Exec(ctx, `
-		INSERT INTO rota_defaults (organisation_id, shift_start_time, shift_end_time, shift_timezone)
-		VALUES ($4, NULLIF($1, '')::time, NULLIF($2, '')::time, NULLIF($3, ''))
+		INSERT INTO rota_defaults (organisation_id, shift_pattern, pattern_start_from, shift_length_minutes, shift_timezone)
+		VALUES ($5, NULLIF($1, ''), NULLIF($2, '')::date, NULLIF($3, 0), NULLIF($4, ''))
 		ON CONFLICT (organisation_id) DO UPDATE SET
-			shift_start_time = EXCLUDED.shift_start_time,
-			shift_end_time = EXCLUDED.shift_end_time,
+			shift_pattern = EXCLUDED.shift_pattern,
+			pattern_start_from = EXCLUDED.pattern_start_from,
+			shift_length_minutes = EXCLUDED.shift_length_minutes,
 			shift_timezone = EXCLUDED.shift_timezone
-	`, defaults.ShiftStartTime, defaults.ShiftEndTime, defaults.ShiftTimezone, d.org())
+	`, defaults.ShiftPattern, defaults.PatternStartFrom, defaults.ShiftLengthMinutes, defaults.ShiftTimezone, d.org())
 	if err != nil {
-		return fmt.Errorf("failed to save rota defaults: %w", err)
+		return fmt.Errorf("failed to save the shift pattern: %w", err)
 	}
 	return nil
 }
@@ -161,6 +166,14 @@ func (d *DB) UpdateAllocationSettings(ctx context.Context, edit func(current str
 func deref(value *string) string {
 	if value == nil {
 		return ""
+	}
+	return *value
+}
+
+// derefInt reads a nullable integer column as zero, for the same reason.
+func derefInt(value *int) int {
+	if value == nil {
+		return 0
 	}
 	return *value
 }

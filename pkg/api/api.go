@@ -28,7 +28,6 @@ type Store interface {
 	services.RoleWriteStore
 	services.RotaDefaultsStore
 	services.RotaLifecycleStore
-	services.RotaProposalStore
 	services.RotaDefaultsWriteStore
 	services.ShiftShapeWriteStore
 	services.UpdateShiftStore
@@ -193,12 +192,13 @@ func (h *Handler) Routes() http.Handler {
 	//
 	// One GET for the record and a PUT per section, each named. The screen
 	// draws every section from the one read; a section is written whole — the
-	// times are one idea, a Shape has no partial edit, and the toggles are one
+	// pattern is one idea, a Shape has no partial edit, and the toggles are one
 	// list — but the record is not, because a save of one section must not
 	// blank another, and a single PUT on the record would be exactly the
 	// endpoint that could.
 	api.Handle("GET /rota-defaults", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaDefaults)))
-	api.Handle("PUT /rota-defaults/shift-times", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftTimeDefaults)))
+	api.Handle("PUT /rota-defaults/shift-pattern", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftPattern)))
+	api.Handle("POST /rota-defaults/shift-pattern/preview", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleShiftPatternPreview)))
 	api.Handle("PUT /rota-defaults/shape", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveDefaultShape)))
 	api.Handle("POST /rota-defaults/allocation-rules", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddAllocationRule)))
 	api.Handle("PUT /rota-defaults/allocation-rules/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleEditAllocationRule)))
@@ -212,8 +212,9 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("POST /rotations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDefineRota)))
 	api.Handle("GET /rotations/in-flight", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleGetRotaInFlight)))
 	// What defining one right now would produce: the two states of the define
-	// screen read one of these each (issue #140).
-	api.Handle("GET /rotations/proposed", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaProposal)))
+	// screen read one of these each (issue #140), and this one is its preview
+	// (ADR 0013).
+	api.Handle("GET /rotations/next", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaPlan)))
 	api.Handle("DELETE /rotations/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDiscardRota)))
 	// Allocating: the act that turns the rota in flight into the rota, and the
 	// end of its lifecycle. Under the rota rather than under the draft beside

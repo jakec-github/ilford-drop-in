@@ -91,6 +91,40 @@ func overlappingShift(ctx context.Context, q querier, organisationID, id, startA
 	return &s, nil
 }
 
+// GetShiftsOverlapping retrieves every Shift of the Organisation running at
+// some moment from startAt up to endAt, ordered by start: the Shifts a rota
+// about to be minted across those hours would clash with. A read for the
+// refusal to name them, not the guard — the no-overlap constraint is that.
+func (d *DB) GetShiftsOverlapping(ctx context.Context, startAt, endAt string) ([]Shift, error) {
+	rows, err := d.pool.Query(ctx, `
+		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
+		FROM shift s
+		WHERE s.organisation_id = $1
+		  AND tsrange(s.start_at, s.end_at) && tsrange($2::timestamp, $3::timestamp)
+		ORDER BY s.start_at
+	`, d.org(), startAt, endAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query shifts overlapping %s to %s: %w", startAt, endAt, err)
+	}
+	defer rows.Close()
+
+	var shifts []Shift
+	for rows.Next() {
+		var s Shift
+		var date, start, end time.Time
+		if err := rows.Scan(&s.ID, &date, &s.RotaID, &s.Closed, &start, &end); err != nil {
+			return nil, fmt.Errorf("failed to scan shift: %w", err)
+		}
+		s.Date = date.Format("2006-01-02")
+		s.StartAt, s.EndAt = localTimestamp(start), localTimestamp(end)
+		shifts = append(shifts, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating shifts: %w", err)
+	}
+	return shifts, nil
+}
+
 // localTimestamp renders a TIMESTAMP column in the layout this package spells
 // wall-clock times in. Nothing about the value says which zone reads it, which
 // is the point (ADR 0007).
@@ -326,12 +360,23 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	}
 	defer tx.Rollback(ctx)
 
-	// The rotation row is now identity plus allocated_datetime; start and shift
-	// count are derived from its shifts by GetRotations (ADR 0001).
+	// The rotation row is identity, where it stopped and allocated_datetime;
+	// start and shift count are derived from its shifts by GetRotations
+	// (ADR 0001). A rotation given no stop point stopped at its last Shift's
+	// start, which is what migration 035 says of every rota minted before
+	// there was a pattern to generate one.
+	stoppedAfter := rotation.StoppedAfter
+	if stoppedAfter == "" {
+		for _, s := range shifts {
+			if s.StartAt > stoppedAfter {
+				stoppedAfter = s.StartAt
+			}
+		}
+	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO rotation (id, organisation_id)
-		VALUES ($1, $2)
-	`, rotation.ID, d.org())
+		INSERT INTO rotation (id, organisation_id, stopped_after)
+		VALUES ($1, $2, NULLIF($3, '')::timestamp)
+	`, rotation.ID, d.org(), stoppedAfter)
 	if err != nil {
 		return fmt.Errorf("failed to insert rotation: %w", err)
 	}

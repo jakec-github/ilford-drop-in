@@ -13,9 +13,7 @@ import (
 
 // The settings a configured Organisation has: the evening session the real one runs.
 var calendarTestDefaults = model.RotaDefaults{
-	ShiftStartTime: "19:30",
-	ShiftEndTime:   "21:30",
-	ShiftTimezone:  "Europe/London",
+	ShiftTimezone: "Europe/London",
 }
 
 // Where the rota lives, as the handler reads it off the request. A test value,
@@ -29,12 +27,10 @@ func calendarTestVolunteer() model.Volunteer {
 }
 
 // calendarShift is a shift as the listing hands one over: minted with the
-// Organisation's default times written onto its date, which is what defineRota does.
+// evening session's times on its date.
 func calendarShift(t *testing.T, date string) Shift {
 	t.Helper()
-	start, end, err := model.ShiftTimestamps(date, calendarTestDefaults.ShiftStartTime, calendarTestDefaults.ShiftEndTime)
-	require.NoError(t, err)
-	return Shift{ID: "shift-" + date, Date: date, StartAt: start, EndAt: end}
+	return Shift{ID: "shift-" + date, Date: date, StartAt: date + "T19:30:00", EndAt: date + "T21:30:00"}
 }
 
 func TestBuildVolunteerCalendar_Basic(t *testing.T) {

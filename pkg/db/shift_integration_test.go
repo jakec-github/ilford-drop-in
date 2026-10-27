@@ -487,3 +487,59 @@ func TestSetShiftTimesAllowsTwoShiftsOnOneDay(t *testing.T) {
 	assert.Equal(t, "2026-08-02", shifts[1].Date)
 	assert.Equal(t, morning.ID, shifts[0].ID, "in start order")
 }
+
+// GetShiftsOverlapping finds every Shift running at some moment in a span, in
+// order, and none that only touches it: the ranges are half-open, as the
+// no-overlap constraint's are.
+func TestGetShiftsOverlapping(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	rota := &db.Rotation{ID: uuid.New().String()}
+	first := dbtest.Shift(rota.ID, "2026-08-02")
+	second := dbtest.Shift(rota.ID, "2026-08-09")
+	third := dbtest.Shift(rota.ID, "2026-08-16")
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{third, first, second}, nil, nil))
+
+	shifts, err := database.GetShiftsOverlapping(ctx, "2026-08-02T21:00:00", "2026-08-09T20:00:00")
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+	assert.Equal(t, first.ID, shifts[0].ID)
+	assert.Equal(t, second.ID, shifts[1].ID)
+	assert.Equal(t, "2026-08-09", shifts[1].Date)
+
+	// Ending as one starts is not overlapping it.
+	shifts, err = database.GetShiftsOverlapping(ctx, "2026-08-16T17:30:00", "2026-08-16T19:30:00")
+	require.NoError(t, err)
+	assert.Empty(t, shifts)
+}
+
+// A rota stores where it stopped — the start the next rota carries on from —
+// and one given none stopped at its last Shift's start (migration 035).
+func TestRotationStoppedAfter(t *testing.T) {
+	database, _ := dbtest.New(t)
+	ctx := context.Background()
+
+	stated := &db.Rotation{ID: uuid.New().String(), StoppedAfter: "2026-08-09T19:30:00"}
+	require.NoError(t, database.InsertDefinedRota(ctx, stated, []db.Shift{
+		dbtest.Shift(stated.ID, "2026-08-02"),
+		// Its last Shift moved by hand: the stop point stays where the
+		// pattern put it.
+		{ID: uuid.New().String(), RotaID: stated.ID, StartAt: "2026-08-09T18:00:00", EndAt: "2026-08-09T20:00:00"},
+	}, nil, nil))
+
+	unstated := &db.Rotation{ID: uuid.New().String()}
+	require.NoError(t, database.InsertDefinedRota(ctx, unstated, []db.Shift{
+		dbtest.Shift(unstated.ID, "2026-08-23"),
+		dbtest.Shift(unstated.ID, "2026-08-16"),
+	}, nil, nil))
+
+	rotations, err := database.GetRotations(ctx)
+	require.NoError(t, err)
+	stoppedAfter := map[string]string{}
+	for _, r := range rotations {
+		stoppedAfter[r.ID] = r.StoppedAfter
+	}
+	assert.Equal(t, "2026-08-09T19:30:00", stoppedAfter[stated.ID])
+	assert.Equal(t, "2026-08-23T19:30:00", stoppedAfter[unstated.ID])
+}

@@ -187,7 +187,7 @@ func TestSetShiftShapeReportsAMissingShift(t *testing.T) {
 	ctx := context.Background()
 	dbtest.SeedRoles(t, database)
 
-	rota := &db.Rotation{ID: uuid.New().String()}
+	rota := &db.Rotation{ID: uuid.New().String(), StoppedAfter: "2026-01-04T19:30:00"}
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, nil, nil, nil))
 
 	require.NoError(t, database.WithRotaShapeLock(ctx, []string{rota.ID}, func(tx db.ShapeTxStore) error {

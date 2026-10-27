@@ -3,10 +3,9 @@
   font-size: 0.875rem;
 }
 
-/* The two fields that say how long the rota is and when it starts, on one line,
-   then the button. Organiser tools are desktop first, and on a desk they fit
-   across — the row wraps rather than stacking, so a narrow window loses one
-   field to the next line at a time. */
+/* The count, and the gap if one is asked for, on one line, then the plan and
+   the button. Organiser tools are desktop first; the row wraps rather than
+   stacking, so a narrow window loses one field to the next line at a time. */
 .define-rota-form {
   display: flex;
   flex-direction: column;
@@ -52,6 +51,75 @@
   margin: 0 0 1rem;
   font-size: 0.8125rem;
   color: var(--text);
+}
+
+.define-rota-link {
+  align-self: center;
+  margin-top: 1.125rem;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.define-rota-warning {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(180, 83, 9, 0.3);
+  border-radius: 6px;
+  color: #92400e;
+  background: rgba(180, 83, 9, 0.1);
+  font-size: 0.875rem;
+}
+
+.define-rota-headline {
+  margin: 0 0 0.75rem;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.define-rota-month h4 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* One Shift a row: the day and its hours in columns, so a list of Sundays
+   reads down as one. */
+.define-rota-shifts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.define-rota-shift {
+  display: grid;
+  grid-template-columns: 9rem auto 1fr;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-h);
+}
+
+/* The previous rota's tail: there to check the join against, not part of
+   what is being defined. */
+.define-rota-shift.defined {
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.define-rota-shift-note {
+  justify-self: end;
+  font-size: 0.75rem;
+  font-style: italic;
 }
 
 .define-rota-actions {

@@ -12,7 +12,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// The dev stack has no Organiser to set the shift times and no config key to read
+// The dev stack has no Organiser to set the Shift pattern and no config key to read
 // them from, so the seed is what makes `scripts/dev-stack.sh start` hand over an
 // app that can allocate a rota rather than one that refuses.
 func TestSeedRotaDefaults(t *testing.T) {
@@ -25,8 +25,9 @@ func TestSeedRotaDefaults(t *testing.T) {
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "19:30", defaults.ShiftStartTime)
-	assert.Equal(t, "21:30", defaults.ShiftEndTime)
+	assert.Equal(t, "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30", defaults.ShiftPattern)
+	assert.NotEmpty(t, defaults.PatternStartFrom)
+	assert.Equal(t, 120, defaults.ShiftLengthMinutes)
 	assert.Equal(t, "Europe/London", defaults.ShiftTimezone)
 
 	// And the allocator rules, for the same reason: a dev stack that could not
@@ -41,13 +42,16 @@ func TestSeedRotaDefaults(t *testing.T) {
 }
 
 // The seed runs on every dev-stack start, so it has to be a seed rather than a
-// reset: a time changed by hand survives a restart.
+// reset: a pattern changed by hand survives a restart.
 func TestSeedRotaDefaultsLeavesSettingsAlone(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
-	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
-		ShiftStartTime: "09:00", ShiftEndTime: "12:15", ShiftTimezone: "UTC",
+	require.NoError(t, database.SaveShiftPattern(ctx, db.RotaDefaults{
+		ShiftPattern:       "RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+		PatternStartFrom:   "2026-11-01",
+		ShiftLengthMinutes: 195,
+		ShiftTimezone:      "UTC",
 	}))
 
 	seeded, err := devmode.SeedRotaDefaults(ctx, database)
@@ -56,5 +60,5 @@ func TestSeedRotaDefaultsLeavesSettingsAlone(t *testing.T) {
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "09:00", defaults.ShiftStartTime)
+	assert.Equal(t, "RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0", defaults.ShiftPattern)
 }

@@ -23,12 +23,13 @@ import type {
   RotaChange,
   RotaDefaults,
   RotaInFlight,
-  RotaProposal,
+  RotaPlan,
   RotaShift,
   SendMode,
   SendOutcome,
   ShapeSeat,
-  ShiftTimes,
+  ShiftPattern,
+  ShiftPatternPreview,
   StandingPreallocation,
   Volunteer,
   VolunteerHistory,
@@ -79,11 +80,11 @@ interface ListVolunteersResponse {
 
 interface DefineRotaResponse {
   rotation: { id: string; start: string; end: string; shiftCount: number };
-  shifts: { id: string; date: string }[];
+  shifts: { id: string; date: string; start: string; end: string }[];
 }
 
 // The API reports a rejected request as {"error": "..."}, and that message is
-// written to be read — "shift count must be positive, got 0" tells an Organiser what
+// written to be read — "a rota has from 1 to 366 shifts, not 0" tells an Organiser what
 // to change, where a bare 400 does not. Falls back to the status when the body
 // is not one of ours.
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -270,26 +271,59 @@ export async function fetchRotaDefaults(): Promise<RotaDefaults> {
   return (await res.json()) as RotaDefaults;
 }
 
-// saveShiftTimeDefaults writes the default shift start, end and timezone. All
-// three go at once because they are one form and one idea: a time of day means
-// nothing without the zone it is read in.
+// saveShiftPattern writes the Shift pattern section: the pattern, Start from,
+// the length and the zone, at once, because they are one idea — a line means
+// nothing without the date it counts from.
 //
 // Each section of the settings has its own endpoint, and each resolves with the
 // whole record rather than with nothing — partly because the server fills in a
-// timezone an Organiser left blank, and partly so a caller holds one thing after
-// saving any section.
-export async function saveShiftTimeDefaults(
-  times: ShiftTimes,
+// Start from and a zone an Organiser left blank, and partly so a caller holds
+// one thing after saving any section.
+export async function saveShiftPattern(
+  pattern: ShiftPattern,
 ): Promise<RotaDefaults> {
-  const res = await fetch(`${BASE_PATH}/api/rota-defaults/shift-times`, {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/shift-pattern`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(times),
+    body: JSON.stringify(pattern),
   });
   if (!res.ok) {
-    throw new Error(await errorMessage(res, "Failed to save the shift times"));
+    throw new Error(
+      await errorMessage(res, "Failed to save the shift pattern"),
+    );
   }
   return (await res.json()) as RotaDefaults;
+}
+
+// previewShiftPattern reads a pattern that has not been saved: what each line
+// means, and where its Shifts start from `from` up to, but not including, `to`.
+// It writes nothing. A pattern with problems is answered with them rather than
+// refused — only a range the server cannot read is an error.
+export async function previewShiftPattern(
+  pattern: Omit<ShiftPattern, "shiftLengthMinutes">,
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+): Promise<ShiftPatternPreview> {
+  const res = await fetch(
+    `${BASE_PATH}/api/rota-defaults/shift-pattern/preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shiftPattern: pattern.shiftPattern,
+        patternStartFrom: pattern.patternStartFrom,
+        shiftTimezone: pattern.shiftTimezone,
+        from,
+        to,
+      }),
+      signal,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to read the pattern"));
+  }
+  return (await res.json()) as ShiftPatternPreview;
 }
 
 // saveDefaultShape writes what every shift asks for, stated whole: a Role
@@ -527,14 +561,23 @@ export async function fetchVolunteers(): Promise<Volunteer[]> {
   return data.volunteers.map(toVolunteer);
 }
 
-// fetchRotaProposal reads what the define form starts from: where the next rota
-// would begin. Organiser-only, like everything else about defining one.
-export async function fetchRotaProposal(): Promise<RotaProposal> {
-  const res = await fetch(`${BASE_PATH}/api/rotations/proposed`);
+// fetchRotaPlan reads the rota defining one of this many shifts now would
+// make, none before notBefore. Organiser-only, like everything else about
+// defining one. A plan defining would refuse still resolves, with the refusal
+// in it; only a request the server cannot read rejects.
+export async function fetchRotaPlan(
+  rota: NewRota,
+  signal?: AbortSignal,
+): Promise<RotaPlan> {
+  const query = new URLSearchParams({ shiftCount: String(rota.shiftCount) });
+  if (rota.notBefore) query.set("notBefore", rota.notBefore);
+  const res = await fetch(`${BASE_PATH}/api/rotations/next?${query}`, {
+    signal,
+  });
   if (!res.ok) {
-    throw new Error(await errorMessage(res, "Failed to load the next rota"));
+    throw new Error(await errorMessage(res, "Failed to plan the next rota"));
   }
-  return (await res.json()) as RotaProposal;
+  return (await res.json()) as RotaPlan;
 }
 
 // defineRota defines the rota it is given and returns the shifts it minted.
@@ -558,7 +601,7 @@ export async function defineRota(rota: NewRota): Promise<DefinedRota> {
     id: data.rotation.id,
     start: data.rotation.start,
     end: data.rotation.end,
-    shiftDates: data.shifts.map((s) => s.date),
+    shifts: data.shifts.map((s) => ({ start: s.start, end: s.end })),
   };
 }
 
