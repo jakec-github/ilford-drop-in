@@ -25,7 +25,8 @@ RUN CGO_ENABLED=0 go build -o /server ./cmd/server
 # symlink to that interpreter's absolute path, and ortools, numpy and protobuf
 # ship compiled extensions for one Python minor version. So the venv is built
 # with Debian 12's own python3.11, the same one at the same path as the runtime
-# stage's distroless base. Changing either base means changing both.
+# stage's distroless base. Changing either base means changing both, and
+# the Python version .github/workflows/ci.yml pins to match.
 #
 # Non-editable: an editable install points back at /build, which is not in the
 # runtime image.
