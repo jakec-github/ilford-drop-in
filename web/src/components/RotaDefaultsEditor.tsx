@@ -2,53 +2,83 @@ import { useState } from "react";
 import Button from "../ui/Button";
 import { useShiftPatternPreview } from "../hooks/useShiftPatternPreview";
 import PatternCalendar from "./PatternCalendar";
+import ShapeSeats from "./ShapeSeats";
+import { seatCountsOf, seatsKey, seatsOf } from "./shape";
 import {
   formatLength,
   isDate,
   monthsFrom,
   today as todayDate,
 } from "./patternDates";
-import type { ShiftPattern } from "../types";
-import "./ShiftPatternEditor.css";
+import type { ConfiguredRole, RotaDefaults, ShiftPattern } from "../types";
+import "./RotaDefaultsEditor.css";
 
 // The lengths offered, a quarter of an hour apart up to sixteen hours. The
 // server takes anything from a minute to a day; these are the ones anybody
 // runs, and a length saved outside them is offered too rather than lost.
 const LENGTHS = Array.from({ length: 64 }, (_, i) => (i + 1) * 15);
 
+// What the length starts at before one has been saved: the commonest session,
+// and a value rather than a blank so a first pattern can be saved without a
+// detour through the list.
+const DEFAULT_LENGTH = 60;
+
 // How many months the calendar shows at once.
 const MONTHS_SHOWN = 3;
 
-// ShiftPatternEditor is the Shift pattern section of the Rota Defaults, open
-// for editing (ADR 0013): the RRULE lines, Start from, the zone, the length,
-// and a calendar of what they generate.
+// RotaDefaultsEditor is the Rota Defaults open for editing: the Shift pattern
+// (ADR 0013) — its RRULE lines, Start from, the zone, the length, and a
+// calendar of what they generate — and the default Shape, under one Save.
+//
+// One editor rather than one each, because the two are one answer: what every
+// Shift of the next rota is, when and with how many people. An Organiser
+// setting up a deployment states both, and one changing the evening usually
+// changes who it needs.
 //
 // It is drawn in the card rather than in a dialog because the calendar is the
-// point of it, and three months side by side do not fit a dialog's width.
+// point of the pattern half, and three months side by side do not fit a
+// dialog's width.
 //
-// Every line is read back in plain English as it is typed, and every problem
-// named against its line, by the server — the same evaluator that mints the
-// rota, so the reading and the calendar are what defining will do.
-export default function ShiftPatternEditor({
+// The two halves are still two endpoints, so Save sends only the half that
+// changed, the pattern first. A pattern the server refuses saves nothing; a
+// Shape refused after the pattern was taken leaves the editor open on it, and
+// the next Save sends the Shape alone.
+export default function RotaDefaultsEditor({
   saved,
-  onSave,
+  roles,
+  onSavePattern,
+  onSaveShape,
   onClose,
 }: {
-  saved: ShiftPattern;
-  onSave: (pattern: ShiftPattern) => Promise<void>;
+  saved: RotaDefaults;
+  roles: ConfiguredRole[];
+  onSavePattern: (pattern: ShiftPattern) => Promise<void>;
+  onSaveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
   onClose: () => void;
 }) {
-  const [pattern, setPattern] = useState(saved.shiftPattern);
-  const [startFrom, setStartFrom] = useState(saved.patternStartFrom);
-  const [timezone, setTimezone] = useState(saved.shiftTimezone);
-  const [length, setLength] = useState(saved.shiftLengthMinutes);
+  const today = todayDate();
+  // Start from and the length are filled in for a pattern never saved — today,
+  // and an hour — so that only the lines are left to write. The server would
+  // take a blank Start from as today too; saying so in the box is plainer.
+  const [initial] = useState<ShiftPattern>(() => ({
+    shiftPattern: saved.shiftPattern,
+    patternStartFrom: saved.patternStartFrom || today,
+    shiftTimezone: saved.shiftTimezone,
+    shiftLengthMinutes: saved.shiftLengthMinutes || DEFAULT_LENGTH,
+  }));
+  const [pattern, setPattern] = useState(initial.shiftPattern);
+  const [startFrom, setStartFrom] = useState(initial.patternStartFrom);
+  const [timezone, setTimezone] = useState(initial.shiftTimezone);
+  const [length, setLength] = useState(initial.shiftLengthMinutes);
+  const [counts, setCounts] = useState(() =>
+    seatCountsOf(roles, saved.defaultShape),
+  );
   const [offset, setOffset] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const today = todayDate();
   // The calendar opens on the month the pattern starts from — or this month,
-  // until Start from is a date.
+  // while Start from is not a date.
   const anchor = isDate(startFrom) ? startFrom : today;
   const months = monthsFrom(anchor, offset, MONTHS_SHOWN);
   const { preview, error: previewError } = useShiftPatternPreview(
@@ -59,33 +89,44 @@ export default function ShiftPatternEditor({
     months[months.length - 1].next,
   );
 
-  const lengths = LENGTHS.includes(length) || length === 0
+  const lengths = LENGTHS.includes(length)
     ? LENGTHS
     : [...LENGTHS, length].sort((a, b) => a - b);
   const blank = pattern.trim() === "";
   const hasProblems = preview?.lines.some((l) => l.problems.length > 0);
-  const changed =
-    pattern !== saved.shiftPattern ||
-    startFrom !== saved.patternStartFrom ||
-    timezone.trim() !== saved.shiftTimezone ||
-    length !== saved.shiftLengthMinutes;
+
+  const next: ShiftPattern = {
+    shiftPattern: pattern,
+    patternStartFrom: startFrom,
+    shiftTimezone: timezone.trim(),
+    shiftLengthMinutes: length,
+  };
+  // Measured against the saved pattern, not against what the editor opened
+  // on: Start from filled in with today is not a change worth saving while
+  // there are no lines to go with it.
+  const patternChanged =
+    next.shiftPattern !== saved.shiftPattern ||
+    (!blank &&
+      (next.patternStartFrom !== saved.patternStartFrom ||
+        next.shiftTimezone !== saved.shiftTimezone ||
+        next.shiftLengthMinutes !== saved.shiftLengthMinutes));
+  const seats = seatsOf(roles, counts);
+  // Saving the Shape that is there would change nothing, and on the
+  // Allocation tab would still mark the draft stale (issue #149).
+  const shapeChanged = seatsKey(seats) !== seatsKey(saved.defaultShape);
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
-      await onSave({
-        shiftPattern: pattern,
-        patternStartFrom: startFrom,
-        shiftTimezone: timezone.trim(),
-        shiftLengthMinutes: length,
-      });
+      if (patternChanged) await onSavePattern(next);
+      if (shapeChanged) await onSaveShape(seats);
       onClose();
     } catch (err: unknown) {
       // The server's own message names the line or the field that was wrong,
-      // so it is shown as-is and the section stays open on what was typed.
+      // so it is shown as-is and the editor stays open on what was typed.
       setError(
-        err instanceof Error ? err.message : "Failed to save the shift pattern",
+        err instanceof Error ? err.message : "Failed to save the Rota Defaults",
       );
       setSaving(false);
     }
@@ -93,8 +134,8 @@ export default function ShiftPatternEditor({
 
   return (
     <form
-      className="shift-pattern-editor"
-      aria-label="Shift pattern"
+      className="rota-defaults-editor"
+      aria-label="Rota Defaults"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
@@ -160,7 +201,6 @@ export default function ShiftPatternEditor({
             value={length}
             onChange={(e) => setLength(Number(e.target.value))}
           >
-            {length === 0 && <option value={0}>Choose…</option>}
             {lengths.map((m) => (
               <option key={m} value={m}>
                 {formatLength(m)}
@@ -172,9 +212,9 @@ export default function ShiftPatternEditor({
       <p className="settings-hint">
         Start from is where “every other week” counts from, and it fills in what
         a line leaves out: the weekday for a bare FREQ=WEEKLY, the day of the
-        month for a bare FREQ=MONTHLY. Nothing occurs before it; left blank, it
-        is the day you save. Times are wall-clock in the timezone, so 19:30
-        stays 19:30 when the clocks change.
+        month for a bare FREQ=MONTHLY. Nothing occurs before it. Times are
+        wall-clock in the timezone, so 19:30 stays 19:30 when the clocks
+        change.
       </p>
 
       <h3 className="shift-pattern-heading">Calendar</h3>
@@ -193,6 +233,25 @@ export default function ShiftPatternEditor({
         />
       )}
 
+      <h3 className="shift-pattern-heading">Shape</h3>
+      {roles.length === 0 ? (
+        <p className="settings-empty">
+          No roles have been added yet, so there is nothing a shift can ask
+          for. Add them on Settings first.
+        </p>
+      ) : (
+        <>
+          <p className="settings-hint">
+            How many places of each Role a shift has. Every shift of a rota is
+            minted with this; leave a Role at 0 if a shift does not need one,
+            and a single shift can be changed on its own once the rota exists.
+          </p>
+          <div className="rota-defaults-shape">
+            <ShapeSeats roles={roles} counts={counts} onChange={setCounts} />
+          </div>
+        </>
+      )}
+
       {error && <p className="settings-error">{error}</p>}
 
       <div className="settings-actions">
@@ -201,9 +260,13 @@ export default function ShiftPatternEditor({
         </Button>
         <Button
           type="submit"
-          disabled={blank || length === 0 || !changed || saving}
+          disabled={
+            (!patternChanged && !shapeChanged) ||
+            (patternChanged && blank) ||
+            saving
+          }
         >
-          {saving ? "Saving…" : "Save pattern"}
+          {saving ? "Saving…" : "Save"}
         </Button>
       </div>
     </form>

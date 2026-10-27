@@ -63,8 +63,15 @@ enough people to go round.
 
 ### Rota Defaults
 
-- **Edit times** sets when a shift starts and ends.
-- **Edit shape** sets how many of each Role a shift asks for. These are the
+Press **Edit** to change both at once:
+
+- The **shift pattern** says when shifts happen, one rule per line — for
+  example `RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30` for every Sunday
+  at 19:30. Each line is read back in plain English as you type, and a
+  calendar shows the shifts it makes. **Start from** (today, unless you change
+  it) is where "every other week" counts from; **Shift length** is how long
+  each shift runs.
+- The **shape** sets how many of each Role a shift asks for. These are the
   most the allocator will place, not a minimum: a seat can be left empty.
 
 Changing a default only affects rotas you define afterwards. A rota you have
@@ -90,8 +97,11 @@ Everything from here happens on the **Allocation** tab.
 
 ### 1. Define the rota
 
-Under **Define the next rota**, enter how many shifts it covers and the date of
-the first one, then press **Define rota**.
+Under **Define the next rota**, enter how many shifts it covers. The shifts it
+would take are listed as you type: the next ones your shift pattern makes after
+the last rota stopped. Press **Define rota**.
+
+For a break, press **Leave a gap…** and pick a date no shift may start before.
 
 This creates the shifts from your Rota Defaults and gives every active volunteer
 their own availability link. Nobody is emailed yet.

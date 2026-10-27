@@ -1,4 +1,4 @@
-import type { Role, ShapeSeat } from "../types";
+import type { ConfiguredRole, Role, ShapeSeat } from "../types";
 
 // How a Shape reads in a line of prose: "1 Duty lead, 4 Greeter", in the order
 // the Seats are filled.
@@ -47,4 +47,44 @@ export function seatCounts(
     seats: seat.count,
     taken: takenRoleIds.filter((id) => id === seat.roleId).length,
   }));
+}
+
+// Counts are held as strings so that a cleared box stays cleared while it is
+// being retyped, rather than snapping to 0 under the cursor.
+export type SeatCounts = Record<string, string>;
+
+// seatCountsOf is the boxes for a Shape: every Role, at however many Seats of
+// it the Shape asks for, nought for one it does not name.
+export function seatCountsOf(
+  roles: ConfiguredRole[],
+  shape: ShapeSeat[],
+): SeatCounts {
+  return Object.fromEntries(
+    roles.map((role) => [
+      role.id,
+      String(shape.find((seat) => seat.roleId === role.id)?.count ?? 0),
+    ]),
+  );
+}
+
+// seatsOf is what the boxes ask for, as the server takes it. Nought is how a
+// Role is left out — the server refuses a Seat of nought, so those rows are
+// dropped on the way rather than sent.
+export function seatsOf(
+  roles: ConfiguredRole[],
+  counts: SeatCounts,
+): { roleId: string; count: number }[] {
+  return roles
+    .map((role) => ({ roleId: role.id, count: Number(counts[role.id] || 0) }))
+    .filter((seat) => seat.count > 0);
+}
+
+// seatsKey says which Seats a list asks for, whatever order they come in and
+// whether or not a Role is listed at nought.
+export function seatsKey(seats: { roleId: string; count: number }[]): string {
+  return seats
+    .filter((seat) => seat.count > 0)
+    .map((seat) => `${seat.roleId}:${seat.count}`)
+    .sort()
+    .join(",");
 }

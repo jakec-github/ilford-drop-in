@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
+import ShapeSeats from "./ShapeSeats";
+import { seatCountsOf, seatsKey, seatsOf } from "./shape";
 import type { ConfiguredRole, ShapeSeat } from "../types";
 import "./ShapeForm.css";
 
@@ -13,13 +15,7 @@ import "./ShapeForm.css";
 // hand in is the same list of Seats, and both are refused by the same rules on
 // the server.
 //
-// Every Role gets a row rather than there being an add-a-Role dance, because a
-// Organisation has a handful of Roles and "how many of this one?" is the only
-// question there is. Nought is how a Role is left out — the server refuses a
-// Seat of nought, so those rows are dropped on the way rather than sent.
-//
-// Counts are held as strings so that a cleared box stays cleared while it is
-// being retyped, rather than snapping to 0 under the cursor.
+// The rows themselves are ShapeSeats, which the Rota Defaults editor shares.
 export default function ShapeForm({
   title,
   intro,
@@ -39,21 +35,11 @@ export default function ShapeForm({
   onSave: (seats: { roleId: string; count: number }[]) => Promise<void>;
   onClose: () => void;
 }) {
-  const [counts, setCounts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      roles.map((role) => [
-        role.id,
-        String(shape.find((seat) => seat.roleId === role.id)?.count ?? 0),
-      ]),
-    ),
-  );
+  const [counts, setCounts] = useState(() => seatCountsOf(roles, shape));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const seats = roles
-    .map((role) => ({ roleId: role.id, count: Number(counts[role.id] || 0) }))
-    .filter((seat) => seat.count > 0);
-  const total = seats.reduce((sum, seat) => sum + seat.count, 0);
+  const seats = seatsOf(roles, counts);
   // Saving what is already there would change nothing, and on the Allocation
   // tab it would still mark the draft stale and force a re-solve (issue #149).
   const changed = seatsKey(seats) !== seatsKey(shape);
@@ -82,27 +68,7 @@ export default function ShapeForm({
       >
         <p className="shape-form-hint">{intro}</p>
 
-        {roles.map((role) => (
-          <label key={role.id} className="shape-form-seat">
-            <span className="shape-form-role" data-role-colour={role.colour}>
-              {role.name}
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={counts[role.id] ?? "0"}
-              onChange={(e) =>
-                setCounts({ ...counts, [role.id]: e.target.value })
-              }
-            />
-          </label>
-        ))}
-
-        <p className="shape-form-hint">
-          {total > 0
-            ? `A shift asks for ${total} ${total === 1 ? "person" : "people"} in total.`
-            : "A shift asking for nobody cannot be allocated."}
-        </p>
+        <ShapeSeats roles={roles} counts={counts} onChange={setCounts} />
 
         {error && <p className="shape-form-error">{error}</p>}
 
@@ -117,14 +83,4 @@ export default function ShapeForm({
       </form>
     </Dialog>
   );
-}
-
-// seatsKey says which Seats a list asks for, whatever order they come in and
-// whether or not a Role is listed at nought.
-function seatsKey(seats: { roleId: string; count: number }[]): string {
-  return seats
-    .filter((seat) => seat.count > 0)
-    .map((seat) => `${seat.roleId}:${seat.count}`)
-    .sort()
-    .join(",");
 }

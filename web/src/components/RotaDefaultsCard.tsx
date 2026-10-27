@@ -3,10 +3,9 @@ import Button from "../ui/Button";
 import { useRoles } from "../hooks/useRoles";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import SettingsSection from "./SettingsSection";
-import ShapeForm from "./ShapeForm";
 import { describeShape } from "./shape";
 import { useShiftPatternPreview } from "../hooks/useShiftPatternPreview";
-import ShiftPatternEditor from "./ShiftPatternEditor";
+import RotaDefaultsEditor from "./RotaDefaultsEditor";
 import { addDays, formatDay, formatLength } from "./patternDates";
 import type { ShiftPattern } from "../types";
 
@@ -46,11 +45,6 @@ function PatternReading({
   );
 }
 
-// What is being edited in the Rota Defaults: nothing, the Shift pattern, or
-// the Shape. One value rather than two booleans, so two editors cannot be open
-// at once.
-type EditingDefaults = "pattern" | "shape" | null;
-
 // RotaDefaultsCard is the settings an Organiser keeps for the Organisation as a whole:
 // when the Organisation runs, and what a shift asks for.
 //
@@ -83,7 +77,7 @@ export default function RotaDefaultsCard({
     onSaved?.();
   };
   const { roles } = useRoles();
-  const [editing, setEditing] = useState<EditingDefaults>(null);
+  const [editing, setEditing] = useState(false);
 
   const patternSet =
     defaults !== null &&
@@ -98,20 +92,17 @@ export default function RotaDefaultsCard({
       blurb="What every rota is made from. When the organisation runs, and how many people each shift asks for."
       action={
         defaults &&
-        editing !== "pattern" && (
-          <span className="settings-section-actions">
-            <Button size="small" onClick={() => setEditing("pattern")}>
-              Edit pattern
-            </Button>
-            {/* Nothing to shape until Roles exist, and the caption says so —
-                offering the button here would open a dialog with no rows
-                in it. */}
-            {roles !== null && roles.length > 0 && (
-              <Button size="small" onClick={() => setEditing("shape")}>
-                Edit shape
-              </Button>
-            )}
-          </span>
+        roles !== null &&
+        !editing && (
+          // Named in full for a screen reader: every Role on Settings has an
+          // Edit button of its own.
+          <Button
+            size="small"
+            aria-label="Edit Rota Defaults"
+            onClick={() => setEditing(true)}
+          >
+            Edit
+          </Button>
         )
       }
     >
@@ -123,15 +114,17 @@ export default function RotaDefaultsCard({
         <p className="settings-empty">Loading…</p>
       )}
 
-      {editing === "pattern" && defaults && (
-        <ShiftPatternEditor
+      {editing && defaults && roles && (
+        <RotaDefaultsEditor
           saved={defaults}
-          onSave={saveShiftPattern}
-          onClose={() => setEditing(null)}
+          roles={roles}
+          onSavePattern={saveShiftPattern}
+          onSaveShape={saveShape}
+          onClose={() => setEditing(false)}
         />
       )}
 
-      {defaults !== null && editing !== "pattern" && (
+      {defaults !== null && !editing && (
         <>
           <dl className="settings-facts">
             <div className="settings-fact">
@@ -185,17 +178,6 @@ export default function RotaDefaultsCard({
         </>
       )}
 
-      {editing === "shape" && defaults && roles && (
-        <ShapeForm
-          title="Default shape"
-          intro="How many places of each Role a shift has. Every shift of a rota is minted with this; leave a Role at 0 if a shift does not need one, and a single shift can be changed on its own once the rota exists."
-          saveLabel="Save shape"
-          roles={roles}
-          shape={defaults.defaultShape}
-          onSave={saveShape}
-          onClose={() => setEditing(null)}
-        />
-      )}
     </SettingsSection>
   );
 }

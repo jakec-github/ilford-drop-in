@@ -1,4 +1,4 @@
-.shift-pattern-editor {
+.rota-defaults-editor {
   margin-top: 0.25rem;
 }
 
@@ -87,4 +87,10 @@
 .shift-pattern-heading {
   margin: 1rem 0 0.5rem;
   font-size: 0.875rem;
+}
+
+/* The Shape's rows read as a column of numbers; across the whole card the
+   count would sit a long way from its Role. */
+.rota-defaults-shape {
+  max-width: 24rem;
 }

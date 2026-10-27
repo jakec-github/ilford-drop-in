@@ -21,21 +21,9 @@
 
 /* The action keeps its words on one line: "New role" broken over two reads as
    two buttons at a glance, and the blurb beside it is what should give way. */
-.settings-section-head > .button,
-.settings-section-actions > .button {
+.settings-section-head > .button {
   flex: none;
   white-space: nowrap;
-}
-
-/* A section with two things to edit — the Rota Defaults have times and a shape
-   — keeps both buttons together on the heading line, dropping the second under
-   the first only when there is no room for it. */
-.settings-section-actions {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
 }
 
 .settings-blurb {
