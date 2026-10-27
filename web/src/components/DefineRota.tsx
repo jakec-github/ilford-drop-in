@@ -3,7 +3,7 @@ import Button from "../ui/Button";
 import { useDefineRota } from "../hooks/useDefineRota";
 import OverridesCard from "./OverridesCard";
 import RotaDefaultsCard from "./RotaDefaultsCard";
-import { formatDay, formatStart, endOf } from "./patternDates";
+import { formatDay, formatLength, formatStart, endOf } from "./patternDates";
 import type { OverrideReach, OverrideTouch, PlannedShift } from "../types";
 import "./DefineRota.css";
 
@@ -30,9 +30,13 @@ function shiftLength(shift: PlannedShift): number {
   return (Date.parse(`${shift.end}Z`) - Date.parse(`${shift.start}Z`)) / 60000;
 }
 
-// What one Override did to one Shift, in a few words: "Override 2: shape, 1 pin".
+// What one Override did to one Shift, in a few words:
+// "Override 2: starts 19:00, length 3 hours, shape, 1 pin".
 function touchLabel(touch: OverrideTouch): string {
   const did: string[] = [];
+  if (touch.startTime) did.push(`starts ${touch.startTime}`);
+  if (touch.lengthMinutes > 0)
+    did.push(`length ${formatLength(touch.lengthMinutes)}`);
   if (touch.shape) did.push("shape");
   if (touch.pins > 0) did.push(`${touch.pins} ${touch.pins === 1 ? "pin" : "pins"}`);
   return `Override ${touch.number}: ${did.join(", ") || "nothing to change"}`;
@@ -42,12 +46,20 @@ function touchLabel(touch: OverrideTouch): string {
 // runs past midnight. The end is the server's; it is only said here. A planned
 // Shift is tagged with the Overrides that touched it, in the order they
 // applied, so an Organiser can see which shifts their Overrides land on before
-// defining.
+// defining. One an Override moved says where the pattern put it, and one that
+// would run into another Shift is marked, beside the refusal naming the first.
 function ShiftRow({ shift, note }: { shift: PlannedShift; note?: string }) {
   const end = endOf(shift.start, shiftLength(shift));
   const touches = shift.overrides ?? [];
+  const className = [
+    "define-rota-shift",
+    note && "defined",
+    shift.clash && "define-rota-shift--clash",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <li className={note ? "define-rota-shift defined" : "define-rota-shift"}>
+    <li className={className}>
       <span className="define-rota-shift-day">
         {formatDay(shift.start.slice(0, 10))}
       </span>
@@ -56,8 +68,18 @@ function ShiftRow({ shift, note }: { shift: PlannedShift; note?: string }) {
         {end.nextDay && <small> (next day)</small>}
       </span>
       {note && <span className="define-rota-shift-note">{note}</span>}
-      {touches.length > 0 && (
+      {(shift.movedFrom || shift.clash || touches.length > 0) && (
         <span className="define-rota-shift-tags">
+          {shift.clash && (
+            <span className="define-rota-shift-tag define-rota-shift-tag--clash">
+              clashes
+            </span>
+          )}
+          {shift.movedFrom && (
+            <span className="define-rota-shift-moved">
+              moved from {shift.movedFrom.slice(11, 16)}
+            </span>
+          )}
           {touches.map((touch) => (
             <span key={touch.number} className="define-rota-shift-tag">
               {touchLabel(touch)}

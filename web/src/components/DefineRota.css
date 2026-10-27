@@ -139,6 +139,24 @@
   border-radius: 999px;
 }
 
+/* Where the pattern put a Shift an Override moved, said quietly beside what
+   moved it. */
+.define-rota-shift-moved {
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+/* A Shift that would run into another: the refusal above names the first,
+   and every one is marked here, in the refusal's amber. */
+.define-rota-shift--clash {
+  background: rgba(180, 83, 9, 0.06);
+}
+
+.define-rota-shift-tag--clash {
+  color: #92400e;
+  background: rgba(180, 83, 9, 0.14);
+}
+
 /* An Override matching nothing is worth a look, not a refusal: amber, like
    the warning above, and listed above the Shifts it did not land on. */
 .define-rota-override-warnings {

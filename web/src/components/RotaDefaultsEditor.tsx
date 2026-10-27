@@ -6,17 +6,13 @@ import ShapeSeats from "./ShapeSeats";
 import { seatCountsOf, seatsKey, seatsOf } from "./shape";
 import {
   formatLength,
+  lengthChoices,
   isDate,
   monthsFrom,
   today as todayDate,
 } from "./patternDates";
 import type { ConfiguredRole, RotaDefaults, ShiftPattern } from "../types";
 import "./RotaDefaultsEditor.css";
-
-// The lengths offered, a quarter of an hour apart up to sixteen hours. The
-// server takes anything from a minute to a day; these are the ones anybody
-// runs, and a length saved outside them is offered too rather than lost.
-const LENGTHS = Array.from({ length: 64 }, (_, i) => (i + 1) * 15);
 
 // What the length starts at before one has been saved: the commonest session,
 // and a value rather than a blank so a first pattern can be saved without a
@@ -89,9 +85,7 @@ export default function RotaDefaultsEditor({
     months[months.length - 1].next,
   );
 
-  const lengths = LENGTHS.includes(length)
-    ? LENGTHS
-    : [...LENGTHS, length].sort((a, b) => a - b);
+  const lengths = lengthChoices(length);
   const blank = pattern.trim() === "";
   const hasProblems = preview?.lines.some((l) => l.problems.length > 0);
 

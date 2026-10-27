@@ -88,7 +88,8 @@ They only guide the allocator. You can always place someone by hand.
 
 An override changes some of the shifts your pattern makes, each time you define
 a rota — for example, pinning the person who leads on the first Sunday of the
-month, or asking for fewer people over Christmas. Press **New override** and
+month, starting the last Saturday of the month two hours early, or asking for
+fewer people over Christmas. Press **New override** and
 write a rule, such as `FREQ=MONTHLY;BYDAY=1SU` for the first Sunday of every
 month. It is read back in plain English as you type.
 
@@ -97,6 +98,11 @@ month. It is read back in plain English as you type.
   dates.
 - **Start from** (today, unless you change it) is where the rule counts from.
   Nothing before it is changed.
+- Tick **Start time** to move those shifts to another time on the same day.
+  They still run for the pattern's length from there, unless you also tick
+  **Length**.
+- Tick **Length** to make them longer or shorter. A shift long enough runs on
+  past midnight.
 - Tick **Replace the shape** to ask for a different number of each Role on
   those shifts.
 - Add **Pins** for anyone who should always be placed on them.
@@ -104,8 +110,11 @@ month. It is read back in plain English as you type.
 Overrides apply from the top of the list down, so when two change the same
 shift, the lower one wins. Drag one by the handle on its right to reorder
 them, or focus the handle and use the arrow keys. When you define a rota, its
-preview marks each shift an override changes, and warns you about an override
-that matches nothing. Everyone else you pin on the rota itself.
+preview marks each shift an override changes, says where a moved shift would
+have started, and warns you about an override that matches nothing. A moved or
+lengthened shift that would run into another is marked, and the rota cannot be
+defined until you change one of them. The next rota carries on from where your
+pattern got to, whatever an override moved. Everyone else you pin on the rota itself.
 
 ## Your first rota
 
