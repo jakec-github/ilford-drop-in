@@ -456,7 +456,7 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	overrides := []allocator.ShiftOverride{{
 		ShiftID: "shift-2026-07-13",
-		Pins:      []allocator.Pin{{VolunteerID: "alice", Role: "Service volunteer"}},
+		Pins:    []allocator.Pin{{VolunteerID: "alice", Role: "Service volunteer"}},
 	}}
 
 	roles := []allocator.Role{{Name: "Service volunteer", Priority: 1}}

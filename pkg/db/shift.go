@@ -150,28 +150,6 @@ func shiftDateWhere(organisationID string, from, to time.Time) (string, []any) {
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
-// GetShiftByDate retrieves the single shift on the given date, or nil if no
-// shift exists for that date. Dates are unique, so at most one row matches;
-// this is the lookup that resolves a date to its shift and rota.
-func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error) {
-	var s Shift
-	var d0, startAt, endAt time.Time
-	err := d.pool.QueryRow(ctx, `
-		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
-		FROM shift s
-		WHERE `+shiftDateExpr+` = $1 AND s.organisation_id = $2
-	`, date, d.org()).Scan(&s.ID, &d0, &s.RotaID, &s.Closed, &startAt, &endAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to query shift for date %s: %w", date.Format("2006-01-02"), err)
-	}
-	s.Date = d0.Format("2006-01-02")
-	s.StartAt, s.EndAt = localTimestamp(startAt), localTimestamp(endAt)
-	return &s, nil
-}
-
 // GetShiftByID retrieves one shift with its rota's allocation state, or nil if
 // no shift has that id. It is the read behind close/reopen: whether the shift
 // exists and whether its rota has been allocated are the two things that decide
