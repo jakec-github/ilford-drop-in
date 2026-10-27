@@ -36,7 +36,7 @@ var calendarReminders = []struct {
 // e.g. FilterShiftsByVolunteer(shifts, volunteer.ID).
 //
 // Stability matters to polling calendar clients: UIDs are derived from
-// volunteer and date so clients update events in place rather than
+// volunteer and shift so clients update events in place rather than
 // duplicating them, SEQUENCE increases with each alteration to the shift, and
 // DTSTAMP only changes when the shift changes.
 //
@@ -50,9 +50,9 @@ var calendarReminders = []struct {
 // reminders. rotaURL is where the rota lives, for the link on each event. Empty
 // leaves the link out rather than writing a broken one.
 //
-// The UIDs keep the suffix they had before there were Organisations: changing
-// it would make every subscriber's calendar drop each event and add it again.
-// They stay unique across Organisations because a volunteer id is a row in one
+// A UID names the shift by its id, not its date, so two shifts on one day are
+// two events (issue #293). The suffix is the one it had before there were
+// Organisations. They stay unique across Organisations because a volunteer id is a row in one
 // Organisation's own roster sheet, and two rosters sharing an id would also
 // share one feed URL.
 func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles model.Roles, defaults model.RotaDefaults, displayName, rotaURL string) (string, error) {
@@ -76,7 +76,7 @@ func BuildVolunteerCalendar(shifts []Shift, volunteer model.Volunteer, roles mod
 			summary += " (" + role + ")"
 		}
 
-		event := cal.AddEvent(fmt.Sprintf("%s-%s@ilford-drop-in", volunteer.ID, shift.Date))
+		event := cal.AddEvent(fmt.Sprintf("%s-%s@ilford-drop-in", volunteer.ID, shift.ID))
 		stamp, err := setEventDates(event, shift, defaults)
 		if err != nil {
 			return "", err
