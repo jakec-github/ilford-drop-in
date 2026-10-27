@@ -102,9 +102,10 @@ month. It is read back in plain English as you type.
 - Add **Pins** for anyone who should always be placed on them.
 
 Overrides apply from the top of the list down, so when two change the same
-shift, the lower one wins. Use the arrows to reorder them. When you define a
-rota, its preview marks each shift an override changes, and warns you about an
-override that matches nothing. Everyone else you pin on the rota itself.
+shift, the lower one wins. Drag one by the handle on its right to reorder
+them, or focus the handle and use the arrow keys. When you define a rota, its
+preview marks each shift an override changes, and warns you about an override
+that matches nothing. Everyone else you pin on the rota itself.
 
 ## Your first rota
 

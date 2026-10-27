@@ -53,7 +53,11 @@
 
 .override-description code,
 .override-rule {
-  font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    0.8125rem ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
   word-break: break-all;
 }
 
@@ -77,6 +81,59 @@
   display: flex;
   flex: none;
   gap: 0.25rem;
+}
+
+.override-handle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: grab;
+  /* A finger on the handle drags the Override rather than scrolling the page. */
+  touch-action: none;
+}
+
+.override-handle svg {
+  fill: currentColor;
+}
+
+.override-handle:hover:not(:disabled, [aria-disabled="true"]) {
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.override-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.override-handle:disabled,
+.override-handle[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* While a drag lasts the pointer is the list's, so the grabbing cursor is set
+   there, and nothing under it is selected as it sweeps across. */
+.overrides--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.overrides--dragging .override-handle {
+  cursor: grabbing;
+}
+
+.override--dragging {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--text-h) 14%, transparent);
 }
 
 .override-badge {
@@ -193,12 +250,22 @@
 
 /* On a phone the actions drop under the rule rather than squeezing it. */
 @media (max-width: 30rem) {
+  /* Number, rule and handle on the first line, the handle still at the
+     right; the actions take the line under them rather than squeezing the
+     rule. */
   .override-head {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+  }
+
+  .override-handle {
+    grid-row: 1;
+    grid-column: 3;
   }
 
   .override-actions {
-    flex-basis: 100%;
+    grid-column: 1 / -1;
     justify-content: flex-end;
   }
 

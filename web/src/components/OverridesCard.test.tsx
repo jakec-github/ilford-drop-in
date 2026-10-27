@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { OverrideEditor } from "./OverridesCard";
+import OverridesCard, { OverrideEditor } from "./OverridesCard";
 import type {
   ConfiguredRole,
   Override,
@@ -160,5 +160,111 @@ describe("OverrideEditor", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+});
+
+// The card as a whole, against a server that holds three Overrides and answers
+// a reorder with them in the order it was sent.
+describe("OverridesCard reordering", () => {
+  function saved(id: string, description: string): Override {
+    return {
+      id,
+      number: 0,
+      rrule: "FREQ=WEEKLY;BYDAY=SU",
+      startFrom: "2026-11-01",
+      granularity: "date",
+      description,
+      problems: [],
+      shape: null,
+      pins: [],
+    };
+  }
+  const STORED = [
+    saved("o-a", "First"),
+    saved("o-b", "Second"),
+    saved("o-c", "Third"),
+  ];
+  const numbered = (ids: string[]) =>
+    ids.map((id, i) => ({
+      ...STORED.find((o) => o.id === id)!,
+      number: i + 1,
+    }));
+
+  let sent: string[][] = [];
+  const json = (body: unknown) =>
+    Promise.resolve(new Response(JSON.stringify(body)));
+  const server = mock((url: string, init?: RequestInit) => {
+    if (url.endsWith("/api/roles")) {
+      return json({ roles: ROLES.map((r) => ({ ...r })) });
+    }
+    if (url.endsWith("/api/volunteers")) return json({ volunteers: [] });
+    if (url.endsWith("/overrides/order")) {
+      const { ids } = JSON.parse(String(init?.body)) as { ids: string[] };
+      sent.push(ids);
+      return json({ overrides: numbered(ids) });
+    }
+    return json({ overrides: numbered(STORED.map((o) => o.id)) });
+  });
+
+  beforeEach(() => {
+    sent = [];
+    globalThis.fetch = server as unknown as typeof fetch;
+  });
+
+  const descriptions = () =>
+    screen
+      .getAllByRole("article")
+      .map((a) => a.querySelector(".override-description")?.textContent);
+
+  test("an arrow key on the handle moves an override a place", async () => {
+    render(<OverridesCard />);
+    await settle();
+    fireEvent.keyDown(screen.getByLabelText("Reorder override 1"), {
+      key: "ArrowDown",
+    });
+    await settle();
+    expect(sent).toEqual([["o-b", "o-a", "o-c"]]);
+    expect(descriptions()[0]).toContain("Second");
+  });
+
+  test("dragging the handle past others drops it there, written once", async () => {
+    render(<OverridesCard />);
+    await settle();
+    // Each item 100px tall, stacked, in the order they are drawn.
+    const items = () =>
+      Array.from(document.querySelectorAll("ol.overrides > li"));
+    const realBox = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const i = items().indexOf(this as HTMLLIElement);
+      return { top: i * 100, height: 100 } as DOMRect;
+    };
+    const realCapture = HTMLElement.prototype.setPointerCapture;
+    const capture = mock(() => {});
+    HTMLElement.prototype.setPointerCapture = capture;
+    try {
+      const list = document.querySelector("ol.overrides")!;
+      fireEvent.pointerDown(screen.getByLabelText("Reorder override 1"), {
+        button: 0,
+        pointerId: 1,
+        clientY: 50,
+      });
+      fireEvent.pointerMove(list, { pointerId: 1, clientY: 180 });
+      fireEvent.pointerMove(list, { pointerId: 1, clientY: 280 });
+      // Drawn in its new place while still held, and nothing written yet.
+      expect(descriptions()[2]).toContain("First");
+      expect(sent).toEqual([]);
+      fireEvent.pointerUp(list, { pointerId: 1, clientY: 280 });
+      await settle();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = realBox;
+      HTMLElement.prototype.setPointerCapture = realCapture;
+    }
+    expect(capture).toHaveBeenCalled();
+    expect(sent).toEqual([["o-b", "o-c", "o-a"]]);
+    expect(descriptions()).toEqual([
+      expect.stringContaining("Second"),
+      expect.stringContaining("Third"),
+      expect.stringContaining("First"),
+    ]);
   });
 });

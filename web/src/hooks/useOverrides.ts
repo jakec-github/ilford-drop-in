@@ -18,8 +18,10 @@ interface UseOverrides {
   add: (draft: OverrideDraft) => Promise<void>;
   update: (id: string, draft: OverrideDraft) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  // Moves one a place earlier (-1) or later (+1) in the list.
-  move: (id: string, by: -1 | 1) => Promise<void>;
+  // Puts them in the order given, every id once. The list takes that order
+  // at once, numbered afresh, so a dropped Override stays where it was dropped
+  // while the server catches up.
+  reorder: (ids: string[]) => Promise<void>;
 }
 
 // useOverrides owns the Rota Defaults' Overrides. The settings screen and the
@@ -70,18 +72,20 @@ export function useOverrides(): UseOverrides {
     [hold],
   );
   const remove = useCallback((id: string) => hold(removeOverride(id)), [hold]);
-  const move = useCallback(
-    async (id: string, by: -1 | 1) => {
-      if (!overrides) return;
-      const ids = overrides.map((o) => o.id);
-      const from = ids.indexOf(id);
-      const to = from + by;
-      if (from < 0 || to < 0 || to >= ids.length) return;
-      [ids[from], ids[to]] = [ids[to], ids[from]];
+  const reorder = useCallback(
+    async (ids: string[]) => {
+      if (overrides) {
+        const byId = new Map(overrides.map((o) => [o.id, o]));
+        const moved = ids.flatMap((id, i) => {
+          const o = byId.get(id);
+          return o ? [{ ...o, number: i + 1 }] : [];
+        });
+        if (moved.length === overrides.length) setOverrides(moved);
+      }
       await hold(reorderOverrides(ids));
     },
     [hold, overrides],
   );
 
-  return { overrides, error, add, update, remove, move };
+  return { overrides, error, add, update, remove, reorder };
 }

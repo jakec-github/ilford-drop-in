@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
 import { useOverrideRule } from "../hooks/useOverrideRule";
@@ -388,7 +388,9 @@ function OverrideView({
   count,
   roles,
   busy,
+  dragging,
   onEdit,
+  onGrab,
   onMove,
   onRemove,
 }: {
@@ -396,13 +398,18 @@ function OverrideView({
   count: number;
   roles: ConfiguredRole[];
   busy: boolean;
+  dragging: boolean;
   onEdit: () => void;
+  onGrab: (e: PointerEvent<HTMLButtonElement>) => void;
   onMove: (by: -1 | 1) => void;
   onRemove: () => void;
 }) {
   const n = override.number;
   return (
-    <article className="override" aria-label={`Override ${n}`}>
+    <article
+      className={`override${dragging ? " override--dragging" : ""}`}
+      aria-label={`Override ${n}`}
+    >
       <header className="override-head">
         <span className="override-number" aria-hidden="true">
           {n}
@@ -425,24 +432,6 @@ function OverrideView({
         <div className="override-actions">
           <Button
             size="small"
-            aria-label={`Move override ${n} earlier`}
-            title="Earlier: loses to the ones after it"
-            disabled={busy || n === 1}
-            onClick={() => onMove(-1)}
-          >
-            ↑
-          </Button>
-          <Button
-            size="small"
-            aria-label={`Move override ${n} later`}
-            title="Later: wins over the ones before it"
-            disabled={busy || n === count}
-            onClick={() => onMove(1)}
-          >
-            ↓
-          </Button>
-          <Button
-            size="small"
             aria-label={`Edit override ${n}`}
             disabled={busy}
             onClick={onEdit}
@@ -458,6 +447,37 @@ function OverrideView({
             Remove
           </Button>
         </div>
+        {/* Order is what decides between two Overrides, so it is moved by
+            hand: dragged with a mouse or a finger, or a place at a time with
+            the arrow keys once the handle has focus. */}
+        <button
+          type="button"
+          className="override-handle"
+          aria-label={`Reorder override ${n}`}
+          title="Drag to reorder: a later override wins. Arrow keys move it a place."
+          // Not disabled while busy, only marked so: a disabled button drops
+          // its focus, and a keyboard user moving one several places would
+          // lose the handle after the first.
+          disabled={count < 2}
+          aria-disabled={busy || undefined}
+          onPointerDown={(e) => {
+            if (!busy) onGrab(e);
+          }}
+          onKeyDown={(e) => {
+            const by = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
+            if (by === 0) return;
+            e.preventDefault();
+            if (!busy && n + by >= 1 && n + by <= count) onMove(by);
+          }}
+        >
+          <svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true">
+            {[3, 8, 13].map((y) =>
+              [2.5, 7.5].map((x) => (
+                <circle key={`${x}-${y}`} cx={x} cy={y} r="1.5" />
+              )),
+            )}
+          </svg>
+        </button>
       </header>
 
       <dl className="override-facts">
@@ -511,12 +531,23 @@ export default function OverridesCard({
 }: {
   onSaved?: () => void;
 } = {}) {
-  const { overrides, error, add, update, remove, move } = useOverrides();
+  const { overrides, error, add, update, remove, reorder } = useOverrides();
   const { roles } = useRoles();
   const { volunteers, error: volunteersError } = useVolunteers();
   const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The Override being dragged, and the order the list would take were it
+  // dropped now. The list is drawn in that order while the drag lasts, so the
+  // Overrides make room for it as it passes, and is only written on the drop.
+  const [drag, setDrag] = useState<{ id: string; order: string[] } | null>(
+    null,
+  );
+  // The list captures the pointer rather than the handle: the handle's item
+  // moves through the list as it is dragged, and Chromium drops a capture
+  // whose element leaves the document even for a moment.
+  const list = useRef<HTMLOListElement>(null);
+  const items = useRef(new Map<string, HTMLLIElement>());
 
   // Nothing to pin anybody into, or ask for, until Roles exist.
   const canAdd = roles !== null && roles.length > 0;
@@ -534,6 +565,67 @@ export default function OverridesCard({
       setBusy(false);
     }
   }
+
+  function writeOrder(order: string[]) {
+    void act(() => reorder(order), "Failed to move the override");
+  }
+
+  function moveBy(id: string, by: -1 | 1) {
+    if (!overrides) return;
+    const order = overrides.map((o) => o.id);
+    const from = order.indexOf(id);
+    const to = from + by;
+    if (from < 0 || to < 0 || to >= order.length) return;
+    [order[from], order[to]] = [order[to], order[from]];
+    writeOrder(order);
+  }
+
+  function grab(id: string, e: PointerEvent<HTMLButtonElement>) {
+    if (e.button !== 0 || !overrides || !list.current) return;
+    // Otherwise a drag on a phone scrolls the page, and on a desk selects text.
+    e.preventDefault();
+    list.current.setPointerCapture(e.pointerId);
+    setDrag({ id, order: overrides.map((o) => o.id) });
+  }
+
+  // Where the dragged Override would land: after every other one whose middle
+  // the pointer has passed. Measured against the list as drawn, which already
+  // has it in its new place, and that holds still — the count of middles
+  // passed is the same either side of the move it causes.
+  function dragOver(e: PointerEvent<HTMLOListElement>) {
+    if (!drag) return;
+    const others = drag.order.filter((id) => id !== drag.id);
+    const passed = others.filter((id) => {
+      const box = items.current.get(id)?.getBoundingClientRect();
+      return box !== undefined && box.top + box.height / 2 < e.clientY;
+    }).length;
+    const order = [
+      ...others.slice(0, passed),
+      drag.id,
+      ...others.slice(passed),
+    ];
+    if (order.some((id, i) => id !== drag.order[i])) {
+      setDrag({ id: drag.id, order });
+    }
+  }
+
+  function drop() {
+    if (!drag || !overrides) return;
+    setDrag(null);
+    if (drag.order.some((id, i) => id !== overrides[i]?.id)) {
+      writeOrder(drag.order);
+    }
+  }
+
+  // Drawn in the order the drag would leave them, numbered to match, so the
+  // number on each is the one the define preview would call it by.
+  const shown =
+    overrides && drag
+      ? drag.order.flatMap((id, i) => {
+          const o = overrides.find((x) => x.id === id);
+          return o ? [{ ...o, number: i + 1 }] : [];
+        })
+      : overrides;
 
   async function save(id: string | null, draft: OverrideDraft) {
     await (id ? update(id, draft) : add(draft));
@@ -571,9 +663,21 @@ export default function OverridesCard({
       )}
 
       {overrides !== null && roles !== null && (count > 0 || editing) && (
-        <ol className="overrides">
-          {overrides.map((override) => (
-            <li key={override.id}>
+        <ol
+          ref={list}
+          className={`overrides${drag ? " overrides--dragging" : ""}`}
+          onPointerMove={dragOver}
+          onPointerUp={drop}
+          onPointerCancel={() => setDrag(null)}
+        >
+          {(shown ?? []).map((override) => (
+            <li
+              key={override.id}
+              ref={(el) => {
+                if (el) items.current.set(override.id, el);
+                else items.current.delete(override.id);
+              }}
+            >
               {editing?.id === override.id ? (
                 <OverrideEditor
                   number={override.number}
@@ -590,13 +694,10 @@ export default function OverridesCard({
                   count={count}
                   roles={roles}
                   busy={busy || editing !== null}
+                  dragging={drag?.id === override.id}
                   onEdit={() => setEditing({ id: override.id })}
-                  onMove={(by) =>
-                    void act(
-                      () => move(override.id, by),
-                      "Failed to move the override",
-                    )
-                  }
+                  onGrab={(e) => grab(override.id, e)}
+                  onMove={(by) => moveBy(override.id, by)}
                   onRemove={() =>
                     void act(
                       () => remove(override.id),
