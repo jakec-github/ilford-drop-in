@@ -230,13 +230,14 @@ describe("OverridesCard reordering", () => {
   test("dragging the handle past others drops it there, written once", async () => {
     render(<OverridesCard />);
     await settle();
-    // Each item 100px tall, stacked, in the order they are drawn.
+    // Each item 100px tall, stacked from the top of the list, in the order
+    // they are drawn.
     const items = () =>
       Array.from(document.querySelectorAll("ol.overrides > li"));
     const realBox = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
       const i = items().indexOf(this as HTMLLIElement);
-      return { top: i * 100, height: 100 } as DOMRect;
+      return { top: Math.max(i, 0) * 100, height: 100 } as DOMRect;
     };
     const realCapture = HTMLElement.prototype.setPointerCapture;
     const capture = mock(() => {});
@@ -250,8 +251,19 @@ describe("OverridesCard reordering", () => {
       });
       fireEvent.pointerMove(list, { pointerId: 1, clientY: 180 });
       fireEvent.pointerMove(list, { pointerId: 1, clientY: 280 });
-      // Drawn in its new place while still held, and nothing written yet.
-      expect(descriptions()[2]).toContain("First");
+      // While held it follows the pointer, the two it passed slide up a
+      // place, and each is numbered as the drop would leave it — but nothing
+      // is written, and the list itself keeps its order.
+      const slid = items().map((li) => (li as HTMLElement).style.transform);
+      expect(slid).toEqual([
+        "translateY(230px)",
+        "translateY(-100px)",
+        "translateY(-100px)",
+      ]);
+      expect(screen.getByLabelText("Override 3").textContent).toContain(
+        "First",
+      );
+      expect(descriptions()[0]).toContain("First");
       expect(sent).toEqual([]);
       fireEvent.pointerUp(list, { pointerId: 1, clientY: 280 });
       await settle();

@@ -121,7 +121,8 @@
 }
 
 /* While a drag lasts the pointer is the list's, so the grabbing cursor is set
-   there, and nothing under it is selected as it sweeps across. */
+   there, and nothing under it is selected as it sweeps across. The others
+   slide to make room; the held one follows the pointer exactly, above them. */
 .overrides--dragging {
   cursor: grabbing;
   user-select: none;
@@ -131,7 +132,24 @@
   cursor: grabbing;
 }
 
+.overrides--dragging > li {
+  transition: transform 150ms ease;
+}
+
+.overrides--dragging > li.override-held {
+  position: relative;
+  z-index: 1;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overrides--dragging > li {
+    transition: none;
+  }
+}
+
 .override--dragging {
+  background: var(--bg);
   border-color: var(--accent);
   box-shadow: 0 4px 14px color-mix(in srgb, var(--text-h) 14%, transparent);
 }

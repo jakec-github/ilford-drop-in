@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
 import { useOverrideRule } from "../hooks/useOverrideRule";
@@ -516,6 +516,23 @@ function OverrideView({
   );
 }
 
+// Where an Override stood in the list when a drag began, in the list's own
+// coordinates.
+interface Slot {
+  top: number;
+  height: number;
+}
+
+// A drag in flight: which Override, the order it would drop in, where every
+// Override stood when it began, and how far the pointer has come since.
+interface Drag {
+  id: string;
+  order: string[];
+  slots: Map<string, Slot>;
+  from: number;
+  dy: number;
+}
+
 // What is being edited: nothing, a new Override, or one that exists.
 type Editing = { id: string | null } | null;
 
@@ -537,17 +554,36 @@ export default function OverridesCard({
   const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // The Override being dragged, and the order the list would take were it
-  // dropped now. The list is drawn in that order while the drag lasts, so the
-  // Overrides make room for it as it passes, and is only written on the drop.
-  const [drag, setDrag] = useState<{ id: string; order: string[] } | null>(
-    null,
-  );
-  // The list captures the pointer rather than the handle: the handle's item
-  // moves through the list as it is dragged, and Chromium drops a capture
-  // whose element leaves the document even for a moment.
+  // A drag in flight. The list keeps its order while it lasts: the dragged
+  // Override follows the pointer, by dy, and the others slide out of its way
+  // to where the order it would drop in puts them. Only the drop writes, and
+  // only then does the list take the new order.
+  const [drag, setDrag] = useState<Drag | null>(null);
+  // The list captures the pointer rather than the handle, so a drag survives
+  // whatever happens to the handle's own item under it.
   const list = useRef<HTMLOListElement>(null);
   const items = useRef(new Map<string, HTMLLIElement>());
+  // Where the dropped Override was on screen as it was let go, so it can
+  // glide into its slot rather than leap there.
+  const settling = useRef<{ id: string; top: number } | null>(null);
+
+  // After a drop has been drawn: start the dropped Override where the pointer
+  // left it and slide it home. Run in a layout effect so it never shows a
+  // frame in its slot first.
+  useLayoutEffect(() => {
+    const dropped = settling.current;
+    if (!dropped || drag) return;
+    settling.current = null;
+    const el = items.current.get(dropped.id);
+    if (!el || typeof el.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const dy = dropped.top - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 1) return;
+    el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], {
+      duration: 150,
+      easing: "ease",
+    });
+  }, [drag, overrides]);
 
   // Nothing to pin anybody into, or ask for, until Roles exist.
   const canAdd = roles !== null && roles.length > 0;
@@ -580,51 +616,82 @@ export default function OverridesCard({
     writeOrder(order);
   }
 
+  // The list's own coordinates, which the items' slides do not move.
+  function pointerY(e: PointerEvent) {
+    return e.clientY - (list.current?.getBoundingClientRect().top ?? 0);
+  }
+
   function grab(id: string, e: PointerEvent<HTMLButtonElement>) {
     if (e.button !== 0 || !overrides || !list.current) return;
     // Otherwise a drag on a phone scrolls the page, and on a desk selects text.
     e.preventDefault();
     list.current.setPointerCapture(e.pointerId);
-    setDrag({ id, order: overrides.map((o) => o.id) });
+    const top = list.current.getBoundingClientRect().top;
+    const slots = new Map<string, Slot>();
+    for (const o of overrides) {
+      const box = items.current.get(o.id)?.getBoundingClientRect();
+      if (box) slots.set(o.id, { top: box.top - top, height: box.height });
+    }
+    const order = overrides.map((o) => o.id);
+    setDrag({ id, order, slots, from: pointerY(e), dy: 0 });
   }
 
   // Where the dragged Override would land: after every other one whose middle
-  // the pointer has passed. Measured against the list as drawn, which already
-  // has it in its new place, and that holds still — the count of middles
-  // passed is the same either side of the move it causes.
+  // its own middle has passed. Both middles are where things stood when the
+  // drag began, so the line it crosses going down is the line it crosses
+  // coming back, and the slides cannot move it.
   function dragOver(e: PointerEvent<HTMLOListElement>) {
     if (!drag) return;
+    const dy = pointerY(e) - drag.from;
+    const held = drag.slots.get(drag.id);
+    const middle = (held ? held.top + held.height / 2 : 0) + dy;
     const others = drag.order.filter((id) => id !== drag.id);
     const passed = others.filter((id) => {
-      const box = items.current.get(id)?.getBoundingClientRect();
-      return box !== undefined && box.top + box.height / 2 < e.clientY;
+      const slot = drag.slots.get(id);
+      return slot !== undefined && slot.top + slot.height / 2 < middle;
     }).length;
     const order = [
       ...others.slice(0, passed),
       drag.id,
       ...others.slice(passed),
     ];
-    if (order.some((id, i) => id !== drag.order[i])) {
-      setDrag({ id: drag.id, order });
-    }
+    setDrag({ ...drag, order, dy });
   }
 
   function drop() {
     if (!drag || !overrides) return;
+    const held = items.current.get(drag.id);
+    if (held) {
+      settling.current = { id: drag.id, top: held.getBoundingClientRect().top };
+    }
     setDrag(null);
     if (drag.order.some((id, i) => id !== overrides[i]?.id)) {
       writeOrder(drag.order);
     }
   }
 
-  // Drawn in the order the drag would leave them, numbered to match, so the
-  // number on each is the one the define preview would call it by.
+  // Where each Override is drawn while a drag lasts: the held one wherever the
+  // pointer has taken it, and the rest in the slots the order would give them,
+  // stacked from the top with the gaps between them as they were.
+  const slides = new Map<string, number>();
+  if (drag && overrides) {
+    const first = drag.slots.get(overrides[0]?.id ?? "");
+    const second = drag.slots.get(overrides[1]?.id ?? "");
+    const gap = first && second ? second.top - (first.top + first.height) : 0;
+    let y = first?.top ?? 0;
+    for (const id of drag.order) {
+      const slot = drag.slots.get(id);
+      if (!slot) continue;
+      slides.set(id, id === drag.id ? drag.dy : y - slot.top);
+      y += slot.height + gap;
+    }
+  }
+
+  // Numbered as the drag would leave them, so the number on each is the one
+  // the define preview would call it by.
   const shown =
     overrides && drag
-      ? drag.order.flatMap((id, i) => {
-          const o = overrides.find((x) => x.id === id);
-          return o ? [{ ...o, number: i + 1 }] : [];
-        })
+      ? overrides.map((o) => ({ ...o, number: drag.order.indexOf(o.id) + 1 }))
       : overrides;
 
   async function save(id: string | null, draft: OverrideDraft) {
@@ -677,6 +744,12 @@ export default function OverridesCard({
                 if (el) items.current.set(override.id, el);
                 else items.current.delete(override.id);
               }}
+              className={drag?.id === override.id ? "override-held" : undefined}
+              style={
+                slides.has(override.id)
+                  ? { transform: `translateY(${slides.get(override.id)}px)` }
+                  : undefined
+              }
             >
               {editing?.id === override.id ? (
                 <OverrideEditor
