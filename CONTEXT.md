@@ -6,10 +6,11 @@ allocates volunteers to shifts, and publishes the resulting rota.
 ## Language
 
 **Shift**:
-A planned session of the Organisation, minted by a Rotation, running from a start to
-an end given as local time in the Organisation's own timezone. Exists independently
-of who is allocated to it. Its date is the date it starts, and there is at most
-one Shift per date. Times are descriptive, not an allocator input, so unlike a
+A planned session of the Organisation, minted by a Rotation from the Shift
+pattern, running from a start to an end given as local time in the Organisation's
+own timezone. Exists independently of who is allocated to it. Its date is the date
+it starts. Shifts never overlap, but several may start on one date, so a date
+does not identify a Shift (ADR 0013). Times are descriptive, not an allocator input, so unlike a
 Shape they stay editable once the Rotation is allocated.
 _Avoid_: shift date (as identity), session
 
@@ -20,8 +21,10 @@ _Avoid_: shift (for the projection), effective shift
 
 **Rotation**:
 A batch of consecutive Shifts over which availability is requested and allocation
-runs. Its span and size are derived from the Shifts it minted. Rota is an
-acceptable alias.
+runs. Defining one asks for how many Shifts, and takes the next that many the
+Shift pattern generates, carrying on from exactly where the previous Rotation
+stopped (ADR 0013). Its span and size are derived from the Shifts it minted. Rota
+is an acceptable alias.
 
 **Rota in Flight**:
 The one Rotation that has not been allocated yet. Defining a Rotation is refused
@@ -32,7 +35,7 @@ _Avoid_: current rota, active rota, draft rota (which is a Draft Rota Allocation
 
 **Discard**:
 Destroying the Rota in Flight and everything hanging off it — its Shifts, their
-Shapes, its Preallocations, its Draft Rota Allocation, its Availability Round and
+Shapes, its Pins, its Draft Rota Allocation, its Availability Round and
 every response to it — in one transaction. Offered at any point before allocation, including after the
 round has gone out, behind a confirmation naming how many volunteers' answers
 will be lost. An allocated Rotation is never Discarded; the tool for changing one
@@ -42,7 +45,7 @@ _Avoid_: delete rota, cancel rota
 **Role**:
 A job on a Shift — Team lead, Service volunteer, Food collector. A volunteer
 holds the Roles they will do, and the allocator places only holders in one. A
-Preallocation or an Alteration may name any Role, held or not (ADR 0010). The
+Pin or an Alteration may name any Role, held or not (ADR 0010). The
 job and the holding of it share one name; there is no separate notion of being
 qualified for a job you do not hold. A person fills at most one Role on a
 Shift, however many they hold. A Role has an identity of its own: everything
@@ -62,18 +65,42 @@ Which Roles a Shift needs and how many Seats of each. Owned by the Shift and
 editable until its Rotation is allocated, fixed thereafter. Its counts are what
 the allocator fills up to, not minimums — Seats are routinely left empty — and
 the only ceiling on how many of a Role a Shift may hold. It is a ceiling on the
-allocator alone. Preallocations may go past it, a Shape may be shrunk below the
+allocator alone. Pins may go past it, a Shape may be shrunk below the
 pins already on its Shift, and an Alteration made after the rota is published
 is not held to it (ADR 0010).
 _Avoid_: shift size, template, structure
 
 **Rota Defaults**:
 The settings an Organiser keeps for the Organisation as a whole — the Roles that exist,
-the default Shape, the default shift times, the Standing Preallocations and the
-Allocation Settings. They seed each new Rotation and its Shifts at definition;
+the Shift pattern, the default Shape, the Overrides and the Allocation Settings. They seed each new Rotation and its Shifts at definition;
 nothing copies them back afterwards, so editing them changes what the next rota
 starts from, never what an existing one holds.
 _Avoid_: config, template, preset
+
+**Shift pattern**:
+When the Organisation's Shifts start, as a set of RRULEs, one per line, each
+stating its start time — "every Sunday at 19:30", "the first Saturday of the
+month at 10:00" — with a Start from, a time zone and a default length. Generated
+in local wall-clock time; a Shift that runs past midnight belongs to the day it
+starts. Every Shift comes from it: there are no one-off Shifts (ADR 0013).
+_Avoid_: schedule, cadence, recurrence (alone)
+
+**Start from**:
+The date a Shift pattern or an Override counts from — where "every other week"
+starts, and what fills in a rule that leaves out its weekday or day of the month.
+Nothing occurs before it. Always stored and shown; defaults to the day it is set.
+_Avoid_: anchor, DTSTART
+
+**Override**:
+An RRULE in Rota Defaults that picks out some of the Shifts the pattern generates
+and changes them as a rota is defined: their start time within the day, their
+length, their Shape, and Pins. One that states a time matches the Shift generated
+at that time; one that does not matches every Shift starting on the date. It
+matches the generated start, never a moved one. Overrides are a list, and a later
+one wins. Like the rest of Rota Defaults it seeds and never reaches back, and
+like a Pin it is a person's decision, not held to the allocator's rules
+(ADR 0013).
+_Avoid_: standing preallocation (retired), exception, rule (alone)
 
 **Allocation Settings**:
 Everything an Organiser decides about how the allocator solves — its Allocation
@@ -85,7 +112,7 @@ settings that produced them.
 The fixed catalogue of Rule Kinds an Organiser can add Allocation Rules from.
 What a kind means is the app's; whether and how often it applies is the
 Organiser's. The fundamental constraints — one Seat per person per Shift, groups
-working together, availability, Seat capacity, Closed Shifts, Preallocations —
+working together, availability, Seat capacity, Closed Shifts, Pins —
 are not in it: they are what makes a rota a rota, and are never added. Every
 kind in it can be satisfied by leaving Seats empty, so no set of Allocation
 Rules can stop a rota being allocated.
@@ -177,10 +204,10 @@ states every open Shift it accepts, never a change since last time.
 
 **Closed**:
 A Shift on a date the Organisation does not run (e.g. a holiday closure). Held on
-the Shift itself and set by hand. Being Closed is an allocator input, so it is
+the Shift itself and set by hand; no Override closes a Shift. Being Closed is an allocator input, so it is
 editable only while the Rotation is unallocated.
 
-**Preallocation**:
+**Pin**:
 A person pinned to a specific Shift before Allocation runs, naming the Role
 they will fill and forcing the allocator to place them. It pins that one
 person: their group joins them only where the allocator could have placed them
@@ -189,17 +216,11 @@ allocator's rules. The pinned person may be unavailable, inactive, not a holder
 of the Role, or past the Shape's Seats, and the solve works around them
 (ADR 0010). A Closed Shift cannot be pinned to.
 It references the Role rather than naming it, so renaming one leaves every
-promise made in it intact. Every Preallocation is the same kind of thing however
-it came to exist, and an Organiser or a Rota Editor may remove any of them. A Volunteer is pinned to
+promise made in it intact. Every Pin is the same kind of thing whether made by
+hand or by an Override, and an Organiser or a Rota Editor may remove any of them. A Volunteer is pinned to
 a Shift at most once; a custom entry may be pinned to one more than once, since
 it is usually an organisation and an organisation may send several people.
-_Avoid_: pin (except as the informal verb, "pin to a Shift")
-
-**Standing Preallocation**:
-A Preallocation an Organiser expects to make every rota, kept in Rota Defaults and
-used to seed real ones when a Rotation is defined. It is a convenience at
-definition, not a standing fact: once seeded, the Preallocations it made are
-ordinary and outlive any later change to it.
+_Avoid_: preallocation
 
 **Organisation**:
 One volunteer organisation that runs its rota on the app: its own Roles, Rota Defaults,
@@ -220,13 +241,13 @@ _Avoid_: admin (reserved for a possible future level), user, staff
 
 **Rota Editor**:
 A trusted person authorised to change who works a Shift and nothing else:
-Alterations and Cover on an allocated Rotation, and Preallocations on the Rota
+Alterations and Cover on an allocated Rotation, and Pins on the Rota
 in Flight. What a Shift is — when it runs, whether it is Closed, its Shape — is
 an Organiser's, because those are allocator inputs rather than who is on the
 rota; so is every Organiser screen, the Draft Rota Allocation included.
 Within the Alterations that are theirs they are deliberately unconstrained —
 one person on a Shift at most once is the whole rule, and the Shape and the
-roster are advice. Their Preallocations are the same: a pin is not held to the
+roster are advice. Their Pins are the same: a Pin is not held to the
 allocator's rules either (ADR 0010).
 Identified and re-checked like an Organiser, against an allowlist of its own.
 All other visitors are anonymous; there are no other authenticated levels.
@@ -238,8 +259,8 @@ time it is solved and shown only to Organisers. Named for the rota because that 
 its scope: it is made of draft Allocations, but it is never partial, and no
 single one of them means anything on its own. It is **dirty** when an allocator
 input has moved under the Rotation since it was solved — an availability
-response, a Shape, a Shift opened, closed or moved to another day, a
-Preallocation, a Role, the Allocation Settings — and reading a dirty draft
+response, a Shape, a Shift opened, closed or moved, a
+Pin, a Role, the Allocation Settings — and reading a dirty draft
 solves it again, waiting for any solve already running first, so what a reader
 is handed is never stale. It becomes the rota only when an Organiser allocates,
 which re-solves and commits only if the result still matches what they were
