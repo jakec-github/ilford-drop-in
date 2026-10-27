@@ -112,7 +112,7 @@ var RuleLibrary = []RuleKind{
 		ID:           ShiftGapKind,
 		Family:       VolunteerRuleFamily,
 		Label:        "Shift gap",
-		Description:  "Between any two shifts somebody covered works, there are at least this many they do not. Closed shifts count, and so does the end of the previous rota. A gap of 1 means no back-to-back shifts.",
+		Description:  "Between any two shifts somebody covered works, there are at least this many they do not. Closed shifts count, two shifts on one day count as two, and the end of the previous rota counts too. A gap of 1 means no back-to-back shifts.",
 		ValueLabel:   "Minimum shifts between",
 		MinValue:     1,
 		MaxValue:     52,

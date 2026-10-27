@@ -407,9 +407,7 @@ export async function fetchPins(): Promise<Pin[]> {
 // is showing them sorted server-side, so it re-reads the listing rather than
 // splicing this one in. Throws the server's own message,
 // which names what it clashed with ("every … seat for … is already pinned").
-export async function createPin(
-  pin: NewPin,
-): Promise<void> {
+export async function createPin(pin: NewPin): Promise<void> {
   // Every pin names the Role it fills, by id — a pin is a promise about a job,
   // and may name one the pinned volunteer does not hold (ADR 0010).
   const body: Record<string, string> = {
@@ -436,12 +434,9 @@ export async function createPin(
 // kind of pin, and an Organiser or a Rota Editor may take back any promise the rota has not been
 // allocated on.
 export async function deletePin(id: string): Promise<void> {
-  const res = await fetch(
-    `${BASE_PATH}/api/pins/${encodeURIComponent(id)}`,
-    {
-      method: "DELETE",
-    },
-  );
+  const res = await fetch(`${BASE_PATH}/api/pins/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
   if (!res.ok) {
     throw new Error(await errorMessage(res, "Failed to remove the pin"));
   }
@@ -888,6 +883,8 @@ interface ApiAvailabilityRound {
   shifts: {
     id: string;
     date: string;
+    start: string;
+    end: string;
     closed: boolean;
     roles: {
       role: string;

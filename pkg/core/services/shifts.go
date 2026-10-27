@@ -43,3 +43,14 @@ func shiftLabel(shift db.Shift) string {
 	}
 	return readableDate(shift.Date) + " at " + startAt.Format("15:04")
 }
+
+// shiftSpan names a Shift by its date and both its times, "1 November 2026
+// from 19:30 to 21:30": what an Organiser needs to see why two Shifts clash.
+func shiftSpan(shift db.Shift) string {
+	startAt, startErr := time.Parse(model.ShiftTimestampLayout, shift.StartAt)
+	endAt, endErr := time.Parse(model.ShiftTimestampLayout, shift.EndAt)
+	if startErr != nil || endErr != nil {
+		return readableDate(shift.Date)
+	}
+	return readableDate(shift.Date) + " from " + startAt.Format("15:04") + " to " + endAt.Format("15:04")
+}

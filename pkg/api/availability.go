@@ -66,6 +66,8 @@ type availabilityGroupResponse struct {
 type availabilityCoverageResponse struct {
 	ID     string                     `json:"id"`
 	Date   string                     `json:"date"`
+	Start  string                     `json:"start"`
+	End    string                     `json:"end"`
 	Closed bool                       `json:"closed"`
 	Roles  []availabilityRoleCoverage `json:"roles"`
 }
@@ -239,6 +241,8 @@ func (h *Handler) toRoundResponse(round *services.AvailabilityRound, r *http.Req
 		shift := availabilityCoverageResponse{
 			ID:     s.ShiftID,
 			Date:   s.Date,
+			Start:  s.Start,
+			End:    s.End,
 			Closed: s.Closed,
 			// Never nil: a shift with no Roles left to fill and a closed one
 			// both have to serialise as a list rather than a null.

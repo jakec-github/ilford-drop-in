@@ -15,11 +15,12 @@ import (
 // the lock it was asked for and hands the mock itself to the callback as the
 // transaction-bound store, mirroring the WithRotaLock mocks elsewhere.
 //
-// dateTaken is the one-Shift-per-date index standing in: a start landing on one
-// of these dates is refused the way the real index refuses it.
+// taken are other Shifts' hours, standing in for the no-overlap constraint: a
+// move into any of them is refused the way the real store refuses it, naming
+// the Shift in the way.
 type mockUpdateShiftStore struct {
-	shifts    []db.ShiftInRange
-	dateTaken map[string]bool
+	shifts []db.ShiftInRange
+	taken  []db.Shift
 
 	lockedRotaIDs [][]string
 	writes        []bool   // closed values written, in order
@@ -61,8 +62,11 @@ func (m *mockUpdateShiftStore) SetShiftClosed(_ context.Context, shiftID string,
 }
 
 func (m *mockUpdateShiftStore) SetShiftTimes(_ context.Context, shiftID, startAt, endAt string) (bool, error) {
-	if m.dateTaken[startAt[:len("2006-01-02")]] {
-		return false, db.ErrShiftDateTaken
+	// The layout sorts as it reads, so the times compare as strings.
+	for _, other := range m.taken {
+		if other.StartAt < endAt && startAt < other.EndAt {
+			return false, &db.ShiftOverlapError{Other: &other}
+		}
 	}
 	for i := range m.shifts {
 		if m.shifts[i].ID == shiftID {
@@ -255,18 +259,45 @@ func TestUpdateShift_MustEndAfterItStarts(t *testing.T) {
 	assert.Empty(t, store.timeWrites)
 }
 
-// Moving a Shift onto a day the Organisation already runs is a conflict, and the
-// message names the day rather than reporting a broken index.
-func TestUpdateShift_RefusesADateAnotherShiftHolds(t *testing.T) {
+// eveningOf is a Shift another rota already runs on the evening of date.
+func eveningOf(date string) db.Shift {
+	return db.Shift{ID: "other", Date: date, StartAt: date + "T19:30:00", EndAt: date + "T21:30:00"}
+}
+
+// Moving a Shift onto hours another Shift runs in is a conflict, and the message
+// names that Shift's day and times rather than reporting a broken constraint.
+func TestUpdateShift_RefusesHoursAnotherShiftHolds(t *testing.T) {
 	store := unallocatedShiftStore()
-	store.dateTaken = map[string]bool{"2027-01-03": true}
+	store.taken = []db.Shift{eveningOf("2027-01-03")}
 
 	_, err := UpdateShift(context.Background(), store, "shift-1", UpdateShiftParams{
-		StartAt: "2027-01-03T19:30:00",
-		EndAt:   "2027-01-03T21:30:00",
+		StartAt: "2027-01-03T20:00:00",
+		EndAt:   "2027-01-03T22:00:00",
 	}, zap.NewNop())
 	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "3 January 2027")
+	assert.Contains(t, err.Error(), "3 January 2027 from 19:30 to 21:30")
+	assert.Empty(t, store.timeWrites)
+}
+
+// Two Shifts may share a day (issue #294): a morning beside an evening is moved
+// without complaint.
+func TestUpdateShift_MovesBesideAnotherShiftOnItsDay(t *testing.T) {
+	store := unallocatedShiftStore()
+	store.taken = []db.Shift{eveningOf("2027-01-03")}
+
+	shift, err := UpdateShift(context.Background(), store, "shift-1", UpdateShiftParams{
+		StartAt: "2027-01-03T10:00:00",
+		EndAt:   "2027-01-03T12:00:00",
+	}, zap.NewNop())
+	require.NoError(t, err)
+	assert.Equal(t, "2027-01-03", shift.Date)
+}
+
+// A clash only the constraint saw — a write racing another rota's — names no
+// Shift, and the refusal says only what is certain.
+func TestUpdateShift_AnOverlapNobodyReadIsStillAConflict(t *testing.T) {
+	assert.EqualError(t, overlapConflict(&db.ShiftOverlapError{}),
+		"another shift runs at those times, and two shifts cannot run at once")
 }
 
 // One edit, one transaction: a time change the index refuses reports itself
@@ -274,7 +305,7 @@ func TestUpdateShift_RefusesADateAnotherShiftHolds(t *testing.T) {
 // is what takes the closure beside it back out.
 func TestUpdateShift_ARefusedTimeSinksTheWholeEdit(t *testing.T) {
 	store := unallocatedShiftStore()
-	store.dateTaken = map[string]bool{"2027-01-03": true}
+	store.taken = []db.Shift{eveningOf("2027-01-03")}
 	closed := true
 
 	_, err := UpdateShift(context.Background(), store, "shift-1", UpdateShiftParams{

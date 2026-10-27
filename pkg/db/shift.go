@@ -23,28 +23,72 @@ const shiftTimestampLayout = "2006-01-02T15:04:05"
 // wants a date — selecting it, ordering by it, bounding a range with it — spells
 // it the same way and none of them can drift apart.
 //
-// There is nothing else it could come from: issue #135 dropped the stored copy,
-// and the unique index enforcing one Shift per date is defined on this very
-// expression. `start_at::date` is IMMUTABLE, which is what allows that; the
-// timestamptz equivalent is only STABLE and could not be indexed.
+// There is nothing else it could come from: issue #135 dropped the stored copy.
+// A date names a day and not a Shift — two Shifts may share one (issue #294) —
+// so nothing looks a Shift up by it.
 const shiftDateExpr = "s.start_at::date"
 
-// ErrShiftDateTaken reports that a write would have put two Shifts on one date.
-// It is named for the same reason ErrDuplicateRoleName is: an Organiser moving a
-// Shift onto a day the Organisation already runs has made an ordinary mistake and is
-// told so, and reading the driver's error code is this package's job rather
-// than every caller's.
-var ErrShiftDateTaken = errors.New("another shift already starts on that date")
+// ErrShiftOverlap reports that a write would have run two Shifts at once. Two
+// Shifts may share a day (issue #294); they may not share a moment. It is named
+// for the same reason ErrDuplicateRoleName is: an Organiser moving a Shift onto
+// another's hours has made an ordinary mistake and is told so, and reading the
+// driver's error code is this package's job rather than every caller's.
+var ErrShiftOverlap = errors.New("another shift runs at that time")
 
-// isShiftDateTaken reports whether an error is the one-Shift-per-date index
-// refusing a write. The index is named rather than any unique violation being
-// assumed, so a later index on the table cannot quietly start reporting itself
-// as a date clash.
-func isShiftDateTaken(err error) bool {
+// ShiftOverlapError is ErrShiftOverlap naming the Shift in the way, so the
+// refusal can say which one to move. Other is nil where the clash was only
+// found by the constraint — a write racing another rota's — and nobody read
+// which Shift it was.
+type ShiftOverlapError struct {
+	Other *Shift
+}
+
+func (e *ShiftOverlapError) Error() string {
+	if e.Other == nil {
+		return ErrShiftOverlap.Error()
+	}
+	return fmt.Sprintf("%s: shift %s runs %s to %s", ErrShiftOverlap, e.Other.ID, e.Other.StartAt, e.Other.EndAt)
+}
+
+func (e *ShiftOverlapError) Is(target error) bool { return target == ErrShiftOverlap }
+
+// exclusionViolation is Postgres's SQLSTATE for a broken exclusion constraint.
+const exclusionViolation = "23P01"
+
+// isShiftOverlap reports whether an error is the no-overlap constraint refusing
+// a write. The constraint is named rather than any exclusion violation being
+// assumed, so a later one on the table cannot quietly start reporting itself
+// as a clash of times.
+func isShiftOverlap(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) &&
-		pgErr.Code == uniqueViolation &&
-		pgErr.ConstraintName == "shift_start_date_key"
+		pgErr.Code == exclusionViolation &&
+		pgErr.ConstraintName == "shift_no_overlap"
+}
+
+// overlappingShift returns a Shift of the Organisation other than id that runs
+// at some moment between startAt and endAt, or nil if none does. The earliest,
+// so that a move clashing with two is told about the first.
+func overlappingShift(ctx context.Context, q querier, organisationID, id, startAt, endAt string) (*Shift, error) {
+	var s Shift
+	var date, start, end time.Time
+	err := q.QueryRow(ctx, `
+		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
+		FROM shift s
+		WHERE s.organisation_id = $1 AND s.id <> $2
+		  AND tsrange(s.start_at, s.end_at) && tsrange($3::timestamp, $4::timestamp)
+		ORDER BY s.start_at
+		LIMIT 1
+	`, organisationID, id, startAt, endAt).Scan(&s.ID, &date, &s.RotaID, &s.Closed, &start, &end)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look for a shift overlapping %s: %w", id, err)
+	}
+	s.Date = date.Format("2006-01-02")
+	s.StartAt, s.EndAt = localTimestamp(start), localTimestamp(end)
+	return &s, nil
 }
 
 // localTimestamp renders a TIMESTAMP column in the layout this package spells
@@ -206,10 +250,11 @@ func setShiftClosed(ctx context.Context, q querier, organisationID, id string, c
 // matched. Both together, because they are one statement of when the session
 // runs and the database refuses half of one.
 //
-// Moving a Shift's start onto a day another Shift already starts on comes back
-// as ErrShiftDateTaken. That is the one-Shift-per-date index answering, which
-// makes it the whole guard rather than a backstop behind a read: a caller
-// holding one rota's lock cannot see a clash coming from another rota.
+// Moving a Shift onto hours another Shift already runs in comes back as a
+// ShiftOverlapError naming that Shift, read here so the refusal can say which
+// one is in the way. The read is not the guard: a caller holding one rota's
+// lock cannot see a clash coming from another rota, and the no-overlap
+// constraint is what refuses that one, as a ShiftOverlapError naming nobody.
 //
 // There is no freeze check here and none above: a Shift's times are descriptive
 // rather than an allocator input, so they stay editable after the Rotation is
@@ -223,6 +268,14 @@ func setShiftClosed(ctx context.Context, q querier, organisationID, id string, c
 // there to compare against; if the write below is then refused, the whole
 // transaction goes with it.
 func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, endAt string) (bool, error) {
+	other, err := overlappingShift(ctx, q, organisationID, id, startAt, endAt)
+	if err != nil {
+		return false, err
+	}
+	if other != nil {
+		return false, &ShiftOverlapError{Other: other}
+	}
+
 	if _, err := q.Exec(ctx, `
 		UPDATE rotation SET inputs_changed_at = now()
 		WHERE allocated_datetime IS NULL
@@ -240,8 +293,8 @@ func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, 
 		SET start_at = $2::timestamp, end_at = $3::timestamp
 		WHERE id = $1 AND organisation_id = $4
 	`, id, startAt, endAt, organisationID)
-	if isShiftDateTaken(err) {
-		return false, ErrShiftDateTaken
+	if isShiftOverlap(err) {
+		return false, &ShiftOverlapError{}
 	}
 	if err != nil {
 		return false, fmt.Errorf("failed to set the times of shift %s: %w", id, err)
@@ -260,12 +313,12 @@ func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, 
 // not care what it asks for, and one that carried a Shape only on the way in
 // would be a struct whose field means something different in each direction.
 //
-// Concurrency (issue #41, hazard B1): the one-Shift-per-date unique index is
-// what makes concurrent runs safe — two rotas minting the same date cannot both
-// commit, and the losing transaction writes nothing. Any change that relaxes
-// that index must introduce a replacement guard here. That refusal comes back
-// as ErrShiftDateTaken, since it is also how a rota defined to start on a day
-// the Organisation already runs is turned away.
+// Concurrency (issue #41, hazard B1): the no-overlap constraint is what makes
+// concurrent runs safe — two rotas minting the same hours cannot both commit,
+// and the losing transaction writes nothing. Any change that relaxes that
+// constraint must introduce a replacement guard here. That refusal comes back
+// as ErrShiftOverlap, since it is also how a rota defined to start on hours the
+// Organisation already runs is turned away.
 func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, pins []Pin, requirements []ShiftRequirement) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -299,13 +352,13 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	for range shifts {
 		if _, err := results.Exec(); err != nil {
 			results.Close()
-			// A date this rota would have shared with one that already exists is
-			// reported as itself. It became an ordinary mistake when the start
+			// Hours this rota would have shared with one that already exists are
+			// reported as themselves. It became an ordinary mistake when the start
 			// date became an Organiser's to state (issue #140): a rota begun a week
 			// too early overlaps the last one, and "failed to insert shift"
 			// would tell nobody that.
-			if isShiftDateTaken(err) {
-				return ErrShiftDateTaken
+			if isShiftOverlap(err) {
+				return ErrShiftOverlap
 			}
 			return fmt.Errorf("failed to insert shift: %w", err)
 		}

@@ -53,7 +53,7 @@
   white-space: nowrap;
 }
 
-/* One date per column, its weekday over its number. */
+/* One shift per column: its weekday over its date over its start. */
 .grid-date {
   display: table-cell;
   min-width: 3.75rem;

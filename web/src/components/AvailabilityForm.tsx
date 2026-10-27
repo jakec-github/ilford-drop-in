@@ -2,7 +2,7 @@ import Button from "../ui/Button";
 import { useAvailabilityForm } from "../hooks/useAvailabilityForm";
 import type { AvailabilityLinkFailure, AvailabilityShift } from "../types";
 import Loading from "./Loading";
-import { formatShiftTimes } from "./shiftTimes";
+import { formatShiftTimes, timeOfDay } from "./shiftTimes";
 import "./AvailabilityForm.css";
 
 // "Sunday 2 August" — the weekday matters more than the year here: a volunteer
@@ -58,6 +58,10 @@ function ShiftChoice({
   onAnswer: (available: boolean) => void;
 }) {
   const date = formatShiftDate(shift.date);
+  // What the radios are about, for anybody who cannot see the row: the start
+  // time is in it because two shifts can share a day (issue #294).
+  const start = timeOfDay(shift.start);
+  const when = start === "00:00" ? date : `${date} at ${start}`;
 
   return (
     <li
@@ -99,7 +103,7 @@ function ShiftChoice({
               name={`shift-${shift.id}`}
               checked={!available}
               onChange={() => onAnswer(false)}
-              aria-label={`No, I cannot do ${date}`}
+              aria-label={`No, I cannot do ${when}`}
             />
             No
           </label>
@@ -109,7 +113,7 @@ function ShiftChoice({
               name={`shift-${shift.id}`}
               checked={available}
               onChange={() => onAnswer(true)}
-              aria-label={`Yes, I can do ${date}`}
+              aria-label={`Yes, I can do ${when}`}
             />
             Yes
           </label>

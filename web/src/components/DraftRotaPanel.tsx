@@ -25,7 +25,7 @@ import { seatCounts } from "./shape";
 import ShapeForm from "./ShapeForm";
 import type { RowEdit } from "./ShiftList";
 import ShiftList from "./ShiftList";
-import { formatShiftDateLong } from "./shifts";
+import { formatPinShift, formatShiftLong } from "./shifts";
 import "./DraftRotaPanel.css";
 
 // How long ago the solve ran, which is the only thing anybody asks of a draft's
@@ -291,12 +291,7 @@ export default function DraftRotaPanel({
 
   const { roles, colourOf, idOf } = useRoles();
   const { volunteers, error: volunteersError } = useVolunteers();
-  const {
-    pins,
-    error: pinsError,
-    addPin,
-    removePin,
-  } = usePins();
+  const { pins, error: pinsError, addPin, removePin } = usePins();
 
   const pinsByShiftID = useMemo(() => {
     const byShift = new Map<string, Pin[]>();
@@ -322,7 +317,7 @@ export default function DraftRotaPanel({
   const dateByShiftID = useMemo(() => {
     const byID = new Map<string, string>();
     for (const shift of shifts ?? []) {
-      byID.set(shift.id, formatShiftDateLong(shift.date));
+      byID.set(shift.id, formatShiftLong(shift));
     }
     return byID;
   }, [shifts]);
@@ -342,7 +337,9 @@ export default function DraftRotaPanel({
   function pinnableTo(shiftId: string) {
     if (volunteers === null) return null;
     const pinned = new Set(
-      (pinsByShiftID.get(shiftId) ?? []).map((p) => p.volunteerId).filter(Boolean),
+      (pinsByShiftID.get(shiftId) ?? [])
+        .map((p) => p.volunteerId)
+        .filter(Boolean),
     );
     return volunteers.filter((v) => !pinned.has(v.id));
   }
@@ -549,7 +546,7 @@ export default function DraftRotaPanel({
 
       {dialog?.kind === "pin" && (
         <PinDialog
-          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          dateLabel={formatShiftLong(dialog.shift)}
           volunteers={pinnableTo(dialog.shift.id)}
           volunteersError={volunteersError}
           roles={roles?.map((role) => role.name) ?? null}
@@ -573,7 +570,7 @@ export default function DraftRotaPanel({
       {dialog?.kind === "unpin" && (
         <UnpinDialog
           name={dialog.pin.name}
-          dateLabel={formatShiftDateLong(dialog.pin.date)}
+          dateLabel={formatPinShift(dialog.pin, shifts)}
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={() => void submitUnpin(dialog.pin)}
@@ -582,7 +579,7 @@ export default function DraftRotaPanel({
 
       {dialog?.kind === "closure" && (
         <ClosureDialog
-          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          dateLabel={formatShiftLong(dialog.shift)}
           closing={!dialog.shift.closed}
           pinnedCount={(pinsByShiftID.get(dialog.shift.id) ?? []).length}
           busy={saving}
@@ -601,7 +598,7 @@ export default function DraftRotaPanel({
 
       {dialog?.kind === "times" && (
         <ShiftTimesDialog
-          dateLabel={formatShiftDateLong(dialog.shift.date)}
+          dateLabel={formatShiftLong(dialog.shift)}
           start={dialog.shift.start}
           end={dialog.shift.end}
           busy={saving}
@@ -622,7 +619,7 @@ export default function DraftRotaPanel({
           retyped. */}
       {dialog?.kind === "shape" && roles && (
         <ShapeForm
-          title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
+          title={`What does ${formatShiftLong(dialog.shift)} ask for?`}
           intro="How many places of each Role this shift has. It starts from the default shape and can differ from every other shift; leave a Role at 0 if this one does not need it."
           saveLabel="Save shape"
           roles={roles}

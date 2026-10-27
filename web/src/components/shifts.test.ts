@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ShapeSeat } from "../types";
 import {
+  formatShiftLong,
+  formatShiftShort,
   groupByMonth,
   groupByRole,
   roleGroupLabel,
@@ -263,5 +265,23 @@ describe("groupByMonth", () => {
 
   test("no shifts, no headings", () => {
     expect(groupByMonth([])).toEqual([]);
+  });
+});
+
+describe("naming a shift", () => {
+  const morning = { date: "2026-02-01", start: "2026-02-01T10:00:00" };
+  const evening = { date: "2026-02-01", start: "2026-02-01T19:30:00" };
+
+  test("two shifts on one day are told apart by when they start", () => {
+    expect(formatShiftLong(morning)).toBe("Sun 1 Feb at 10:00");
+    expect(formatShiftLong(evening)).toBe("Sun 1 Feb at 19:30");
+    expect(formatShiftShort(morning)).toBe("1 Feb 10:00");
+    expect(formatShiftShort(evening)).toBe("1 Feb 19:30");
+  });
+
+  test("a shift running all day is named by its date alone", () => {
+    const allDay = { date: "2026-02-01", start: "2026-02-01T00:00:00" };
+    expect(formatShiftLong(allDay)).toBe("Sun 1 Feb");
+    expect(formatShiftShort(allDay)).toBe("1 Feb");
   });
 });
