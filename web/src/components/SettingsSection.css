@@ -137,3 +137,19 @@
   gap: 0.5rem;
   margin-top: 1.25rem;
 }
+
+/* The Shift pattern read back in plain English, a line of it to a line. */
+.settings-pattern-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-pattern-lines code {
+  font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.settings-field textarea {
+  margin-top: 0.25rem;
+}

@@ -1,0 +1,169 @@
+/* Sized by the card it is in rather than the window: the same calendar sits in
+   the settings column and, on a phone, on its own. */
+.pattern-calendar {
+  container-type: inline-size;
+}
+
+.pattern-calendar-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.pattern-calendar-step {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pattern-calendar-step:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pattern-calendar-home {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pattern-calendar-note {
+  margin-left: auto;
+  font-size: 0.75rem;
+}
+
+/* Three months across on a desk; the third gives way first, then the second,
+   so a narrow card still shows whole months rather than squashed ones. */
+.pattern-calendar-months {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@container (max-width: 36rem) {
+  .pattern-calendar-months {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pattern-calendar-month:nth-child(3) {
+    display: none;
+  }
+}
+
+@container (max-width: 20rem) {
+  .pattern-calendar-months {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pattern-calendar-month:nth-child(2) {
+    display: none;
+  }
+}
+
+.pattern-calendar-month h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-h);
+}
+
+.pattern-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.pattern-calendar-dow {
+  padding-bottom: 2px;
+  font-size: 0.625rem;
+}
+
+.pattern-calendar-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 1.75rem;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Before Start from nothing can occur, so those days are there for their place
+   in the month and no more. */
+.pattern-calendar-day.before {
+  opacity: 0.35;
+}
+
+.pattern-calendar-day.on {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.pattern-calendar-day.on:hover,
+.pattern-calendar-day.on:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  outline: none;
+}
+
+.pattern-calendar-day.today {
+  box-shadow: inset 0 0 0 1.5px var(--text-h);
+}
+
+.pattern-calendar-dots {
+  display: flex;
+  gap: 2px;
+  height: 4px;
+}
+
+.pattern-calendar-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pattern-calendar-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 5;
+  flex-direction: column;
+  padding: 0.375rem 0.5625rem;
+  border-radius: 8px;
+  background: var(--text-h);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.pattern-calendar-tip b {
+  font-weight: 600;
+}
+
+.pattern-calendar-day:hover .pattern-calendar-tip,
+.pattern-calendar-day:focus-visible .pattern-calendar-tip {
+  display: flex;
+}

@@ -148,7 +148,7 @@ organisations:
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
 
 # What the Organisation decides about itself is not configured here. The Roles
-# volunteers hold, the Rota Defaults (the default shift start, end and
+# volunteers hold, the Rota Defaults (the Shift pattern, its length and
 # timezone, and the default Shape) and the Allocation Settings (which optional
 # allocator rules apply, and the share of a rota one volunteer may work) are
 # rows in the database (ADR 0006), set on the Settings screen rather than in
@@ -212,24 +212,28 @@ by string, so the sheet needs the same edit; the server warns on every sync
 about a Role nobody holds and a roster value it does not know, which is what a
 half-finished rename looks like.
 
-### Setting the shift times
+### Setting the shift pattern
 
-When the Organisation runs is set on the same screen, under **Rota Defaults**: a
-start time, an end time and the timezone they are read in. Like the Roles, no
-migration seeds them.
+When the Organisation runs is set on the same screen, under **Rota Defaults**:
+a Shift pattern, how long a shift lasts, and the timezone its times are read in
+(ADR 0013). The pattern is one RRULE per line — `RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30`
+is every Sunday at 19:30 — and each line is read back in plain English as it is
+typed, with a calendar of the shifts it generates. **Start from** is the date
+"every other week" counts from, and nothing occurs before it. Like the Roles, no
+migration seeds the pattern: each deployment enters its own.
 
-Until they are set, defining a rota and allocating one both refuse and name what
-is missing. A shift's date is the date it starts, so a shift cannot be minted
-without knowing when it runs. Nothing else is gated: everything that only reads
-still reads.
+Until there is a pattern, defining a rota refuses and says so. Nothing else is
+gated: everything that only reads still reads.
 
-A shift has to end the evening it starts — a session running past midnight is
-refused rather than stored as one ending before it began.
+A rota is the next however many shifts the pattern generates after the one the
+previous rota stopped after, so defining asks for a count and nothing else.
+**Leave a gap…** on the define form gives a date no shift may start before, for
+a break.
 
-These are the times each *new* shift is minted with, not a live setting the
-shifts follow. A shift keeps the times it was minted with when they change
-later, and an Organiser who wants one evening to run differently edits that shift on
-the rota, under **Edit rota** → the date.
+These are the shifts each *new* rota is minted from, not a live setting the
+shifts follow. A shift keeps the times it was minted with when the pattern
+changes later, and an Organiser who wants one evening to run differently edits
+that shift on the rota, under **Edit rota** → the date.
 
 ### Setting the default Shape
 
@@ -239,7 +243,7 @@ which could only ever describe a rota with one Role — every other Role got its
 ceiling whether that was wanted or not.
 
 A Shape cannot ask for more of a Role than that Role's ceiling, and a Role it
-does not name has no Seats on a shift. Like the times, nothing seeds it, and
+does not name has no Seats on a shift. Like the pattern, nothing seeds it, and
 until it is set allocation refuses and says so; a rota with no Seats would
 otherwise solve perfectly and staff nobody.
 
@@ -251,7 +255,7 @@ later ticket.
 **Organiser → Settings → Allocation rules** is which of the optional allocator
 rules apply: a cap on how often one person works (a switch and a share of the
 rota), male cover, no back-to-back shifts, and at most one shift a month. Like
-the Roles and the shift times, nothing seeds them, and a rule nobody has
+the Roles and the shift pattern, nothing seeds them, and a rule nobody has
 switched on is off — so a fresh database allocates with none of them.
 
 The rules that make a rota a rota — availability, seat capacity, grouping,

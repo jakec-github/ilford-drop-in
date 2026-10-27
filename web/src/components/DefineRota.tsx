@@ -2,107 +2,73 @@ import { useState } from "react";
 import Button from "../ui/Button";
 import { useDefineRota } from "../hooks/useDefineRota";
 import RotaDefaultsCard from "./RotaDefaultsCard";
-import type { NewRota, RotaProposal } from "../types";
+import { formatDay, formatStart, endOf } from "./patternDates";
+import type { PlannedShift } from "../types";
 import "./DefineRota.css";
 
-// "Sun 2 Aug 2026" — the weekday is worth showing here, unlike on the rota
-// itself: what an Organiser is checking is that the weeks they expected were taken.
-function formatShiftDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
+// The count as typed, or null while it is not yet a whole number of shifts.
+// The server still has the last word on the range; this only decides whether
+// there is anything to ask it about.
+function parseCount(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const n = Number(value);
+  return n >= 1 ? n : null;
+}
+
+// "November 2026", for grouping the plan by month.
+function monthOf(timestamp: string): string {
+  const [y, m] = timestamp.slice(0, 7).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", {
+    month: "long",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
-// DefineRotaForm is the define screen's form: how many shifts, and from when.
-//
-// It used to carry the hours and the Shape as well, each prefilled from the
-// Rota Defaults and each a field of this rota alone (issue #140). They have
-// gone (issue #176). Two places to state the same thing was one too many: an
-// Organiser who set the hours here was surprised to find the settings unchanged,
-// and one who set them on Settings was surprised to find them changeable here.
-// The Rota Defaults card below the form is now the only place either is said,
-// and defining spends whatever it shows.
-//
-// What is left is the two answers that are nobody's setting. The start date is
-// the one an Organiser is most likely to touch — a rota can begin after a break
-// rather than the week after the last one.
-//
-// It is mounted on a loaded proposal and never sees a null one, which is what
-// lets the date initialise from it directly: a re-read unmounts the form rather
-// than trying to reconcile a new answer with what somebody has typed.
-function DefineRotaForm({
-  proposal,
-  defining,
-  onDefine,
-}: {
-  proposal: RotaProposal;
-  defining: boolean;
-  onDefine: (rota: NewRota) => void;
-}) {
-  // Empty, unlike the date. That starts from the proposal because there is a
-  // right answer to start from; how long the next rota should run is a decision
-  // nobody has made yet, and a number already in the box is one an Organiser can
-  // define a rota without ever reading (issue #174).
-  const [shiftCount, setShiftCount] = useState("");
-  const [startDate, setStartDate] = useState(proposal.startDate);
+function shiftLength(shift: PlannedShift): number {
+  return (Date.parse(`${shift.end}Z`) - Date.parse(`${shift.start}Z`)) / 60000;
+}
 
+// One Shift as a row: the day, then its hours, with "(next day)" for one that
+// runs past midnight. The end is the server's; it is only said here.
+function ShiftRow({ shift, note }: { shift: PlannedShift; note?: string }) {
+  const end = endOf(shift.start, shiftLength(shift));
+  return (
+    <li className={note ? "define-rota-shift defined" : "define-rota-shift"}>
+      <span className="define-rota-shift-day">
+        {formatDay(shift.start.slice(0, 10))}
+      </span>
+      <span className="define-rota-shift-time">
+        {shift.start.slice(11, 16)}–{end.time}
+        {end.nextDay && <small> (next day)</small>}
+      </span>
+      {note && <span className="define-rota-shift-note">{note}</span>}
+    </li>
+  );
+}
+
+// The Shifts the plan would mint, a heading per month: a rota is usually a
+// season, and months are how an Organiser checks one against the calendar.
+function PlannedShifts({ shifts }: { shifts: PlannedShift[] }) {
+  const months: { label: string; shifts: PlannedShift[] }[] = [];
+  for (const shift of shifts) {
+    const label = monthOf(shift.start);
+    const last = months[months.length - 1];
+    if (last && last.label === label) last.shifts.push(shift);
+    else months.push({ label, shifts: [shift] });
+  }
   return (
     <>
-      {/* noValidate deliberately: min below floors the spinner, but native
-          validation would answer a bad count with a transient browser bubble in
-          some cases and the server's message in others. Submitting regardless
-          means one field is only ever rejected in one place, with one
-          wording. */}
-      <form
-        className="define-rota-form"
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          onDefine({ shiftCount: Number(shiftCount), startDate });
-        }}
-      >
-        <div className="define-rota-fields">
-          <label className="define-rota-field">
-            Shifts
-            <input
-              className="define-rota-count"
-              type="number"
-              inputMode="numeric"
-              min="1"
-              value={shiftCount}
-              onChange={(e) => setShiftCount(e.target.value)}
-            />
-          </label>
-
-          <label className="define-rota-field">
-            First shift
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
+      {months.map((month) => (
+        <div key={month.label} className="define-rota-month">
+          <h4>{month.label}</h4>
+          <ol className="define-rota-shifts">
+            {month.shifts.map((shift) => (
+              <ShiftRow key={shift.start} shift={shift} />
+            ))}
+          </ol>
         </div>
-
-        {/* Says the part of defining that is not on the form. Every active
-            volunteer gets their link the moment the rota exists, which is a
-            thing to know before pressing the button — and the sentence's other
-            half is the reassurance that goes with it: nothing is emailed until
-            you send the round, with a deadline in it. */}
-        <p className="define-rota-note">
-          Defining also gives every active volunteer their availability link. No
-          email goes out until you send the round.
-        </p>
-
-        <div className="define-rota-actions">
-          <Button type="submit" disabled={defining}>
-            {defining ? "Defining…" : "Define rota"}
-          </Button>
-        </div>
-      </form>
+      ))}
     </>
   );
 }
@@ -110,19 +76,22 @@ function DefineRotaForm({
 // DefineRota is the Allocation tab with nothing in flight: the form that starts
 // the next rota, and the settings that rota will be made from.
 //
+// A rota is the next however many Shifts the Shift pattern generates after the
+// one the previous rota stopped after (ADR 0013). So the form asks for a count
+// and nothing else — where it starts is not a choice but a consequence, and
+// the screen says it rather than asking it. A break is the one exception, and
+// it is behind "Leave a gap…" because it is the exception: a date no Shift may
+// start before.
+//
+// Everything below the form is the server's plan, read again as the count
+// changes, by the arithmetic defining uses — so the Shifts listed are the ones
+// pressing the button mints, hours and all. The end of the previous rota is
+// shown above them so the join can be checked by eye: an Organiser who expected
+// the 19:30 after a 10:00 sees it there.
+//
 // The Rota Defaults card is the same one the settings screen shows (issue
-// #176). It is here because this is the moment those settings are spent: an
-// Organiser about to define a rota is exactly the person who needs to see what its
-// shifts will run, and to fix it without leaving the screen if it is wrong.
-//
-// It used to carry a pointer to the rota already out under the form. That has
-// gone (issue #174): the rota page is one click away in the header and has far
-// more to say about an allocated rota than a date could, so the line was a
-// second place to look rather than an answer.
-//
-// Everything else the tab does — preparing the shifts, the round, the draft,
-// allocating — is about a rota that exists, and none of it can be done to one
-// that does not.
+// #176). It is here because this is the moment those settings are spent, and
+// a change to it re-plans the form above.
 export default function DefineRota({
   onDefined,
 }: {
@@ -130,29 +99,179 @@ export default function DefineRota({
   // flight, which is what swaps this screen for the working one.
   onDefined: () => void;
 }) {
-  const { proposal, rota, error, defining, define } = useDefineRota();
+  // Empty: how long the next rota should run is a decision nobody has made
+  // yet, and a number already in the box is one an Organiser can define a rota
+  // without ever reading (issue #174).
+  const [shiftCount, setShiftCount] = useState("");
+  const [gap, setGap] = useState(false);
+  const [notBefore, setNotBefore] = useState("");
+  const [reload, setReload] = useState(0);
+
+  const count = parseCount(shiftCount);
+  const asked = gap ? notBefore : "";
+  const { plan, planError, rota, error, defining, define } = useDefineRota(
+    count,
+    asked,
+    reload,
+  );
+
+  const previous = plan?.previous ?? null;
+  const noPattern = plan !== null && !plan.patternSet;
+  const shifts = count !== null && plan ? plan.shifts : [];
+  const refusal = count !== null && plan && !noPattern ? plan.refusal : "";
+  const canDefine =
+    count !== null && plan !== null && !refusal && !noPattern && !defining &&
+    shifts.length === count;
 
   return (
     <>
       <section className="organiser-panel define-rota">
         <h2>Define the next rota</h2>
 
-        {proposal === null && !error && (
+        {plan === null && !planError && (
           <p className="define-rota-intro">Working out the next rota…</p>
         )}
 
-        {proposal !== null && (
-          <DefineRotaForm
-            proposal={proposal}
-            defining={defining}
-            onDefine={(next) => {
-              // Reloading whatever the outcome: a define that succeeded put a
-              // rota in flight, and one that was refused most likely means one
-              // already was.
-              void define(next).then(onDefined);
-            }}
-          />
+        {plan !== null && (
+          <p className="define-rota-intro">
+            {previous
+              ? `The previous rota had ${previous.shiftCount} ${previous.shiftCount === 1 ? "shift" : "shifts"} and stopped after ${formatStart(previous.stoppedAfter)}. This one carries on from there.`
+              : "This is the first rota. It starts from the Shift pattern's Start from."}
+          </p>
         )}
+
+        {/* noValidate deliberately: min below floors the spinner, but native
+            validation would answer a bad count with a transient browser bubble
+            in some cases and the server's message in others. */}
+        <form
+          className="define-rota-form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (count === null) return;
+            const next = asked ? { shiftCount: count, notBefore: asked } : {
+              shiftCount: count,
+            };
+            // Reloading whatever the outcome: a define that succeeded put a
+            // rota in flight, and one that was refused most likely means one
+            // already was.
+            void define(next).then(onDefined);
+          }}
+        >
+          <div className="define-rota-fields">
+            <label className="define-rota-field">
+              Shifts
+              <input
+                className="define-rota-count"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                value={shiftCount}
+                onChange={(e) => setShiftCount(e.target.value)}
+              />
+            </label>
+
+            {gap ? (
+              <>
+                <label className="define-rota-field">
+                  Not before
+                  <input
+                    type="date"
+                    value={notBefore}
+                    onChange={(e) => setNotBefore(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="define-rota-link"
+                  onClick={() => {
+                    setGap(false);
+                    setNotBefore("");
+                  }}
+                >
+                  No gap after all
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="define-rota-link"
+                onClick={() => setGap(true)}
+              >
+                Leave a gap…
+              </button>
+            )}
+          </div>
+
+          {gap && (
+            <p className="define-rota-note">
+              No shift in this rota will start before this date. The pattern
+              carries on as it would have, so shifts the gap skips are skipped
+              rather than moved.
+            </p>
+          )}
+
+          {/* aria-live so a screen reader hears the plan change as the count
+              does: nothing moves focus to it. */}
+          <div className="define-rota-plan" aria-live="polite">
+            {planError && <p className="define-rota-error">{planError}</p>}
+
+            {noPattern && (
+              <p className="define-rota-warning">
+                There is no shift pattern yet, so there are no shifts to define.
+                Set one in the Rota Defaults below.
+              </p>
+            )}
+
+            {!noPattern && count === null && plan !== null && (
+              <p className="define-rota-note">
+                Say how many shifts, and the ones it would take are listed here.
+              </p>
+            )}
+
+            {refusal && <p className="define-rota-warning">{refusal}</p>}
+
+            {shifts.length > 0 && (
+              <>
+                <p className="define-rota-headline">
+                  {shifts.length} {shifts.length === 1 ? "shift" : "shifts"},
+                  from {formatStart(shifts[0].start)} to{" "}
+                  {formatStart(shifts[shifts.length - 1].start)}
+                </p>
+                {previous && previous.tail.length > 0 && (
+                  <div className="define-rota-month">
+                    <h4>End of the previous rota</h4>
+                    <ol className="define-rota-shifts">
+                      {previous.tail.map((shift) => (
+                        <ShiftRow
+                          key={shift.start}
+                          shift={shift}
+                          note="already defined"
+                        />
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                <PlannedShifts shifts={shifts} />
+              </>
+            )}
+          </div>
+
+          {/* Says the part of defining that is not on the form. Every active
+              volunteer gets their link the moment the rota exists — and the
+              reassurance that goes with it: nothing is emailed until you send
+              the round, with a deadline in it. */}
+          <p className="define-rota-note">
+            Defining also gives every active volunteer their availability link.
+            No email goes out until you send the round.
+          </p>
+
+          <div className="define-rota-actions">
+            <Button type="submit" disabled={!canDefine}>
+              {defining ? "Defining…" : "Define rota"}
+            </Button>
+          </div>
+        </form>
 
         {/* aria-live so the outcome reaches a screen reader: submitting moves
             nothing into focus, so an unannounced result would go unnoticed. */}
@@ -162,19 +281,16 @@ export default function DefineRota({
           )}
 
           {/* Only until the tab re-reads and swaps this whole screen for the
-              working one, which is the real confirmation. Worth showing in the
-              meantime: the dates are the one thing the form did not state
-              outright, and a shift landing on a day nobody expected is easiest
-              to see here. */}
+              working one, which is the real confirmation. */}
           {rota && (
             <>
               <p className="define-rota-result">
-                Defined {rota.shiftDates.length}{" "}
-                {rota.shiftDates.length === 1 ? "shift" : "shifts"}:
+                Defined {rota.shifts.length}{" "}
+                {rota.shifts.length === 1 ? "shift" : "shifts"}:
               </p>
               <ol className="define-rota-dates">
-                {rota.shiftDates.map((date) => (
-                  <li key={date}>{formatShiftDate(date)}</li>
+                {rota.shifts.map((shift) => (
+                  <li key={shift.start}>{formatStart(shift.start)}</li>
                 ))}
               </ol>
             </>
@@ -182,7 +298,7 @@ export default function DefineRota({
         </div>
       </section>
 
-      <RotaDefaultsCard />
+      <RotaDefaultsCard onSaved={() => setReload((n) => n + 1)} />
     </>
   );
 }
