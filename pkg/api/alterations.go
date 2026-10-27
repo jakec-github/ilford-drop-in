@@ -8,22 +8,25 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
+// createAlterationRequest names its shifts by id — shiftId, and swapShiftId
+// for a swap or a move. A date stopped naming one Shift once a day could hold
+// two (issue #293).
 type createAlterationRequest struct {
-	Date      string `json:"date"`
-	In        string `json:"in,omitempty"`
-	Out       string `json:"out,omitempty"`
-	InCustom  string `json:"inCustom,omitempty"`
-	OutCustom string `json:"outCustom,omitempty"`
-	SwapDate  string `json:"swapDate,omitempty"`
-	Reason    string `json:"reason"`
-	// RoleID is the Role whoever is named by In or InCustom takes on Date, by
+	ShiftID     string `json:"shiftId"`
+	In          string `json:"in,omitempty"`
+	Out         string `json:"out,omitempty"`
+	InCustom    string `json:"inCustom,omitempty"`
+	OutCustom   string `json:"outCustom,omitempty"`
+	SwapShiftID string `json:"swapShiftId,omitempty"`
+	Reason      string `json:"reason"`
+	// RoleID is the Role whoever is named by In or InCustom takes on the shift, by
 	// id as a pin names one (issue #222). Required whenever either is set — a
 	// Seat is a Seat in a Role whoever fills it, and being off the roster is no
 	// exception (issue #214) — except on a swap, where each leg inherits the
 	// Role of the person it replaces, so naming one is refused.
 	RoleID string `json:"roleId,omitempty"`
-	// OutRoleID is the Role of the Seat OutCustom leaves on Date, and
-	// SwapOutRoleID the Role of the Seat InCustom leaves on SwapDate. A custom
+	// OutRoleID is the Role of the Seat OutCustom leaves on the shift, and
+	// SwapOutRoleID the Role of the Seat InCustom leaves on the swap shift. A custom
 	// entry may hold several Seats on one shift, so leaving one says which,
 	// and only that Seat comes off (issue #216). Required wherever the entry's
 	// Seat has a Role; refused for a volunteer.
@@ -33,6 +36,7 @@ type createAlterationRequest struct {
 
 type alterationResponse struct {
 	ID          string `json:"id"`
+	ShiftID     string `json:"shiftId"`
 	ShiftDate   string `json:"shiftDate"`
 	Direction   string `json:"direction"`
 	VolunteerID string `json:"volunteerId,omitempty"`
@@ -55,12 +59,12 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 	}
 
 	params := services.ChangeRotaParams{
-		Date:          req.Date,
+		ShiftID:       req.ShiftID,
 		In:            req.In,
 		Out:           req.Out,
 		InCustom:      req.InCustom,
 		OutCustom:     req.OutCustom,
-		SwapDate:      req.SwapDate,
+		SwapShiftID:   req.SwapShiftID,
 		Reason:        req.Reason,
 		RoleID:        req.RoleID,
 		OutRoleID:     req.OutRoleID,
@@ -83,14 +87,14 @@ func (h *Handler) handleCreateAlteration(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// toAlterationResponses renders each alteration's shift date from the change
-// result's shift-id->date map, keeping the JSON contract's shiftDate field
-// while alterations themselves are keyed by shift id (ADR 0001).
+// toAlterationResponses renders each alteration under its shift id, with the
+// shift's date from the change result alongside it for display (ADR 0001).
 func toAlterationResponses(alterations []db.Alteration, datesByShiftID map[string]string) []alterationResponse {
 	responses := make([]alterationResponse, 0, len(alterations))
 	for _, a := range alterations {
 		responses = append(responses, alterationResponse{
 			ID:          a.ID,
+			ShiftID:     a.ShiftID,
 			ShiftDate:   datesByShiftID[a.ShiftID],
 			Direction:   a.Direction,
 			VolunteerID: a.VolunteerID,

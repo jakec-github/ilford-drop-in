@@ -21,18 +21,21 @@ import (
 // both validating against the same pre-state (issue #41, hazards H1 and H2).
 type ChangeRotaStore interface {
 	RoleStore
-	GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error)
+	GetShiftByID(ctx context.Context, id string) (*db.ShiftInRange, error)
 	WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store db.RotaChangeStore) error) error
 }
 
 // ChangeRotaParams holds the input parameters for a rota change
 type ChangeRotaParams struct {
-	Date      string // Target shift date (YYYY-MM-DD)
+	ShiftID   string // Id of the shift being changed
 	In        string // Volunteer ID to add
 	Out       string // Volunteer ID to remove
 	InCustom  string // Custom value to add
 	OutCustom string // Custom value to remove
-	SwapDate  string // Optional date for reverse operation (YYYY-MM-DD)
+	// Optional id of the shift the reverse operation runs on. A Shift is named
+	// by id, never by date: a date stops naming one Shift once a day can hold
+	// two (issue #293).
+	SwapShiftID string
 	// Why the change was made. Required only of a simple removal — see
 	// isSimpleRemoval. Trimmed on the way in, so whitespace is no reason at
 	// all, and an unstated one is stored as NULL rather than an empty string.
@@ -41,7 +44,7 @@ type ChangeRotaParams struct {
 	// Role the incoming volunteer takes. Required alongside In, and — on a
 	// swap, where Out is also set — refused, since each leg then has its own
 	// incoming person and there is no unambiguous one to apply it to. A move
-	// (SwapDate set, Out empty) has exactly one incoming person, so it is
+	// (SwapShiftID set, Out empty) has exactly one incoming person, so it is
 	// offered there same as any other arrival — see validateRole. Naming the
 	// same person in In and Out is a Role switch: they come off the shift and
 	// go straight back onto it in this Role, which is the only thing such a
@@ -56,22 +59,21 @@ type ChangeRotaParams struct {
 	// refused, or land on the wrong Role, the moment somebody renamed one
 	// while this change was being made.
 	RoleID string
-	// The Role of the Seat OutCustom leaves on Date. A custom entry may hold
+	// The Role of the Seat OutCustom leaves on the shift. A custom entry may hold
 	// several Seats on one shift (#195), so its leaving names which, and
 	// exactly that one Seat comes off (issue #216). Required whenever the
 	// entry holds a Role there; one holding a Seat with no Role — added before
 	// #214 — names none. Refused for a volunteer, who holds at most one Seat
 	// on a shift and so has none to pick out.
 	OutRoleID string
-	// The same for whoever leaves SwapDate: InCustom, on a move or a swap,
+	// The same for whoever leaves the swap shift: InCustom, on a move or a swap,
 	// since the swap leg runs the change the other way round.
 	SwapOutRoleID string
 }
 
 // ChangeRotaResult contains the result of a rota change. Alterations are keyed
 // by shift id (ADR 0001); DatesByShiftID maps each shift id touched by this
-// change back to its date so the API can still render dates without
-// re-resolving them.
+// change to its date, which the API carries alongside the id for display.
 type ChangeRotaResult struct {
 	CoverID        string
 	Alterations    []db.Alteration
@@ -94,12 +96,12 @@ func ChangeRota(
 	params.Reason = strings.TrimSpace(params.Reason)
 
 	logger.Debug("Starting changeRota",
-		zap.String("date", params.Date),
+		zap.String("shift_id", params.ShiftID),
 		zap.String("in", params.In),
 		zap.String("out", params.Out),
 		zap.String("in_custom", params.InCustom),
 		zap.String("out_custom", params.OutCustom),
-		zap.String("swap_date", params.SwapDate),
+		zap.String("swap_shift_id", params.SwapShiftID),
 		zap.String("reason", params.Reason))
 
 	// Step 1: Input validation
@@ -150,22 +152,22 @@ func ChangeRota(
 		}
 	}
 
-	// Step 2: Resolve the target date to its shift — the id keys allocations and
-	// alterations, the rota id is what the change locks, and the date is echoed
-	// back in the result. Shifts are immutable once minted, so resolving before
-	// the lock is safe.
-	shift, err := resolveShift(ctx, database, params.Date)
+	// Step 2: Resolve the target shift — the id keys allocations and
+	// alterations, the rota id is what the change locks, and the date and start
+	// name it in a refusal. Resolving before the lock is safe: a change only
+	// reaches an allocated rota, whose shifts no longer move.
+	shift, err := resolveShift(ctx, database, params.ShiftID)
 	if err != nil {
 		return nil, err
 	}
 
-	// If swap_date is provided, resolve its shift (may be in a different rota).
-	// A swap onto the same date reuses the primary shift.
+	// If a swap shift is named, resolve it (it may be in a different rota). A
+	// swap onto the same shift reuses the primary one.
 	swapShift := shift
-	if params.SwapDate != "" && params.SwapDate != params.Date {
-		swapShift, err = resolveShift(ctx, database, params.SwapDate)
+	if params.SwapShiftID != "" && params.SwapShiftID != params.ShiftID {
+		swapShift, err = resolveShift(ctx, database, params.SwapShiftID)
 		if err != nil {
-			return nil, fmt.Errorf("swap date: %w", err)
+			return nil, fmt.Errorf("swap shift: %w", err)
 		}
 	}
 
@@ -177,7 +179,7 @@ func ChangeRota(
 	// that crosses rotas. External calls (volunteer fetch above) stay outside
 	// so no network I/O happens while rows are locked.
 	lockRotaIDs := []string{shift.RotaID}
-	if params.SwapDate != "" {
+	if params.SwapShiftID != "" {
 		lockRotaIDs = append(lockRotaIDs, swapShift.RotaID)
 	}
 
@@ -211,21 +213,22 @@ func ChangeRota(
 			return err
 		}
 
-		if err := validateDateChanges(effectiveState, primary, volunteersByID, roles, params.Date); err != nil {
+		if err := validateShiftChanges(effectiveState, primary, volunteersByID, roles, shiftLabel(*shift)); err != nil {
 			return err
 		}
 
-		// Validate swap date (with in/out reversed), using its own effective state
+		// Validate the swap shift (with in/out reversed), using its own
+		// effective state
 		swapEffectiveState := effectiveState
-		if params.SwapDate != "" {
-			if params.SwapDate != params.Date {
+		if params.SwapShiftID != "" {
+			if params.SwapShiftID != params.ShiftID {
 				swapEffectiveState, err = buildEffectiveState(ctx, store, swapShift, roles)
 				if err != nil {
 					return err
 				}
 			}
-			if err := validateDateChanges(swapEffectiveState, swapLeg, volunteersByID, roles, params.SwapDate); err != nil {
-				return fmt.Errorf("swap date: %w", err)
+			if err := validateShiftChanges(swapEffectiveState, swapLeg, volunteersByID, roles, shiftLabel(*swapShift)); err != nil {
+				return fmt.Errorf("swap shift: %w", err)
 			}
 		}
 
@@ -252,7 +255,7 @@ func ChangeRota(
 			primary.roleID = roleForIncoming(arriving, leaving, effectiveState, swapEffectiveState)
 		}
 		alterations = append(alterations, buildAlterationsForShift(primary, coverID)...)
-		if params.SwapDate != "" {
+		if params.SwapShiftID != "" {
 			// A swap names no Role for whoever arrives — there is no
 			// unambiguous person to apply one to — so both legs work theirs
 			// out from the shifts.
@@ -276,7 +279,7 @@ func ChangeRota(
 		zap.Int("alteration_count", len(alterations)))
 
 	datesByShiftID := map[string]string{shift.ID: shift.Date}
-	if params.SwapDate != "" {
+	if params.SwapShiftID != "" {
 		datesByShiftID[swapShift.ID] = swapShift.Date
 	}
 
@@ -288,19 +291,19 @@ func ChangeRota(
 }
 
 // isSimpleRemoval reports whether the change only takes people off the rota:
-// nobody arrives on Date, and there is no swap date to put whoever leaves on
-// another shift. That one shape is the only one asked for a reason (issue
+// nobody arrives on the shift, and there is no swap shift to put whoever
+// leaves on another. That one shape is the only one asked for a reason (issue
 // #148). Every other change accounts for itself — a replacement or a swap names
 // who fills the place, an add makes the shift better off — while a removal
 // leaves a gap that the cover record is the only place to explain.
 //
-// A swap date is enough to disqualify it even with nothing coming in, because
-// the swap leg reverses the change: whoever leaves Date joins the shift there.
+// A swap shift is enough to disqualify it even with nothing coming in, because
+// the swap leg reverses the change: whoever leaves the shift joins that one.
 //
 // Only asked after the check that the change does something at all, so nobody
 // arriving does mean somebody leaving.
 func isSimpleRemoval(params ChangeRotaParams) bool {
-	return params.In == "" && params.InCustom == "" && params.SwapDate == ""
+	return params.In == "" && params.InCustom == "" && params.SwapShiftID == ""
 }
 
 // switchingRole reports whether this change names the same person on both
@@ -318,12 +321,12 @@ func switchingRole(outVol, inVol, outCustom, inCustom string) bool {
 
 // validateSwitch refuses the one nonsense a Role switch can be asked for: the
 // same person on both sides of a *swap*. A swap reverses the change on the
-// second date, so naming one person means taking them off each shift and
+// second shift, so naming one person means taking them off each shift and
 // putting them back on it — two no-ops, recorded as four alterations, and on a
 // reading of the result indistinguishable from a switch that went through.
 // Nothing offers it; saying so beats storing it.
 func validateSwitch(params ChangeRotaParams) error {
-	if params.SwapDate == "" {
+	if params.SwapShiftID == "" {
 		return nil
 	}
 	if switchingRole(params.Out, params.In, params.OutCustom, params.InCustom) {
@@ -335,8 +338,8 @@ func validateSwitch(params ChangeRotaParams) error {
 // buildEffectiveState computes the current effective allocations for a single
 // shift by applying that shift's existing alterations to its base allocations.
 // It reads through the lock-holding transaction's store, so the state cannot
-// change between this read and the caller's insert. The shift is a single date,
-// so the result is a flat allocation slice rather than a per-shift map.
+// change between this read and the caller's insert. It is a single shift, so
+// the result is a flat allocation slice rather than a per-shift map.
 func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, shift *db.Shift, roles model.Roles) ([]db.Allocation, error) {
 	allocations, err := store.GetAllocationsByShiftIDs(ctx, []string{shift.ID})
 	if err != nil {
@@ -352,31 +355,28 @@ func buildEffectiveState(ctx context.Context, store db.RotaChangeStore, shift *d
 	return byShiftID[shift.ID], nil
 }
 
-// resolveShift looks up the shift on the given date, rejecting dates with no
-// shift. This replaces recomputing rota arithmetic: a date now resolves to what
-// actually exists in the shift table (ADR 0001).
-func resolveShift(ctx context.Context, database ChangeRotaStore, dateStr string) (*db.Shift, error) {
-	date, err := time.Parse("2006-01-02", dateStr)
+// resolveShift looks up the shift with the given id, rejecting an id no shift
+// has (ADR 0001).
+func resolveShift(ctx context.Context, database ChangeRotaStore, shiftID string) (*db.Shift, error) {
+	if shiftID == "" {
+		return nil, wrapf(ErrInvalidInput, "shiftId is required")
+	}
+	found, err := database.GetShiftByID(ctx, shiftID)
 	if err != nil {
-		return nil, wrapf(ErrInvalidInput, "invalid date format %q: expected YYYY-MM-DD", dateStr)
+		return nil, fmt.Errorf("failed to look up shift %s: %w", shiftID, err)
+	}
+	if found == nil {
+		return nil, wrapf(ErrNotFound, "shift %s not found", shiftID)
 	}
 
-	shift, err := database.GetShiftByDate(ctx, date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up shift for date %s: %w", dateStr, err)
-	}
-	if shift == nil {
-		return nil, wrapf(ErrNotFound, "date %s is not in any rota", dateStr)
-	}
-
-	return shift, nil
+	return &found.Shift, nil
 }
 
-// validateDateChanges validates that one shift's half of a change is
-// consistent with the shift's current effective allocations. dateStr is used
-// only for error messages, and volunteersByID and roles only to name people
-// and Roles in them.
-func validateDateChanges(allocations []db.Allocation, change shiftChange, volunteersByID map[string]model.Volunteer, roles model.Roles, dateStr string) error {
+// validateShiftChanges validates that one shift's half of a change is
+// consistent with the shift's current effective allocations. label names the
+// shift in error messages, and volunteersByID and roles only name people and
+// Roles in them.
+func validateShiftChanges(allocations []db.Allocation, change shiftChange, volunteersByID map[string]model.Volunteer, roles model.Roles, label string) error {
 	outVol, inVol, outCustom, inCustom := change.out, change.in, change.outCustom, change.inCustom
 
 	// A Role switch names the same person on both sides: they are meant to be
@@ -396,7 +396,7 @@ func validateDateChanges(allocations []db.Allocation, change shiftChange, volunt
 			}
 		}
 		if !found {
-			return wrapf(ErrConflict, "%s is not on the shift for %s", volunteerLabel(outVol, volunteersByID), dateStr)
+			return wrapf(ErrConflict, "%s is not on the shift on %s", volunteerLabel(outVol, volunteersByID), label)
 		}
 	}
 
@@ -404,14 +404,14 @@ func validateDateChanges(allocations []db.Allocation, change shiftChange, volunt
 	if inVol != "" && !switching {
 		for _, a := range allocations {
 			if a.VolunteerID == inVol {
-				return wrapf(ErrConflict, "%s is already on the shift for %s", volunteerLabel(inVol, volunteersByID), dateStr)
+				return wrapf(ErrConflict, "%s is already on the shift on %s", volunteerLabel(inVol, volunteersByID), label)
 			}
 		}
 	}
 
 	// Validate outCustom: must hold the Seat it names on the shift
 	if outCustom != "" {
-		if err := validateLeavingSeat(allocations, outCustom, change.outCustomRole, roles, dateStr); err != nil {
+		if err := validateLeavingSeat(allocations, outCustom, change.outCustomRole, roles, label); err != nil {
 			return err
 		}
 	}
@@ -430,7 +430,7 @@ func validateDateChanges(allocations []db.Allocation, change shiftChange, volunt
 // Naming no Role is how an entry whose Seat has none leaves — one added before
 // #214. Where every Seat it holds has a Role, naming none leaves it unsaid
 // which goes, and that is the caller's to say rather than this to guess.
-func validateLeavingSeat(allocations []db.Allocation, custom, roleID string, roles model.Roles, dateStr string) error {
+func validateLeavingSeat(allocations []db.Allocation, custom, roleID string, roles model.Roles, label string) error {
 	onShift := false
 	for _, a := range allocations {
 		if a.CustomEntry != custom {
@@ -442,13 +442,13 @@ func validateLeavingSeat(allocations []db.Allocation, custom, roleID string, rol
 		onShift = true
 	}
 	if !onShift {
-		return wrapf(ErrConflict, "custom entry %q is not on the shift for %s", custom, dateStr)
+		return wrapf(ErrConflict, "custom entry %q is not on the shift on %s", custom, label)
 	}
 	if roleID == "" {
-		return wrapf(ErrInvalidInput, "say which Role custom entry %q is leaving the shift for %s in", custom, dateStr)
+		return wrapf(ErrInvalidInput, "say which Role custom entry %q is leaving the shift on %s in", custom, label)
 	}
 	role, _ := roles.ByID(roleID)
-	return wrapf(ErrConflict, "custom entry %q is not on the shift for %s as %s", custom, dateStr, role.Name)
+	return wrapf(ErrConflict, "custom entry %q is not on the shift on %s as %s", custom, label, role.Name)
 }
 
 // volunteerLabel names a volunteer for an error message a human reads — the
@@ -533,14 +533,14 @@ func buildAlterationsForShift(change shiftChange, coverID string) []db.Alteratio
 }
 
 // validateRole checks the caller-supplied Role. It names whoever is coming in
-// on Date, so anybody coming in must have one: the Role is what the Shape has a
+// on the shift, so anybody coming in must have one: the Role is what the Shape has a
 // Seat for, and guessing it from the roster is exactly what #89 takes away.
 // "Anybody" is the whole of the rule — a custom entry fills a Seat as much as a
 // volunteer does, and whether somebody is on the roster is no business of
 // whether their Seat has a Role (issue #214).
 //
 // A change with nobody coming in has none to set, and a swap has two incoming
-// people — one on each date — so a single Role would land on whichever the
+// people — one on each shift — so a single Role would land on whichever the
 // caller did not mean; there, each leg inherits the Role of the person it
 // replaces instead.
 func validateRole(params ChangeRotaParams, roles model.Roles) error {
@@ -553,12 +553,12 @@ func validateRole(params ChangeRotaParams, roles model.Roles) error {
 		if !arriving {
 			return wrapf(ErrInvalidInput, "a role can only be set for someone coming in")
 		}
-		if params.SwapDate != "" && leaving {
-			return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each date has its own incoming person")
+		if params.SwapShiftID != "" && leaving {
+			return wrapf(ErrInvalidInput, "a role cannot be set on a swap: each shift has its own incoming person")
 		}
 		return nil
 	}
-	if arriving && params.SwapDate == "" {
+	if arriving && params.SwapShiftID == "" {
 		return wrapf(ErrInvalidInput, "a role is required for someone coming in")
 	}
 	return nil
@@ -574,8 +574,8 @@ func validateLeavingRoles(params ChangeRotaParams, roles model.Roles) error {
 		roleID, custom, volunteer, what string
 		leaves                          bool
 	}{
-		{params.OutRoleID, params.OutCustom, params.Out, "the date", true},
-		{params.SwapOutRoleID, params.InCustom, params.In, "the swap date", params.SwapDate != ""},
+		{params.OutRoleID, params.OutCustom, params.Out, "the shift", true},
+		{params.SwapOutRoleID, params.InCustom, params.In, "the swap shift", params.SwapShiftID != ""},
 	} {
 		if leaving.roleID == "" {
 			continue
@@ -614,7 +614,7 @@ func warnUnheldRole(params ChangeRotaParams, volunteersByID map[string]model.Vol
 	logger.Warn("Placing a volunteer in a role they do not hold",
 		zap.String("volunteer_id", params.In),
 		zap.String("role", role.Name),
-		zap.String("date", params.Date))
+		zap.String("shift_id", params.ShiftID))
 }
 
 // allocationLabel names whoever holds an allocation for an error message a

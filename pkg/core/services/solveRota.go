@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -27,11 +26,9 @@ type rotaSolve struct {
 	// rota is the rota in flight: the latest, and necessarily unallocated,
 	// since solveRotaInFlight refuses an allocated one.
 	rota *db.Rotation
-	// shifts are that rota's Shifts, and shiftIDByDate maps the solver's
-	// date-keyed output back onto their ids (ADR 0001).
-	shifts        []db.Shift
-	shiftDates    []time.Time
-	shiftIDByDate map[string]string
+	// shifts are that rota's Shifts, in start order. The solver's output is
+	// keyed by their ids, so it maps back onto them with no date in between.
+	shifts []db.Shift
 	// shapes is what each Shift asked for, by Shift id — read from the Shift
 	// rather than the settings (#137), and already checked for a Shift asking
 	// for nobody.
@@ -91,9 +88,9 @@ func solveRotaInFlight(
 		return nil, wrapf(ErrConflict, "rota %s is already allocated (at %s) - refusing to allocate again", targetRota.ID, targetRota.AllocatedDatetime)
 	}
 
-	// Read the rota's shifts once: the allocator works in dates, but persistence
-	// keys allocations by shift id (ADR 0001). shiftIDByDate carries the solver's
-	// date-keyed output back to the minted shift ids.
+	// Read the rota's shifts once. The solver is told each one's id and hands
+	// it back on the shift it solved, so persistence keys allocations by shift
+	// id (ADR 0001) without a date ever standing in for one (issue #293).
 	shifts, err := database.GetShiftsByRotaID(ctx, targetRota.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
@@ -101,18 +98,9 @@ func solveRotaInFlight(
 	if len(shifts) == 0 {
 		return nil, wrapf(ErrInvalidInput, "rota %s has no shifts", targetRota.ID)
 	}
-	shiftDates, err := utils.ShiftDatesFromShifts(shifts)
-	if err != nil {
-		return nil, err
-	}
-	shiftIDByDate := make(map[string]string, len(shifts))
-	dateByShiftID := make(map[string]string, len(shifts))
-	closedByDate := make(map[string]bool, len(shifts))
+	shifts = inStartOrder(shifts)
 	shiftIDs := make([]string, len(shifts))
 	for i, s := range shifts {
-		shiftIDByDate[s.Date] = s.ID
-		dateByShiftID[s.ID] = s.Date
-		closedByDate[s.Date] = s.Closed
 		shiftIDs[i] = s.ID
 	}
 
@@ -159,22 +147,19 @@ func solveRotaInFlight(
 		return nil, err
 	}
 
-	// Shift indices are the solver's vocabulary, and index i is the i-th date in
-	// order, so the shift ids availability is stored against are lined up the
-	// same way. Each spec carries the Shift's own Shape and Closed: the solver
-	// is told what each day asks for and which days the Organisation does not run,
-	// rather than working either out (#132, #137).
-	shiftSpecs := make([]allocator.ShiftSpec, len(shiftDates))
-	orderedShiftIDs := make([]string, len(shiftDates))
-	for i, date := range shiftDates {
-		dateStr := date.Format("2006-01-02")
-		shiftID := shiftIDByDate[dateStr]
+	// Shift indices are the solver's vocabulary, and index i is the i-th Shift
+	// to start, so the shift ids availability is stored against are lined up
+	// the same way. Each spec carries the Shift's own Shape and Closed: the
+	// solver is told what each shift asks for and which the Organisation does
+	// not run, rather than working either out (#132, #137).
+	shiftSpecs := make([]allocator.ShiftSpec, len(shifts))
+	for i, s := range shifts {
 		shiftSpecs[i] = allocator.ShiftSpec{
-			Date:   dateStr,
-			Shape:  convertShape(shapes[shiftID]),
-			Closed: closedByDate[dateStr],
+			ID:     s.ID,
+			Date:   s.Date,
+			Shape:  convertShape(shapes[s.ID]),
+			Closed: s.Closed,
 		}
-		orderedShiftIDs[i] = shiftID
 	}
 
 	groupAvailability, err := fetchGroupAvailability(
@@ -184,7 +169,7 @@ func solveRotaInFlight(
 		// The active alone: an inactive volunteer's answers, given while they
 		// were active, must not make them choosable beyond their pins.
 		convertToAllocatorVolunteers(activeVolunteers),
-		orderedShiftIDs,
+		shiftIDs,
 		logger,
 	)
 	if err != nil {
@@ -205,8 +190,8 @@ func solveRotaInFlight(
 		return nil, fmt.Errorf("failed to build historical shifts: %w", err)
 	}
 
-	// Pins (issue #39): each pin becomes a synthetic exact-date
-	// override, so InitShifts applies them with no new merge logic.
+	// Pins (issue #39): each pin becomes a synthetic override naming its
+	// Shift, so InitShifts applies them with no new merge logic.
 	rosterIDs := make(map[string]bool, len(allVolunteers))
 	for _, v := range allVolunteers {
 		rosterIDs[v.ID] = true
@@ -217,7 +202,7 @@ func solveRotaInFlight(
 	if err := checkPinsResolve(pins, shifts, rosterIDs); err != nil {
 		return nil, err
 	}
-	allocatorOverrides, err := buildPinOverrides(pins, dateByShiftID, roles)
+	allocatorOverrides, err := buildPinOverrides(pins, shiftIDs, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -266,8 +251,6 @@ func solveRotaInFlight(
 	return &rotaSolve{
 		rota:           targetRota,
 		shifts:         shifts,
-		shiftDates:     shiftDates,
-		shiftIDByDate:  shiftIDByDate,
 		shapes:         shapes,
 		output:         output,
 		solvedShifts:   solvedShifts,
@@ -311,7 +294,7 @@ func (s *rotaSolve) seatsFilled() int {
 
 	filled := 0
 	for _, solved := range s.solvedShifts {
-		shiftID := s.shiftIDByDate[solved.Date]
+		shiftID := solved.ID
 		if !open[shiftID] {
 			continue
 		}

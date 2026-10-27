@@ -34,7 +34,7 @@ func calendarShift(t *testing.T, date string) Shift {
 	t.Helper()
 	start, end, err := model.ShiftTimestamps(date, calendarTestDefaults.ShiftStartTime, calendarTestDefaults.ShiftEndTime)
 	require.NoError(t, err)
-	return Shift{Date: date, StartAt: start, EndAt: end}
+	return Shift{ID: "shift-" + date, Date: date, StartAt: start, EndAt: end}
 }
 
 func TestBuildVolunteerCalendar_Basic(t *testing.T) {
@@ -56,7 +56,7 @@ func TestBuildVolunteerCalendar_Basic(t *testing.T) {
 	assert.Contains(t, out, "REFRESH-INTERVAL;VALUE=DURATION:PT6H")
 	assert.Contains(t, out, "X-PUBLISHED-TTL:PT6H")
 
-	assert.Contains(t, out, "UID:alice-2026-01-12@ilford-drop-in")
+	assert.Contains(t, out, "UID:alice-shift-2026-01-12@ilford-drop-in")
 	assert.Contains(t, out, "DTSTART:20260112T193000Z")
 	assert.Contains(t, out, "DTEND:20260112T213000Z")
 	assert.Contains(t, out, "SUMMARY:Test Organisation shift")
@@ -295,4 +295,16 @@ func TestBuildVolunteerCalendar_ShipsReminders(t *testing.T) {
 	// The alarms sit inside the event they belong to, not beside it.
 	event := out[strings.Index(out, "BEGIN:VEVENT"):strings.Index(out, "END:VEVENT")]
 	assert.Equal(t, 2, strings.Count(event, "BEGIN:VALARM"))
+}
+
+// Two shifts on one day are two events: a UID names the shift, not its date.
+func TestBuildVolunteerCalendar_TwoShiftsOnOneDay(t *testing.T) {
+	morning, evening := calendarShift(t, "2026-01-12"), calendarShift(t, "2026-01-12")
+	morning.ID, evening.ID = "morning", "evening"
+
+	out, err := BuildVolunteerCalendar([]Shift{morning, evening}, calendarTestVolunteer(), testRoles, calendarTestDefaults, calendarTestName, calendarTestURL)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "UID:alice-morning@ilford-drop-in")
+	assert.Contains(t, out, "UID:alice-evening@ilford-drop-in")
 }

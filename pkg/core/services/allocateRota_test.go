@@ -41,13 +41,16 @@ func stubSolver(t *testing.T, output allocator.CpsatOutput) string {
 }
 
 // solvedRota is what the stub solver answers: a rota that staffs the given
-// volunteers, in order, on the dates named.
+// volunteers, in order, on the dates named. The fake Shifts these tests use
+// are each identified by their date, so a date doubles as the id the solver
+// hands back.
 func solvedRota(placements map[string][]allocator.CpsatAssignment) allocator.CpsatOutput {
 	output := allocator.CpsatOutput{SolverStatus: "OPTIMAL", Success: true}
 	index := 0
 	for _, date := range sortedDates(placements) {
 		output.Shifts = append(output.Shifts, allocator.CpsatOutputShift{
 			Index:       index,
+			ID:          date,
 			Date:        date,
 			Assignments: placements[date],
 		})

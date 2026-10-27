@@ -360,6 +360,7 @@ export async function removeAllocationRule(id: string): Promise<RotaDefaults> {
 
 interface ApiPin {
   id: string;
+  shiftId: string;
   date: string;
   roleId: string;
   role: string;
@@ -375,6 +376,7 @@ interface ListPinsResponse {
 function toPin(p: ApiPin): Pin {
   return {
     id: p.id,
+    shiftId: p.shiftId,
     date: p.date,
     roleId: p.roleId,
     role: p.role,
@@ -411,7 +413,7 @@ export async function createPin(
   // Every pin names the Role it fills, by id — a pin is a promise about a job,
   // and may name one the pinned volunteer does not hold (ADR 0010).
   const body: Record<string, string> = {
-    date: pin.date,
+    shiftId: pin.shiftId,
     roleId: pin.roleId,
   };
   if ("volunteerId" in pin.person) {
@@ -766,12 +768,12 @@ function personFields(
 // patching what it has.
 export async function createAlteration(change: RotaChange): Promise<void> {
   const body: Record<string, string> = {
-    date: change.date,
+    shiftId: change.shiftId,
     reason: change.reason,
   };
   if (change.in) Object.assign(body, personFields("in", change.in));
   if (change.out) Object.assign(body, personFields("out", change.out));
-  if (change.swapDate) body.swapDate = change.swapDate;
+  if (change.swapShiftId) body.swapShiftId = change.swapShiftId;
   if (change.roleId) body.roleId = change.roleId;
   if (change.outRoleId) body.outRoleId = change.outRoleId;
   if (change.swapOutRoleId) body.swapOutRoleId = change.swapOutRoleId;

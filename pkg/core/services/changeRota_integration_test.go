@@ -18,8 +18,8 @@ import (
 )
 
 // seedAllocatedRota creates a one-shift rota on 2026-08-02 with alice
-// allocated as a Service volunteer, returning the rota ID.
-func seedAllocatedRota(t *testing.T, database *db.DB, roleIDs map[string]string) string {
+// allocated as a Service volunteer, returning the rota's id and its shift's.
+func seedAllocatedRota(t *testing.T, database *db.DB, roleIDs map[string]string) (string, string) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -31,7 +31,7 @@ func seedAllocatedRota(t *testing.T, database *db.DB, roleIDs map[string]string)
 		{ID: uuid.New().String(), ShiftID: shiftID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"},
 	}, rotaID, time.Now()))
 
-	return rotaID
+	return rotaID, shiftID
 }
 
 // alterationsForRota reads a rota's alterations via its shifts, the shift_id-keyed
@@ -59,10 +59,10 @@ func TestChangeRotaConcurrentIdenticalAdds(t *testing.T) {
 	database, _ := dbtest.New(t)
 	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
-	rotaID := seedAllocatedRota(t, database, roleIDs)
+	rotaID, shiftID := seedAllocatedRota(t, database, roleIDs)
 
 	params := ChangeRotaParams{
-		Date:      "2026-08-02",
+		ShiftID:   shiftID,
 		In:        "dave",
 		RoleID:    roleIDs["Service volunteer"],
 		Reason:    "Extra cover",
@@ -139,7 +139,7 @@ func TestChangeRotaSerialisesWithAllocation(t *testing.T) {
 	changeErr := make(chan error, 1)
 	go func() {
 		_, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
-			Date:      "2026-08-02",
+			ShiftID:   shiftID,
 			In:        "dave",
 			RoleID:    roleIDs["Service volunteer"],
 			Reason:    "Extra cover",
@@ -169,10 +169,10 @@ func TestChangeRotaWritesNullReason(t *testing.T) {
 	database, dbURL := dbtest.New(t)
 	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
-	seedAllocatedRota(t, database, roleIDs)
+	_, shiftID := seedAllocatedRota(t, database, roleIDs)
 
 	result, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2026-08-02",
+		ShiftID:   shiftID,
 		In:        "dave",
 		RoleID:    roleIDs["Service volunteer"],
 		UserEmail: "test@example.com",
@@ -198,21 +198,16 @@ func TestChangeRotaSwitchRoleSurvivesReading(t *testing.T) {
 	database, _ := dbtest.New(t)
 	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
-	rotaID := seedAllocatedRota(t, database, roleIDs)
+	rotaID, shiftID := seedAllocatedRota(t, database, roleIDs)
 
 	_, err := ChangeRota(ctx, database, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2026-08-02",
+		ShiftID:   shiftID,
 		Out:       "alice",
 		In:        "alice",
 		RoleID:    roleIDs["Team lead"],
 		UserEmail: "test@example.com",
 	}, zap.NewNop())
 	require.NoError(t, err)
-
-	shifts, err := database.GetShiftsByRotaID(ctx, rotaID)
-	require.NoError(t, err)
-	require.Len(t, shifts, 1)
-	shiftID := shifts[0].ID
 
 	allocations, err := database.GetAllocationsByShiftIDs(ctx, []string{shiftID})
 	require.NoError(t, err)

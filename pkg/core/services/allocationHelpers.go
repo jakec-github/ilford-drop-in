@@ -176,24 +176,29 @@ func convertToAllocatorVolunteers(volunteers []model.Volunteer) []allocator.Volu
 }
 
 // convertToDBAllocations converts allocator shifts to database allocation
-// records, resolving each solver-output date to its minted shift id via
-// shiftIDByDate. A date with no minted shift is a broken invariant (the solver
-// only ever sees minted dates); it fails loudly here rather than tripping the
-// shift_id FK on insert (ADR 0001).
+// records, each under the id the solver handed back with it. An id that is not
+// one of the rota's shifts is a broken invariant (the solver only ever sees the
+// rota's own); it fails loudly here rather than tripping the shift_id FK on
+// insert (ADR 0001).
 //
 // One filled Seat is one row, whatever Role it is: the solver decided the
 // Role, so there is nothing to work out here but its id. The solver speaks Role
 // names and a row stores the Role itself (issue #222), so roles must be the
 // table the solve was assembled from: names are unique within it, and a name it
-// does not have is a Seat the solver invented, which fails as loudly as a date
-// with no Shift.
-func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator.Shift, roles model.Roles) ([]db.Allocation, error) {
+// does not have is a Seat the solver invented, which fails as loudly as a
+// shift that is not the rota's.
+func convertToDBAllocations(rotaShifts []db.Shift, shifts []*allocator.Shift, roles model.Roles) ([]db.Allocation, error) {
+	inRota := make(map[string]bool, len(rotaShifts))
+	for _, s := range rotaShifts {
+		inRota[s.ID] = true
+	}
+
 	allocations := make([]db.Allocation, 0)
 
 	for _, shift := range shifts {
-		shiftID, ok := shiftIDByDate[shift.Date]
-		if !ok {
-			return nil, fmt.Errorf("solver produced an allocation for date %s with no minted shift", shift.Date)
+		shiftID := shift.ID
+		if !inRota[shiftID] {
+			return nil, fmt.Errorf("solver produced an allocation for shift %q, which is not in the rota", shiftID)
 		}
 
 		for _, assignment := range shift.Assignments {
@@ -220,9 +225,9 @@ func convertToDBAllocations(shiftIDByDate map[string]string, shifts []*allocator
 
 // buildHistoricalShifts fetches allocations from the previous rota, applies that
 // rota's alterations (covers/swaps) so history reflects who actually worked, and
-// builds historical shift objects sorted ascending by date — one per Shift of
-// that rota, Closed ones and ones nobody worked included. Only includes Date
-// and AllocatedGroups fields. Callers pass ALL volunteers (inactive included) so
+// builds historical shift objects in start order — one per Shift of that rota,
+// Closed ones and ones nobody worked included. Only includes ID, Date and
+// AllocatedGroups fields. Callers pass ALL volunteers (inactive included) so
 // shifts worked by now-inactive volunteers keep their groups — dropping them
 // would shift the back-to-back boundary onto an earlier date. Allocations whose
 // volunteer id is unknown (deleted from the sheet) and custom entries are
@@ -252,11 +257,10 @@ func buildHistoricalShifts(
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch shifts: %w", err)
 	}
+	previousRotaShifts = inStartOrder(previousRotaShifts)
 	shiftIDs := make([]string, len(previousRotaShifts))
-	dateByShiftID := make(map[string]string, len(previousRotaShifts))
 	for i, s := range previousRotaShifts {
 		shiftIDs[i] = s.ID
-		dateByShiftID[s.ID] = s.Date
 	}
 
 	// Fetch the previous rota's allocations
@@ -319,18 +323,15 @@ func buildHistoricalShifts(
 			allocatedGroups = append(allocatedGroups, group)
 		}
 
-		// Create the historical shift with only Date and AllocatedGroups
+		// Create the historical shift with only ID, Date and AllocatedGroups.
+		// Consumers treat the last element as the boundary shift (and measure
+		// index distances), so they come in start order, as the shifts did.
 		historicalShifts = append(historicalShifts, &allocator.Shift{
-			Date:            dateByShiftID[shiftID],
+			ID:              shiftID,
+			Date:            previousShift.Date,
 			AllocatedGroups: allocatedGroups,
 		})
 	}
-
-	// Consumers treat the last element as the boundary shift (and measure
-	// index distances), so the order must be by date, not map iteration.
-	sort.Slice(historicalShifts, func(i, j int) bool {
-		return historicalShifts[i].Date < historicalShifts[j].Date
-	})
 
 	logger.Debug("Built historical shifts", zap.Int("shift_count", len(historicalShifts)))
 
@@ -352,17 +353,17 @@ func convertRoles(roles model.Roles) []allocator.Role {
 	return converted
 }
 
-// pinsForDate collects the pins that apply to a single date,
+// pinsForShift collects the pins that apply to a single shift,
 // mirroring InitShifts exactly: every matching override appends its pins in
 // order.
 //
 // Whether the shift is closed plays no part here. Closure is a field on the
 // Shift now, so the shifts a caller is iterating already carry it, and
 // InitShifts strips the pins of a closed one.
-func pinsForDate(date string, overrides []allocator.ShiftOverride) []allocator.Pin {
+func pinsForShift(shiftID string, overrides []allocator.ShiftOverride) []allocator.Pin {
 	var pins []allocator.Pin
 	for _, o := range overrides {
-		if !o.AppliesTo(date) {
+		if o.ShiftID != shiftID {
 			continue
 		}
 		pins = append(pins, o.Pins...)
@@ -370,14 +371,24 @@ func pinsForDate(date string, overrides []allocator.ShiftOverride) []allocator.P
 	return pins
 }
 
-// exactDateMatcher returns an AppliesTo predicate matching exactly one date, so
-// a synthetic pin override touches only its own shift.
-func exactDateMatcher(date string) func(string) bool {
-	return func(d string) bool { return d == date }
+// inStartOrder sorts a rota's shifts by when they start, which is the order
+// the solver indexes them in. The store already returns them so; sorting here
+// keeps that a property of the solve rather than of whichever store it is
+// handed. Date leads because it is the start's own date, and a fake shift may
+// carry no start.
+func inStartOrder(shifts []db.Shift) []db.Shift {
+	sorted := append([]db.Shift(nil), shifts...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Date != sorted[j].Date {
+			return sorted[i].Date < sorted[j].Date
+		}
+		return sorted[i].StartAt < sorted[j].StartAt
+	})
+	return sorted
 }
 
-// buildPinOverrides turns each pin into a synthetic, exact-date
-// allocator.ShiftOverride so InitShifts applies them through its existing append
+// buildPinOverrides turns each pin into a synthetic
+// allocator.ShiftOverride naming its Shift, so InitShifts applies them through its existing append
 // semantics — no new merge logic in the solver (issue #39 / ADR 0003).
 //
 // There is nothing to merge against any more: Config Pins were deleted
@@ -392,15 +403,18 @@ func exactDateMatcher(date string) func(string) bool {
 // keepable at all.
 func buildPinOverrides(
 	pins []db.Pin,
-	dateByShiftID map[string]string,
+	shiftIDs []string,
 	roles model.Roles,
 ) ([]allocator.ShiftOverride, error) {
+	known := make(map[string]bool, len(shiftIDs))
+	for _, id := range shiftIDs {
+		known[id] = true
+	}
 	overrides := make([]allocator.ShiftOverride, 0, len(pins))
 
 	for _, pin := range pins {
-		date, ok := dateByShiftID[pin.ShiftID]
-		if !ok {
-			return nil, fmt.Errorf("pin %s references shift %s with no minted date", pin.ID, pin.ShiftID)
+		if !known[pin.ShiftID] {
+			return nil, fmt.Errorf("pin %s references shift %s, which is not in the rota", pin.ID, pin.ShiftID)
 		}
 		if pin.VolunteerID == "" && pin.CustomValue == "" {
 			return nil, fmt.Errorf("pin %s has neither a volunteer nor a custom value", pin.ID)
@@ -414,7 +428,7 @@ func buildPinOverrides(
 		}
 
 		overrides = append(overrides, allocator.ShiftOverride{
-			AppliesTo: exactDateMatcher(date),
+			ShiftID: pin.ShiftID,
 			Pins: []allocator.Pin{{
 				VolunteerID: pin.VolunteerID,
 				Custom:      pin.CustomValue,

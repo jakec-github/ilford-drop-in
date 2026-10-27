@@ -14,15 +14,15 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// mockPinstore implements Pinstore. WithRotaPinLock
+// mockPinStore implements PinStore. WithRotaPinLock
 // records the requested lock and hands the mock itself to the callback as the
 // transaction-bound store, mirroring the WithRotaLock mock in changeRota_test.
-type mockPinstore struct {
+type mockPinStore struct {
 	testRoleStore
 
 	shifts      []db.Shift
 	allocated   map[string]bool // rota id → allocated
-	pins   []db.Pin
+	pins        []db.Pin
 	shiftRanges []db.ShiftInRange
 	// roles replaces the default pair, for a test about the Roles moving under
 	// pins that were made before they did.
@@ -37,24 +37,23 @@ type mockPinstore struct {
 	deletedIDs    []string
 }
 
-func (m *mockPinstore) ListRoles(ctx context.Context) ([]db.Role, error) {
+func (m *mockPinStore) ListRoles(ctx context.Context) ([]db.Role, error) {
 	if m.roles != nil {
 		return m.roles, nil
 	}
 	return m.testRoleStore.ListRoles(ctx)
 }
 
-func (m *mockPinstore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {
-	dateStr := date.Format("2006-01-02")
+func (m *mockPinStore) GetShiftByID(ctx context.Context, id string) (*db.ShiftInRange, error) {
 	for i := range m.shifts {
-		if m.shifts[i].Date == dateStr {
-			return &m.shifts[i], nil
+		if m.shifts[i].ID == id {
+			return &db.ShiftInRange{Shift: m.shifts[i], Allocated: m.allocated[m.shifts[i].RotaID]}, nil
 		}
 	}
 	return nil, nil
 }
 
-func (m *mockPinstore) GetPinByID(ctx context.Context, id string) (*db.Pin, *db.Shift, error) {
+func (m *mockPinStore) GetPinByID(ctx context.Context, id string) (*db.Pin, *db.Shift, error) {
 	for i := range m.pins {
 		if m.pins[i].ID == id {
 			p := m.pins[i]
@@ -69,7 +68,7 @@ func (m *mockPinstore) GetPinByID(ctx context.Context, id string) (*db.Pin, *db.
 	return nil, nil, nil
 }
 
-func (m *mockPinstore) GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error) {
+func (m *mockPinStore) GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error) {
 	want := idSet(shiftIDs)
 	var out []db.Pin
 	for _, p := range m.pins {
@@ -80,7 +79,7 @@ func (m *mockPinstore) GetPinsByShiftIDs(ctx context.Context, shiftIDs []string)
 	return out, nil
 }
 
-func (m *mockPinstore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
+func (m *mockPinStore) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]db.ShiftInRange, error) {
 	var out []db.ShiftInRange
 	for _, s := range m.shiftRanges {
 		if shiftDateInRange(s.Date, from, to) {
@@ -90,24 +89,24 @@ func (m *mockPinstore) GetShiftsInRange(ctx context.Context, from, to time.Time)
 	return out, nil
 }
 
-func (m *mockPinstore) WithRotaPinLock(ctx context.Context, rotaIDs []string, fn func(store db.PinTxStore) error) error {
+func (m *mockPinStore) WithRotaPinLock(ctx context.Context, rotaIDs []string, fn func(store db.PinTxStore) error) error {
 	m.lockedRotaIDs = append(m.lockedRotaIDs, rotaIDs)
 	return fn(m)
 }
 
 // PinTxStore methods (the mock plays both roles, like changeRota_test).
 
-func (m *mockPinstore) RotaAllocated(ctx context.Context, rotaID string) (bool, error) {
+func (m *mockPinStore) RotaAllocated(ctx context.Context, rotaID string) (bool, error) {
 	return m.allocated[rotaID], nil
 }
 
-func (m *mockPinstore) InsertPin(ctx context.Context, mp db.Pin) error {
+func (m *mockPinStore) InsertPin(ctx context.Context, mp db.Pin) error {
 	m.inserted = append(m.inserted, mp)
 	m.pins = append(m.pins, mp)
 	return nil
 }
 
-func (m *mockPinstore) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]db.ShiftRequirement, error) {
+func (m *mockPinStore) GetShiftShapes(ctx context.Context, shiftIDs []string) (map[string][]db.ShiftRequirement, error) {
 	want := idSet(shiftIDs)
 	out := map[string][]db.ShiftRequirement{}
 	for shiftID, shape := range m.shapes {
@@ -118,7 +117,7 @@ func (m *mockPinstore) GetShiftShapes(ctx context.Context, shiftIDs []string) (m
 	return out, nil
 }
 
-func (m *mockPinstore) DeletePinByID(ctx context.Context, id string) (bool, error) {
+func (m *mockPinStore) DeletePinByID(ctx context.Context, id string) (bool, error) {
 	for i := range m.pins {
 		if m.pins[i].ID == id {
 			m.pins = append(m.pins[:i], m.pins[i+1:]...)
@@ -149,9 +148,12 @@ func pinVolunteers() *pinVolClient {
 	}
 }
 
-func oneShiftStore() *mockPinstore {
-	return &mockPinstore{
-		shifts:    []db.Shift{{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
+func oneShiftStore() *mockPinStore {
+	return &mockPinStore{
+		shifts: []db.Shift{{
+			ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1",
+			StartAt: "2026-08-02T19:30:00", EndAt: "2026-08-02T21:30:00",
+		}},
 		allocated: map[string]bool{},
 		shapes: map[string][]db.ShiftRequirement{
 			"shift-1": {
@@ -165,7 +167,7 @@ func oneShiftStore() *mockPinstore {
 func TestAddPin_VolunteerHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, view)
 
@@ -175,6 +177,7 @@ func TestAddPin_VolunteerHappyPath(t *testing.T) {
 	assert.Equal(t, "role-service-volunteer", got.RoleID)
 	assert.Equal(t, "bob", got.VolunteerID)
 	assert.Empty(t, got.CustomValue)
+	assert.Equal(t, "shift-1", view.ShiftID)
 	assert.Equal(t, "2026-08-02", view.Date)
 	assert.Equal(t, [][]string{{"rota-1"}}, store.lockedRotaIDs)
 }
@@ -182,7 +185,7 @@ func TestAddPin_VolunteerHappyPath(t *testing.T) {
 func TestAddPin_TeamLeadHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
@@ -192,7 +195,7 @@ func TestAddPin_TeamLeadHappyPath(t *testing.T) {
 func TestAddPin_CustomHappyPath(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "role-service-volunteer", store.inserted[0].RoleID)
@@ -203,7 +206,7 @@ func TestAddPin_CustomHappyPath(t *testing.T) {
 func TestAddPin_RejectsBothVolunteerAndCustom(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", Custom: "X", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", Custom: "X", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Empty(t, store.inserted)
 }
@@ -211,14 +214,14 @@ func TestAddPin_RejectsBothVolunteerAndCustom(t *testing.T) {
 func TestAddPin_RejectsNeitherVolunteerNorCustom(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
 func TestAddPin_RejectsMissingRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "role is required")
 }
@@ -226,7 +229,7 @@ func TestAddPin_RejectsMissingRole(t *testing.T) {
 func TestAddPin_RejectsUnknownRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-food-collector"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", RoleID: "role-food-collector"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "not a known role")
 	assert.Empty(t, store.inserted)
@@ -237,7 +240,7 @@ func TestAddPin_RejectsUnknownRole(t *testing.T) {
 func TestAddPin_CustomInACappedRole(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", Custom: "Visiting lead", RoleID: "role-team-lead"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", Custom: "Visiting lead", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
@@ -246,7 +249,7 @@ func TestAddPin_CustomInACappedRole(t *testing.T) {
 func TestAddPin_UnknownVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "nobody", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "nobody", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -255,7 +258,7 @@ func TestAddPin_UnknownVolunteer(t *testing.T) {
 func TestAddPin_InactiveVolunteer(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "carol", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "carol", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "carol", store.inserted[0].VolunteerID)
@@ -267,7 +270,7 @@ func TestAddPin_InactiveVolunteer(t *testing.T) {
 func TestAddPin_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	store := oneShiftStore()
 	view, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-team-lead"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
@@ -275,12 +278,37 @@ func TestAddPin_RoleTheVolunteerDoesNotHold(t *testing.T) {
 	assert.Equal(t, "Team lead", view.Role)
 }
 
-func TestAddPin_UnknownDate(t *testing.T) {
+func TestAddPin_UnknownShift(t *testing.T) {
 	store := oneShiftStore()
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-09-09", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-ghost", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrNotFound)
-	assert.Contains(t, err.Error(), "not in any rota")
+	assert.Contains(t, err.Error(), "shift-ghost")
+}
+
+func TestAddPin_RequiresAShift(t *testing.T) {
+	store := oneShiftStore()
+	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
+		AddPinParams{VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.Empty(t, store.inserted)
+}
+
+// A pin names its Shift, not its date: with two Shifts on one day, pinning
+// somebody to the evening leaves the morning alone (issue #293).
+func TestAddPin_PinsTheShiftNamedNotItsDate(t *testing.T) {
+	store := oneShiftStore()
+	store.shifts = append(store.shifts, db.Shift{
+		ID: "shift-1-evening", Date: "2026-08-02", RotaID: "rota-1",
+		StartAt: "2026-08-02T18:00:00", EndAt: "2026-08-02T20:00:00",
+	})
+	view, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
+		AddPinParams{ShiftID: "shift-1-evening", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+	require.NoError(t, err)
+
+	require.Len(t, store.inserted, 1)
+	assert.Equal(t, "shift-1-evening", store.inserted[0].ShiftID)
+	assert.Equal(t, "shift-1-evening", view.ShiftID)
 }
 
 // A closed shift has no Seats to promise anyone, so a pin on one is refused
@@ -289,7 +317,7 @@ func TestAddPin_ClosedShift(t *testing.T) {
 	store := oneShiftStore()
 	store.shifts[0].Closed = true
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "closed")
 	assert.Empty(t, store.inserted)
@@ -301,9 +329,10 @@ func TestAddPin_DuplicateVolunteer(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "already pinned")
+	assert.Contains(t, err.Error(), "already pinned to 2 August 2026 at 19:30",
+		"a refusal names the Shift by its date and start, not its id")
 }
 
 // An organisation sending two people is the ordinary case, and both of them are
@@ -315,7 +344,7 @@ func TestAddPin_TheSameCustomEntryTwice(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
 	}
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "External Org", store.inserted[0].CustomValue)
@@ -334,7 +363,7 @@ func TestAddPin_TheSameCustomEntryPastItsSeats(t *testing.T) {
 		{ID: "p4", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Org"},
 	}
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", Custom: "External Org", RoleID: "role-service-volunteer"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 }
@@ -347,7 +376,7 @@ func TestAddPin_PastTheRolesSeats(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "dan", RoleID: "role-team-lead"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "dan", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 	assert.Equal(t, "role-team-lead", store.inserted[0].RoleID)
@@ -361,7 +390,7 @@ func TestAddPin_ARoleTheShapeDoesNotAskFor(t *testing.T) {
 		{ShiftID: "shift-1", RoleID: "role-service-volunteer", Seats: 4},
 	}
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "alice", RoleID: "role-team-lead"}, zap.NewNop())
 	require.NoError(t, err)
 	require.Len(t, store.inserted, 1)
 }
@@ -370,7 +399,7 @@ func TestAddPin_AlreadyAllocated(t *testing.T) {
 	store := oneShiftStore()
 	store.allocated["rota-1"] = true
 	_, err := AddPin(context.Background(), store, pinVolunteers(), testCfg,
-		AddPinParams{Date: "2026-08-02", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
+		AddPinParams{ShiftID: "shift-1", VolunteerID: "bob", RoleID: "role-service-volunteer"}, zap.NewNop())
 	assert.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "already allocated")
 	assert.Empty(t, store.inserted)
@@ -406,7 +435,7 @@ func TestDeletePin_AlreadyAllocated(t *testing.T) {
 }
 
 func TestListPins(t *testing.T) {
-	store := &mockPinstore{
+	store := &mockPinStore{
 		shiftRanges: []db.ShiftInRange{
 			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
@@ -424,6 +453,7 @@ func TestListPins(t *testing.T) {
 	for _, v := range views {
 		byID[v.ID] = v
 	}
+	assert.Equal(t, "shift-1", byID["p1"].ShiftID)
 	assert.Equal(t, "2026-08-02", byID["p1"].Date)
 	assert.Equal(t, "alice", byID["p1"].VolunteerID)
 	assert.Equal(t, "Alice", byID["p1"].Name)
@@ -438,7 +468,7 @@ func TestListPins(t *testing.T) {
 // (issue #195). Nothing about the row moves: it is the same promise, and the
 // listing says it in today's words.
 func TestListPins_ReadsARenamedRoleUnderItsNewName(t *testing.T) {
-	store := &mockPinstore{
+	store := &mockPinStore{
 		roles: []db.Role{
 			{ID: "role-team-lead", Name: "Shift lead", Priority: 1, Colour: "violet"},
 			{ID: "role-service-volunteer", Name: "Service volunteer", Priority: 2, Colour: "teal"},
@@ -458,7 +488,7 @@ func TestListPins_ReadsARenamedRoleUnderItsNewName(t *testing.T) {
 }
 
 func TestListPins_BoundsFilterShifts(t *testing.T) {
-	store := &mockPinstore{
+	store := &mockPinStore{
 		shiftRanges: []db.ShiftInRange{
 			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
@@ -477,8 +507,8 @@ func TestListPins_BoundsFilterShifts(t *testing.T) {
 
 // twoSundayStore is the listing fixture: two consecutive Sundays in one rota,
 // no pins.
-func twoSundayStore() *mockPinstore {
-	return &mockPinstore{
+func twoSundayStore() *mockPinStore {
+	return &mockPinStore{
 		shiftRanges: []db.ShiftInRange{
 			{Shift: db.Shift{ID: "shift-1", Date: "2026-08-02", RotaID: "rota-1"}},
 			{Shift: db.Shift{ID: "shift-2", Date: "2026-08-09", RotaID: "rota-1"}},
@@ -486,7 +516,7 @@ func twoSundayStore() *mockPinstore {
 	}
 }
 
-func listPins(t *testing.T, store *mockPinstore) []PinView {
+func listPins(t *testing.T, store *mockPinStore) []PinView {
 	t.Helper()
 	views, err := ListPins(context.Background(), store, pinVolunteers(), testCfg, ListPinsParams{}, zap.NewNop())
 	require.NoError(t, err)

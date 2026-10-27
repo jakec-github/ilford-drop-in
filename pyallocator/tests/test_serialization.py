@@ -27,6 +27,7 @@ VALID_INPUT = {
     "shifts": [
         {
             "index": 0,
+            "id": "shift-0",
             "date": "2026-07-13",
             "closed": False,
             "shape": [
@@ -45,6 +46,7 @@ VALID_INPUT = {
         },
         {
             "index": 1,
+            "id": "shift-1",
             "date": "2026-07-20",
             "shape": [{"role": "Service volunteer", "count": 3}],
         },
@@ -74,7 +76,9 @@ VALID_INPUT = {
             "historical_allocation_count": 3,
         }
     ],
-    "historical_shifts": [{"date": "2026-06-29", "group_keys": ["couple_x"]}],
+    "historical_shifts": [
+        {"id": "shift-past", "date": "2026-06-29", "group_keys": ["couple_x"]}
+    ],
 }
 
 
@@ -87,6 +91,7 @@ def test_parse_valid_input():
     assert [r.name for r in parsed.roles] == ["Team lead", "Service volunteer"]
     assert len(parsed.shifts) == 2
     shift0 = parsed.shifts[0]
+    assert shift0.id == "shift-0"
     assert [(s.role, s.count) for s in shift0.shape] == [
         ("Team lead", 1),
         ("Service volunteer", 4),
@@ -106,6 +111,7 @@ def test_parse_valid_input():
     assert group.members[1].roles == ("Team lead", "Service volunteer")
     assert group.available_shift_indices == (0, 1)
     assert group.historical_allocation_count == 3
+    assert parsed.historical_shifts[0].id == "shift-past"
     assert parsed.historical_shifts[0].group_keys == ("couple_x",)
 
 
@@ -132,6 +138,8 @@ def test_rules_are_optional_and_any_kind_parses():
         (lambda d: d.update(rules={}), "expected list"),
         (lambda d: d.pop("shifts"), "shifts"),
         (lambda d: d["shifts"][0].pop("index"), "index"),
+        (lambda d: d["shifts"][0].pop("id"), "id"),
+        (lambda d: d["historical_shifts"][0].pop("id"), "id"),
         (lambda d: d["shifts"][0].update(index=5), "out of order"),
         (lambda d: d["groups"][0].pop("group_key"), "group_key"),
         (lambda d: d["groups"][0].update(members=[]), "at least one member"),
@@ -188,6 +196,7 @@ def test_output_to_dict_shape():
         shifts=(
             OutputShift(
                 index=0,
+                id="shift-0",
                 date="2026-07-13",
                 closed=False,
                 assignments=(
@@ -215,6 +224,7 @@ def test_output_to_dict_shape():
         "shifts": [
             {
                 "index": 0,
+                "id": "shift-0",
                 "date": "2026-07-13",
                 "closed": False,
                 "assignments": [

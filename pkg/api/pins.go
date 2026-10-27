@@ -9,9 +9,11 @@ import (
 
 // createPinRequest names the Seat a pin fills by its Role id, as the
 // standing-preallocation request does. A pin outlives any number of renames, so
-// the id is the only reference to a Role that survives one (issue #195).
+// the id is the only reference to a Role that survives one (issue #195). It
+// names its Shift by id for the same reason: a date stops naming one Shift once
+// a day can hold two (issue #293).
 type createPinRequest struct {
-	Date        string `json:"date"`
+	ShiftID     string `json:"shiftId"`
 	VolunteerID string `json:"volunteerId,omitempty"`
 	Custom      string `json:"custom,omitempty"`
 	RoleID      string `json:"roleId"`
@@ -27,6 +29,7 @@ type createPinRequest struct {
 // DELETE can be addressed at.
 type pinResponse struct {
 	ID          string `json:"id"`
+	ShiftID     string `json:"shiftId"`
 	Date        string `json:"date"`
 	RoleID      string `json:"roleId"`
 	Role        string `json:"role"`
@@ -51,7 +54,7 @@ func (h *Handler) handleCreatePin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view, err := services.AddPin(r.Context(), h.store, h.volunteers, h.org, services.AddPinParams{
-		Date:        req.Date,
+		ShiftID:     req.ShiftID,
 		VolunteerID: req.VolunteerID,
 		Custom:      req.Custom,
 		RoleID:      req.RoleID,
@@ -98,6 +101,7 @@ func (h *Handler) handleListPins(w http.ResponseWriter, r *http.Request) {
 func toPinResponse(v services.PinView) pinResponse {
 	return pinResponse{
 		ID:          v.ID,
+		ShiftID:     v.ShiftID,
 		Date:        v.Date,
 		RoleID:      v.RoleID,
 		Role:        v.Role,

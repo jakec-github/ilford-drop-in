@@ -324,9 +324,7 @@ func TestInitShifts_ClosedShifts_IgnoresPins(t *testing.T) {
 	// the closure from the shift, and the shift wins.
 	overrides := []ShiftOverride{
 		{
-			AppliesTo: func(date string) bool {
-				return date == "2025-01-05"
-			},
+			ShiftID: "shift-jan-5",
 			Pins: []Pin{ // Should be ignored
 				{Custom: "John", Role: "Service volunteer"},
 				{Custom: "Jane", Role: "Service volunteer"},
@@ -336,8 +334,8 @@ func TestInitShifts_ClosedShifts_IgnoresPins(t *testing.T) {
 
 	input := InitShiftsInput{
 		Shifts: []ShiftSpec{
-			{Date: "2025-01-05", Shape: testShape(), Closed: true},
-			{Date: "2025-01-12", Shape: testShape()},
+			{ID: "shift-jan-5", Date: "2025-01-05", Shape: testShape(), Closed: true},
+			{ID: "shift-jan-12", Date: "2025-01-12", Shape: testShape()},
 		},
 		Overrides:      overrides,
 		VolunteerState: volunteerState,
@@ -353,5 +351,34 @@ func TestInitShifts_ClosedShifts_IgnoresPins(t *testing.T) {
 
 	// Non-closed shift should be normal
 	assert.False(t, shifts[1].Closed)
+	assert.Empty(t, shifts[1].Pins)
+}
+
+// A pin belongs to one Shift, not to its date: with two shifts on one day,
+// pinning someone to the morning must leave the evening alone.
+func TestInitShifts_PinAppliesToItsShiftNotItsDate(t *testing.T) {
+	volunteerState := InitVolunteerGroups(InitVolunteerGroupsInput{
+		Volunteers:        []Volunteer{},
+		GroupAvailability: map[string][]int{},
+		HistoricalShifts:  []*Shift{},
+	})
+
+	shifts, err := InitShifts(InitShiftsInput{
+		Shifts: []ShiftSpec{
+			{ID: "morning", Date: "2025-01-05", Shape: testShape()},
+			{ID: "evening", Date: "2025-01-05", Shape: testShape()},
+		},
+		Overrides: []ShiftOverride{{
+			ShiftID: "morning",
+			Pins:    []Pin{{Custom: "John", Role: "Service volunteer"}},
+		}},
+		VolunteerState: volunteerState,
+	})
+	require.NoError(t, err)
+	require.Len(t, shifts, 2)
+
+	assert.Equal(t, "morning", shifts[0].ID)
+	assert.Equal(t, []Pin{{Custom: "John", Role: "Service volunteer"}}, shifts[0].Pins)
+	assert.Equal(t, "evening", shifts[1].ID)
 	assert.Empty(t, shifts[1].Pins)
 }

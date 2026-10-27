@@ -22,12 +22,12 @@ import (
 
 // mockStore implements Store for testing
 type mockStore struct {
-	shifts               []db.Shift
-	shiftsInRange        []db.ShiftInRange
-	rotations            []db.Rotation
-	allocations          []db.Allocation
-	alterations          []db.Alteration
-	manualPins []db.Pin
+	shifts        []db.Shift
+	shiftsInRange []db.ShiftInRange
+	rotations     []db.Rotation
+	allocations   []db.Allocation
+	alterations   []db.Alteration
+	manualPins    []db.Pin
 	// standingPreallocations are the Rota Defaults' Standing Preallocations,
 	// which seed ordinary ones when a rota is defined.
 	standingPreallocations []db.StandingPreallocation
@@ -37,18 +37,18 @@ type mockStore struct {
 	repliedRequestIDs map[string]bool
 	allocatedRotas    map[string]bool
 
-	insertedCover           *db.Cover
-	insertedAlterations     []db.Alteration
-	insertedPins  []db.Pin
-	insertedRotations       []db.Rotation
-	insertedShifts          []db.Shift
-	deletedPinIDs []string
-	insertedStanding        []db.StandingPreallocation
-	deletedStandingIDs      []string
-	storedDrafts            []db.DraftRotaAllocation
-	storedDraftSeats        [][]db.DraftAllocation
-	insertedAllocations     []db.Allocation
-	allocatedRotaIDs        []string
+	insertedCover       *db.Cover
+	insertedAlterations []db.Alteration
+	insertedPins        []db.Pin
+	insertedRotations   []db.Rotation
+	insertedShifts      []db.Shift
+	deletedPinIDs       []string
+	insertedStanding    []db.StandingPreallocation
+	deletedStandingIDs  []string
+	storedDrafts        []db.DraftRotaAllocation
+	storedDraftSeats    [][]db.DraftAllocation
+	insertedAllocations []db.Allocation
+	allocatedRotaIDs    []string
 	// draftSeats are the Seats of the draft held in storedDrafts: who the solve
 	// put where, which is the rota the read endpoint reports.
 	draftSeats       []db.DraftAllocation
@@ -121,7 +121,8 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 
 	seen := make(map[string]bool)
 	var out []db.ShiftInRange
-	add := func(id, date string) {
+	add := func(shift db.Shift) {
+		id, date := shift.ID, shift.Date
 		if id == "" {
 			id = date
 		}
@@ -133,17 +134,18 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 		// it with, as a real one does — every Shift has them (ADR 0007). An
 		// explicit shiftsInRange is left exactly as the test wrote it.
 		// apiTestDefaults always answers, so there is no error a test can reach.
+		// Its rota and whether it is closed are kept from the fixture.
 		startAt, endAt, _ := model.ShiftTimestamps(date, apiTestDefaults.ShiftStartTime, apiTestDefaults.ShiftEndTime)
 		out = append(out, db.ShiftInRange{
-			Shift:     db.Shift{ID: id, Date: date, StartAt: startAt, EndAt: endAt},
+			Shift:     db.Shift{ID: id, RotaID: shift.RotaID, Date: date, Closed: shift.Closed, StartAt: startAt, EndAt: endAt},
 			Allocated: true,
 		})
 	}
 	for _, s := range m.shifts {
-		add(s.ID, s.Date)
+		add(s)
 	}
 	for _, a := range m.allocations {
-		add(a.ShiftID, a.ShiftID)
+		add(db.Shift{ID: a.ShiftID, Date: a.ShiftID})
 	}
 	return out
 }
@@ -381,16 +383,6 @@ func (m *mockStore) GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []str
 		}
 	}
 	return filtered, nil
-}
-
-func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {
-	dateStr := date.Format("2006-01-02")
-	for i := range m.shifts {
-		if m.shifts[i].Date == dateStr {
-			return &m.shifts[i], nil
-		}
-	}
-	return nil, nil
 }
 
 // GetPinsByShiftIDs returns the pins on the given shifts.
@@ -1117,7 +1109,7 @@ func alterationTestStore() *mockStore {
 
 func TestCreateAlterationEndpoint(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`
+	body := `{"shiftId":"s1","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1148,7 +1140,7 @@ func TestCreateAlterationEndpoint(t *testing.T) {
 // service volunteer. The roster is advice, not a gate.
 func TestCreateAlterationEndpoint_Role(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","in":"charlie","roleId":"role-team-lead","reason":"Leading tonight"}`
+	body := `{"shiftId":"s1","in":"charlie","roleId":"role-team-lead","reason":"Leading tonight"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1162,7 +1154,7 @@ func TestCreateAlterationEndpoint_Role(t *testing.T) {
 // — the same rule, worded the same way, as for a volunteer (issue #214).
 func TestCreateAlterationEndpoint_CustomEntryRole(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","inCustom":"Redbridge youth group","roleId":"role-team-lead","reason":"Covering the lead"}`
+	body := `{"shiftId":"s1","inCustom":"Redbridge youth group","roleId":"role-team-lead","reason":"Covering the lead"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1174,7 +1166,7 @@ func TestCreateAlterationEndpoint_CustomEntryRole(t *testing.T) {
 
 func TestCreateAlterationEndpoint_CustomEntryNeedsARole(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","inCustom":"Redbridge youth group","reason":"Covering"}`
+	body := `{"shiftId":"s1","inCustom":"Redbridge youth group","reason":"Covering"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
@@ -1196,7 +1188,7 @@ func TestCreateAlterationEndpoint_CustomEntryLeavingNamesItsSeat(t *testing.T) {
 
 	t.Run("on the date", func(t *testing.T) {
 		store := twice()
-		body := `{"date":"2026-01-11","outCustom":"Red Cross","outRoleId":"role-service-volunteer","reason":"Only one came"}`
+		body := `{"shiftId":"s1","outCustom":"Red Cross","outRoleId":"role-service-volunteer","reason":"Only one came"}`
 
 		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1206,7 +1198,7 @@ func TestCreateAlterationEndpoint_CustomEntryLeavingNamesItsSeat(t *testing.T) {
 
 	t.Run("on the swap date", func(t *testing.T) {
 		store := twice()
-		body := `{"date":"2026-01-18","inCustom":"Red Cross","swapDate":"2026-01-11","swapOutRoleId":"role-service-volunteer","reason":""}`
+		body := `{"shiftId":"s2","inCustom":"Red Cross","swapShiftId":"s1","swapOutRoleId":"role-service-volunteer","reason":""}`
 
 		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1217,7 +1209,7 @@ func TestCreateAlterationEndpoint_CustomEntryLeavingNamesItsSeat(t *testing.T) {
 
 	t.Run("refused without one", func(t *testing.T) {
 		store := twice()
-		body := `{"date":"2026-01-11","outCustom":"Red Cross","reason":"Only one came"}`
+		body := `{"shiftId":"s1","outCustom":"Red Cross","reason":"Only one came"}`
 
 		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
@@ -1231,7 +1223,7 @@ func TestCreateAlterationEndpoint_CustomEntryLeavingNamesItsSeat(t *testing.T) {
 // written, attributed to the Organiser who made it — with no reason on it.
 func TestCreateAlterationEndpoint_ReasonOptional(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer"}`
+	body := `{"shiftId":"s1","out":"bob","in":"charlie","roleId":"role-service-volunteer"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1246,7 +1238,7 @@ func TestCreateAlterationEndpoint_ReasonOptional(t *testing.T) {
 // itself is still refused (issue #148).
 func TestCreateAlterationEndpoint_WhitespaceReasonIsNoReason(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","reason":"   "}`
+	body := `{"shiftId":"s1","out":"bob","reason":"   "}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
@@ -1256,7 +1248,7 @@ func TestCreateAlterationEndpoint_WhitespaceReasonIsNoReason(t *testing.T) {
 // A reason that was given reaches the cover as it reads, not as it was typed.
 func TestCreateAlterationEndpoint_StoresAReasonTrimmed(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","reason":"  Away that week  "}`
+	body := `{"shiftId":"s1","out":"bob","reason":"  Away that week  "}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -1271,7 +1263,7 @@ func TestCreateAlterationEndpoint_StoresAReasonTrimmed(t *testing.T) {
 // before any change is attempted.
 func TestCreateAlterationEndpoint_RequiresASession(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`
+	body := `{"shiftId":"s1","out":"bob","in":"charlie","roleId":"role-service-volunteer","reason":"Holiday cover"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -1283,7 +1275,7 @@ func TestCreateAlterationEndpoint_RequiresASession(t *testing.T) {
 // override.
 func TestCreateAlterationEndpoint_RejectsClientUserEmail(t *testing.T) {
 	store := alterationTestStore()
-	body := `{"date":"2026-01-11","out":"bob","reason":"x","userEmail":"attacker@example.com"}`
+	body := `{"shiftId":"s1","out":"bob","reason":"x","userEmail":"attacker@example.com"}`
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/alterations", body, organiserCookie())
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
@@ -1304,7 +1296,7 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 		},
 		{
 			name:       "unknown field",
-			body:       `{"date":"2026-01-11","out":"bob","reason":"x","bogus":true}`,
+			body:       `{"shiftId":"s1","out":"bob","reason":"x","bogus":true}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
@@ -1312,19 +1304,32 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 			// The one change that has to account for itself: bob comes off the
 			// shift and nobody takes his place (issue #148).
 			name:       "a removal with no reason",
-			body:       `{"date":"2026-01-11","out":"bob"}`,
+			body:       `{"shiftId":"s1","out":"bob"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			// Shifts were named by their date until #293.
+			name:       "a shift named by its date",
+			body:       `{"date":"2026-01-11","out":"bob","reason":"x"}`,
+			store:      alterationTestStore(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "unknown shift",
+			body:       `{"shiftId":"s9","out":"bob","reason":"x"}`,
+			store:      alterationTestStore(),
+			wantStatus: http.StatusNotFound,
+		},
+		{
 			name:       "unknown volunteer",
-			body:       `{"date":"2026-01-11","in":"nobody","roleId":"role-service-volunteer","reason":"x"}`,
+			body:       `{"shiftId":"s1","in":"nobody","roleId":"role-service-volunteer","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "volunteer not on shift",
-			body:       `{"date":"2026-01-11","out":"charlie","reason":"x"}`,
+			body:       `{"shiftId":"s1","out":"charlie","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusConflict,
 		},
@@ -1332,19 +1337,19 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 			// The wire named a Role by name until #222. A body still doing so
 			// is refused rather than quietly bringing somebody in as nothing.
 			name:       "a role named the old way",
-			body:       `{"date":"2026-01-11","in":"charlie","role":"Team lead","reason":"x"}`,
+			body:       `{"shiftId":"s1","in":"charlie","role":"Team lead","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown role",
-			body:       `{"date":"2026-01-11","in":"charlie","roleId":"role-supervisor","reason":"x"}`,
+			body:       `{"shiftId":"s1","in":"charlie","roleId":"role-supervisor","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "no role for a volunteer coming in",
-			body:       `{"date":"2026-01-11","in":"charlie","reason":"x"}`,
+			body:       `{"shiftId":"s1","in":"charlie","reason":"x"}`,
 			store:      alterationTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
@@ -1355,7 +1360,7 @@ func TestCreateAlterationEndpoint_Errors(t *testing.T) {
 				s.insertErr = errors.New("disk full")
 				return s
 			}(),
-			body:       `{"date":"2026-01-11","out":"bob","reason":"x"}`,
+			body:       `{"shiftId":"s1","out":"bob","reason":"x"}`,
 			wantStatus: http.StatusInternalServerError,
 		},
 	}

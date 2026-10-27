@@ -22,13 +22,13 @@ var halfFrequencyWithMaleCover = model.AllocationSettings{Rules: []model.Allocat
 	{ID: "male", Kind: model.ShiftRequiresKind, Option: "Male"},
 }}
 
-// openShifts turns bare dates into specs for the ordinary case, where every
+// openShifts turns bare dates into specs, each Shift's id made from its date, for the ordinary case, where every
 // shift is open, asks for the same Shape and only the closed ones are worth
 // spelling out.
 func openShifts(shape []allocator.Seat, dates ...string) []allocator.ShiftSpec {
 	specs := make([]allocator.ShiftSpec, len(dates))
 	for i, date := range dates {
-		specs[i] = allocator.ShiftSpec{Date: date, Shape: shape}
+		specs[i] = allocator.ShiftSpec{ID: "shift-" + date, Date: date, Shape: shape}
 	}
 	return specs
 }
@@ -48,6 +48,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 		},
 		Shifts: []allocator.CpsatShift{{
 			Index:  0,
+			ID:     "shift-1",
 			Date:   "2026-07-13",
 			Closed: false,
 			Shape: []allocator.CpsatSeat{
@@ -71,7 +72,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 			HistoricalAllocationCount: 3,
 		}},
 		HistoricalShifts: []allocator.CpsatHistoricalShift{{
-			Date: "2026-06-29", GroupKeys: []string{"couple_x"},
+			ID: "shift-0", Date: "2026-06-29", GroupKeys: []string{"couple_x"},
 		}},
 	}
 
@@ -85,7 +86,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 			{"kind": "shift_requires", "volunteer_ids": [], "value": 0, "option": "Male"}
 		],
 		"shifts": [{
-			"index": 0, "date": "2026-07-13", "closed": false,
+			"index": 0, "id": "shift-1", "date": "2026-07-13", "closed": false,
 			"shape": [
 				{"role": "Team lead", "count": 1},
 				{"role": "Service volunteer", "count": 3}
@@ -106,7 +107,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 			"available_shift_indices": [0, 2],
 			"historical_allocation_count": 3
 		}],
-		"historical_shifts": [{"date": "2026-06-29", "group_keys": ["couple_x"]}]
+		"historical_shifts": [{"id": "shift-0", "date": "2026-06-29", "group_keys": ["couple_x"]}]
 	}`
 
 	got, err := json.Marshal(input)
@@ -118,7 +119,7 @@ func TestCpsatOutputContractGolden(t *testing.T) {
 	payload := `{
 		"solver_status": "OPTIMAL", "success": true, "error": "", "objective_value": 23,
 		"shifts": [{
-			"index": 0, "date": "2026-07-13", "closed": false,
+			"index": 0, "id": "shift-1", "date": "2026-07-13", "closed": false,
 			"assignments": [
 				{"volunteer_id": "vol-9", "custom": "", "role": "Team lead"},
 				{"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
@@ -136,6 +137,7 @@ func TestCpsatOutputContractGolden(t *testing.T) {
 	assert.True(t, output.Success)
 	assert.Equal(t, 23, output.ObjectiveValue)
 	require.Len(t, output.Shifts, 1)
+	assert.Equal(t, "shift-1", output.Shifts[0].ID)
 	assert.Equal(t, []allocator.CpsatAssignment{
 		{VolunteerID: "vol-9", Role: "Team lead"},
 		{VolunteerID: "vol-1", Role: "Service volunteer"},
@@ -166,24 +168,24 @@ func TestBuildCpsatInput(t *testing.T) {
 	// anything an override says. Every Shift here asks for the same Shape,
 	// which is the ordinary case rather than something the model requires.
 	shiftSpecs := []allocator.ShiftSpec{
-		{Date: "2026-07-13", Shape: shape},
-		{Date: "2026-07-20", Shape: shape},
-		{Date: "2026-07-27", Shape: shape, Closed: true},
-		{Date: "2026-08-03", Shape: shape},
+		{ID: "shift-2026-07-13", Date: "2026-07-13", Shape: shape},
+		{ID: "shift-2026-07-20", Date: "2026-07-20", Shape: shape},
+		{ID: "shift-2026-07-27", Date: "2026-07-27", Shape: shape, Closed: true},
+		{ID: "shift-2026-08-03", Date: "2026-08-03", Shape: shape},
 	}
 	overrides := []allocator.ShiftOverride{
 		{
-			AppliesTo: func(date string) bool { return date == "2026-07-20" },
+			ShiftID: "shift-2026-07-20",
 			Pins: []allocator.Pin{
 				{Custom: "external_john", Role: "Service volunteer"},
 			},
 		},
 	}
 	historical := []*allocator.Shift{
-		{Date: "2026-07-06", AllocatedGroups: []*allocator.VolunteerGroup{
+		{ID: "shift-2026-07-06", Date: "2026-07-06", AllocatedGroups: []*allocator.VolunteerGroup{
 			allocator.BuildVolunteerGroup(volunteers[:2]),
 		}},
-		{Date: "2026-06-29", AllocatedGroups: []*allocator.VolunteerGroup{
+		{ID: "shift-2026-06-29", Date: "2026-06-29", AllocatedGroups: []*allocator.VolunteerGroup{
 			allocator.BuildVolunteerGroup(volunteers[2:3]),
 		}},
 	}
@@ -210,6 +212,7 @@ func TestBuildCpsatInput(t *testing.T) {
 	// Every shift carries the default Shape, stated rather than derived from a
 	// size; an override contributes pins and nothing else.
 	require.Len(t, input.Shifts, 4)
+	assert.Equal(t, "shift-2026-07-20", input.Shifts[1].ID, "each shift goes to the solver under its own id")
 	for i, shift := range input.Shifts {
 		assert.Equal(t, []allocator.CpsatSeat{
 			{Role: "Team lead", Count: 1},
@@ -236,6 +239,7 @@ func TestBuildCpsatInput(t *testing.T) {
 
 	// Historical shifts sorted ascending by date with derived group keys.
 	require.Len(t, input.HistoricalShifts, 2)
+	assert.Equal(t, "shift-2026-06-29", input.HistoricalShifts[0].ID)
 	assert.Equal(t, "2026-06-29", input.HistoricalShifts[0].Date)
 	assert.Equal(t, []string{"Diana Green"}, input.HistoricalShifts[0].GroupKeys)
 	assert.Equal(t, "2026-07-06", input.HistoricalShifts[1].Date)
@@ -257,12 +261,12 @@ func TestBuildCpsatInput_NobodyAnswered(t *testing.T) {
 		{Role: "Service volunteer", Count: 2},
 	}
 	shiftSpecs := []allocator.ShiftSpec{
-		{Date: "2026-07-13", Shape: shape},
-		{Date: "2026-07-20", Shape: shape},
+		{ID: "shift-2026-07-13", Date: "2026-07-13", Shape: shape},
+		{ID: "shift-2026-07-20", Date: "2026-07-20", Shape: shape},
 	}
 	overrides := []allocator.ShiftOverride{
 		{
-			AppliesTo: func(date string) bool { return date == "2026-07-20" },
+			ShiftID: "shift-2026-07-20",
 			Pins: []allocator.Pin{
 				{Custom: "external_john", Role: "Service volunteer"},
 			},
@@ -380,17 +384,17 @@ func TestBuildCpsatInput_PinKeepsItsGroup(t *testing.T) {
 		{Role: "Service volunteer", Count: 2},
 	}
 	shiftSpecs := []allocator.ShiftSpec{
-		{Date: "2026-07-13", Shape: shape},
-		{Date: "2026-07-20", Shape: shape},
-		{Date: "2026-07-27", Shape: shape, Closed: true},
-		{Date: "2026-08-03", Shape: shape},
+		{ID: "shift-2026-07-13", Date: "2026-07-13", Shape: shape},
+		{ID: "shift-2026-07-20", Date: "2026-07-20", Shape: shape},
+		{ID: "shift-2026-07-27", Date: "2026-07-27", Shape: shape, Closed: true},
+		{ID: "shift-2026-08-03", Date: "2026-08-03", Shape: shape},
 	}
 
 	overrides := []allocator.ShiftOverride{
 		// Shift 0 pins one of the couple, a volunteer nobody answered for, and
 		// a volunteer who answered "none of these".
 		{
-			AppliesTo: func(date string) bool { return date == "2026-07-13" },
+			ShiftID: "shift-2026-07-13",
 			Pins: []allocator.Pin{
 				{VolunteerID: "alice", Role: "Team lead"},
 				{VolunteerID: "silent", Role: "Service volunteer"},
@@ -402,7 +406,7 @@ func TestBuildCpsatInput_PinKeepsItsGroup(t *testing.T) {
 		// Shift 2 is closed, so the pins landing on it are stripped and it
 		// implies nothing.
 		{
-			AppliesTo: func(date string) bool { return date == "2026-07-27" },
+			ShiftID: "shift-2026-07-27",
 			Pins: []allocator.Pin{
 				{VolunteerID: "silent", Role: "Service volunteer"},
 			},
@@ -451,8 +455,8 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 	groupAvailability := map[string][]int{"Alice Smith": {1}}
 
 	overrides := []allocator.ShiftOverride{{
-		AppliesTo:      func(date string) bool { return date == "2026-07-13" },
-		Pins: []allocator.Pin{{VolunteerID: "alice", Role: "Service volunteer"}},
+		ShiftID: "shift-2026-07-13",
+		Pins:    []allocator.Pin{{VolunteerID: "alice", Role: "Service volunteer"}},
 	}}
 
 	roles := []allocator.Role{{Name: "Service volunteer", Priority: 1}}
@@ -476,6 +480,7 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 		Success:      true,
 		Shifts: []allocator.CpsatOutputShift{{
 			Index: 0,
+			ID:    "shift-1",
 			Date:  "2026-07-13",
 			Assignments: []allocator.CpsatAssignment{
 				{VolunteerID: "alice", Role: "Team lead"},
@@ -491,6 +496,7 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, shifts, 1)
 	shift := shifts[0]
+	assert.Equal(t, "shift-1", shift.ID)
 
 	// Each filled Seat keeps the Role the solver gave it; volunteers are
 	// resolved, custom entries carry their free text.
@@ -512,7 +518,7 @@ func TestCpsatOutputToAllocatorShifts(t *testing.T) {
 		{ID: "role-lead", Name: "Team lead", Priority: 1},
 		{ID: "role-service", Name: "Service volunteer", Priority: 2},
 	})
-	dbAllocations, err := convertToDBAllocations(map[string]string{"2026-07-13": "shift-1"}, shifts, contractRoles)
+	dbAllocations, err := convertToDBAllocations([]db.Shift{{ID: "shift-1", Date: "2026-07-13"}}, shifts, contractRoles)
 	require.NoError(t, err)
 	require.Len(t, dbAllocations, 4)
 	roles := map[string]int{}

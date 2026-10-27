@@ -68,6 +68,7 @@ def _extract_shift(
 
     return OutputShift(
         index=spec.index,
+        id=spec.id,
         date=spec.date,
         closed=spec.closed,
         assignments=tuple(assignments),

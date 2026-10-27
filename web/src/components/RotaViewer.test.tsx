@@ -288,7 +288,7 @@ describe("RotaViewer placement", () => {
     });
 
     expect(onChange).toHaveBeenCalledWith({
-      date: "2026-01-04",
+      shiftId: "shift-a",
       in: { volunteerId: "alice" },
       out: { volunteerId: "alice" },
       roleId: "r-hot",
@@ -760,6 +760,7 @@ describe("RotaViewer expanded shift view", () => {
     fetchPins.mockResolvedValue([
       {
         id: "pin-1",
+        shiftId: "shift-d",
         date: "2026-01-25",
         roleId: "r-duty",
         role: DUTY_LEAD,
@@ -778,6 +779,38 @@ describe("RotaViewer expanded shift view", () => {
     expect(
       within(groupFor(row, DUTY_LEAD)).getByText("Alice"),
     ).toBeInTheDocument();
+  });
+
+  // Two shifts can share a day, so a pin belongs to the shift it names and not
+  // to its date (issue #293).
+  test("a pin shows on its own shift, not every shift that day", async () => {
+    const [evening] = withUnallocated().slice(-1);
+    const morning: RotaShift = {
+      ...evening,
+      id: "shift-morning",
+      start: "2026-01-25T10:00:00",
+      end: "2026-01-25T12:00:00",
+    };
+    fetchPins.mockResolvedValue([
+      {
+        id: "pin-1",
+        shiftId: evening.id,
+        date: evening.date,
+        roleId: "r-duty",
+        role: DUTY_LEAD,
+        name: "Alice",
+        custom: false,
+        volunteerId: "alice",
+      },
+    ]);
+    await renderRota("organiser", [...shifts(), morning, evening]);
+
+    const rows = screen
+      .getAllByText("25 Jan")
+      .map((label) => label.closest(".shift-row") as HTMLElement);
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).queryByText("Alice")).not.toBeInTheDocument();
+    expect(within(rows[1]).getByText("Alice")).toBeInTheDocument();
   });
 
   // An allocation predating the role column records no Role at all. It is named
@@ -886,9 +919,9 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     });
 
     expect(onChange).toHaveBeenCalledWith({
-      date: "2026-01-11",
+      shiftId: "shift-b",
       in: { custom: "Red Cross" },
-      swapDate: "2026-01-04",
+      swapShiftId: "shift-a",
       swapOutRoleId: "r-greet",
       roleId: "r-greet",
       reason: "",
@@ -908,7 +941,7 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     });
 
     expect(onChange).toHaveBeenCalledWith({
-      date: "2026-01-04",
+      shiftId: "shift-a",
       out: { custom: "Red Cross" },
       outRoleId: "r-greet",
       reason: "Only one came",
@@ -937,11 +970,11 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     });
 
     expect(onChange).toHaveBeenCalledWith({
-      date: "2026-01-04",
+      shiftId: "shift-a",
       out: { custom: "Red Cross" },
       outRoleId: "r-greet",
       in: { custom: "Scouts" },
-      swapDate: "2026-01-11",
+      swapShiftId: "shift-b",
       swapOutRoleId: "r-hot",
       reason: "",
     });
@@ -960,7 +993,7 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     });
 
     expect(onChange).toHaveBeenCalledWith({
-      date: "2026-01-04",
+      shiftId: "shift-a",
       out: { custom: "Red Cross" },
       outRoleId: "r-greet",
       in: { custom: "Red Cross" },

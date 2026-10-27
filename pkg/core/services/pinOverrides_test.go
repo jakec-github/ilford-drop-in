@@ -14,12 +14,11 @@ import (
 )
 
 func TestBuildPinOverrides_VolunteerUnion(t *testing.T) {
-	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
 	pins := []db.Pin{
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
 	}
 
-	overrides, err := buildPinOverrides(pins, dateByShiftID, testRoles)
+	overrides, err := buildPinOverrides(pins, []string{"shift-1", "shift-2"}, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 1)
 
@@ -27,19 +26,17 @@ func TestBuildPinOverrides_VolunteerUnion(t *testing.T) {
 	assert.Equal(t, []allocator.Pin{
 		{VolunteerID: "vol-1", Role: "Service volunteer"},
 	}, got.Pins)
-	// Exact-date matcher only matches its own date.
-	assert.True(t, got.AppliesTo("2026-08-02"))
-	assert.False(t, got.AppliesTo("2026-08-09"))
+	// The override names the pin's own Shift, and so applies to it alone.
+	assert.Equal(t, "shift-1", got.ShiftID)
 }
 
 func TestBuildPinOverrides_TeamLeadAndCustom(t *testing.T) {
-	dateByShiftID := map[string]string{"shift-1": "2026-08-02"}
 	pins := []db.Pin{
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "tl-1"},
 		{ID: "p2", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "External Helper"},
 	}
 
-	overrides, err := buildPinOverrides(pins, dateByShiftID, testRoles)
+	overrides, err := buildPinOverrides(pins, []string{"shift-1"}, testRoles)
 	require.NoError(t, err)
 	require.Len(t, overrides, 2)
 	assert.Equal(t, []allocator.Pin{
@@ -63,7 +60,7 @@ func TestBuildPinOverrides_NamesARenamedRoleAsItReadsNow(t *testing.T) {
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "tl-1"},
 	}
 
-	overrides, err := buildPinOverrides(pins, map[string]string{"shift-1": "2026-08-02"}, renamed)
+	overrides, err := buildPinOverrides(pins, []string{"shift-1"}, renamed)
 	require.NoError(t, err)
 	require.Len(t, overrides, 1)
 	assert.Equal(t, []allocator.Pin{
@@ -78,7 +75,7 @@ func TestBuildPinOverrides_UnknownRoleFails(t *testing.T) {
 	pins := []db.Pin{
 		{ID: "p1", ShiftID: "shift-1", RoleID: "role-ghost", VolunteerID: "vol-1"},
 	}
-	_, err := buildPinOverrides(pins, map[string]string{"shift-1": "2026-08-02"}, testRoles)
+	_, err := buildPinOverrides(pins, []string{"shift-1"}, testRoles)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "role-ghost")
 }
@@ -87,7 +84,7 @@ func TestBuildPinOverrides_UnknownShiftFails(t *testing.T) {
 	pins := []db.Pin{
 		{ID: "p1", ShiftID: "ghost", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
 	}
-	_, err := buildPinOverrides(pins, map[string]string{}, testRoles)
+	_, err := buildPinOverrides(pins, []string{}, testRoles)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ghost")
 }

@@ -35,11 +35,12 @@ func (m *mockChangeRotaStore) WithRotaLock(ctx context.Context, rotaIDs []string
 	return fn(m)
 }
 
-func (m *mockChangeRotaStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shift, error) {
-	dateStr := date.Format("2006-01-02")
+// GetShiftByID finds a fixture Shift. sundayShifts names each one by its date,
+// so a test reads as the date it changes.
+func (m *mockChangeRotaStore) GetShiftByID(ctx context.Context, id string) (*db.ShiftInRange, error) {
 	for i := range m.shifts {
-		if m.shifts[i].Date == dateStr {
-			return &m.shifts[i], nil
+		if m.shifts[i].ID == id {
+			return &db.ShiftInRange{Shift: m.shifts[i], Allocated: true}, nil
 		}
 	}
 	return nil, nil
@@ -143,7 +144,7 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob",
 		In:        "dave",
 		RoleID:    "role-service-volunteer",
@@ -187,7 +188,7 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	assert.Equal(t, "2025-01-05", addAlt.ShiftID)
 }
 
-func TestChangeRota_SwapDate(t *testing.T) {
+func TestChangeRota_SwapShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -200,12 +201,12 @@ func TestChangeRota_SwapDate(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		Out:       "alice",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		Reason:    "Swap",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		Out:         "alice",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		Reason:      "Swap",
+		UserEmail:   "test@example.com",
 	}
 
 	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
@@ -255,7 +256,7 @@ func TestChangeRota_CustomInOut(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "External John",
 		OutRoleID: "role-service-volunteer",
 		InCustom:  "External Jane",
@@ -293,7 +294,7 @@ func TestChangeRota_NoInputsError(t *testing.T) {
 	store := &mockChangeRotaStore{}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Reason:    "No changes",
 		UserEmail: "test@example.com",
 	}
@@ -304,7 +305,7 @@ func TestChangeRota_NoInputsError(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
-func TestChangeRota_DateNotInAnyRota(t *testing.T) {
+func TestChangeRota_UnknownShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -313,7 +314,7 @@ func TestChangeRota_DateNotInAnyRota(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-03-01", // Not in any rota
+		ShiftID:   "no-such-shift",
 		Out:       "bob",
 		Reason:    "Test",
 		UserEmail: "test@example.com",
@@ -321,7 +322,7 @@ func TestChangeRota_DateNotInAnyRota(t *testing.T) {
 
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not in any rota")
+	assert.Contains(t, err.Error(), "shift no-such-shift not found")
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -337,7 +338,7 @@ func TestChangeRota_RemoveVolunteerNotOnShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob", // Not on the shift
 		Reason:    "Test",
 		UserEmail: "test@example.com",
@@ -360,7 +361,7 @@ func TestChangeRota_AddVolunteerAlreadyOnShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "alice", // Already on the shift
 		RoleID:    "role-service-volunteer",
 		Reason:    "Test",
@@ -388,7 +389,7 @@ func TestChangeRota_RemoveCustomNotOnShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "External John", // Not on the shift
 		Reason:    "Test",
 		UserEmail: "test@example.com",
@@ -412,7 +413,7 @@ func TestChangeRota_AddDuplicateCustomAllowed(t *testing.T) {
 
 	// Adding a duplicate custom entry should succeed (e.g. multiple people from same org)
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		InCustom:  "Org X",
 		RoleID:    "role-service-volunteer",
 		Reason:    "Second person from Org X",
@@ -428,7 +429,7 @@ func TestChangeRota_AddDuplicateCustomAllowed(t *testing.T) {
 	assert.Equal(t, "Org X", result.Alterations[0].CustomValue)
 }
 
-func TestChangeRota_SwapDateValidation(t *testing.T) {
+func TestChangeRota_SwapShiftValidation(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -440,23 +441,23 @@ func TestChangeRota_SwapDateValidation(t *testing.T) {
 		allocations: []db.Allocation{
 			{ID: "a1", ShiftID: "2025-01-05", RoleID: "role-service-volunteer", VolunteerID: "alice"},
 			{ID: "a2", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "bob"},
-			{ID: "a3", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "alice"}, // alice is also on swap date
+			{ID: "a3", ShiftID: "2025-01-12", RoleID: "role-service-volunteer", VolunteerID: "alice"}, // alice is also on the swap shift
 		},
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		Out:       "alice",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		Reason:    "Swap",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		Out:         "alice",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		Reason:      "Swap",
+		UserEmail:   "test@example.com",
 	}
 
-	// Swap date validation checks reversed: out=bob (ok, bob is there), in=alice (fail, alice is already there)
+	// Swap shift validation checks reversed: out=bob (ok, bob is there), in=alice (fail, alice is already there)
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "swap date")
+	assert.Contains(t, err.Error(), "swap shift")
 	assert.Contains(t, err.Error(), "already on the shift")
 }
 
@@ -470,7 +471,7 @@ func TestChangeRota_RemovalNeedsAReason(t *testing.T) {
 	store := &mockChangeRotaStore{}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob",
 		UserEmail: "test@example.com",
 	}
@@ -489,7 +490,7 @@ func TestChangeRota_CustomRemovalNeedsAReason(t *testing.T) {
 	store := &mockChangeRotaStore{}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Redbridge youth group",
 		UserEmail: "test@example.com",
 	}
@@ -513,7 +514,7 @@ func TestChangeRota_ReplacementNeedsNoReason(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob",
 		In:        "dave",
 		RoleID:    "role-service-volunteer",
@@ -540,7 +541,7 @@ func TestChangeRota_WhitespaceIsNoReasonOnARemoval(t *testing.T) {
 	store := &mockChangeRotaStore{}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob",
 		Reason:    "   ",
 		UserEmail: "test@example.com",
@@ -565,7 +566,7 @@ func TestChangeRota_WhitespaceReasonIsStoredAsNone(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob",
 		In:        "dave",
 		RoleID:    "role-service-volunteer",
@@ -594,7 +595,7 @@ func TestChangeRota_ReasonIsStoredTrimmed(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "bob",
 		Reason:    "  Away that week\n",
 		UserEmail: "test@example.com",
@@ -618,7 +619,7 @@ func TestChangeRota_AddNeedsNoReason(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "alice",
 		RoleID:    "role-service-volunteer",
 		UserEmail: "test@example.com",
@@ -643,11 +644,11 @@ func TestChangeRota_SwapNeedsNoReason(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		Out:       "alice",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		Out:         "alice",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		UserEmail:   "test@example.com",
 	}
 
 	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
@@ -670,10 +671,10 @@ func TestChangeRota_MoveNeedsNoReason(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-12",
-		In:        "alice",
-		SwapDate:  "2025-01-05",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-12",
+		In:          "alice",
+		SwapShiftID: "2025-01-05",
+		UserEmail:   "test@example.com",
 	}
 
 	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
@@ -695,10 +696,10 @@ func TestChangeRota_MoveStatedAsAnOutNeedsNoReason(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		Out:       "alice",
-		SwapDate:  "2025-01-12",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		Out:         "alice",
+		SwapShiftID: "2025-01-12",
+		UserEmail:   "test@example.com",
 	}
 
 	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
@@ -718,7 +719,7 @@ func TestChangeRota_OnlyOut(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		Reason:    "No longer available",
 		UserEmail: "test@example.com",
@@ -745,7 +746,7 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "bob",
 		RoleID:    "role-service-volunteer",
 		Reason:    "Extra help needed",
@@ -761,7 +762,7 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 	assert.Equal(t, "bob", result.Alterations[0].VolunteerID)
 }
 
-func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
+func TestChangeRota_SwapShiftDifferentRota(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -779,12 +780,12 @@ func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-12",
-		Out:       "alice",
-		In:        "bob",
-		SwapDate:  "2025-01-19",
-		Reason:    "Cross-rota swap",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-12",
+		Out:         "alice",
+		In:          "bob",
+		SwapShiftID: "2025-01-19",
+		Reason:      "Cross-rota swap",
+		UserEmail:   "test@example.com",
 	}
 
 	result, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
@@ -825,7 +826,7 @@ func TestChangeRota_RespectsExistingAlterations(t *testing.T) {
 
 	// Try to remove alice again - should fail because she's already been removed
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		Reason:    "Test",
 		UserEmail: "test@example.com",
@@ -843,7 +844,7 @@ func TestChangeRota_InvalidInVolunteerID(t *testing.T) {
 	store := &mockChangeRotaStore{}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "nonexistent",
 		RoleID:    "role-service-volunteer",
 		Reason:    "Test",
@@ -862,7 +863,7 @@ func TestChangeRota_InvalidOutVolunteerID(t *testing.T) {
 	store := &mockChangeRotaStore{}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "nonexistent",
 		Reason:    "Test",
 		UserEmail: "test@example.com",
@@ -895,7 +896,7 @@ func TestChangeRota_RoleIsNamedNotInferredFromTheRoster(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "bob",
 		RoleID:    "role-service-volunteer",
 		Reason:    "Extra pair of hands",
@@ -922,7 +923,7 @@ func TestChangeRota_RoleTheVolunteerDoesNotHoldIsAllowed(t *testing.T) {
 
 	// Every default volunteer holds only Service volunteer.
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "bob",
 		RoleID:    "role-team-lead",
 		Reason:    "Bob is leading this once",
@@ -946,12 +947,12 @@ func TestChangeRota_SwapLegsInheritTheRoleTheyReplace(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		Out:       "alice",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		Reason:    "Swap",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		Out:         "alice",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		Reason:      "Swap",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -979,11 +980,11 @@ func TestChangeRota_MoveCarriesTheRoleAcross(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		In:        "alice",
-		SwapDate:  "2025-01-12",
-		Reason:    "Alice moves a week earlier",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		In:          "alice",
+		SwapShiftID: "2025-01-12",
+		Reason:      "Alice moves a week earlier",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1007,11 +1008,11 @@ func TestChangeRota_MoveWithNothingToInheritTakesNoRole(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		In:        "alice",
-		SwapDate:  "2025-01-12",
-		Reason:    "Alice moves a week earlier",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		In:          "alice",
+		SwapShiftID: "2025-01-12",
+		Reason:      "Alice moves a week earlier",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1032,12 +1033,12 @@ func TestChangeRota_MoveWithExplicitRoleOverridesInheritance(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		In:        "alice",
-		SwapDate:  "2025-01-12",
-		RoleID:    "role-service-volunteer",
-		Reason:    "Alice moves a week earlier, covering rather than leading",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		In:          "alice",
+		SwapShiftID: "2025-01-12",
+		RoleID:      "role-service-volunteer",
+		Reason:      "Alice moves a week earlier, covering rather than leading",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1062,12 +1063,12 @@ func TestChangeRota_MoveWithRoleNotCountedAgainstTheShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		RoleID:    "role-team-lead",
-		Reason:    "Bob moves a week earlier, co-leading",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		RoleID:      "role-team-lead",
+		Reason:      "Bob moves a week earlier, co-leading",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1102,7 +1103,7 @@ func TestChangeRota_ExplicitRoleIsNotCountedAgainstTheShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "bob",
 		RoleID:    "role-team-lead",
 		Reason:    "Alice needs a co-lead",
@@ -1126,7 +1127,7 @@ func TestChangeRota_ExplicitTeamLeadReplacesTheTeamLead(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		In:        "bob",
 		RoleID:    "role-team-lead",
@@ -1152,7 +1153,7 @@ func TestChangeRota_ExplicitTeamLeadAllowedWhenShiftHasNone(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		In:        "bob",
 		RoleID:    "role-team-lead",
 		Reason:    "Nobody is leading that week",
@@ -1176,7 +1177,7 @@ func TestChangeRota_ExplicitRoleBeatsInheritance(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		In:        "bob",
 		RoleID:    "role-service-volunteer",
@@ -1200,27 +1201,27 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			// each date, so there is no unambiguous person to apply it to.
 			name: "with a swap date",
 			params: ChangeRotaParams{
-				Date:     "2025-01-05",
-				Out:      "alice",
-				In:       "bob",
-				SwapDate: "2025-01-12",
-				RoleID:   "role-team-lead",
+				ShiftID:     "2025-01-05",
+				Out:         "alice",
+				In:          "bob",
+				SwapShiftID: "2025-01-12",
+				RoleID:      "role-team-lead",
 			},
 		},
 		{
 			name: "with nobody coming in",
 			params: ChangeRotaParams{
-				Date:   "2025-01-05",
-				Out:    "alice",
-				RoleID: "role-team-lead",
+				ShiftID: "2025-01-05",
+				Out:     "alice",
+				RoleID:  "role-team-lead",
 			},
 		},
 		{
 			name: "not a configured role",
 			params: ChangeRotaParams{
-				Date:   "2025-01-05",
-				In:     "bob",
-				RoleID: "role-supervisor",
+				ShiftID: "2025-01-05",
+				In:      "bob",
+				RoleID:  "role-supervisor",
 			},
 		},
 		{
@@ -1228,8 +1229,8 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			// something to be guessed at from the roster.
 			name: "with no role at all",
 			params: ChangeRotaParams{
-				Date: "2025-01-05",
-				In:   "bob",
+				ShiftID: "2025-01-05",
+				In:      "bob",
 			},
 		},
 		{
@@ -1237,14 +1238,14 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			// being off the roster is not a reason to have no Role (#214).
 			name: "with a custom entry coming in and no role",
 			params: ChangeRotaParams{
-				Date:     "2025-01-05",
+				ShiftID:  "2025-01-05",
 				InCustom: "Redbridge youth group",
 			},
 		},
 		{
 			name: "with only a custom entry going out",
 			params: ChangeRotaParams{
-				Date:      "2025-01-05",
+				ShiftID:   "2025-01-05",
 				OutCustom: "Redbridge youth group",
 				RoleID:    "role-team-lead",
 			},
@@ -1254,11 +1255,11 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			// volunteers doing it: one Role, two people coming in.
 			name: "with a swap date and custom entries",
 			params: ChangeRotaParams{
-				Date:      "2025-01-05",
-				OutCustom: "Redbridge youth group",
-				InCustom:  "Ilford scouts",
-				SwapDate:  "2025-01-12",
-				RoleID:    "role-team-lead",
+				ShiftID:     "2025-01-05",
+				OutCustom:   "Redbridge youth group",
+				InCustom:    "Ilford scouts",
+				SwapShiftID: "2025-01-12",
+				RoleID:      "role-team-lead",
 			},
 		},
 		{
@@ -1266,7 +1267,7 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			// Seat to pick out and nothing for a leaving Role to say.
 			name: "with a leaving role for a volunteer",
 			params: ChangeRotaParams{
-				Date:      "2025-01-05",
+				ShiftID:   "2025-01-05",
 				Out:       "alice",
 				OutRoleID: "role-team-lead",
 			},
@@ -1274,7 +1275,7 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 		{
 			name: "with a leaving role that is not a configured role",
 			params: ChangeRotaParams{
-				Date:      "2025-01-05",
+				ShiftID:   "2025-01-05",
 				OutCustom: "Redbridge youth group",
 				OutRoleID: "role-supervisor",
 			},
@@ -1282,7 +1283,7 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 		{
 			name: "with a leaving role and nobody going out",
 			params: ChangeRotaParams{
-				Date:      "2025-01-05",
+				ShiftID:   "2025-01-05",
 				InCustom:  "Redbridge youth group",
 				RoleID:    "role-team-lead",
 				OutRoleID: "role-team-lead",
@@ -1292,7 +1293,7 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 			// Only a swap date has anybody leaving it.
 			name: "with a swap date's leaving role and no swap date",
 			params: ChangeRotaParams{
-				Date:          "2025-01-05",
+				ShiftID:       "2025-01-05",
 				InCustom:      "Redbridge youth group",
 				RoleID:        "role-team-lead",
 				SwapOutRoleID: "role-team-lead",
@@ -1301,9 +1302,9 @@ func TestChangeRota_RoleRejected(t *testing.T) {
 		{
 			name: "with a swap date's leaving role for a volunteer",
 			params: ChangeRotaParams{
-				Date:          "2025-01-05",
+				ShiftID:       "2025-01-05",
 				In:            "bob",
-				SwapDate:      "2025-01-12",
+				SwapShiftID:   "2025-01-12",
 				SwapOutRoleID: "role-service-volunteer",
 			},
 		},
@@ -1339,7 +1340,7 @@ func TestChangeRota_CustomEntryComingInStatesItsRole(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		InCustom:  "Redbridge youth group",
 		RoleID:    "role-team-lead",
 		Reason:    "Covering the lead this week",
@@ -1366,7 +1367,7 @@ func TestChangeRota_CustomEntryReplacingAVolunteerStatesItsRole(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		InCustom:  "Redbridge youth group",
 		RoleID:    "role-team-lead",
@@ -1394,12 +1395,12 @@ func TestChangeRota_SwapLegsInheritTheRoleOfACustomEntry(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		OutCustom: "Redbridge youth group",
-		OutRoleID: "role-team-lead",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		OutCustom:   "Redbridge youth group",
+		OutRoleID:   "role-team-lead",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, params, zap.NewNop())
@@ -1432,9 +1433,9 @@ func TestChangeRota_MoveCarriesACustomEntrysRoleAcross(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:          "2025-01-05",
+		ShiftID:       "2025-01-05",
 		InCustom:      "Redbridge youth group",
-		SwapDate:      "2025-01-12",
+		SwapShiftID:   "2025-01-12",
 		SwapOutRoleID: "role-team-lead",
 		UserEmail:     "test@example.com",
 	}
@@ -1458,9 +1459,9 @@ func TestChangeRota_MoveOfACustomEntryTakesAnExplicitRole(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:          "2025-01-05",
+		ShiftID:       "2025-01-05",
 		InCustom:      "Redbridge youth group",
-		SwapDate:      "2025-01-12",
+		SwapShiftID:   "2025-01-12",
 		SwapOutRoleID: "role-team-lead",
 		RoleID:        "role-service-volunteer",
 		UserEmail:     "test@example.com",
@@ -1483,7 +1484,7 @@ func TestChangeRota_RemovalOfACustomEntryStoresTheRoleItLeaves(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Redbridge youth group",
 		OutRoleID: "role-team-lead",
 		Reason:    "They could not make it",
@@ -1514,7 +1515,7 @@ func TestChangeRota_SwitchRoleOnTheSameShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		In:        "alice",
 		RoleID:    "role-team-lead",
@@ -1553,7 +1554,7 @@ func TestChangeRota_SwitchRoleForACustomEntry(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Redbridge youth group",
 		OutRoleID: "role-service-volunteer",
 		InCustom:  "Redbridge youth group",
@@ -1586,7 +1587,7 @@ func TestChangeRota_SwitchRoleRejectsSomeoneNotOnTheShift(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "dave",
 		In:        "dave",
 		RoleID:    "role-team-lead",
@@ -1602,7 +1603,7 @@ func TestChangeRota_SwitchRoleRejectsSomeoneNotOnTheShift(t *testing.T) {
 // Naming the same person on both sides of a swap says nothing: they would come
 // off a shift and go back onto it, on two dates at once. Refused rather than
 // silently recorded as a pair of no-ops.
-func TestChangeRota_SwitchRoleRejectsASwapDate(t *testing.T) {
+func TestChangeRota_SwitchRoleRejectsASwapShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -1615,11 +1616,11 @@ func TestChangeRota_SwitchRoleRejectsASwapDate(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
-		Out:       "alice",
-		In:        "alice",
-		SwapDate:  "2025-01-12",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		Out:         "alice",
+		In:          "alice",
+		SwapShiftID: "2025-01-12",
+		UserEmail:   "test@example.com",
 	}
 
 	_, err := ChangeRota(ctx, store, defaultVolunteers(), testCfg, params, logger)
@@ -1641,7 +1642,7 @@ func TestChangeRota_SwitchRoleRequiresARole(t *testing.T) {
 	}
 
 	params := ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		Out:       "alice",
 		In:        "alice",
 		UserEmail: "test@example.com",
@@ -1691,7 +1692,7 @@ func TestChangeRota_RemovingOneCopyOfACustomEntryLeavesTheOther(t *testing.T) {
 	store := redCrossTwice()
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Red Cross",
 		OutRoleID: "role-service-volunteer",
 		Reason:    "Only one could come",
@@ -1708,9 +1709,9 @@ func TestChangeRota_MovingOneCopyOfACustomEntryLeavesTheOtherBehind(t *testing.T
 	store := redCrossTwice()
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:          "2025-01-12",
+		ShiftID:       "2025-01-12",
 		InCustom:      "Red Cross",
-		SwapDate:      "2025-01-05",
+		SwapShiftID:   "2025-01-05",
 		SwapOutRoleID: "role-service-volunteer",
 		UserEmail:     "test@example.com",
 	}, zap.NewNop())
@@ -1727,12 +1728,12 @@ func TestChangeRota_SwappingOneCopyOfACustomEntryLeavesTheOtherBehind(t *testing
 	store := redCrossTwice()
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2025-01-05",
-		OutCustom: "Red Cross",
-		OutRoleID: "role-service-volunteer",
-		In:        "bob",
-		SwapDate:  "2025-01-12",
-		UserEmail: "test@example.com",
+		ShiftID:     "2025-01-05",
+		OutCustom:   "Red Cross",
+		OutRoleID:   "role-service-volunteer",
+		In:          "bob",
+		SwapShiftID: "2025-01-12",
+		UserEmail:   "test@example.com",
 	}, zap.NewNop())
 	require.NoError(t, err)
 
@@ -1748,7 +1749,7 @@ func TestChangeRota_SwitchingOneCopyOfACustomEntryLeavesTheOther(t *testing.T) {
 	store := redCrossTwice()
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Red Cross",
 		OutRoleID: "role-service-volunteer",
 		InCustom:  "Red Cross",
@@ -1769,9 +1770,9 @@ func TestChangeRota_MovingACustomEntryOntoAShiftItIsOn(t *testing.T) {
 		db.Allocation{ID: "a4", ShiftID: "2025-01-12", RoleID: "role-team-lead", CustomEntry: "Red Cross"})
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:          "2025-01-12",
+		ShiftID:       "2025-01-12",
 		InCustom:      "Red Cross",
-		SwapDate:      "2025-01-05",
+		SwapShiftID:   "2025-01-05",
 		SwapOutRoleID: "role-service-volunteer",
 		UserEmail:     "test@example.com",
 	}, zap.NewNop())
@@ -1786,7 +1787,7 @@ func TestChangeRota_LeavingCustomEntryMustHoldTheRoleNamed(t *testing.T) {
 	store.allocations = store.allocations[:1] // Red Cross as Team lead only
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Red Cross",
 		OutRoleID: "role-service-volunteer",
 		Reason:    "Testing",
@@ -1808,7 +1809,7 @@ func TestChangeRota_LeavingCustomEntryMustNameItsRole(t *testing.T) {
 		{
 			name: "on a removal",
 			params: ChangeRotaParams{
-				Date:      "2025-01-05",
+				ShiftID:   "2025-01-05",
 				OutCustom: "Red Cross",
 				Reason:    "Testing",
 			},
@@ -1816,9 +1817,9 @@ func TestChangeRota_LeavingCustomEntryMustNameItsRole(t *testing.T) {
 		{
 			name: "on a move away",
 			params: ChangeRotaParams{
-				Date:     "2025-01-12",
-				InCustom: "Red Cross",
-				SwapDate: "2025-01-05",
+				ShiftID:     "2025-01-12",
+				InCustom:    "Red Cross",
+				SwapShiftID: "2025-01-05",
 			},
 		},
 	}
@@ -1848,7 +1849,7 @@ func TestChangeRota_RoleLessCustomEntryLeavesNamingNoRole(t *testing.T) {
 	}
 
 	_, err := ChangeRota(context.Background(), store, defaultVolunteers(), testCfg, ChangeRotaParams{
-		Date:      "2025-01-05",
+		ShiftID:   "2025-01-05",
 		OutCustom: "Red Cross",
 		Reason:    "They could not make it",
 		UserEmail: "test@example.com",

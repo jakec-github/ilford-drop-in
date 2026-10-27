@@ -357,15 +357,16 @@ export const CUSTOM_CHOICE = "custom";
 // RotaChange is one change to a published rota, mirroring what POST /alterations
 // accepts. Every operation the rota page offers is one of these:
 //
-//   add     { date, in }
-//   remove  { date, out }
-//   replace { date, out: leaving, in: arriving }
-//   move    { date: destination, in: person, swapDate: where they were }
-//   swap    { date: A's shift, out: A, in: B, swapDate: B's shift }
-//   switch  { date, out: person, in: the same person, roleId: the new one }
+//   add     { shiftId, in }
+//   remove  { shiftId, out }
+//   replace { shiftId, out: leaving, in: arriving }
+//   move    { shiftId: destination, in: person, swapShiftId: where they were }
+//   swap    { shiftId: A's shift, out: A, in: B, swapShiftId: B's shift }
+//   switch  { shiftId, out: person, in: the same person, roleId: the new one }
 //
-// swapDate applies the same change reversed on a second date, which is what
-// makes move and swap a single atomic request rather than two.
+// swapShiftId applies the same change reversed on a second shift, which is
+// what makes move and swap a single atomic request rather than two. Shifts are
+// named by id, never by date: two can share a day (issue #293).
 //
 // A switch is a replacement of somebody by themselves: they leave the shift and
 // rejoin it in another Role, staying on it throughout (issue #147). It is the
@@ -373,7 +374,7 @@ export const CUSTOM_CHOICE = "custom";
 //
 // roleId sets the Role the incoming volunteer takes, by id as a pin names one
 // (issue #222); omitted, the server infers
-// it. On a swap it is refused — out is also set there, so each date has its
+// it. On a swap it is refused — out is also set there, so each shift has its
 // own incoming person and there is no unambiguous one to apply it to — but a
 // move accepts it, since only one person is arriving. Any configured Role is
 // accepted, whoever else on the shift already holds it and whatever the shift's
@@ -381,8 +382,8 @@ export const CUSTOM_CHOICE = "custom";
 // instructing a solve (ADR 0009).
 //
 // outRoleId is the Role of the Seat a custom entry named by out leaves on
-// date, and swapOutRoleId the one a custom entry named by in leaves on
-// swapDate. A custom entry may hold several Seats on one shift (#195), so it
+// shiftId, and swapOutRoleId the one a custom entry named by in leaves on
+// swapShiftId. A custom entry may hold several Seats on one shift (#195), so it
 // says which it is leaving, and only that one comes off (issue #216). Never
 // sent for a volunteer, who holds one Seat on a shift at most, nor for a Seat
 // with no Role.
@@ -391,10 +392,10 @@ export const CUSTOM_CHOICE = "custom";
 // remove — the one shape that leaves the shift short of someone, with no
 // replacement naming why (issue #148). Send it empty anywhere else.
 export interface RotaChange {
-  date: string;
+  shiftId: string;
   in?: PersonRef;
   out?: PersonRef;
-  swapDate?: string;
+  swapShiftId?: string;
   roleId?: string;
   outRoleId?: string;
   swapOutRoleId?: string;
@@ -589,6 +590,7 @@ export interface RotaShift {
 // the same thing, both carry an id, and an Organiser or a Rota Editor may remove either.
 export interface Pin {
   id: string;
+  shiftId: string;
   date: string;
   // The Role by id and by name, as a standing pin carries it: the id is what
   // the pin references and survives a rename, the name is what to show.
@@ -607,7 +609,7 @@ export interface Pin {
 // pin names one, and the API accepts it only for a volunteer the roster records
 // as holding that Role.
 export interface NewPin {
-  date: string;
+  shiftId: string;
   person: PersonRef;
   roleId: string;
 }

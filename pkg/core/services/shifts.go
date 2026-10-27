@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services/utils"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
@@ -28,4 +29,17 @@ func rotaShiftDates(ctx context.Context, store shiftReader, rotaID string) ([]ti
 		return nil, fmt.Errorf("rota %s has no shifts", rotaID)
 	}
 	return utils.ShiftDatesFromShifts(shifts)
+}
+
+// shiftLabel is a Shift as a sentence an Organiser is shown names it: its date
+// and the time it starts — "9 August 2026 at 19:30". The date alone stopped
+// being enough once a day could hold two Shifts (issue #293). A Shift whose
+// start cannot be read is named by its date alone, for the reason readableDate
+// gives.
+func shiftLabel(shift db.Shift) string {
+	startAt, err := time.Parse(model.ShiftTimestampLayout, shift.StartAt)
+	if err != nil {
+		return readableDate(shift.Date)
+	}
+	return readableDate(shift.Date) + " at " + startAt.Format("15:04")
 }

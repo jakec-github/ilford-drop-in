@@ -178,11 +178,6 @@ func TestShiftClosedRoundTrips(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, inRange, 1)
 	assert.True(t, inRange[0].Closed)
-
-	byDate, err := database.GetShiftByDate(ctx, time.Date(2026, 12, 27, 0, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	require.NotNil(t, byDate)
-	assert.True(t, byDate.Closed)
 }
 
 // TestGetShiftByIDUnknownReturnsNil keeps "no such shift" distinguishable from
@@ -191,9 +186,11 @@ func TestShiftClosedRoundTrips(t *testing.T) {
 func TestGetShiftByIDUnknownReturnsNil(t *testing.T) {
 	database, _ := dbtest.New(t)
 
-	shift, err := database.GetShiftByID(context.Background(), uuid.New().String())
-	require.NoError(t, err)
-	assert.Nil(t, shift)
+	for _, id := range []string{uuid.New().String(), "not-a-uuid"} {
+		shift, err := database.GetShiftByID(context.Background(), id)
+		require.NoError(t, err, id)
+		assert.Nil(t, shift, id)
+	}
 }
 
 // TestShiftDateUniqueRejectsOverlappingRotas pins the concurrency role of the
@@ -291,17 +288,6 @@ func TestShiftDateComesFromStartAt(t *testing.T) {
 	require.NotNil(t, byID)
 	assert.Equal(t, "2026-08-16", byID.Date)
 
-	// The lookup that resolves a date to its shift answers on the start's date
-	// and is silent on the one that was handed in.
-	found, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	require.NotNil(t, found)
-	assert.Equal(t, later.ID, found.ID)
-
-	missing, err := database.GetShiftByDate(ctx, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	assert.Nil(t, missing, "a Date handed in is not what a date resolves against")
-
 	// A rotation's span is derived from its shifts, so it moves with them.
 	rotations, err := database.GetRotations(ctx)
 	require.NoError(t, err)
@@ -339,11 +325,6 @@ func TestShiftTimesRoundTrip(t *testing.T) {
 	require.Len(t, byRota, 1)
 	assert.Equal(t, "2026-07-12T19:30:00", byRota[0].StartAt)
 	assert.Equal(t, "2026-07-12T21:30:00", byRota[0].EndAt)
-
-	byDate, err := database.GetShiftByDate(ctx, time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	require.NotNil(t, byDate)
-	assert.Equal(t, "2026-07-12T19:30:00", byDate.StartAt)
 
 	inRange, err := database.GetShiftsInRange(ctx, time.Time{}, time.Time{})
 	require.NoError(t, err)

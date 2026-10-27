@@ -273,10 +273,10 @@ func DefineRota(
 		zap.String("last_shift", shifts[len(shifts)-1].Date))
 
 	return &RotaResult{
-		Rotation:       rotation,
-		Shifts:         shifts,
-		Pins: pins,
-		Asked:          openRound(ctx, database, volunteerClient, organisation, logger, rotation.ID),
+		Rotation: rotation,
+		Shifts:   shifts,
+		Pins:     pins,
+		Asked:    openRound(ctx, database, volunteerClient, organisation, logger, rotation.ID),
 	}, nil
 }
 

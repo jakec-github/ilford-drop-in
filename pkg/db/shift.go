@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -53,7 +54,7 @@ func localTimestamp(t time.Time) string {
 	return t.Format(shiftTimestampLayout)
 }
 
-// GetShiftsByRotaID retrieves a rotation's shifts, ordered by date ascending.
+// GetShiftsByRotaID retrieves a rotation's shifts, ordered by start ascending.
 // Consumers that once recomputed a rota's dates by arithmetic read them here
 // instead (ADR 0001).
 func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, error) {
@@ -61,7 +62,7 @@ func (d *DB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]Shift, err
 		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
 		FROM shift s
 		WHERE s.rota_id = $1 AND s.organisation_id = $2
-		ORDER BY `+shiftDateExpr+`
+		ORDER BY s.start_at
 	`, rotaID, d.org())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts for rota %s: %w", rotaID, err)
@@ -97,7 +98,7 @@ type ShiftInRange struct {
 }
 
 // GetShiftsInRange retrieves the minted shifts whose date falls between from and
-// to (inclusive), allocated or not, ordered by date ascending. A zero time
+// to (inclusive), allocated or not, ordered by start ascending. A zero time
 // leaves that bound open, mirroring GetAllocationsInRange. Each shift carries
 // its rota's allocated state, joined from rotation.allocated_datetime.
 func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftInRange, error) {
@@ -107,7 +108,7 @@ func (d *DB) GetShiftsInRange(ctx context.Context, from, to time.Time) ([]ShiftI
 		FROM shift s
 		JOIN rotation r ON r.id = s.rota_id
 	`+where+`
-		ORDER BY `+shiftDateExpr+`
+		ORDER BY s.start_at
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query shifts in range: %w", err)
@@ -150,33 +151,16 @@ func shiftDateWhere(organisationID string, from, to time.Time) (string, []any) {
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
-// GetShiftByDate retrieves the single shift on the given date, or nil if no
-// shift exists for that date. Dates are unique, so at most one row matches;
-// this is the lookup that resolves a date to its shift and rota.
-func (d *DB) GetShiftByDate(ctx context.Context, date time.Time) (*Shift, error) {
-	var s Shift
-	var d0, startAt, endAt time.Time
-	err := d.pool.QueryRow(ctx, `
-		SELECT s.id, `+shiftDateExpr+`, s.rota_id, s.closed, s.start_at, s.end_at
-		FROM shift s
-		WHERE `+shiftDateExpr+` = $1 AND s.organisation_id = $2
-	`, date, d.org()).Scan(&s.ID, &d0, &s.RotaID, &s.Closed, &startAt, &endAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to query shift for date %s: %w", date.Format("2006-01-02"), err)
-	}
-	s.Date = d0.Format("2006-01-02")
-	s.StartAt, s.EndAt = localTimestamp(startAt), localTimestamp(endAt)
-	return &s, nil
-}
-
 // GetShiftByID retrieves one shift with its rota's allocation state, or nil if
 // no shift has that id. It is the read behind close/reopen: whether the shift
 // exists and whether its rota has been allocated are the two things that decide
 // whether the flag may move at all.
 func (d *DB) GetShiftByID(ctx context.Context, id string) (*ShiftInRange, error) {
+	// A shift id is a UUID, so anything else names no shift — and the column
+	// would refuse it with a syntax error rather than match nothing.
+	if uuid.Validate(id) != nil {
+		return nil, nil
+	}
 	var s ShiftInRange
 	var date, startAt, endAt time.Time
 	err := d.pool.QueryRow(ctx, `

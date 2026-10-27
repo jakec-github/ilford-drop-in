@@ -93,7 +93,7 @@ func AllocateRotaInFlight(
 		return nil, err
 	}
 
-	allocations, err := convertToDBAllocations(solve.shiftIDByDate, solve.solvedShifts, solve.roles)
+	allocations, err := convertToDBAllocations(solve.shifts, solve.solvedShifts, solve.roles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert allocations: %w", err)
 	}

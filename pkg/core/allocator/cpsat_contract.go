@@ -59,15 +59,17 @@ type CpsatPin struct {
 // the shift asks for; it replaces a bare size, which could only ever describe a
 // rota with one Role.
 type CpsatShift struct {
-	Index          int                  `json:"index"`
-	Date           string               `json:"date"`
-	Shape          []CpsatSeat          `json:"shape"`
-	Closed         bool                 `json:"closed"`
-	Pins []CpsatPin `json:"pins"`
+	Index  int         `json:"index"`
+	ID     string      `json:"id"`
+	Date   string      `json:"date"`
+	Shape  []CpsatSeat `json:"shape"`
+	Closed bool        `json:"closed"`
+	Pins   []CpsatPin  `json:"pins"`
 }
 
 // CpsatHistoricalShift is a past shift with Go-derived group keys.
 type CpsatHistoricalShift struct {
+	ID        string   `json:"id"`
 	Date      string   `json:"date"`
 	GroupKeys []string `json:"group_keys"`
 }
@@ -115,6 +117,7 @@ type CpsatAssignment struct {
 // manually later).
 type CpsatOutputShift struct {
 	Index              int               `json:"index"`
+	ID                 string            `json:"id"`
 	Date               string            `json:"date"`
 	Closed             bool              `json:"closed"`
 	Assignments        []CpsatAssignment `json:"assignments"`
@@ -187,11 +190,12 @@ func BuildCpsatInput(
 
 	for i, shift := range initialised {
 		input.Shifts[i] = CpsatShift{
-			Index:          shift.Index,
-			Date:           shift.Date,
-			Shape:          contractShape(shift.Shape),
-			Closed:         shift.Closed,
-			Pins: contractPins(shift.Pins),
+			Index:  shift.Index,
+			ID:     shift.ID,
+			Date:   shift.Date,
+			Shape:  contractShape(shift.Shape),
+			Closed: shift.Closed,
+			Pins:   contractPins(shift.Pins),
 		}
 	}
 
@@ -222,13 +226,14 @@ func BuildCpsatInput(
 		}
 		sort.Strings(groupKeys)
 		input.HistoricalShifts[i] = CpsatHistoricalShift{
+			ID:        shift.ID,
 			Date:      shift.Date,
 			GroupKeys: groupKeys,
 		}
 	}
 	// The contract requires historical shifts sorted ascending by date;
 	// only the last one matters in v1 (back-to-back boundary).
-	sort.Slice(input.HistoricalShifts, func(i, j int) bool {
+	sort.SliceStable(input.HistoricalShifts, func(i, j int) bool {
 		return input.HistoricalShifts[i].Date < input.HistoricalShifts[j].Date
 	})
 
@@ -292,7 +297,7 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 
 			vol, exists := volunteersByID[assigned.VolunteerID]
 			if !exists {
-				return nil, fmt.Errorf("solver returned unknown volunteer ID %s for shift %s", assigned.VolunteerID, outShift.Date)
+				return nil, fmt.Errorf("solver returned unknown volunteer ID %s for shift %s", assigned.VolunteerID, outShift.ID)
 			}
 			assignments = append(assignments, Assignment{
 				Volunteer: &vol,
@@ -316,6 +321,7 @@ func CpsatOutputToShifts(output *CpsatOutput, volunteers []Volunteer) ([]*Shift,
 		}
 
 		shifts[i] = &Shift{
+			ID:              outShift.ID,
 			Date:            outShift.Date,
 			Index:           outShift.Index,
 			Closed:          outShift.Closed,

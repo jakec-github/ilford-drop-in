@@ -48,12 +48,12 @@ type AvailabilityRequest struct {
 
 // Allocation represents a shift allocation assignment
 type Allocation struct {
-	ID           string
-	RotaID       string
-	ShiftDate    string
-	Role         string
-	VolunteerID  string // nullable
-	Pinned string // nullable
+	ID          string
+	RotaID      string
+	ShiftDate   string
+	Role        string
+	VolunteerID string // nullable
+	Pinned      string // nullable
 }
 
 // Alteration represents a single change to a shift
