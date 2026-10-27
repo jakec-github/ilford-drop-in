@@ -48,8 +48,8 @@ type CpsatSeat struct {
 	Count int    `json:"count"`
 }
 
-// CpsatPreallocation pins a volunteer or a custom entry to a Role on a shift.
-type CpsatPreallocation struct {
+// CpsatPin pins a volunteer or a custom entry to a Role on a shift.
+type CpsatPin struct {
 	VolunteerID string `json:"volunteer_id"`
 	Custom      string `json:"custom"`
 	Role        string `json:"role"`
@@ -63,7 +63,7 @@ type CpsatShift struct {
 	Date           string               `json:"date"`
 	Shape          []CpsatSeat          `json:"shape"`
 	Closed         bool                 `json:"closed"`
-	Preallocations []CpsatPreallocation `json:"preallocations"`
+	Pins []CpsatPin `json:"pins"`
 }
 
 // CpsatHistoricalShift is a past shift with Go-derived group keys.
@@ -102,7 +102,7 @@ type CpsatInput struct {
 
 // CpsatAssignment is one filled Seat: who is in it, and what Role it is.
 // Exactly one of VolunteerID and Custom is set, mirroring
-// CpsatPreallocation going the other way.
+// CpsatPin going the other way.
 type CpsatAssignment struct {
 	VolunteerID string `json:"volunteer_id"`
 	Custom      string `json:"custom"`
@@ -153,7 +153,7 @@ func BuildCpsatInput(
 	allocationSettings model.AllocationSettings,
 	roles []Role,
 ) (*CpsatInput, error) {
-	// InitShifts resolves each shift's preallocations from the overrides,
+	// InitShifts resolves each shift's pins from the overrides,
 	// carrying its own Shape and Closed through. AvailableGroups isn't part of
 	// the contract (Python derives availability from groups), so an empty state
 	// suffices.
@@ -191,7 +191,7 @@ func BuildCpsatInput(
 			Date:           shift.Date,
 			Shape:          contractShape(shift.Shape),
 			Closed:         shift.Closed,
-			Preallocations: contractPreallocations(shift.Preallocations),
+			Pins: contractPins(shift.Pins),
 		}
 	}
 
@@ -356,11 +356,11 @@ func contractRoles(roles []Role) []CpsatRole {
 	return out
 }
 
-// contractPreallocations renders a shift's pins, keeping [] rather than null.
-func contractPreallocations(pins []Preallocation) []CpsatPreallocation {
-	out := make([]CpsatPreallocation, 0, len(pins))
+// contractPins renders a shift's pins, keeping [] rather than null.
+func contractPins(pins []Pin) []CpsatPin {
+	out := make([]CpsatPin, 0, len(pins))
 	for _, pin := range pins {
-		out = append(out, CpsatPreallocation{
+		out = append(out, CpsatPin{
 			VolunteerID: pin.VolunteerID,
 			Custom:      pin.Custom,
 			Role:        pin.Role,

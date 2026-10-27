@@ -1,7 +1,7 @@
 """Frozen dataclasses mirroring the Go <-> Python JSON contract.
 
 Input types describe the allocation problem as sent by the Go CLI
-(resolved groups, shift specs, preallocations). Output types describe
+(resolved groups, shift specs, pins). Output types describe
 the solved rota returned on stdout. Field names match the snake_case
 JSON contract exactly; see serialization.py for the dict conversion.
 """
@@ -38,7 +38,7 @@ class Seat:
 
 
 @dataclass(frozen=True)
-class Preallocation:
+class Pin:
     """A volunteer, or a custom entry, pinned to a Role on a Shift.
 
     Exactly one of volunteer_id and custom is non-empty.
@@ -87,7 +87,7 @@ class ShiftSpec:
     date: str
     closed: bool
     shape: tuple[Seat, ...] = ()
-    preallocations: tuple[Preallocation, ...] = ()
+    pins: tuple[Pin, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ class AllocationInput:
 class Assignment:
     """One filled Seat: who is in it, and what Role it is.
 
-    Exactly one of volunteer_id and custom is set, as on Preallocation
+    Exactly one of volunteer_id and custom is set, as on Pin
     coming the other way — a custom entry is free text the rota creator
     typed ("St John's team"), not a volunteer the system knows.
     """
@@ -161,7 +161,7 @@ class OutputShift:
     """One solved shift.
 
     assignments are the Seats that ended up filled: the solver's own, in
-    canonical volunteer order, then the custom preallocations echoed back
+    canonical volunteer order, then the custom pins echoed back
     in input order. A Seat nobody filled is simply absent — which is how
     "this shift has no team lead" is said, and it is common.
 

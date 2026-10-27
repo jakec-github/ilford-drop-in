@@ -266,7 +266,7 @@ func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, 
 }
 
 // InsertDefinedRota inserts a rotation, all of its minted shifts, the Shapes
-// those shifts ask for and the Preallocations its Standing Preallocations
+// those shifts ask for and the Pins its Standing Preallocations
 // seeded, in a single transaction — so a rotation can never exist without its
 // shifts, a shift can never exist without the Shape it was minted with, and a
 // rota can never be defined with only some of the pins an Organiser was promised.
@@ -282,7 +282,7 @@ func setShiftTimes(ctx context.Context, q querier, organisationID, id, startAt, 
 // that index must introduce a replacement guard here. That refusal comes back
 // as ErrShiftDateTaken, since it is also how a rota defined to start on a day
 // the Organisation already runs is turned away.
-func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, preallocations []Preallocation, requirements []ShiftRequirement) error {
+func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts []Shift, pins []Pin, requirements []ShiftRequirement) error {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -339,8 +339,8 @@ func (d *DB) InsertDefinedRota(ctx context.Context, rotation *Rotation, shifts [
 	// Written one at a time rather than batched: there are a handful at most,
 	// and the shift_id foreign key means a mistake in the seeding is worth
 	// naming the row it came from.
-	for _, p := range preallocations {
-		if err := insertPreallocation(ctx, tx, d.org(), p); err != nil {
+	for _, p := range pins {
+		if err := insertPin(ctx, tx, d.org(), p); err != nil {
 			return err
 		}
 	}

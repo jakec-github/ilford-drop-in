@@ -21,7 +21,7 @@ var seedShifts = []db.Shift{
 	{ID: "shift-4", RotaID: "rota-1", Date: "2026-08-23"},
 }
 
-func TestSeedPreallocations_MatchingShiftsOnly(t *testing.T) {
+func TestSeedPins_MatchingShiftsOnly(t *testing.T) {
 	standing := []db.StandingPreallocation{{
 		ID:          "standing-1",
 		RRule:       "FREQ=MONTHLY;BYDAY=1SU",
@@ -29,17 +29,17 @@ func TestSeedPreallocations_MatchingShiftsOnly(t *testing.T) {
 		CustomValue: "St John's team",
 	}}
 
-	seeded, err := seedPreallocations(standing, seedShifts, testRoles, zap.NewNop())
+	seeded, err := seedPins(standing, seedShifts, testRoles, zap.NewNop())
 	require.NoError(t, err)
 
 	require.Len(t, seeded, 1, "the rule matches only the first Sunday")
 	assert.Equal(t, "shift-1", seeded[0].ShiftID)
 	assert.Equal(t, "St John's team", seeded[0].CustomValue)
 	assert.Equal(t, "role-service-volunteer", seeded[0].RoleID, "the seeded pin references the Role the promise named")
-	assert.NotEmpty(t, seeded[0].ID, "a seeded Preallocation is an ordinary row with its own identity")
+	assert.NotEmpty(t, seeded[0].ID, "a seeded Pin is an ordinary row with its own identity")
 }
 
-func TestSeedPreallocations_EveryMatchingShift(t *testing.T) {
+func TestSeedPins_EveryMatchingShift(t *testing.T) {
 	standing := []db.StandingPreallocation{{
 		ID:          "standing-1",
 		RRule:       "FREQ=WEEKLY;BYDAY=SU",
@@ -47,7 +47,7 @@ func TestSeedPreallocations_EveryMatchingShift(t *testing.T) {
 		VolunteerID: "vol-1",
 	}}
 
-	seeded, err := seedPreallocations(standing, seedShifts, testRoles, zap.NewNop())
+	seeded, err := seedPins(standing, seedShifts, testRoles, zap.NewNop())
 	require.NoError(t, err)
 
 	require.Len(t, seeded, 4)
@@ -61,17 +61,17 @@ func TestSeedPreallocations_EveryMatchingShift(t *testing.T) {
 // Two rules can name the same person on the same date, and a person fills at
 // most one Seat on a Shift — so what reaches the rota is one pin, in the Role
 // whose Seats are filled first.
-func TestSeedPreallocations_CollapsesOverlappingRules(t *testing.T) {
+func TestSeedPins_CollapsesOverlappingRules(t *testing.T) {
 	standing := []db.StandingPreallocation{
 		{ID: "standing-1", RRule: "FREQ=WEEKLY;BYDAY=SU", RoleID: "role-service-volunteer", VolunteerID: "vol-1"},
 		{ID: "standing-2", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-team-lead", VolunteerID: "vol-1"},
 	}
 
-	seeded, err := seedPreallocations(standing, seedShifts, testRoles, zap.NewNop())
+	seeded, err := seedPins(standing, seedShifts, testRoles, zap.NewNop())
 	require.NoError(t, err)
 
 	require.Len(t, seeded, 4, "one pin per shift, not five")
-	byShift := make(map[string]db.Preallocation, len(seeded))
+	byShift := make(map[string]db.Pin, len(seeded))
 	for _, p := range seeded {
 		byShift[p.ShiftID] = p
 	}
@@ -82,13 +82,13 @@ func TestSeedPreallocations_CollapsesOverlappingRules(t *testing.T) {
 // A custom entry is usually an organisation, and an organisation routinely
 // sends two people (issue #195): two promises of the same name are two pins,
 // not a slip to collapse.
-func TestSeedPreallocations_RepeatedCustomEntryKeepsBothPins(t *testing.T) {
+func TestSeedPins_RepeatedCustomEntryKeepsBothPins(t *testing.T) {
 	standing := []db.StandingPreallocation{
 		{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
 		{ID: "standing-2", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
 	}
 
-	seeded, err := seedPreallocations(standing, seedShifts, testRoles, zap.NewNop())
+	seeded, err := seedPins(standing, seedShifts, testRoles, zap.NewNop())
 	require.NoError(t, err)
 
 	require.Len(t, seeded, 2, "both promises reach the first Sunday")
@@ -101,7 +101,7 @@ func TestSeedPreallocations_RepeatedCustomEntryKeepsBothPins(t *testing.T) {
 
 // A rule nobody can parse would silently drop a promise an Organiser has made, so
 // definition refuses rather than minting a rota missing its pins.
-func TestSeedPreallocations_UnparseableRuleFails(t *testing.T) {
+func TestSeedPins_UnparseableRuleFails(t *testing.T) {
 	standing := []db.StandingPreallocation{{
 		ID:          "standing-1",
 		RRule:       "NOT AN RRULE",
@@ -109,13 +109,13 @@ func TestSeedPreallocations_UnparseableRuleFails(t *testing.T) {
 		VolunteerID: "vol-1",
 	}}
 
-	_, err := seedPreallocations(standing, seedShifts, testRoles, zap.NewNop())
+	_, err := seedPins(standing, seedShifts, testRoles, zap.NewNop())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "standing-1")
 }
 
-func TestSeedPreallocations_NoneIsNotAnError(t *testing.T) {
-	seeded, err := seedPreallocations(nil, seedShifts, testRoles, zap.NewNop())
+func TestSeedPins_NoneIsNotAnError(t *testing.T) {
+	seeded, err := seedPins(nil, seedShifts, testRoles, zap.NewNop())
 	require.NoError(t, err)
 	assert.Empty(t, seeded)
 }
@@ -157,7 +157,7 @@ func (m *mockStandingStore) DeleteStandingPreallocationByID(_ context.Context, i
 
 func addStanding(t *testing.T, store *mockStandingStore, params AddStandingPreallocationParams) (*StandingPreallocationView, error) {
 	t.Helper()
-	return AddStandingPreallocation(context.Background(), store, preallocVolunteers(), testCfg, params, zap.NewNop())
+	return AddStandingPreallocation(context.Background(), store, pinVolunteers(), testCfg, params, zap.NewNop())
 }
 
 func TestAddStandingPreallocation_VolunteerHappyPath(t *testing.T) {
@@ -277,7 +277,7 @@ func TestListStandingPreallocations_Order(t *testing.T) {
 		{ID: "s3", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-team-lead", VolunteerID: "alice"},
 	}}
 
-	views, err := ListStandingPreallocations(context.Background(), store, preallocVolunteers(), testCfg, zap.NewNop())
+	views, err := ListStandingPreallocations(context.Background(), store, pinVolunteers(), testCfg, zap.NewNop())
 	require.NoError(t, err)
 
 	names := make([]string, 0, len(views))

@@ -36,7 +36,7 @@ type AvailabilityStore interface {
 	InsertAvailabilityResponse(ctx context.Context, requestID string, answers []db.ShiftAnswer) (*db.AvailabilityGeneration, error)
 	// Pins hold seats the answers coming in do not have to fill, so the round's
 	// coverage cannot be read without them.
-	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
+	GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error)
 }
 
 // AvailabilityShift is one of a rota's shifts as both the volunteer's form and
@@ -569,9 +569,9 @@ func buildRound(
 	for _, s := range shifts {
 		shiftIDs = append(shiftIDs, s.ID)
 	}
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, shiftIDs)
+	pins, err := database.GetPinsByShiftIDs(ctx, shiftIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch preallocations: %w", err)
+		return nil, fmt.Errorf("failed to fetch pins: %w", err)
 	}
 
 	groups := buildAvailabilityGroups(entries, volunteersByID, shifts)

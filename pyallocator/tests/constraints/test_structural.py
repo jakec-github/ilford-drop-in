@@ -9,7 +9,7 @@ import pytest
 from conftest import SERVICE_VOLUNTEER, make_group, make_input, make_shift, solve_with
 from ortools.sat.python import cp_model
 
-from pyallocator.constraints import no_duplicate_allocation, preallocations
+from pyallocator.constraints import no_duplicate_allocation, pins
 from pyallocator.constraints.base import Vars
 from pyallocator.model_builder import build
 from pyallocator.preferences import maximize_allocations
@@ -44,7 +44,7 @@ def test_attendance_equals_exactly_one_role_var():
         shifts=[make_shift(0)],
     )
     problem = Problem(inp)
-    built = build(problem, [preallocations.CONSTRAINT], [maximize_allocations.PREFERENCE])
+    built = build(problem, [pins.CONSTRAINT], [maximize_allocations.PREFERENCE])
     result = solve_model(built)
     assert result.success
 
@@ -57,13 +57,13 @@ def test_attendance_equals_exactly_one_role_var():
     assert len(filled) == 1, f"expected one Seat, got {filled}"
 
 
-def test_preallocation_forces_the_pinned_role_not_just_attendance():
+def test_pin_forces_the_pinned_role_not_just_attendance():
     inp = make_input(
         groups=[make_group("lead", team_lead=True, available=[0])],
-        shifts=[make_shift(0, preallocated_team_lead_id="lead")],
+        shifts=[make_shift(0, pinned_team_lead_id="lead")],
     )
     problem = Problem(inp)
-    built = build(problem, [preallocations.CONSTRAINT], [maximize_allocations.PREFERENCE])
+    built = build(problem, [pins.CONSTRAINT], [maximize_allocations.PREFERENCE])
     result = solve_model(built)
     assert result.success
     assert result.solver.Value(built.x.role[("lead", 0, "Team lead")]) == 1
@@ -78,10 +78,10 @@ def test_pinned_role_is_granted_for_that_shift_alone():
     """
     inp = make_input(
         groups=[make_group("g1", available=[0, 1])],  # holds Service volunteer only
-        shifts=[make_shift(0, preallocated_team_lead_id="g1"), make_shift(1)],
+        shifts=[make_shift(0, pinned_team_lead_id="g1"), make_shift(1)],
     )
     problem = Problem(inp)
-    built = build(problem, [preallocations.CONSTRAINT], [maximize_allocations.PREFERENCE])
+    built = build(problem, [pins.CONSTRAINT], [maximize_allocations.PREFERENCE])
 
     assert ("g1", 0, "Team lead") in built.x.role
     assert ("g1", 1, "Team lead") not in built.x.role
@@ -135,7 +135,7 @@ def test_role_var_for_a_pin_past_the_shape_is_allowed():
     # pinned person, and only they, get a role var for it there.
     inp = make_input(
         groups=[make_group("g1", available=[0]), make_group("g2", available=[0])],
-        shifts=[make_shift(0, size=0, preallocated_volunteer_ids=["g1"])],
+        shifts=[make_shift(0, size=0, pinned_volunteer_ids=["g1"])],
     )
     built = build(Problem(inp), [no_duplicate_allocation.CONSTRAINT], [])
     assert ("g1", 0, SERVICE_VOLUNTEER) in built.x.role

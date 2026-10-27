@@ -99,7 +99,7 @@ func TestSaveShiftShapeTakesAnyCountOfAnyRole(t *testing.T) {
 // ordinary edit (ADR 0010): the pin sits past the Shape and the solver keeps it.
 func TestSaveShiftShapeDropsARoleSomebodyIsPinnedTo(t *testing.T) {
 	store := shiftEditTestStore()
-	store.manualPreallocations = []db.Preallocation{
+	store.manualPins = []db.Pin{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-team-lead", VolunteerID: "vol-alice"},
 	}
 

@@ -33,7 +33,7 @@ VALID_INPUT = {
                 {"role": "Team lead", "count": 1},
                 {"role": "Service volunteer", "count": 4},
             ],
-            "preallocations": [
+            "pins": [
                 {
                     "volunteer_id": "",
                     "custom": "St John's team",
@@ -91,7 +91,7 @@ def test_parse_valid_input():
         ("Team lead", 1),
         ("Service volunteer", 4),
     ]
-    assert [(p.volunteer_id, p.custom, p.role) for p in shift0.preallocations] == [
+    assert [(p.volunteer_id, p.custom, p.role) for p in shift0.pins] == [
         ("", "St John's team", "Service volunteer"),
         ("vol-1", "", "Service volunteer"),
         ("vol-9", "", "Team lead"),
@@ -99,7 +99,7 @@ def test_parse_valid_input():
     assert not shift0.closed
     # Optional fields default sensibly.
     shift1 = parsed.shifts[1]
-    assert shift1.preallocations == ()
+    assert shift1.pins == ()
     assert not shift1.closed
     group = parsed.groups[0]
     assert group.group_key == "couple_alice_bob"
@@ -156,11 +156,11 @@ def test_rules_are_optional_and_any_kind_parses():
             "shape names unknown role",
         ),
         (
-            lambda d: d["shifts"][0]["preallocations"][0].update(role="Hot food"),
-            "preallocation names unknown role",
+            lambda d: d["shifts"][0]["pins"][0].update(role="Hot food"),
+            "pin names unknown role",
         ),
         (
-            lambda d: d["shifts"][0]["preallocations"][1].update(
+            lambda d: d["shifts"][0]["pins"][1].update(
                 custom="Both at once"
             ),
             "exactly one of 'volunteer_id' and 'custom'",

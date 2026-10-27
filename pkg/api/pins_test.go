@@ -13,7 +13,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// activeVolunteers is testVolunteers with statuses set, since preallocation
+// activeVolunteers is testVolunteers with statuses set, since pin
 // set-time validation requires an active volunteer (unlike alterations).
 func activeVolunteers() *mockVolunteerClient {
 	return &mockVolunteerClient{
@@ -25,7 +25,7 @@ func activeVolunteers() *mockVolunteerClient {
 	}
 }
 
-func preallocationTestStore() *mockStore {
+func pinTestStore() *mockStore {
 	return &mockStore{
 		shifts: []db.Shift{
 			{ID: "s1", RotaID: "rota-1", Date: "2026-01-11"},
@@ -34,11 +34,11 @@ func preallocationTestStore() *mockStore {
 	}
 }
 
-func TestCreatePreallocationEndpoint(t *testing.T) {
-	store := preallocationTestStore()
+func TestCreatePinEndpoint(t *testing.T) {
+	store := pinTestStore()
 	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/pins", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp struct {
@@ -58,36 +58,36 @@ func TestCreatePreallocationEndpoint(t *testing.T) {
 	assert.Equal(t, "bob", resp.VolunteerID)
 
 	// Proves the pin persisted through the store, on the right shift.
-	require.Len(t, store.insertedPreallocations, 1)
-	assert.Equal(t, "s1", store.insertedPreallocations[0].ShiftID)
-	assert.Equal(t, "bob", store.insertedPreallocations[0].VolunteerID)
+	require.Len(t, store.insertedPins, 1)
+	assert.Equal(t, "s1", store.insertedPins[0].ShiftID)
+	assert.Equal(t, "bob", store.insertedPins[0].VolunteerID)
 }
 
-func TestCreatePreallocationEndpoint_TeamLead(t *testing.T) {
-	store := preallocationTestStore()
+func TestCreatePinEndpoint_TeamLead(t *testing.T) {
+	store := pinTestStore()
 	body := `{"date":"2026-01-11","volunteerId":"alice","roleId":"role-team-lead"}`
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/pins", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-	require.Len(t, store.insertedPreallocations, 1)
-	assert.Equal(t, "role-team-lead", store.insertedPreallocations[0].RoleID)
+	require.Len(t, store.insertedPins, 1)
+	assert.Equal(t, "role-team-lead", store.insertedPins[0].RoleID)
 }
 
 // A pin may name a Role the volunteer does not hold (ADR 0010).
-func TestCreatePreallocationEndpoint_RoleNotHeld(t *testing.T) {
-	store := preallocationTestStore()
+func TestCreatePinEndpoint_RoleNotHeld(t *testing.T) {
+	store := pinTestStore()
 	body := `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-team-lead"}`
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/preallocations", body, organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodPost, "/api/pins", body, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-	require.Len(t, store.insertedPreallocations, 1)
-	assert.Equal(t, "role-team-lead", store.insertedPreallocations[0].RoleID)
+	require.Len(t, store.insertedPins, 1)
+	assert.Equal(t, "role-team-lead", store.insertedPins[0].RoleID)
 }
 
-func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
+func TestCreatePinEndpoint_Errors(t *testing.T) {
 	seeded := func() *mockStore {
-		s := preallocationTestStore()
-		s.manualPreallocations = []db.Preallocation{
+		s := pinTestStore()
+		s.manualPins = []db.Pin{
 			{ID: "existing", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		}
 		return s
@@ -102,37 +102,37 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 		{
 			name:       "malformed JSON",
 			body:       `{"date":`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown field",
 			body:       `{"date":"2026-01-11","volunteerId":"bob","bogus":true}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "neither volunteer nor custom",
 			body:       `{"date":"2026-01-11","roleId":"role-service-volunteer"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "both volunteer and custom",
 			body:       `{"date":"2026-01-11","volunteerId":"bob","custom":"Helper","roleId":"role-service-volunteer"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "no role at all",
 			body:       `{"date":"2026-01-11","volunteerId":"charlie"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "a role id nothing answers to",
 			body:       `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-food-collector"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
@@ -140,19 +140,19 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 			// is refused rather than quietly pinning nobody to nothing.
 			name:       "a role named the old way",
 			body:       `{"date":"2026-01-11","volunteerId":"bob","role":"Service volunteer"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "unknown volunteer",
 			body:       `{"date":"2026-01-11","volunteerId":"nobody","roleId":"role-service-volunteer"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "unknown date",
 			body:       `{"date":"2026-02-01","volunteerId":"bob","roleId":"role-service-volunteer"}`,
-			store:      preallocationTestStore(),
+			store:      pinTestStore(),
 			wantStatus: http.StatusNotFound,
 		},
 		{
@@ -165,7 +165,7 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 			name: "already allocated",
 			body: `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store: func() *mockStore {
-				s := preallocationTestStore()
+				s := pinTestStore()
 				s.allocatedRotas = map[string]bool{"rota-1": true}
 				return s
 			}(),
@@ -175,7 +175,7 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 			name: "store insert failure",
 			body: `{"date":"2026-01-11","volunteerId":"bob","roleId":"role-service-volunteer"}`,
 			store: func() *mockStore {
-				s := preallocationTestStore()
+				s := pinTestStore()
 				s.insertErr = errors.New("disk full")
 				return s
 			}(),
@@ -185,55 +185,55 @@ func TestCreatePreallocationEndpoint_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := doRequest(t, newTestHandler(tt.store, activeVolunteers()), http.MethodPost, "/api/preallocations", tt.body, organiserCookie())
+			rec := doRequest(t, newTestHandler(tt.store, activeVolunteers()), http.MethodPost, "/api/pins", tt.body, organiserCookie())
 			assert.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
 		})
 	}
 }
 
-func TestDeletePreallocationEndpoint(t *testing.T) {
-	store := preallocationTestStore()
-	store.manualPreallocations = []db.Preallocation{
+func TestDeletePinEndpoint(t *testing.T) {
+	store := pinTestStore()
+	store.manualPins = []db.Pin{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/pins/pin-1", "", organiserCookie())
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
-	assert.Equal(t, []string{"pin-1"}, store.deletedPreallocationIDs)
+	assert.Equal(t, []string{"pin-1"}, store.deletedPinIDs)
 }
 
-func TestDeletePreallocationEndpoint_NotFound(t *testing.T) {
-	rec := doRequest(t, newTestHandler(preallocationTestStore(), activeVolunteers()), http.MethodDelete, "/api/preallocations/ghost", "", organiserCookie())
+func TestDeletePinEndpoint_NotFound(t *testing.T) {
+	rec := doRequest(t, newTestHandler(pinTestStore(), activeVolunteers()), http.MethodDelete, "/api/pins/ghost", "", organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestDeletePreallocationEndpoint_FrozenRota(t *testing.T) {
-	store := preallocationTestStore()
-	store.manualPreallocations = []db.Preallocation{
+func TestDeletePinEndpoint_FrozenRota(t *testing.T) {
+	store := pinTestStore()
+	store.manualPins = []db.Pin{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	store.allocatedRotas = map[string]bool{"rota-1": true}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/preallocations/pin-1", "", organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodDelete, "/api/pins/pin-1", "", organiserCookie())
 	assert.Equal(t, http.StatusConflict, rec.Code)
-	assert.Empty(t, store.deletedPreallocationIDs, "a frozen rota must not delete the pin")
+	assert.Empty(t, store.deletedPinIDs, "a frozen rota must not delete the pin")
 }
 
-func TestListPreallocationsEndpoint(t *testing.T) {
-	store := preallocationTestStore()
-	store.manualPreallocations = []db.Preallocation{
+func TestListPinsEndpoint(t *testing.T) {
+	store := pinTestStore()
+	store.manualPins = []db.Pin{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-team-lead", VolunteerID: "alice"},
 		{ID: "pin-2", ShiftID: "s2", RoleID: "role-service-volunteer", CustomValue: "External Helper"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations", "", organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/pins", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	resp := decodePreallocations(t, rec.Body.Bytes())
-	require.Len(t, resp.Preallocations, 2)
+	resp := decodePins(t, rec.Body.Bytes())
+	require.Len(t, resp.Pins, 2)
 
-	byID := map[string]preallocationJSON{}
-	for _, p := range resp.Preallocations {
+	byID := map[string]pinJSON{}
+	for _, p := range resp.Pins {
 		byID[p.ID] = p
 	}
 	assert.Equal(t, "2026-01-11", byID["pin-1"].Date)
@@ -242,9 +242,9 @@ func TestListPreallocationsEndpoint(t *testing.T) {
 	assert.Equal(t, "External Helper", byID["pin-2"].Name)
 }
 
-// preallocationJSON is the wire shape of one pin, so tests read the same fields
+// pinJSON is the wire shape of one pin, so tests read the same fields
 // a client does.
-type preallocationJSON struct {
+type pinJSON struct {
 	ID          string `json:"id"`
 	Date        string `json:"date"`
 	Role        string `json:"role"`
@@ -253,59 +253,59 @@ type preallocationJSON struct {
 	Name        string `json:"name"`
 }
 
-func decodePreallocations(t *testing.T, body []byte) struct {
-	Preallocations []preallocationJSON `json:"preallocations"`
+func decodePins(t *testing.T, body []byte) struct {
+	Pins []pinJSON `json:"pins"`
 } {
 	t.Helper()
 	var resp struct {
-		Preallocations []preallocationJSON `json:"preallocations"`
+		Pins []pinJSON `json:"pins"`
 	}
 	require.NoError(t, json.Unmarshal(body, &resp))
 	return resp
 }
 
-func TestListPreallocationsEndpoint_DateFilter(t *testing.T) {
-	store := preallocationTestStore()
-	store.manualPreallocations = []db.Preallocation{
+func TestListPinsEndpoint_DateFilter(t *testing.T) {
+	store := pinTestStore()
+	store.manualPins = []db.Pin{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 		{ID: "pin-2", ShiftID: "s2", RoleID: "role-service-volunteer", VolunteerID: "charlie"},
 	}
 
-	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/preallocations?from=2026-01-12", "", organiserCookie())
+	rec := doRequest(t, newTestHandler(store, activeVolunteers()), http.MethodGet, "/api/pins?from=2026-01-12", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	resp := decodePreallocations(t, rec.Body.Bytes())
-	require.Len(t, resp.Preallocations, 1)
-	assert.Equal(t, "pin-2", resp.Preallocations[0].ID)
+	resp := decodePins(t, rec.Body.Bytes())
+	require.Len(t, resp.Pins, 1)
+	assert.Equal(t, "pin-2", resp.Pins[0].ID)
 }
 
-func TestPreallocationsMethodNotAllowed(t *testing.T) {
-	handler := newTestHandler(preallocationTestStore(), activeVolunteers())
+func TestPinsMethodNotAllowed(t *testing.T) {
+	handler := newTestHandler(pinTestStore(), activeVolunteers())
 
-	rec := doRequest(t, handler, http.MethodPut, "/api/preallocations", "")
+	rec := doRequest(t, handler, http.MethodPut, "/api/pins", "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-// TestPreallocationsRequireASession proves all three pin endpoints are gated:
+// TestPinsRequireASession proves all three pin endpoints are gated:
 // without a session they are rejected, nothing is persisted or deleted, and the
 // listing gives nothing away — it names people against dates the rota has not
 // published.
-func TestPreallocationsRequireASession(t *testing.T) {
-	store := preallocationTestStore()
-	store.manualPreallocations = []db.Preallocation{
+func TestPinsRequireASession(t *testing.T) {
+	store := pinTestStore()
+	store.manualPins = []db.Pin{
 		{ID: "pin-1", ShiftID: "s1", RoleID: "role-service-volunteer", VolunteerID: "bob"},
 	}
 	handler := newTestHandler(store, activeVolunteers())
 
-	rec := doRequest(t, handler, http.MethodPost, "/api/preallocations", `{"date":"2026-01-11","volunteerId":"bob"}`)
+	rec := doRequest(t, handler, http.MethodPost, "/api/pins", `{"date":"2026-01-11","volunteerId":"bob"}`)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Empty(t, store.insertedPreallocations, "an unauthenticated request must not pin anyone")
+	assert.Empty(t, store.insertedPins, "an unauthenticated request must not pin anyone")
 
-	rec = doRequest(t, handler, http.MethodDelete, "/api/preallocations/pin-1", "")
+	rec = doRequest(t, handler, http.MethodDelete, "/api/pins/pin-1", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Empty(t, store.deletedPreallocationIDs, "an unauthenticated request must not delete a pin")
+	assert.Empty(t, store.deletedPinIDs, "an unauthenticated request must not delete a pin")
 
-	rec = doRequest(t, handler, http.MethodGet, "/api/preallocations", "")
+	rec = doRequest(t, handler, http.MethodGet, "/api/pins", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.NotContains(t, rec.Body.String(), "bob", "an unauthenticated request must not read who is pinned")
 }

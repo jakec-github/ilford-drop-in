@@ -53,7 +53,7 @@ type Allocation struct {
 	ShiftDate    string
 	Role         string
 	VolunteerID  string // nullable
-	Preallocated string // nullable
+	Pinned string // nullable
 }
 
 // Alteration represents a single change to a shift

@@ -83,7 +83,7 @@ func (h *Handler) handleCreateStandingPreallocation(w http.ResponseWriter, r *ht
 // handleDeleteStandingPreallocation removes one by id. 204 on success, 404 when
 // it has already gone.
 //
-// Nothing else changes: the Preallocations it has already seeded belong to the
+// Nothing else changes: the Pins it has already seeded belong to the
 // rotas that minted them and are left exactly as they are, which is what makes a
 // Standing Preallocation a convenience at definition rather than a standing
 // fact.

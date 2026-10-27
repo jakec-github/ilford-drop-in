@@ -6,7 +6,7 @@ filling some shifts completely and leaving others near-empty.
 Mechanics: per open shift and Role, one BoolVar per Seat the Shape
 offers, constrained so at most as many can be on as that Role has
 occupants; maximisation switches on the highest-weighted Seats first.
-Custom (free-text) preallocations occupy the first Seats of the Role
+Custom (free-text) pins occupy the first Seats of the Role
 they name, so a shift that already has one custom entry values its
 first solver-placed volunteer as Seat 2, not Seat 1.
 

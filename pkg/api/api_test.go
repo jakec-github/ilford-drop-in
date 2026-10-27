@@ -27,7 +27,7 @@ type mockStore struct {
 	rotations            []db.Rotation
 	allocations          []db.Allocation
 	alterations          []db.Alteration
-	manualPreallocations []db.Preallocation
+	manualPins []db.Pin
 	// standingPreallocations are the Rota Defaults' Standing Preallocations,
 	// which seed ordinary ones when a rota is defined.
 	standingPreallocations []db.StandingPreallocation
@@ -39,10 +39,10 @@ type mockStore struct {
 
 	insertedCover           *db.Cover
 	insertedAlterations     []db.Alteration
-	insertedPreallocations  []db.Preallocation
+	insertedPins  []db.Pin
 	insertedRotations       []db.Rotation
 	insertedShifts          []db.Shift
-	deletedPreallocationIDs []string
+	deletedPinIDs []string
 	insertedStanding        []db.StandingPreallocation
 	deletedStandingIDs      []string
 	storedDrafts            []db.DraftRotaAllocation
@@ -260,13 +260,13 @@ func (m *mockStore) DiscardRota(ctx context.Context, rotaID string) (bool, error
 	}
 	m.shifts = keptShifts
 
-	var keptPins []db.Preallocation
-	for _, p := range m.manualPreallocations {
+	var keptPins []db.Pin
+	for _, p := range m.manualPins {
 		if !discarded[p.ShiftID] {
 			keptPins = append(keptPins, p)
 		}
 	}
-	m.manualPreallocations = keptPins
+	m.manualPins = keptPins
 
 	var keptRequests []db.AvailabilityRequest
 	for _, req := range m.availabilityRequests {
@@ -284,7 +284,7 @@ func (m *mockStore) DiscardRota(ctx context.Context, rotaID string) (bool, error
 // InsertDefinedRota records the write and makes it visible to subsequent reads,
 // deriving the rotation's span from its shifts as the real store does (ADR 0001)
 // so a second define lands after the first.
-func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error {
+func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, pins []db.Pin, requirements []db.ShiftRequirement) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
@@ -298,8 +298,8 @@ func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation
 	m.shifts = append(m.shifts, shifts...)
 	m.insertedRotations = append(m.insertedRotations, stored)
 	m.insertedShifts = append(m.insertedShifts, shifts...)
-	m.manualPreallocations = append(m.manualPreallocations, preallocations...)
-	m.insertedPreallocations = append(m.insertedPreallocations, preallocations...)
+	m.manualPins = append(m.manualPins, pins...)
+	m.insertedPins = append(m.insertedPins, pins...)
 	if m.shiftRequirements == nil {
 		m.shiftRequirements = make(map[string][]db.ShiftRequirement)
 	}
@@ -393,11 +393,11 @@ func (m *mockStore) GetShiftByDate(ctx context.Context, date time.Time) (*db.Shi
 	return nil, nil
 }
 
-// GetPreallocationsByShiftIDs returns the pins on the given shifts.
-func (m *mockStore) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error) {
+// GetPinsByShiftIDs returns the pins on the given shifts.
+func (m *mockStore) GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error) {
 	want := idSet(shiftIDs)
-	var filtered []db.Preallocation
-	for _, p := range m.manualPreallocations {
+	var filtered []db.Pin
+	for _, p := range m.manualPins {
 		if want[p.ShiftID] {
 			filtered = append(filtered, p)
 		}
@@ -405,13 +405,13 @@ func (m *mockStore) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []
 	return filtered, nil
 }
 
-// GetPreallocationByID finds a pin and resolves its shift.
-func (m *mockStore) GetPreallocationByID(ctx context.Context, id string) (*db.Preallocation, *db.Shift, error) {
-	for i := range m.manualPreallocations {
-		if m.manualPreallocations[i].ID != id {
+// GetPinByID finds a pin and resolves its shift.
+func (m *mockStore) GetPinByID(ctx context.Context, id string) (*db.Pin, *db.Shift, error) {
+	for i := range m.manualPins {
+		if m.manualPins[i].ID != id {
 			continue
 		}
-		p := m.manualPreallocations[i]
+		p := m.manualPins[i]
 		for j := range m.shifts {
 			if m.shifts[j].ID == p.ShiftID {
 				return &p, &m.shifts[j], nil
@@ -472,10 +472,10 @@ func (m *mockStore) SetShiftTimes(ctx context.Context, shiftID, startAt, endAt s
 	return found, nil
 }
 
-// WithRotaPreallocationLock hands the mock itself to the callback as the
+// WithRotaPinLock hands the mock itself to the callback as the
 // transaction-bound store; lock semantics are covered by the db and services
 // integration tests.
-func (m *mockStore) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store db.PreallocationTxStore) error) error {
+func (m *mockStore) WithRotaPinLock(ctx context.Context, rotaIDs []string, fn func(store db.PinTxStore) error) error {
 	return fn(m)
 }
 
@@ -514,20 +514,20 @@ func (m *mockStore) RotaAllocated(ctx context.Context, rotaID string) (bool, err
 	return m.allocatedRotas[rotaID], nil
 }
 
-func (m *mockStore) InsertPreallocation(ctx context.Context, mp db.Preallocation) error {
+func (m *mockStore) InsertPin(ctx context.Context, mp db.Pin) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
-	m.manualPreallocations = append(m.manualPreallocations, mp)
-	m.insertedPreallocations = append(m.insertedPreallocations, mp)
+	m.manualPins = append(m.manualPins, mp)
+	m.insertedPins = append(m.insertedPins, mp)
 	return nil
 }
 
-func (m *mockStore) DeletePreallocationByID(ctx context.Context, id string) (bool, error) {
-	for i := range m.manualPreallocations {
-		if m.manualPreallocations[i].ID == id {
-			m.manualPreallocations = append(m.manualPreallocations[:i], m.manualPreallocations[i+1:]...)
-			m.deletedPreallocationIDs = append(m.deletedPreallocationIDs, id)
+func (m *mockStore) DeletePinByID(ctx context.Context, id string) (bool, error) {
+	for i := range m.manualPins {
+		if m.manualPins[i].ID == id {
+			m.manualPins = append(m.manualPins[:i], m.manualPins[i+1:]...)
+			m.deletedPinIDs = append(m.deletedPinIDs, id)
 			return true, nil
 		}
 	}
@@ -880,7 +880,7 @@ func newTestHandler(store *mockStore, volunteers *mockVolunteerClient) http.Hand
 
 // newTestHandlerWithConfig is newTestHandler for the endpoints whose answer
 // depends on the config — chiefly the rota overrides, which are where config
-// preallocations and closed dates come from.
+// pins and closed dates come from.
 func newTestHandlerWithConfig(store *mockStore, volunteers *mockVolunteerClient, cfg *config.Organisation) http.Handler {
 	return NewHandler(store, volunteers, cfg, newTestAuthenticator(), nil, nil, nil, nil, zap.NewNop()).Routes()
 }

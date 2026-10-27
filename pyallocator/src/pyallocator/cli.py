@@ -5,7 +5,7 @@ Exit codes:
     0 — any well-formed run, INCLUDING an INFEASIBLE model (success=false
         in the output JSON; the operator decides what to do).
     1 — crash or invalid input (bad JSON, contract violation, unknown
-        preallocated volunteer id). An error JSON is still written when
+        pinned volunteer id). An error JSON is still written when
         possible, and the message goes to stderr.
 """
 

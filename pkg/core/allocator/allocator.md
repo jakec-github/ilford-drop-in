@@ -26,7 +26,7 @@ and issue #34.
      answered for and groups with no availability. It does **not** decide what a
      group's answer is — that rule belongs with the availability store (ADR
      0004), and the allocator keeping its own copy of it is what this replaced.
-   - `InitShifts` applies date-matched overrides (size, closed, preallocations)
+   - `InitShifts` applies date-matched overrides (size, closed, pins)
      and populates each shift's available groups.
    - `pinnedGroupKeys` names each group a pin names a member of, and
      `InitVolunteerGroups` keeps those whatever they answered. A pin is a
@@ -77,8 +77,8 @@ A single shift to be filled:
 - `AllocatedGroups` — groups assigned to this shift
 - `Assignments` — the filled Seats on a *solved* shift, each naming its Role
   and holding either a volunteer or a custom (free-text) entry
-- `Closed` / `Preallocations` — resolved from overrides during `InitShifts`
+- `Closed` / `Pins` — resolved from overrides during `InitShifts`
 
-**Preallocations and Assignments are the same shape** — a Seat spoken for, and
+**Pins and Assignments are the same shape** — a Seat spoken for, and
 a Seat filled. A volunteer, a team lead and a free-text entry are all just
 someone in a Seat of some Role; nothing here special-cases which Role that is.

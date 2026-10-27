@@ -176,7 +176,7 @@ type shiftShapeResponse struct {
 
 // handleSaveShiftShape rewrites what one Shift asks for. Refusals map to
 // 400/404/409 via writeServiceError — a Seat past a Role's ceiling, an unknown
-// shift, an allocated rota whose Shapes are fixed, or a Preallocation the new
+// shift, an allocated rota whose Shapes are fixed, or a Pin the new
 // Shape would leave without a Seat.
 func (h *Handler) handleSaveShiftShape(w http.ResponseWriter, r *http.Request) {
 	var req shiftShapeRequest

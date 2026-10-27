@@ -59,16 +59,16 @@ type Seat struct {
 // an Organiser edits on the Settings screen (issue #129, ADR 0006), and they reach
 // this package already resolved.
 
-// Preallocation pins one volunteer, or one custom entry, to a Role on a Shift
+// Pin pins one volunteer, or one custom entry, to a Role on a Shift
 // before the solve. Exactly one of VolunteerID and Custom is set.
-type Preallocation struct {
+type Pin struct {
 	VolunteerID string
 	Custom      string
 	Role        string
 }
 
 // Assignment is one filled Seat on a solved Shift. It is what a
-// Preallocation becomes once the solve is done, alongside the Seats the
+// Pin becomes once the solve is done, alongside the Seats the
 // solver filled itself: exactly one of Volunteer and Custom is set.
 type Assignment struct {
 	// Volunteer in the Seat, nil for a custom (free-text) entry.
@@ -109,7 +109,7 @@ type Shift struct {
 	AllocatedGroups []*VolunteerGroup
 
 	// Assignments are the filled Seats on a *solved* shift, set by
-	// CpsatOutputToShifts. Pins going into a solve travel in Preallocations
+	// CpsatOutputToShifts. Pins going into a solve travel in Pins
 	// instead.
 	Assignments []Assignment
 
@@ -125,10 +125,10 @@ type Shift struct {
 	// Closed shifts appear in the rota but remain empty
 	Closed bool
 
-	// Preallocations are the pins this shift starts with, each naming the Role
+	// Pins are the pins this shift starts with, each naming the Role
 	// it fills. Volunteers, custom entries and leads all travel together: they
 	// are the same thing, a Seat spoken for before the solve.
-	Preallocations []Preallocation
+	Pins []Pin
 }
 
 // IsAvailable returns true if the group is available for the given shift

@@ -1,4 +1,4 @@
-"""Solving with ONLY the preallocations constraint, plus the resolution
+"""Solving with ONLY the pins constraint, plus the resolution
 error cases (which live in Problem construction)."""
 
 from __future__ import annotations
@@ -14,18 +14,18 @@ from conftest import (
     team_lead_id,
     volunteer_ids,
 )
-from pyallocator.constraints import preallocations
+from pyallocator.constraints import pins
 from pyallocator.problem import Problem, ProblemError
 
-ONLY = [preallocations.CONSTRAINT]
+ONLY = [pins.CONSTRAINT]
 
 
-def test_preallocated_volunteer_always_on_shift():
+def test_pinned_volunteer_always_on_shift():
     # No preference at all: without the constraint the solver would
-    # return the empty rota; the preallocation must force the pair.
+    # return the empty rota; the pin must force the pair.
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0, preallocated_volunteer_ids=["g1"])],
+        shifts=[make_shift(0, pinned_volunteer_ids=["g1"])],
     )
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
@@ -41,7 +41,7 @@ def test_partner_joins_when_nothing_stops_them():
     )
     inp = make_input(
         groups=[couple],
-        shifts=[make_shift(0, preallocated_volunteer_ids=["a"])],
+        shifts=[make_shift(0, pinned_volunteer_ids=["a"])],
     )
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
@@ -49,13 +49,13 @@ def test_partner_joins_when_nothing_stops_them():
     assert set(volunteer_ids(shift)) == {"a", "b"}
 
 
-def test_preallocated_team_lead_designated():
+def test_pinned_team_lead_designated():
     tl_group = make_group(
         "leads", members=[make_member("lead", is_team_lead=True)], available=[0]
     )
     inp = make_input(
         groups=[tl_group],
-        shifts=[make_shift(0, preallocated_team_lead_id="lead")],
+        shifts=[make_shift(0, pinned_team_lead_id="lead")],
     )
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
@@ -68,26 +68,26 @@ def test_multiple_ids_same_group_dedupe():
     )
     inp = make_input(
         groups=[couple],
-        shifts=[make_shift(0, preallocated_volunteer_ids=["a", "b"])],
+        shifts=[make_shift(0, pinned_volunteer_ids=["a", "b"])],
     )
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
     assert allocations_by_shift(out)[0] == ("couple",)
 
 
-def test_unknown_preallocated_volunteer_errors():
+def test_unknown_pinned_volunteer_errors():
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0, preallocated_volunteer_ids=["nobody"])],
+        shifts=[make_shift(0, pinned_volunteer_ids=["nobody"])],
     )
     with pytest.raises(ProblemError, match="does not match any volunteer"):
         Problem(inp)
 
 
-def test_unknown_preallocated_team_lead_errors():
+def test_unknown_pinned_team_lead_errors():
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0, preallocated_team_lead_id="nobody")],
+        shifts=[make_shift(0, pinned_team_lead_id="nobody")],
     )
     with pytest.raises(ProblemError, match="does not match any volunteer"):
         Problem(inp)
@@ -101,7 +101,7 @@ def test_pin_grants_a_role_the_volunteer_does_not_hold():
     """
     inp = make_input(
         groups=[make_group("g1", available=[0])],  # g1 does not hold Team lead
-        shifts=[make_shift(0, preallocated_team_lead_id="g1")],
+        shifts=[make_shift(0, pinned_team_lead_id="g1")],
     )
     out = solve_with(inp, ONLY, preferences=[])
     assert out.success
@@ -114,17 +114,17 @@ def test_pin_to_a_role_the_shift_has_no_seat_for_is_honoured():
     """
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0, size=0, preallocated_volunteer_ids=["g1"])],
+        shifts=[make_shift(0, size=0, pinned_volunteer_ids=["g1"])],
     )
     out = solve_with(inp, ONLY)
     assert out.success
     assert volunteer_ids(out.shifts[0]) == ("g1",)
 
 
-def test_preallocation_on_closed_shift_errors():
+def test_pin_on_closed_shift_errors():
     inp = make_input(
         groups=[make_group("g1", available=[0])],
-        shifts=[make_shift(0, closed=True, preallocated_volunteer_ids=["g1"])],
+        shifts=[make_shift(0, closed=True, pinned_volunteer_ids=["g1"])],
     )
     with pytest.raises(ProblemError, match="closed"):
         Problem(inp)

@@ -5,13 +5,13 @@ import { BASE_PATH } from "../basePath";
 import type {
   Assignee,
   PersonRef,
-  Preallocation,
+  Pin,
   Role,
   RotaChange,
   RotaShift,
   Volunteer,
 } from "../types";
-import { usePreallocations } from "../hooks/usePreallocations";
+import { usePins } from "../hooks/usePins";
 import { useOrganisation } from "../hooks/useOrganisation";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
@@ -209,7 +209,7 @@ type EditDialog =
   // Someone being pinned to, or unpinned from, a shift the rota has not been
   // run for. Not alterations: nothing is on the rota yet to alter.
   | { kind: "pin"; date: string }
-  | { kind: "unpin"; pin: Preallocation }
+  | { kind: "unpin"; pin: Pin }
   // A shift being shut or opened again, which is neither an alteration nor a
   // pin: it changes whether the Organisation runs that day at all.
   | { kind: "closure"; shift: RotaShift }
@@ -284,11 +284,11 @@ export default function RotaViewer({
   // already promised to an unallocated shift is something to read, not a
   // change to make.
   const {
-    preallocations,
-    error: preallocationsError,
+    pins,
+    error: pinsError,
     addPin,
     removePin,
-  } = usePreallocations({ enabled: signedIn });
+  } = usePins({ enabled: signedIn });
 
   // No draft is read here, deliberately. The drafted names used to be drawn on
   // the unallocated rows of this page, which made the rota two things at once:
@@ -312,14 +312,14 @@ export default function RotaViewer({
   );
 
   const pinsByDate = useMemo(() => {
-    const byDate = new Map<string, Preallocation[]>();
-    for (const pin of preallocations ?? []) {
+    const byDate = new Map<string, Pin[]>();
+    for (const pin of pins ?? []) {
       const forDate = byDate.get(pin.date);
       if (forDate) forDate.push(pin);
       else byDate.set(pin.date, [pin]);
     }
     return byDate;
-  }, [preallocations]);
+  }, [pins]);
 
   // The public only sees shifts with something to show — allocated or closed.
   // The signed in also see unallocated shifts, flagged so they stand out.
@@ -523,7 +523,7 @@ export default function RotaViewer({
     );
   }
 
-  function submitUnpin(pin: Preallocation) {
+  function submitUnpin(pin: Pin) {
     // Only ever called for a manual pin, which is the only kind with an id.
     if (pin.id === null) return;
     const id = pin.id;
@@ -916,10 +916,10 @@ export default function RotaViewer({
         {/* A failed pin load leaves the unallocated rows looking empty when they
             may not be, so it is said out loud rather than swallowed. It does not
             stop the rota itself being read. */}
-        {preallocationsError && (
+        {pinsError && (
           <p className="rota-notice" role="alert">
             Could not load who is already pinned to unallocated shifts:{" "}
-            {preallocationsError}
+            {pinsError}
           </p>
         )}
 

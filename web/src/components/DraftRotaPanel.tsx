@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import type { AllocationAttempt } from "../hooks/useDraftRotaAllocation";
-import { usePreallocations } from "../hooks/usePreallocations";
+import { usePins } from "../hooks/usePins";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import type {
   Assignee,
   DraftRotaState,
   PersonRef,
-  Preallocation,
+  Pin,
   Role,
   RotaShift,
 } from "../types";
@@ -196,7 +196,7 @@ function ChangeReport({
 // why they are one union rather than a flag each: only one is ever up.
 type PrepDialog =
   | { kind: "pin"; shift: RotaShift }
-  | { kind: "unpin"; pin: Preallocation }
+  | { kind: "unpin"; pin: Pin }
   | { kind: "closure"; shift: RotaShift }
   | { kind: "times"; shift: RotaShift }
   | { kind: "shape"; shift: RotaShift };
@@ -292,21 +292,21 @@ export default function DraftRotaPanel({
   const { roles, colourOf, idOf } = useRoles();
   const { volunteers, error: volunteersError } = useVolunteers();
   const {
-    preallocations,
-    error: preallocationsError,
+    pins,
+    error: pinsError,
     addPin,
     removePin,
-  } = usePreallocations();
+  } = usePins();
 
   const pinsByDate = useMemo(() => {
-    const byDate = new Map<string, Preallocation[]>();
-    for (const pin of preallocations ?? []) {
+    const byDate = new Map<string, Pin[]>();
+    for (const pin of pins ?? []) {
       const forDate = byDate.get(pin.date);
       if (forDate) forDate.push(pin);
       else byDate.set(pin.date, [pin]);
     }
     return byDate;
-  }, [preallocations]);
+  }, [pins]);
 
   const draftByShiftID = useMemo(() => {
     const byShift = new Map<string, Assignee[]>();
@@ -392,7 +392,7 @@ export default function DraftRotaPanel({
     );
   }
 
-  function submitUnpin(pin: Preallocation) {
+  function submitUnpin(pin: Pin) {
     // Only ever called for a pin the listing gave an id, which is all of them.
     if (pin.id === null) return;
     const id = pin.id;
@@ -507,9 +507,9 @@ export default function DraftRotaPanel({
 
       {/* A failed pin load leaves the rows looking empty when they may not be,
           so it is said out loud rather than swallowed. The rest still reads. */}
-      {preallocationsError && (
+      {pinsError && (
         <p className="draft-panel-error" role="alert">
-          Could not load who is pinned: {preallocationsError}
+          Could not load who is pinned: {pinsError}
         </p>
       )}
 

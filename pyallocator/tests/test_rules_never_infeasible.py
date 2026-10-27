@@ -55,7 +55,7 @@ def random_input(rng: random.Random, kinds: tuple[str, ...]):
                 date=f"2026-0{7 + i // 3}-{1 + 7 * (i % 3):02d}",
                 size=rng.randint(1, 3),
                 closed=i == closed,
-                preallocated_volunteer_ids=pinned,
+                pinned_volunteer_ids=pinned,
             )
         )
 

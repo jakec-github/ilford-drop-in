@@ -163,7 +163,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, roles)
 	pin := `{"date":"` + defined.Shifts[0].Date + `","volunteerId":"alice","roleId":"` + roles[0].ID + `"}`
-	rec = doRequest(t, handler, http.MethodPost, "/api/preallocations", pin, organiserCookie())
+	rec = doRequest(t, handler, http.MethodPost, "/api/pins", pin, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	rec = doRequest(t, handler, http.MethodPost, "/api/availability-rounds", "", organiserCookie())
@@ -201,7 +201,7 @@ func TestRotaLifecycleEndpointsIntegration(t *testing.T) {
 	shapes, err := database.GetShiftShapes(ctx, []string{defined.Shifts[0].ID})
 	require.NoError(t, err)
 	assert.Empty(t, shapes, "a Shape does not outlive the Shift it belongs to")
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, []string{defined.Shifts[0].ID})
+	pins, err := database.GetPinsByShiftIDs(ctx, []string{defined.Shifts[0].ID})
 	require.NoError(t, err)
 	assert.Empty(t, pins)
 	remaining, err := database.GetAvailabilityRequestsByRotaID(ctx, defined.Rotation.ID)

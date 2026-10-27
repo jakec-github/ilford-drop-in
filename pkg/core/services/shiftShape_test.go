@@ -20,7 +20,7 @@ type stubShiftShapeStore struct {
 	roles    []db.Role
 	shift    *db.ShiftInRange
 	shapes   map[string][]db.ShiftRequirement
-	pins     []db.Preallocation
+	pins     []db.Pin
 	saved    [][]db.ShiftRequirement
 	missing  bool // SetShiftShape reports no such Shift, as a lost race would
 	writeErr error
@@ -55,8 +55,8 @@ func (s *stubShiftShapeStore) RotaAllocated(_ context.Context, _ string) (bool, 
 	return s.shift != nil && s.shift.Allocated, nil
 }
 
-func (s *stubShiftShapeStore) GetPreallocationsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.Preallocation, error) {
-	var pins []db.Preallocation
+func (s *stubShiftShapeStore) GetPinsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.Pin, error) {
+	var pins []db.Pin
 	for _, pin := range s.pins {
 		for _, id := range shiftIDs {
 			if pin.ShiftID == id {
@@ -230,7 +230,7 @@ func TestSaveShiftShapeRefusedOnAnAllocatedRota(t *testing.T) {
 // edit: the pins sit past the new Shape and the solver honours them.
 func TestSaveShiftShapeShrinksBelowItsPins(t *testing.T) {
 	store := shapeEditStore()
-	store.pins = []db.Preallocation{
+	store.pins = []db.Pin{
 		{ID: "pin-1", ShiftID: "shift-1", RoleID: leadRoleID, VolunteerID: "vol-1"},
 		{ID: "pin-2", ShiftID: "shift-1", RoleID: ordinaryRole, VolunteerID: "vol-2"},
 		{ID: "pin-3", ShiftID: "shift-1", RoleID: ordinaryRole, CustomValue: "Redbridge youth group"},

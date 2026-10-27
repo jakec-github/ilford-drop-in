@@ -1,8 +1,8 @@
 """Ensures closed shifts receive no allocations at all.
 
-Go strips preallocations from closed shifts before sending the input
+Go strips pins from closed shifts before sending the input
 (and problem.py rejects any that slip through), so this never conflicts
-with the preallocations constraint.
+with the pins constraint.
 """
 
 from __future__ import annotations

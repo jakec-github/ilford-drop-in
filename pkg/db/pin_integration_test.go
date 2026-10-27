@@ -13,11 +13,11 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
-// TestPreallocationInsertReadDelete exercises the pin lifecycle through
-// the rota-preallocation lock: insert two pins on one shift, read them back
+// TestPinInsertReadDelete exercises the pin lifecycle through
+// the rota-pin lock: insert two pins on one shift, read them back
 // scoped by shift id, resolve one by id to its shift and rota, then delete it
 // (true), delete again (false), and confirm the empty-id read is a no-op.
-func TestPreallocationInsertReadDelete(t *testing.T) {
+func TestPinInsertReadDelete(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
@@ -30,32 +30,32 @@ func TestPreallocationInsertReadDelete(t *testing.T) {
 	shiftB := dbtest.Shift(rota.ID, "2026-08-09")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shiftA, shiftB}, nil, nil))
 
-	volPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roles[0].ID, VolunteerID: "alice"}
-	customPin := db.Preallocation{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roles[1].ID, CustomValue: "External Org"}
+	volPin := db.Pin{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roles[0].ID, VolunteerID: "alice"}
+	customPin := db.Pin{ID: uuid.New().String(), ShiftID: shiftA.ID, RoleID: roles[1].ID, CustomValue: "External Org"}
 
 	// Insert both pins under the lock.
-	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
+	require.NoError(t, database.WithRotaPinLock(ctx, []string{rota.ID}, func(store db.PinTxStore) error {
 		allocated, err := store.RotaAllocated(ctx, rota.ID)
 		require.NoError(t, err)
 		assert.False(t, allocated, "a freshly minted rota is not allocated")
-		if err := store.InsertPreallocation(ctx, volPin); err != nil {
+		if err := store.InsertPin(ctx, volPin); err != nil {
 			return err
 		}
-		return store.InsertPreallocation(ctx, customPin)
+		return store.InsertPin(ctx, customPin)
 	}))
 
 	// Read back scoped by shift id: shiftA has both, shiftB has none.
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, []string{shiftA.ID})
+	pins, err := database.GetPinsByShiftIDs(ctx, []string{shiftA.ID})
 	require.NoError(t, err)
 	require.Len(t, pins, 2)
 
-	none, err := database.GetPreallocationsByShiftIDs(ctx, []string{shiftB.ID})
+	none, err := database.GetPinsByShiftIDs(ctx, []string{shiftB.ID})
 	require.NoError(t, err)
 	assert.Empty(t, none)
 
 	// The nullable columns round-trip: the volunteer pin has no custom value and
 	// vice versa.
-	byID := map[string]db.Preallocation{}
+	byID := map[string]db.Pin{}
 	for _, p := range pins {
 		byID[p.ID] = p
 	}
@@ -65,7 +65,7 @@ func TestPreallocationInsertReadDelete(t *testing.T) {
 	assert.Empty(t, byID[customPin.ID].VolunteerID)
 
 	// Resolve a pin by id to its shift and rota in one join.
-	got, shift, err := database.GetPreallocationByID(ctx, volPin.ID)
+	got, shift, err := database.GetPinByID(ctx, volPin.ID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.NotNil(t, shift)
@@ -75,40 +75,40 @@ func TestPreallocationInsertReadDelete(t *testing.T) {
 	assert.Equal(t, "alice", got.VolunteerID)
 
 	// An unknown id resolves to nil without error.
-	missing, missingShift, err := database.GetPreallocationByID(ctx, uuid.New().String())
+	missing, missingShift, err := database.GetPinByID(ctx, uuid.New().String())
 	require.NoError(t, err)
 	assert.Nil(t, missing)
 	assert.Nil(t, missingShift)
 
 	// Delete returns true first, false on the second attempt (concurrent-delete
 	// signal).
-	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
-		deleted, err := store.DeletePreallocationByID(ctx, volPin.ID)
+	require.NoError(t, database.WithRotaPinLock(ctx, []string{rota.ID}, func(store db.PinTxStore) error {
+		deleted, err := store.DeletePinByID(ctx, volPin.ID)
 		require.NoError(t, err)
 		assert.True(t, deleted)
-		deleted, err = store.DeletePreallocationByID(ctx, volPin.ID)
+		deleted, err = store.DeletePinByID(ctx, volPin.ID)
 		require.NoError(t, err)
 		assert.False(t, deleted, "deleting an already-gone pin reports false")
 		return nil
 	}))
 
 	// Only the custom pin remains.
-	pins, err = database.GetPreallocationsByShiftIDs(ctx, []string{shiftA.ID})
+	pins, err = database.GetPinsByShiftIDs(ctx, []string{shiftA.ID})
 	require.NoError(t, err)
 	require.Len(t, pins, 1)
 	assert.Equal(t, customPin.ID, pins[0].ID)
 
 	// Empty id set is a no-op.
-	pins, err = database.GetPreallocationsByShiftIDs(ctx, nil)
+	pins, err = database.GetPinsByShiftIDs(ctx, nil)
 	require.NoError(t, err)
 	assert.Empty(t, pins)
 }
 
-// TestPreallocationFrozenAfterAllocation pins the frozen guard: once
+// TestPinFrozenAfterAllocation pins the frozen guard: once
 // InsertAllocationsAndSetAllocated marks the rota allocated, the lock's
 // RotaAllocated read observes true, which the service layer turns into a
 // rejection.
-func TestPreallocationFrozenAfterAllocation(t *testing.T) {
+func TestPinFrozenAfterAllocation(t *testing.T) {
 	database, _ := dbtest.New(t)
 	roleIDs := dbtest.SeedRoles(t, database)
 	ctx := context.Background()
@@ -117,7 +117,7 @@ func TestPreallocationFrozenAfterAllocation(t *testing.T) {
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
 	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, nil, nil))
 
-	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
+	require.NoError(t, database.WithRotaPinLock(ctx, []string{rota.ID}, func(store db.PinTxStore) error {
 		allocated, err := store.RotaAllocated(ctx, rota.ID)
 		require.NoError(t, err)
 		assert.False(t, allocated)
@@ -128,17 +128,17 @@ func TestPreallocationFrozenAfterAllocation(t *testing.T) {
 		[]db.Allocation{{ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleIDs["Service volunteer"], VolunteerID: "alice"}},
 		rota.ID, time.Now()))
 
-	require.NoError(t, database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
+	require.NoError(t, database.WithRotaPinLock(ctx, []string{rota.ID}, func(store db.PinTxStore) error {
 		allocated, err := store.RotaAllocated(ctx, rota.ID)
 		require.NoError(t, err)
-		assert.True(t, allocated, "an allocated rota's preallocation set is frozen")
+		assert.True(t, allocated, "an allocated rota's pin set is frozen")
 		return nil
 	}))
 }
 
-// TestPreallocationUnknownShiftIDFails checks the shift_id FK rejects a
+// TestPinUnknownShiftIDFails checks the shift_id FK rejects a
 // pin referencing a non-existent shift, rolling the locking transaction back.
-func TestPreallocationUnknownShiftIDFails(t *testing.T) {
+func TestPinUnknownShiftIDFails(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
@@ -151,8 +151,8 @@ func TestPreallocationUnknownShiftIDFails(t *testing.T) {
 		dbtest.Shift(rota.ID, "2026-08-02"),
 	}, nil, nil))
 
-	err = database.WithRotaPreallocationLock(ctx, []string{rota.ID}, func(store db.PreallocationTxStore) error {
-		return store.InsertPreallocation(ctx, db.Preallocation{
+	err = database.WithRotaPinLock(ctx, []string{rota.ID}, func(store db.PinTxStore) error {
+		return store.InsertPin(ctx, db.Pin{
 			ID: uuid.New().String(), ShiftID: uuid.New().String(), RoleID: roles[0].ID, VolunteerID: "alice",
 		})
 	})

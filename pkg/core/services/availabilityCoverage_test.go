@@ -238,18 +238,18 @@ func TestCoverageGivesNoSeatsToARoleTheShapeOmits(t *testing.T) {
 	assert.Equal(t, 3, roleCoverageOf(t, first, "Service volunteer").Needed)
 }
 
-// TestCoverageSubtractsPreallocations: a pinned seat is already filled. The seat
+// TestCoverageSubtractsPins: a pinned seat is already filled. The seat
 // comes out of what the shift still needs, and a pinned volunteer comes out of
 // what is available to fill it — counting them on both sides would report the
 // shift as a person better off than it is.
-func TestCoverageSubtractsPreallocations(t *testing.T) {
+func TestCoverageSubtractsPins(t *testing.T) {
 	store, organisation := availabilityFixture()
 	store.shape = shapeOfSize(4)
 	volunteers := availabilityVolunteers()
 	round := mintRound(t, store, volunteers, organisation)
 
 	// A custom entry and Michael are both pinned to the first date.
-	store.pins = []db.Preallocation{
+	store.pins = []db.Pin{
 		{ID: "pin-0", ShiftID: "shift-1", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
 		{ID: "pin-1", ShiftID: "shift-1", RoleID: "role-service-volunteer", VolunteerID: "michael"},
 	}
@@ -281,7 +281,7 @@ func TestCoverageCountsAPinnedTeamLeadAsCover(t *testing.T) {
 	volunteers := availabilityVolunteers()
 	mintRound(t, store, volunteers, organisation)
 
-	store.pins = []db.Preallocation{
+	store.pins = []db.Pin{
 		{ID: "pin-1", ShiftID: "shift-1", RoleID: "role-team-lead", VolunteerID: "aaliyah"},
 	}
 

@@ -18,15 +18,15 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// A Standing Preallocation is a Preallocation an Organiser expects to make every
+// A Standing Preallocation is a Pin an Organiser expects to make every
 // rota — the team who always take the first Sunday — kept in the Rota Defaults
-// and used to seed ordinary Preallocations when a Rotation is defined
+// and used to seed ordinary Pins when a Rotation is defined
 // (issue #131, ADR 0006).
 //
 // It is a convenience at definition, not a standing fact. Nothing reads one
-// after the seeding: the Preallocations it made are ordinary, belong to the rota
+// after the seeding: the Pins it made are ordinary, belong to the rota
 // that minted them, and outlive any later change to it. That is what makes
-// "there is one kind of Preallocation" true — the pins these produce are not a
+// "there is one kind of Pin" true — the pins these produce are not a
 // second sort of thing with a different authority, and an Organiser may remove any
 // of them.
 
@@ -106,7 +106,7 @@ func ListStandingPreallocations(
 			Role:        roleName(roles, row.RoleID),
 			VolunteerID: row.VolunteerID,
 			Custom:      row.CustomValue,
-			Name:        preallocationName(row.VolunteerID, row.CustomValue, volunteersByID, logger),
+			Name:        pinName(row.VolunteerID, row.CustomValue, volunteersByID, logger),
 		})
 	}
 
@@ -202,7 +202,7 @@ func AddStandingPreallocation(
 }
 
 // DeleteStandingPreallocation removes one. There is no rota state to check
-// against and nothing cascades: the Preallocations it has already seeded belong
+// against and nothing cascades: the Pins it has already seeded belong
 // to the rotas that minted them and stay exactly as they are.
 func DeleteStandingPreallocation(ctx context.Context, store StandingPreallocationStore, id string, logger *zap.Logger) error {
 	deleted, err := store.DeleteStandingPreallocationByID(ctx, id)
@@ -217,8 +217,8 @@ func DeleteStandingPreallocation(ctx context.Context, store StandingPreallocatio
 	return nil
 }
 
-// seedPreallocations turns the Standing Preallocations into the ordinary
-// Preallocations a newly-defined rota starts with: one row per subject per Shift
+// seedPins turns the Standing Preallocations into the ordinary
+// Pins a newly-defined rota starts with: one row per subject per Shift
 // their rule lands on. What comes back is indistinguishable from a pin an Organiser
 // added by hand, which is the point.
 //
@@ -233,12 +233,12 @@ func DeleteStandingPreallocation(ctx context.Context, store StandingPreallocatio
 // rendering something an Organiser can still act on; here, skipping would mint a
 // rota quietly missing pins that were promised, and the rota is the thing an
 // Organiser then works from.
-func seedPreallocations(
+func seedPins(
 	standing []db.StandingPreallocation,
 	shifts []db.Shift,
 	roles model.Roles,
 	logger *zap.Logger,
-) ([]db.Preallocation, error) {
+) ([]db.Pin, error) {
 	if len(standing) == 0 || len(shifts) == 0 {
 		return nil, nil
 	}
@@ -269,7 +269,7 @@ func seedPreallocations(
 	seen := make(map[string]bool)
 	// Built shift by shift so the rows come back in rota order, which is the
 	// order everything downstream reads a rota in.
-	byShift := make(map[string][]db.Preallocation, len(shifts))
+	byShift := make(map[string][]db.Pin, len(shifts))
 
 	for _, s := range ordered {
 		role, ok := roles.ByID(s.RoleID)
@@ -299,7 +299,7 @@ func seedPreallocations(
 				}
 				seen[key] = true
 			}
-			byShift[shift.ID] = append(byShift[shift.ID], db.Preallocation{
+			byShift[shift.ID] = append(byShift[shift.ID], db.Pin{
 				ID:          uuid.New().String(),
 				ShiftID:     shift.ID,
 				RoleID:      role.ID,
@@ -309,7 +309,7 @@ func seedPreallocations(
 		}
 	}
 
-	var seeded []db.Preallocation
+	var seeded []db.Pin
 	for _, shift := range shifts {
 		seeded = append(seeded, byShift[shift.ID]...)
 	}

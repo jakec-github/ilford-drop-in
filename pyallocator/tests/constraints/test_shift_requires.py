@@ -16,8 +16,8 @@ from conftest import (
     make_shift,
     solve_with,
 )
-from pyallocator.constraints import shift_requires, preallocations, seat_capacity
-from pyallocator.domain import Preallocation, Rule, Seat
+from pyallocator.constraints import shift_requires, pins, seat_capacity
+from pyallocator.domain import Pin, Rule, Seat
 
 ONLY = [shift_requires.ShiftRequiresConstraint("Male")]
 
@@ -35,7 +35,7 @@ def test_all_female_shift_fills_while_the_team_lead_seat_is_open():
 
 
 def test_female_team_lead_leaves_one_seat_open():
-    # A (preallocated) female team lead takes the Team lead Seat, so with
+    # A (pinned) female team lead takes the Team lead Seat, so with
     # no male an ordinary Seat must stay open for a male volunteer.
     female_tl = make_group("leads", available=[0], team_lead=True)
     inp = make_input(
@@ -44,9 +44,9 @@ def test_female_team_lead_leaves_one_seat_open():
             make_group("f1", available=[0]),
             make_group("f2", available=[0]),
         ],
-        shifts=[make_shift(0, size=2, preallocated_team_lead_id="leads")],
+        shifts=[make_shift(0, size=2, pinned_team_lead_id="leads")],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     keys = allocations_by_shift(out)[0]
     assert "leads" in keys
@@ -117,12 +117,12 @@ def test_closed_shift_exempt():
     assert out.success
 
 
-def test_preallocations_filling_every_seat_win_over_male_cover():
-    # A female team lead AND a female volunteer preallocated onto a
+def test_pins_filling_every_seat_win_over_male_cover():
+    # A female team lead AND a female volunteer pinned onto a
     # size-1 shift: no male and no Seat to add one to. The pins were
     # decided before the solve, so they win rather than the rota being
     # INFEASIBLE.
-    out = solve_with(_every_seat_female(), ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(_every_seat_female(), ONLY + [pins.CONSTRAINT])
     assert out.success
     assert set(allocations_by_shift(out)[0]) == {"leads", "f1"}
 
@@ -135,12 +135,12 @@ def test_custom_pins_filling_every_seat_win_over_male_cover():
         groups=[make_group("f1", available=[0])],
         shifts=[
             dataclasses.replace(
-                make_shift(0, custom_preallocations=["Outside cover"]),
+                make_shift(0, custom_pins=["Outside cover"]),
                 shape=(Seat(role=SERVICE_VOLUNTEER, count=1),),
             )
         ],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT, seat_capacity.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT, seat_capacity.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out)[0] == ()
 
@@ -157,12 +157,12 @@ def test_a_pinned_group_mate_counts_toward_filling_every_seat():
         groups=[pair],
         shifts=[
             dataclasses.replace(
-                make_shift(0, preallocated_volunteer_ids=["ann"]),
+                make_shift(0, pinned_volunteer_ids=["ann"]),
                 shape=(Seat(role=SERVICE_VOLUNTEER, count=2),),
             )
         ],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert allocations_by_shift(out)[0] == ("pair",)
 
@@ -180,12 +180,12 @@ def test_one_seat_left_unpinned_still_needs_male_cover():
             make_shift(
                 0,
                 size=2,
-                preallocated_team_lead_id="leads",
-                preallocated_volunteer_ids=["f1"],
+                pinned_team_lead_id="leads",
+                pinned_volunteer_ids=["f1"],
             )
         ],
     )
-    out = solve_with(inp, ONLY + [preallocations.CONSTRAINT])
+    out = solve_with(inp, ONLY + [pins.CONSTRAINT])
     assert out.success
     assert set(allocations_by_shift(out)[0]) == {"leads", "f1"}
 
@@ -194,7 +194,7 @@ def test_rule_off_allows_a_shift_with_no_male_and_no_open_seat():
     # The same input with male cover switched off. Off now means the
     # constraint is not in the run's list at all, rather than in the list
     # and reading a flag to decide it has nothing to do (issue #130).
-    out = solve_with(_every_seat_female(), [preallocations.CONSTRAINT])
+    out = solve_with(_every_seat_female(), [pins.CONSTRAINT])
     assert out.success
     assert set(allocations_by_shift(out)[0]) == {"leads", "f1"}
 
@@ -207,8 +207,8 @@ def _every_seat_female():
             make_shift(
                 0,
                 size=1,
-                preallocated_team_lead_id="leads",
-                preallocated_volunteer_ids=["f1"],
+                pinned_team_lead_id="leads",
+                pinned_volunteer_ids=["f1"],
             )
         ],
     )
@@ -221,13 +221,13 @@ def test_pins_past_every_seat_win_over_male_cover():
         groups=[make_group(k, available=[0]) for k in ("f1", "f2", "f3")],
         shifts=[
             dataclasses.replace(
-                make_shift(0, preallocated_volunteer_ids=["f1", "f2", "f3"]),
+                make_shift(0, pinned_volunteer_ids=["f1", "f2", "f3"]),
                 shape=(Seat(role=SERVICE_VOLUNTEER, count=2),),
             )
         ],
     )
     out = solve_with(
-        inp, ONLY + [preallocations.CONSTRAINT, seat_capacity.CONSTRAINT]
+        inp, ONLY + [pins.CONSTRAINT, seat_capacity.CONSTRAINT]
     )
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["f1", "f2", "f3"]
@@ -247,15 +247,15 @@ def test_one_role_overfilled_does_not_hide_another_roles_open_seat():
         shifts=[
             dataclasses.replace(
                 make_shift(0, size=1),
-                preallocations=(
-                    Preallocation(volunteer_id="la", custom="", role=TEAM_LEAD),
-                    Preallocation(volunteer_id="lb", custom="", role=TEAM_LEAD),
+                pins=(
+                    Pin(volunteer_id="la", custom="", role=TEAM_LEAD),
+                    Pin(volunteer_id="lb", custom="", role=TEAM_LEAD),
                 ),
             )
         ],
     )
     out = solve_with(
-        inp, ONLY + [preallocations.CONSTRAINT, seat_capacity.CONSTRAINT]
+        inp, ONLY + [pins.CONSTRAINT, seat_capacity.CONSTRAINT]
     )
     assert out.success
     assert sorted(allocations_by_shift(out)[0]) == ["la", "lb"]

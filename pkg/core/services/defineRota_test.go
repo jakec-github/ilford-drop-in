@@ -25,7 +25,7 @@ type mockDB struct {
 	standing        []db.StandingPreallocation
 	insertedRotas   []*db.Rotation
 	insertedShifts  [][]db.Shift
-	insertedPins    [][]db.Preallocation
+	insertedPins    [][]db.Pin
 	insertedSeats   [][]db.ShiftRequirement
 	mintedRequests  []db.AvailabilityRequest
 	getRotationsErr error
@@ -60,13 +60,13 @@ func (m *mockDB) GetStandingPreallocations(ctx context.Context) ([]db.StandingPr
 	return m.standing, nil
 }
 
-func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, preallocations []db.Preallocation, requirements []db.ShiftRequirement) error {
+func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, pins []db.Pin, requirements []db.ShiftRequirement) error {
 	if m.insertErr != nil {
 		return m.insertErr
 	}
 	m.insertedRotas = append(m.insertedRotas, rotation)
 	m.insertedShifts = append(m.insertedShifts, shifts)
-	m.insertedPins = append(m.insertedPins, preallocations)
+	m.insertedPins = append(m.insertedPins, pins)
 	m.insertedSeats = append(m.insertedSeats, requirements)
 	return nil
 }
@@ -223,7 +223,7 @@ func TestDefineRota_WritesTheDefaultShapeOntoEveryShift(t *testing.T) {
 }
 
 // Defining a rota spends the Standing Preallocations: they become ordinary
-// Preallocations on the Shifts their rules land on, written in the same
+// Pins on the Shifts their rules land on, written in the same
 // transaction as the rota itself.
 func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	// A rota starting on the first Sunday of a month, so a "first Sunday" rule
@@ -236,15 +236,15 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
 	require.NoError(t, err)
 
-	require.Len(t, result.Preallocations, 1)
-	assert.Equal(t, result.Shifts[0].ID, result.Preallocations[0].ShiftID)
-	assert.Equal(t, "St John's team", result.Preallocations[0].CustomValue)
-	assert.Equal(t, "role-service-volunteer", result.Preallocations[0].RoleID)
+	require.Len(t, result.Pins, 1)
+	assert.Equal(t, result.Shifts[0].ID, result.Pins[0].ShiftID)
+	assert.Equal(t, "St John's team", result.Pins[0].CustomValue)
+	assert.Equal(t, "role-service-volunteer", result.Pins[0].RoleID)
 
 	// One store call, so a rota can never exist with only some of the pins an
 	// Organiser was promised.
 	require.Len(t, mock.insertedPins, 1)
-	assert.Equal(t, result.Preallocations, mock.insertedPins[0])
+	assert.Equal(t, result.Pins, mock.insertedPins[0])
 }
 
 // No Standing Preallocations is the ordinary state of a deployment nobody has
@@ -254,7 +254,7 @@ func TestDefineRota_NoStandingPreallocations(t *testing.T) {
 
 	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
 	require.NoError(t, err)
-	assert.Empty(t, result.Preallocations)
+	assert.Empty(t, result.Pins)
 	require.Len(t, mock.insertedRotas, 1)
 }
 

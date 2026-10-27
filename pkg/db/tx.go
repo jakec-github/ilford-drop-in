@@ -66,7 +66,7 @@ func (d *DB) WithRotaLock(ctx context.Context, rotaIDs []string, fn func(store R
 }
 
 // withRotaLockTx is the shared locking span behind WithRotaLock and
-// WithRotaPreallocationLock: it begins a transaction, locks the given rotation
+// WithRotaPinLock: it begins a transaction, locks the given rotation
 // rows FOR UPDATE (deduplicated, sorted, so overlapping lock sets cannot
 // deadlock), runs fn against the raw transaction, and commits — or rolls the
 // whole thing back on any error. Callers wrap tx in whatever store view their
@@ -102,24 +102,24 @@ func (d *DB) withRotaLockTx(ctx context.Context, rotaIDs []string, fn func(tx pg
 	return nil
 }
 
-// PreallocationTxStore is the transaction-bound view WithRotaPreallocationLock
+// PinTxStore is the transaction-bound view WithRotaPinLock
 // hands its callback: reading the rota's allocation state, reading existing
 // pins, and inserting or deleting a pin all run inside the same locking
 // transaction, so the frozen-after-allocation guard and the duplicate-assignee
 // checks validate against a snapshot that cannot change before the write lands
 // (issue #39, mirroring the changeRota locking discipline).
-type PreallocationTxStore interface {
+type PinTxStore interface {
 	RotaAllocated(ctx context.Context, rotaID string) (bool, error)
-	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error)
-	InsertPreallocation(ctx context.Context, mp Preallocation) error
-	DeletePreallocationByID(ctx context.Context, id string) (bool, error)
+	GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Pin, error)
+	InsertPin(ctx context.Context, mp Pin) error
+	DeletePinByID(ctx context.Context, id string) (bool, error)
 }
 
-// WithRotaPreallocationLock runs fn under the same rotation-row lock as
-// WithRotaLock (so preallocation mutations serialise against allocation and
-// against each other), handing the callback a PreallocationTxStore bound to the
+// WithRotaPinLock runs fn under the same rotation-row lock as
+// WithRotaLock (so pin mutations serialise against allocation and
+// against each other), handing the callback a PinTxStore bound to the
 // locking transaction.
-func (d *DB) WithRotaPreallocationLock(ctx context.Context, rotaIDs []string, fn func(store PreallocationTxStore) error) error {
+func (d *DB) WithRotaPinLock(ctx context.Context, rotaIDs []string, fn func(store PinTxStore) error) error {
 	return d.withRotaLockTx(ctx, rotaIDs, func(tx pgx.Tx) error {
 		return fn(&rotaTx{tx: tx, org: d.org()})
 	})
@@ -194,16 +194,16 @@ func (r *rotaTx) RotaAllocated(ctx context.Context, rotaID string) (bool, error)
 	return rotaAllocated(ctx, r.tx, r.org, rotaID)
 }
 
-func (r *rotaTx) GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Preallocation, error) {
-	return getPreallocationsByShiftIDs(ctx, r.tx, r.org, shiftIDs)
+func (r *rotaTx) GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]Pin, error) {
+	return getPinsByShiftIDs(ctx, r.tx, r.org, shiftIDs)
 }
 
-func (r *rotaTx) InsertPreallocation(ctx context.Context, mp Preallocation) error {
-	return insertPreallocation(ctx, r.tx, r.org, mp)
+func (r *rotaTx) InsertPin(ctx context.Context, mp Pin) error {
+	return insertPin(ctx, r.tx, r.org, mp)
 }
 
-func (r *rotaTx) DeletePreallocationByID(ctx context.Context, id string) (bool, error) {
-	return deletePreallocationByID(ctx, r.tx, r.org, id)
+func (r *rotaTx) DeletePinByID(ctx context.Context, id string) (bool, error) {
+	return deletePinByID(ctx, r.tx, r.org, id)
 }
 
 func (r *rotaTx) SetShiftClosed(ctx context.Context, shiftID string, closed bool) (bool, error) {

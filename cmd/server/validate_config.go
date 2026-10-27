@@ -19,7 +19,7 @@ import (
 // devMode block is only permitted under "dev".
 //
 // The summary it prints is not decoration. The failure this exists for was a
-// config whose preallocations were silently dropped by a format change, and
+// config whose pins were silently dropped by a format change, and
 // "valid" alone would have printed for that file too. What catches it now is
 // the ignored-keys line: the domain settings this used to count are rows in the
 // database (ADR 0006), and a key that has stopped configuring anything shows up

@@ -24,7 +24,7 @@ type Store interface {
 	services.DefineRotaStore
 	services.DraftRotaAllocationStore
 	services.ListShiftsStore
-	services.PreallocationStore
+	services.Pinstore
 	services.RoleWriteStore
 	services.RotaDefaultsStore
 	services.RotaLifecycleStore
@@ -248,16 +248,16 @@ func (h *Handler) Routes() http.Handler {
 	// Editor's to make as well as an Organiser's, and so are the reads beside
 	// them: the roster to pick someone from, and the rota in flight to pin to.
 	// The Standing Preallocations, part of the Rota Defaults: the pins an Organiser
-	// expects to make every rota, which seed ordinary Preallocations when one is
+	// expects to make every rota, which seed ordinary Pins when one is
 	// defined. Organiser-only throughout, like the settings screen they live on.
 	// There is no PUT — a promise is made or it is not, and editing one is
 	// removing it and making the one that was meant.
 	api.Handle("GET /standing-preallocations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListStandingPreallocations)))
 	api.Handle("POST /standing-preallocations", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleCreateStandingPreallocation)))
 	api.Handle("DELETE /standing-preallocations/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleDeleteStandingPreallocation)))
-	api.Handle("GET /preallocations", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListPreallocations)))
-	api.Handle("POST /preallocations", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePreallocation)))
-	api.Handle("DELETE /preallocations/{id}", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePreallocation)))
+	api.Handle("GET /pins", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListPins)))
+	api.Handle("POST /pins", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleCreatePin)))
+	api.Handle("DELETE /pins/{id}", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleDeletePin)))
 	api.Handle("GET /volunteers", h.requireLevel(LevelRotaEditor, http.HandlerFunc(h.handleListVolunteers)))
 	// Organiser-only: it ranks people by how little they offer and how little
 	// they turn up for.

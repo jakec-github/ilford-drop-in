@@ -35,7 +35,7 @@ type SolveRotaStore interface {
 	GetLatestAvailability(ctx context.Context, requestIDs []string, cutoff *time.Time) (map[string]db.AvailabilityGeneration, error)
 	GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error)
 	GetAlterationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Alteration, error)
-	GetPreallocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Preallocation, error)
+	GetPinsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Pin, error)
 }
 
 // AllocateRotaStore is what allocating the rota in flight needs: everything
@@ -352,36 +352,36 @@ func convertRoles(roles model.Roles) []allocator.Role {
 	return converted
 }
 
-// preallocationsForDate collects the preallocations that apply to a single date,
+// pinsForDate collects the pins that apply to a single date,
 // mirroring InitShifts exactly: every matching override appends its pins in
 // order.
 //
 // Whether the shift is closed plays no part here. Closure is a field on the
 // Shift now, so the shifts a caller is iterating already carry it, and
 // InitShifts strips the pins of a closed one.
-func preallocationsForDate(date string, overrides []allocator.ShiftOverride) []allocator.Preallocation {
-	var pins []allocator.Preallocation
+func pinsForDate(date string, overrides []allocator.ShiftOverride) []allocator.Pin {
+	var pins []allocator.Pin
 	for _, o := range overrides {
 		if !o.AppliesTo(date) {
 			continue
 		}
-		pins = append(pins, o.Preallocations...)
+		pins = append(pins, o.Pins...)
 	}
 	return pins
 }
 
 // exactDateMatcher returns an AppliesTo predicate matching exactly one date, so
-// a synthetic preallocation override touches only its own shift.
+// a synthetic pin override touches only its own shift.
 func exactDateMatcher(date string) func(string) bool {
 	return func(d string) bool { return d == date }
 }
 
-// buildPreallocationOverrides turns each pin into a synthetic, exact-date
+// buildPinOverrides turns each pin into a synthetic, exact-date
 // allocator.ShiftOverride so InitShifts applies them through its existing append
 // semantics — no new merge logic in the solver (issue #39 / ADR 0003).
 //
-// There is nothing to merge against any more: Config Preallocations were deleted
-// in issue #131, so the `preallocation` table is the whole set of pins a rota
+// There is nothing to merge against any more: Config Pins were deleted
+// in issue #131, so the `pin` table is the whole set of pins a rota
 // has and the rules that kept the two sources apart went with the second source.
 // A pin on a closed Shift is left alone here and stripped by InitShifts.
 //
@@ -390,8 +390,8 @@ func exactDateMatcher(date string) func(string) bool {
 // solve resolves the reference here — so a Role renamed after a pin was made
 // reaches the solver under the name its Shape uses, which is what makes the pin
 // keepable at all.
-func buildPreallocationOverrides(
-	pins []db.Preallocation,
+func buildPinOverrides(
+	pins []db.Pin,
 	dateByShiftID map[string]string,
 	roles model.Roles,
 ) ([]allocator.ShiftOverride, error) {
@@ -400,22 +400,22 @@ func buildPreallocationOverrides(
 	for _, pin := range pins {
 		date, ok := dateByShiftID[pin.ShiftID]
 		if !ok {
-			return nil, fmt.Errorf("preallocation %s references shift %s with no minted date", pin.ID, pin.ShiftID)
+			return nil, fmt.Errorf("pin %s references shift %s with no minted date", pin.ID, pin.ShiftID)
 		}
 		if pin.VolunteerID == "" && pin.CustomValue == "" {
-			return nil, fmt.Errorf("preallocation %s has neither a volunteer nor a custom value", pin.ID)
+			return nil, fmt.Errorf("pin %s has neither a volunteer nor a custom value", pin.ID)
 		}
 		// The foreign key makes this unreachable short of the Roles moving
 		// mid-solve; a pin whose Role could not be named would reach the solver
 		// as a Seat no Shape has, so it stops here instead.
 		role, ok := roles.ByID(pin.RoleID)
 		if !ok {
-			return nil, fmt.Errorf("preallocation %s names role %s, which does not exist", pin.ID, pin.RoleID)
+			return nil, fmt.Errorf("pin %s names role %s, which does not exist", pin.ID, pin.RoleID)
 		}
 
 		overrides = append(overrides, allocator.ShiftOverride{
 			AppliesTo: exactDateMatcher(date),
-			Preallocations: []allocator.Preallocation{{
+			Pins: []allocator.Pin{{
 				VolunteerID: pin.VolunteerID,
 				Custom:      pin.CustomValue,
 				Role:        role.Name,
@@ -426,8 +426,8 @@ func buildPreallocationOverrides(
 	return overrides, nil
 }
 
-// checkPreallocationsResolve verifies, before the solver runs, that every
-// preallocated volunteer is still on the roster. A pin whose volunteer has
+// checkPinsResolve verifies, before the solver runs, that every
+// pinned volunteer is still on the roster. A pin whose volunteer has
 // been deleted would otherwise surface as the solver's opaque ProblemError;
 // here it fails loudly, naming the offending pin(s). Custom (non-volunteer)
 // pins carry no id and are not checked.
@@ -442,8 +442,8 @@ func buildPreallocationOverrides(
 // Closed shifts are skipped: InitShifts strips their pins, so a stale one there
 // reaches neither the solver nor anything else, and reporting it would block a
 // rota over a pin that has no effect.
-func checkPreallocationsResolve(
-	pins []db.Preallocation,
+func checkPinsResolve(
+	pins []db.Pin,
 	shifts []db.Shift,
 	rosterIDs map[string]bool,
 ) error {
@@ -470,7 +470,7 @@ func checkPreallocationsResolve(
 	}
 
 	if len(offenders) > 0 {
-		return wrapf(ErrInvalidInput, "preallocated volunteers are no longer on the roster: %s", strings.Join(offenders, "; "))
+		return wrapf(ErrInvalidInput, "pinned volunteers are no longer on the roster: %s", strings.Join(offenders, "; "))
 	}
 	return nil
 }
@@ -488,7 +488,7 @@ func checkPreallocationsResolve(
 //
 // Pins on closed shifts are ignored: InitShifts strips them, so they place
 // nobody.
-func solverVolunteers(all []model.Volunteer, pins []db.Preallocation, shifts []db.Shift) []allocator.Volunteer {
+func solverVolunteers(all []model.Volunteer, pins []db.Pin, shifts []db.Shift) []allocator.Volunteer {
 	open := make(map[string]bool, len(shifts))
 	for _, s := range shifts {
 		if !s.Closed {

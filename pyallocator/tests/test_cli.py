@@ -92,7 +92,7 @@ def test_no_groups_solves_with_every_seat_unfilled(tmp_path):
             "index": 1,
             "date": "2026-07-20",
             "shape": shape(2),
-            "preallocations": [
+            "pins": [
                 {"volunteer_id": "", "custom": "St John's", "role": "Service volunteer"}
             ],
         }
@@ -123,9 +123,9 @@ def test_contract_violation_exit_one(tmp_path):
     assert "date" in out["error"]
 
 
-def test_unknown_preallocated_id_exit_one(tmp_path):
+def test_unknown_pinned_id_exit_one(tmp_path):
     payload = json.loads(json.dumps(VALID_INPUT))
-    payload["shifts"][0]["preallocations"] = [
+    payload["shifts"][0]["pins"] = [
         {"volunteer_id": "nobody", "custom": "", "role": "Service volunteer"}
     ]
     code, out = run_cli(tmp_path, payload)

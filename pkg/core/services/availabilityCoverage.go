@@ -53,7 +53,7 @@ type ShiftCoverage struct {
 type RoleCoverage struct {
 	Role      string
 	Seats     int // Seats of this Role on the shift
-	Pinned    int // of those, already held by a preallocation
+	Pinned    int // of those, already held by a pin
 	Needed    int // Seats - Pinned, floored at zero
 	Available int // holders available for the shift and not already pinned to it
 	Delta     int // Available - Needed; negative is understaffed
@@ -80,7 +80,7 @@ type shiftSeats struct {
 	closed bool
 	// seats is the Shape — how many Seats each Role has, by Role name.
 	seats map[string]int
-	// pinned counts how many of each Role's Seats a preallocation already holds.
+	// pinned counts how many of each Role's Seats a pin already holds.
 	pinned map[string]int
 	// pinnedVolunteers are the volunteers in those Seats. One Seat per person
 	// per Shift, so anyone here is unavailable for every other Role too.
@@ -95,21 +95,21 @@ type shiftSeats struct {
 // whatever the settings screen happened to say at the moment it was opened.
 //
 // The pins are resolved through the same two helpers allocation uses —
-// buildPreallocationOverrides, then preallocationsForDate over the result, which
+// buildPinOverrides, then pinsForDate over the result, which
 // mirrors InitShifts. That is deliberate: the page must show the Seats the solve
 // will actually see, and a second implementation of it is how the three copies
 // of the group rule happened.
 func buildShiftSeats(
 	shapes map[string]model.Shape,
 	shifts []AvailabilityShift,
-	pins []db.Preallocation,
+	pins []db.Pin,
 	roles model.Roles,
 ) (map[string]shiftSeats, error) {
 	dateByShiftID := make(map[string]string, len(shifts))
 	for _, s := range shifts {
 		dateByShiftID[s.ID] = s.Date
 	}
-	overrides, err := buildPreallocationOverrides(pins, dateByShiftID, roles)
+	overrides, err := buildPinOverrides(pins, dateByShiftID, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func buildShiftSeats(
 
 		pinned := make(map[string]int)
 		pinnedVolunteers := make(map[string]bool)
-		effectivePins := preallocationsForDate(shift.Date, overrides)
+		effectivePins := pinsForDate(shift.Date, overrides)
 		for _, pin := range effectivePins {
 			pinned[pin.Role]++
 			if pin.VolunteerID != "" {

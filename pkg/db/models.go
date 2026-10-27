@@ -150,7 +150,7 @@ type DraftAllocation struct {
 	CustomEntry string
 }
 
-// Preallocation represents a database preallocation record: a person pinned to
+// Pin represents a database pin record: a person pinned to
 // a shift before allocation runs. Like Allocation it is keyed solely by ShiftID;
 // rota and date live on the referenced shift (ADR 0001). It mirrors the
 // allocation row shape — a volunteer pin sets VolunteerID, a custom entry sets
@@ -162,7 +162,7 @@ type DraftAllocation struct {
 // There is one kind of these however it came to exist (issue #131): a row an
 // Organiser added by hand and a row a Standing Preallocation seeded at definition
 // are the same thing, and either may be removed.
-type Preallocation struct {
+type Pin struct {
 	ID          string // UUID
 	ShiftID     string // UUID
 	RoleID      string // UUID, references role(id)
@@ -170,14 +170,14 @@ type Preallocation struct {
 	CustomValue string // nullable
 }
 
-// StandingPreallocation is a Preallocation an Organiser expects to make every rota,
+// StandingPreallocation is a Pin an Organiser expects to make every rota,
 // held in the Rota Defaults and used to seed real ones when a Rotation is
 // defined (issue #131). RRule says which of the rota's Shifts it lands on, the
 // same recurrence-rule vocabulary the config's Rota Overrides used.
 //
 // RoleID rather than a Role name: these outlive any number of rotas and a Role
 // may be renamed at any time, so the id is the only reference that survives it.
-// The Preallocations it seeds hold the id too, for the same reason (issue #195).
+// The Pins it seeds hold the id too, for the same reason (issue #195).
 type StandingPreallocation struct {
 	ID          string // UUID
 	RRule       string

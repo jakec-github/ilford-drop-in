@@ -103,7 +103,7 @@ func TestStandingPreallocationRefusesARepeat(t *testing.T) {
 // Defining a rota writes its rotation, its shifts and its seeded pins in one
 // transaction, so a rota can never exist with only some of the pins an Organiser
 // was promised.
-func TestInsertDefinedRotaWritesSeededPreallocations(t *testing.T) {
+func TestInsertDefinedRotaWritesSeededPins(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
@@ -111,13 +111,13 @@ func TestInsertDefinedRotaWritesSeededPreallocations(t *testing.T) {
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
-	pin := db.Preallocation{
+	pin := db.Pin{
 		ID: uuid.New().String(), ShiftID: shift.ID, RoleID: roleID, CustomValue: "St John's team",
 	}
 
-	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}, nil))
+	require.NoError(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Pin{pin}, nil))
 
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, []string{shift.ID})
+	pins, err := database.GetPinsByShiftIDs(ctx, []string{shift.ID})
 	require.NoError(t, err)
 	require.Len(t, pins, 1)
 	assert.Equal(t, "St John's team", pins[0].CustomValue)
@@ -133,11 +133,11 @@ func TestInsertDefinedRotaRollsBackOnABadPin(t *testing.T) {
 
 	rota := &db.Rotation{ID: uuid.New().String()}
 	shift := dbtest.Shift(rota.ID, "2026-08-02")
-	pin := db.Preallocation{
+	pin := db.Pin{
 		ID: uuid.New().String(), ShiftID: uuid.New().String(), RoleID: roleID, VolunteerID: "alice",
 	}
 
-	require.Error(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Preallocation{pin}, nil))
+	require.Error(t, database.InsertDefinedRota(ctx, rota, []db.Shift{shift}, []db.Pin{pin}, nil))
 
 	rotations, err := database.GetRotations(ctx)
 	require.NoError(t, err)

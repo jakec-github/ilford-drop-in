@@ -117,9 +117,9 @@ func TestDiscardRota(t *testing.T) {
 	// rather than emptying the tables.
 	keeper := &db.Rotation{ID: uuid.New().String()}
 	keeperShift := dbtest.Shift(keeper.ID, "2026-07-05")
-	keeperPin := db.Preallocation{ID: uuid.New().String(), ShiftID: keeperShift.ID, RoleID: roles[0].ID, VolunteerID: "alice"}
+	keeperPin := db.Pin{ID: uuid.New().String(), ShiftID: keeperShift.ID, RoleID: roles[0].ID, VolunteerID: "alice"}
 	keeperSeats := []db.ShiftRequirement{{ShiftID: keeperShift.ID, RoleID: roles[0].ID, Seats: 2}}
-	require.NoError(t, database.InsertDefinedRota(ctx, keeper, []db.Shift{keeperShift}, []db.Preallocation{keeperPin}, keeperSeats))
+	require.NoError(t, database.InsertDefinedRota(ctx, keeper, []db.Shift{keeperShift}, []db.Pin{keeperPin}, keeperSeats))
 	keeperRequests := []db.AvailabilityRequest{{ID: uuid.New().String(), RotaID: keeper.ID, VolunteerID: "alice", Token: "keeper-token"}}
 	_, err = database.MintAvailabilityRequests(ctx, keeperRequests)
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestDiscardRota(t *testing.T) {
 		dbtest.Shift(doomed.ID, "2026-08-02"),
 		dbtest.Shift(doomed.ID, "2026-08-09"),
 	}
-	doomedPins := []db.Preallocation{
+	doomedPins := []db.Pin{
 		{ID: uuid.New().String(), ShiftID: doomedShifts[0].ID, RoleID: roles[0].ID, VolunteerID: "bob"},
 		{ID: uuid.New().String(), ShiftID: doomedShifts[1].ID, RoleID: roles[0].ID, CustomValue: "St John's team"},
 	}
@@ -184,7 +184,7 @@ func TestDiscardRota(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, shapes, "a Shape is part of its Shift and cascades with it")
 
-	pins, err := database.GetPreallocationsByShiftIDs(ctx, []string{doomedShifts[0].ID, doomedShifts[1].ID})
+	pins, err := database.GetPinsByShiftIDs(ctx, []string{doomedShifts[0].ID, doomedShifts[1].ID})
 	require.NoError(t, err)
 	assert.Empty(t, pins)
 
@@ -210,7 +210,7 @@ func TestDiscardRota(t *testing.T) {
 	keptShapes, err := database.GetShiftShapes(ctx, []string{keeperShift.ID})
 	require.NoError(t, err)
 	assert.Len(t, keptShapes[keeperShift.ID], 1)
-	keptPins, err := database.GetPreallocationsByShiftIDs(ctx, []string{keeperShift.ID})
+	keptPins, err := database.GetPinsByShiftIDs(ctx, []string{keeperShift.ID})
 	require.NoError(t, err)
 	assert.Len(t, keptPins, 1)
 	keptRequests, err := database.GetAvailabilityRequestsByRotaID(ctx, keeper.ID)

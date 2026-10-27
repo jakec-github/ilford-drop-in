@@ -310,7 +310,7 @@ func TestInitShifts_ClosedShifts(t *testing.T) {
 	assert.NotEmpty(t, shifts[2].AvailableGroups, "Open shift should have available groups")
 }
 
-func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
+func TestInitShifts_ClosedShifts_IgnoresPins(t *testing.T) {
 	volunteers := []Volunteer{
 		{ID: "v1", FirstName: "Alice", LastName: "Smith", Gender: "Female", GroupKey: "group_a"},
 	}
@@ -327,7 +327,7 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 			AppliesTo: func(date string) bool {
 				return date == "2025-01-05"
 			},
-			Preallocations: []Preallocation{ // Should be ignored
+			Pins: []Pin{ // Should be ignored
 				{Custom: "John", Role: "Service volunteer"},
 				{Custom: "Jane", Role: "Service volunteer"},
 			},
@@ -347,11 +347,11 @@ func TestInitShifts_ClosedShifts_IgnoresPreallocations(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, shifts, 2)
 
-	// Closed shift should ignore preallocations
+	// Closed shift should ignore pins
 	assert.True(t, shifts[0].Closed)
-	assert.Empty(t, shifts[0].Preallocations, "Closed shift should ignore preallocations")
+	assert.Empty(t, shifts[0].Pins, "Closed shift should ignore pins")
 
 	// Non-closed shift should be normal
 	assert.False(t, shifts[1].Closed)
-	assert.Empty(t, shifts[1].Preallocations)
+	assert.Empty(t, shifts[1].Pins)
 }

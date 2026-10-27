@@ -27,16 +27,16 @@ type mockAvailabilityStore struct {
 	shifts      []db.Shift
 	requests    []db.AvailabilityRequest
 	generations []db.AvailabilityGeneration
-	pins        []db.Preallocation
+	pins        []db.Pin
 	nextID      int
 }
 
-func (m *mockAvailabilityStore) GetPreallocationsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.Preallocation, error) {
+func (m *mockAvailabilityStore) GetPinsByShiftIDs(_ context.Context, shiftIDs []string) ([]db.Pin, error) {
 	want := make(map[string]bool, len(shiftIDs))
 	for _, id := range shiftIDs {
 		want[id] = true
 	}
-	var out []db.Preallocation
+	var out []db.Pin
 	for _, p := range m.pins {
 		if want[p.ShiftID] {
 			out = append(out, p)

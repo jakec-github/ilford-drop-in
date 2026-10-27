@@ -10,7 +10,7 @@ Per open shift, at least one of:
 The gender is matched against the roster's text exactly. "Male" is the
 rule as it began (male_required, issue #281 generalised it).
 
-Custom (free-text) preallocations have unknown gender: they occupy Seats
+Custom (free-text) pins have unknown gender: they occupy Seats
 but never satisfy the requirement, so they narrow the escape. Pinned
 volunteers narrow it too, and a Role its pins have overfilled offers no
 escape — but frees none in another Role either (ADR 0010).

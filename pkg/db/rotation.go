@@ -225,14 +225,14 @@ var discardStatements = []string{
 		SELECT id FROM availability_request WHERE rota_id = $1
 	 )`,
 	`DELETE FROM availability_request WHERE rota_id = $1`,
-	`DELETE FROM preallocation
+	`DELETE FROM pin
 	 WHERE shift_id IN (SELECT id FROM shift WHERE rota_id = $1)`,
 	`DELETE FROM shift WHERE rota_id = $1`,
 	`DELETE FROM rotation WHERE id = $1`,
 }
 
 // DiscardRota destroys an unallocated Rotation and everything hanging off it —
-// its Shifts, their Shapes, its Preallocations, its Draft Rota Allocation, its
+// its Shifts, their Shapes, its Pins, its Draft Rota Allocation, its
 // availability round and every response to it — in one transaction. It reports
 // whether a rotation with that id existed, and ErrRotaAllocated when it did but
 // has been allocated.

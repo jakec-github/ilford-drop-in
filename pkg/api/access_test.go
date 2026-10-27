@@ -16,14 +16,14 @@ type gatedRoute struct {
 
 // gatedRoutes is every route behind a session, with the level each one needs —
 // the table in issue #204. A Rota Editor changes shifts: Alterations and Cover
-// on an allocated rota, Preallocations on the one in flight, and the reads those
+// on an allocated rota, Pins on the one in flight, and the reads those
 // need. Everything else is an Organiser's.
 var gatedRoutes = []gatedRoute{
 	// A Rota Editor's.
 	{http.MethodPost, "/api/alterations", LevelRotaEditor},
-	{http.MethodGet, "/api/preallocations", LevelRotaEditor},
-	{http.MethodPost, "/api/preallocations", LevelRotaEditor},
-	{http.MethodDelete, "/api/preallocations/p1", LevelRotaEditor},
+	{http.MethodGet, "/api/pins", LevelRotaEditor},
+	{http.MethodPost, "/api/pins", LevelRotaEditor},
+	{http.MethodDelete, "/api/pins/p1", LevelRotaEditor},
 	{http.MethodGet, "/api/rotations/in-flight", LevelRotaEditor},
 	{http.MethodGet, "/api/volunteers", LevelRotaEditor},
 

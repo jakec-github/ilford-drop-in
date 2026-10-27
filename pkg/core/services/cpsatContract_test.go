@@ -54,7 +54,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 				{Role: "Team lead", Count: 1},
 				{Role: "Service volunteer", Count: 3},
 			},
-			Preallocations: []allocator.CpsatPreallocation{
+			Pins: []allocator.CpsatPin{
 				{Custom: "St John's team", Role: "Service volunteer"},
 				{VolunteerID: "vol-1", Role: "Service volunteer"},
 				{VolunteerID: "vol-9", Role: "Team lead"},
@@ -90,7 +90,7 @@ func TestCpsatInputContractGolden(t *testing.T) {
 				{"role": "Team lead", "count": 1},
 				{"role": "Service volunteer", "count": 3}
 			],
-			"preallocations": [
+			"pins": [
 				{"volunteer_id": "", "custom": "St John's team", "role": "Service volunteer"},
 				{"volunteer_id": "vol-1", "custom": "", "role": "Service volunteer"},
 				{"volunteer_id": "vol-9", "custom": "", "role": "Team lead"}
@@ -174,7 +174,7 @@ func TestBuildCpsatInput(t *testing.T) {
 	overrides := []allocator.ShiftOverride{
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-20" },
-			Preallocations: []allocator.Preallocation{
+			Pins: []allocator.Pin{
 				{Custom: "external_john", Role: "Service volunteer"},
 			},
 		},
@@ -216,11 +216,11 @@ func TestBuildCpsatInput(t *testing.T) {
 			{Role: "Service volunteer", Count: 2},
 		}, shift.Shape, "shift %d", i)
 	}
-	assert.Equal(t, []allocator.CpsatPreallocation{
+	assert.Equal(t, []allocator.CpsatPin{
 		{Custom: "external_john", Role: "Service volunteer"},
-	}, input.Shifts[1].Preallocations)
+	}, input.Shifts[1].Pins)
 	assert.True(t, input.Shifts[2].Closed)
-	assert.Empty(t, input.Shifts[2].Preallocations)
+	assert.Empty(t, input.Shifts[2].Pins)
 
 	// Roles travel with the problem, in priority order.
 	assert.Equal(t, []allocator.CpsatRole{
@@ -263,7 +263,7 @@ func TestBuildCpsatInput_NobodyAnswered(t *testing.T) {
 	overrides := []allocator.ShiftOverride{
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-20" },
-			Preallocations: []allocator.Preallocation{
+			Pins: []allocator.Pin{
 				{Custom: "external_john", Role: "Service volunteer"},
 			},
 		},
@@ -278,9 +278,9 @@ func TestBuildCpsatInput_NobodyAnswered(t *testing.T) {
 
 	assert.Empty(t, input.Groups)
 	require.Len(t, input.Shifts, 2)
-	assert.Equal(t, []allocator.CpsatPreallocation{
+	assert.Equal(t, []allocator.CpsatPin{
 		{Custom: "external_john", Role: "Service volunteer"},
-	}, input.Shifts[1].Preallocations, "a pin needs nobody to have answered")
+	}, input.Shifts[1].Pins, "a pin needs nobody to have answered")
 
 	encoded, err := json.Marshal(input)
 	require.NoError(t, err)
@@ -362,7 +362,7 @@ func TestBuildCpsatInput_HistoryKeysMatchCurrentRotaKeys(t *testing.T) {
 // It settles nothing about availability, though: the solver exempts the pinned
 // person, and the pin pins only them (ADR 0010, #234). Their group-mates are
 // the allocator's choice, held to what the group actually answered.
-func TestBuildCpsatInput_PreallocationKeepsItsGroup(t *testing.T) {
+func TestBuildCpsatInput_PinKeepsItsGroup(t *testing.T) {
 	volunteers := []allocator.Volunteer{
 		{ID: "alice", FirstName: "Alice", LastName: "Smith", DisplayName: "Alice", Gender: "Female", GroupKey: "couple_ab"},
 		{ID: "bob", FirstName: "Bob", LastName: "Smith", DisplayName: "Bob", Gender: "Male", GroupKey: "couple_ab"},
@@ -391,7 +391,7 @@ func TestBuildCpsatInput_PreallocationKeepsItsGroup(t *testing.T) {
 		// a volunteer who answered "none of these".
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-13" },
-			Preallocations: []allocator.Preallocation{
+			Pins: []allocator.Pin{
 				{VolunteerID: "alice", Role: "Team lead"},
 				{VolunteerID: "silent", Role: "Service volunteer"},
 				{VolunteerID: "refused", Role: "Service volunteer"},
@@ -403,7 +403,7 @@ func TestBuildCpsatInput_PreallocationKeepsItsGroup(t *testing.T) {
 		// implies nothing.
 		{
 			AppliesTo: func(date string) bool { return date == "2026-07-27" },
-			Preallocations: []allocator.Preallocation{
+			Pins: []allocator.Pin{
 				{VolunteerID: "silent", Role: "Service volunteer"},
 			},
 		},
@@ -452,7 +452,7 @@ func TestBuildCpsatInput_DoesNotMutateCallerAvailability(t *testing.T) {
 
 	overrides := []allocator.ShiftOverride{{
 		AppliesTo:      func(date string) bool { return date == "2026-07-13" },
-		Preallocations: []allocator.Preallocation{{VolunteerID: "alice", Role: "Service volunteer"}},
+		Pins: []allocator.Pin{{VolunteerID: "alice", Role: "Service volunteer"}},
 	}}
 
 	roles := []allocator.Role{{Name: "Service volunteer", Priority: 1}}

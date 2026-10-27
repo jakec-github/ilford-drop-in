@@ -38,14 +38,14 @@ def test_scarce_volunteers_spread_across_shifts():
     assert sorted(len(keys) for keys in by_shift.values()) == [1, 2]
 
 
-def test_custom_preallocations_count_as_early_seats():
+def test_custom_pins_count_as_early_seats():
     # Shift 0 already has a custom entry occupying seat 1, so the single
     # available volunteer is worth more on shift 1 (seat 1) than on
     # shift 0 (seat 2).
     inp = make_input(
         groups=[make_group("g1", available=[0, 1])],
         shifts=[
-            make_shift(0, size=2, custom_preallocations=["external"]),
+            make_shift(0, size=2, custom_pins=["external"]),
             make_shift(1, size=2),
         ],
         rules=[("max_frequency", 1)],

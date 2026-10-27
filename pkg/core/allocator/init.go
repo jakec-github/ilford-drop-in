@@ -122,7 +122,7 @@ func pinnedGroupKeys(shifts []*Shift, volunteers []Volunteer) map[string]bool {
 
 	pinned := make(map[string]bool)
 	for _, shift := range shifts {
-		for _, pin := range shift.Preallocations {
+		for _, pin := range shift.Pins {
 			// A custom entry is not a person, and a pin naming nobody on the
 			// roster is reported by the pre-solve check and by the solver, each
 			// of which can name it. Inventing a group for it here would only
@@ -190,14 +190,14 @@ func calculateHistoricalAllocationCount(groupKey string, historicalShifts []*Shi
 //
 // All it can say now is who is pinned: it carried a shift size until the Shape
 // stopped being a number (issue #129), and closures and config pins left before
-// that. Every override that reaches InitShifts is a Preallocation wearing a
+// that. Every override that reaches InitShifts is a Pin wearing a
 // date matcher.
 type ShiftOverride struct {
 	// AppliesTo is a function that returns true if this override applies to the given shift date
 	AppliesTo func(date string) bool
 
-	// Preallocations are the pins this override contributes, each naming a Role.
-	Preallocations []Preallocation
+	// Pins are the pins this override contributes, each naming a Role.
+	Pins []Pin
 }
 
 // ShiftSpec is one minted shift as the solver's model receives it, before
@@ -236,7 +236,7 @@ type InitShiftsInput struct {
 // Returns a slice of initialised Shift objects with:
 //   - Sequential indices
 //   - The Shape each shift arrived asking for (issue #137)
-//   - Preallocations unioned from every override applying to the date
+//   - Pins unioned from every override applying to the date
 //   - AvailableGroups populated based on volunteer group availability
 //
 // Every override applying to a date contributes its pins. Pins used to be three
@@ -255,19 +255,19 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 	shifts := make([]*Shift, len(input.Shifts))
 
 	for i, spec := range input.Shifts {
-		var preallocations []Preallocation
+		var pins []Pin
 
 		// Apply overrides for this date
 		for _, override := range input.Overrides {
 			if override.AppliesTo(spec.Date) {
-				preallocations = append(preallocations, override.Preallocations...)
+				pins = append(pins, override.Pins...)
 			}
 		}
 
 		// Populate available groups for this shift (skip if closed)
 		availableGroups := make([]*VolunteerGroup, 0)
 		if spec.Closed {
-			preallocations = nil
+			pins = nil
 		} else {
 			for _, group := range input.VolunteerState.VolunteerGroups {
 				if group.IsAvailable(i) {
@@ -284,7 +284,7 @@ func InitShifts(input InitShiftsInput) ([]*Shift, error) {
 			MaleCount:       0, // Will be updated when groups are allocated
 			AvailableGroups: availableGroups,
 			Closed:          spec.Closed,
-			Preallocations:  preallocations,
+			Pins:  pins,
 		}
 	}
 

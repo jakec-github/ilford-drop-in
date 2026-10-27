@@ -1,43 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  createPreallocation,
-  deletePreallocation,
-  fetchPreallocations,
+  createPin,
+  deletePin,
+  fetchPins,
 } from "../api";
-import type { NewPreallocation, Preallocation } from "../types";
+import type { NewPin, Pin } from "../types";
 
-interface UsePreallocations {
+interface UsePins {
   // null while the first load is still in flight; [] is "nobody is pinned",
   // which a caller renders differently from "not loaded yet".
-  preallocations: Preallocation[] | null;
+  pins: Pin[] | null;
   error: string | null;
   // Pins one person to a shift, then reloads. Rejects with the server's own
   // message when the pin is refused, which is the whole explanation of why —
   // the caller shows it rather than inventing one.
-  addPin: (pin: NewPreallocation) => Promise<void>;
+  addPin: (pin: NewPin) => Promise<void>;
   // Removes one pin by id, then reloads. Any pin can go: there is one kind of
   // them, and an Organiser or a Rota Editor may take back any promise a rota has not been allocated
   // on.
   removePin: (id: string) => Promise<void>;
 }
 
-interface UsePreallocationsOptions {
+interface UsePinsOptions {
   // Pins are organiser-only, so a view that shows them conditionally must be able
   // to say "not yet": fetching them for a logged-out visitor would be a
   // guaranteed 401 rendered as a load failure. Defaults to true.
   enabled?: boolean;
 }
 
-// usePreallocations owns the pins the rota page shows against shifts that have
+// usePins owns the pins the rota page shows against shifts that have
 // not been allocated yet, and the two ways they are changed.
 //
 // A write re-reads the listing rather than patching what is held: pins are
 // ordered server-side, and the server can refuse one. What comes back from the
 // reload is what the allocator will actually be handed.
-export function usePreallocations({
+export function usePins({
   enabled = true,
-}: UsePreallocationsOptions = {}): UsePreallocations {
-  const [preallocations, setPreallocations] = useState<Preallocation[] | null>(
+}: UsePinsOptions = {}): UsePins {
+  const [pins, setPins] = useState<Pin[] | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
@@ -48,16 +48,16 @@ export function usePreallocations({
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    void fetchPreallocations()
+    void fetchPins()
       .then((loaded) => {
         if (cancelled) return;
-        setPreallocations(loaded);
+        setPins(loaded);
         setError(null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setError(
-          err instanceof Error ? err.message : "Failed to load preallocations",
+          err instanceof Error ? err.message : "Failed to load pins",
         );
       });
     return () => {
@@ -84,14 +84,14 @@ export function usePreallocations({
   );
 
   const addPin = useCallback(
-    (pin: NewPreallocation) => write(() => createPreallocation(pin)),
+    (pin: NewPin) => write(() => createPin(pin)),
     [write],
   );
 
   const removePin = useCallback(
-    (id: string) => write(() => deletePreallocation(id)),
+    (id: string) => write(() => deletePin(id)),
     [write],
   );
 
-  return { preallocations, error, addPin, removePin };
+  return { pins, error, addPin, removePin };
 }
