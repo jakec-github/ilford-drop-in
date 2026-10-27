@@ -7,6 +7,7 @@ import type {
   Role,
   ShiftCoverage,
 } from "../types";
+import { timeOfDay } from "./shiftTimes";
 import "./ResponseGrid.css";
 
 // The grid is a matrix because that is the shape of the question. "Can I staff
@@ -28,6 +29,14 @@ function shiftDay(date: string): string {
     day: "numeric",
     month: "short",
   });
+}
+
+// When the shift starts, under its date: two shifts can share a day (issue
+// #294), and two columns headed "Sun 2 Feb" would not say which is which. Empty
+// for a shift running one midnight to the next, which has no start to name.
+function shiftStart(start: string): string {
+  const time = timeOfDay(start);
+  return time === "00:00" ? "" : time;
 }
 
 function fullDate(date: string): string {
@@ -480,8 +489,15 @@ export default function ResponseGrid({
                   <span aria-hidden="true" className="grid-date-day">
                     {shiftDay(shift.date)}
                   </span>
+                  {shiftStart(shift.start) && (
+                    <span aria-hidden="true" className="grid-date-day">
+                      {shiftStart(shift.start)}
+                    </span>
+                  )}
                   <span className="grid-hidden">
                     {fullDate(shift.date)}
+                    {shiftStart(shift.start) &&
+                      ` at ${shiftStart(shift.start)}`}
                     {shift.closed && " (closed)"}
                   </span>
                   {shift.closed && (

@@ -38,8 +38,12 @@ import (
 type ShiftCoverage struct {
 	ShiftID string
 	Date    string // YYYY-MM-DD
-	Closed  bool
-	Roles   []RoleCoverage // every configured Role, in priority order
+	// The hours, local wall clock at the Organisation: two shifts on one day
+	// are told apart by when they start (issue #294).
+	Start  string
+	End    string
+	Closed bool
+	Roles  []RoleCoverage // every configured Role, in priority order
 }
 
 // RoleCoverage is one Role's part of a shift's picture: the Seats the Shape
@@ -173,6 +177,8 @@ func buildCoverage(
 			coverage = append(coverage, ShiftCoverage{
 				ShiftID: shift.ID,
 				Date:    shift.Date,
+				Start:   shift.Start,
+				End:     shift.End,
 				Closed:  true,
 				Roles:   []RoleCoverage{},
 			})
@@ -221,6 +227,8 @@ func buildCoverage(
 		coverage = append(coverage, ShiftCoverage{
 			ShiftID: shift.ID,
 			Date:    shift.Date,
+			Start:   shift.Start,
+			End:     shift.End,
 			Roles:   roleCoverage,
 		})
 	}

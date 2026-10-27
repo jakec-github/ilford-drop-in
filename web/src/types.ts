@@ -497,6 +497,10 @@ export interface AvailabilityGroup {
 export interface ShiftCoverage {
   id: string;
   date: string;
+  // Local wall clock at the Organisation, like a RotaShift's — never fed to
+  // `new Date()`. Two shifts on one day are told apart by when they start.
+  start: string;
+  end: string;
   closed: boolean;
   roles: RoleCoverage[];
 }

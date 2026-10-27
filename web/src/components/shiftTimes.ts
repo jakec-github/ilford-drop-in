@@ -4,7 +4,7 @@
 // they are read off the string rather than through `new Date()`: parsing them
 // as instants would re-render them in whatever zone the reader's phone is in,
 // and a volunteer in another country would be told the wrong time.
-function timeOfDay(timestamp: string): string {
+export function timeOfDay(timestamp: string): string {
   return timestamp.slice("2026-02-02T".length, "2026-02-02T19:30".length);
 }
 

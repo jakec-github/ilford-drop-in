@@ -1,17 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type {
-  Assignee,
-  PersonRef,
-  Pin,
-  Role,
-  RotaShift,
-} from "../types";
+import type { Assignee, PersonRef, Pin, Role, RotaShift } from "../types";
 import type { RoleColourOf } from "../hooks/useRoles";
 import Button from "../ui/Button";
 import {
   formatShiftDate,
-  formatShiftDateLong,
+  formatShiftLong,
   groupByMonth,
   groupByRole,
   isUnallocated,
@@ -35,11 +29,12 @@ function isEditable(shift: RotaShift): boolean {
   return !shift.closed && shift.allocated;
 }
 
-// Identifies one chip in the whole list, for "which chip's menu is open". The
-// index is part of it because the same custom entry can legitimately appear
-// twice on a shift — two people from the same visiting group.
-function chipKey(shiftDate: string, assignee: Assignee, index: number): string {
-  return `${shiftDate}/${assignee.volunteerId ?? assignee.name}/${index}`;
+// Identifies one chip in the whole list, for "which chip's menu is open". By
+// the shift's id, not its date, because two shifts can share a day. The index is
+// part of it because the same custom entry can legitimately appear twice on a
+// shift — two people from the same visiting group.
+function chipKey(shiftId: string, assignee: Assignee, index: number): string {
+  return `${shiftId}/${assignee.volunteerId ?? assignee.name}/${index}`;
 }
 
 // Group membership is shown by a corner dot; the colour just needs to be stable
@@ -331,7 +326,7 @@ function swapBlockedReason(
   if (!canReceive) return `${pending.name} is already on this shift`;
   if (samePerson(pending.person, personRef(assignee)))
     return `${assignee.name}, the same as the one you are moving`;
-  return `${assignee.name} is already on ${formatShiftDateLong(pending.from.date)}`;
+  return `${assignee.name} is already on ${formatShiftLong(pending.from)}`;
 }
 
 // What a pin means. There is one kind, whether somebody made it here or a
@@ -414,14 +409,14 @@ function plannedFor(pins: Pin[], drafted: Assignee[]): Planned[] {
 // List items rather than buttons, so nothing offers a keyboard user an action
 // that does not exist.
 function PlannedList({
-  date,
+  shift,
   planned,
   label,
   colourOf,
   stale,
   onUnpin,
 }: {
-  date: string;
+  shift: RotaShift;
   planned: Planned[];
   // The list's name for anybody who cannot see where they are. Given by the
   // caller because an expanded row draws one of these per Role, and "expected
@@ -460,7 +455,7 @@ function PlannedList({
                 // The date is in the label because the button is a bare cross:
                 // read out of the row's context, "Remove" alone does not say
                 // which pin, and the rows all look alike.
-                aria-label={`Remove ${entry.pin.name}'s pin on ${formatShiftDateLong(date)}`}
+                aria-label={`Remove ${entry.pin.name}'s pin on ${formatShiftLong(shift)}`}
                 onClick={() => onUnpin(entry.pin)}
               >
                 <svg
@@ -481,7 +476,7 @@ function PlannedList({
           </li>
         ) : (
           <li
-            key={chipKey(date, entry.assignee, i)}
+            key={chipKey(shift.id, entry.assignee, i)}
             className={`chip draft ${entry.assignee.custom ? "chip--tag" : "chip--pill"}${entry.assignee.group ? " has-group" : ""}${stale ? " draft-stale" : ""}`}
             data-role-colour={colourOf(entry.assignee.roleId) ?? undefined}
             title={draftTitle(entry.assignee)}
@@ -654,7 +649,7 @@ function ShiftRow({
   const menuAssignee =
     (placement &&
       shift.assignees.find(
-        (a, i) => chipKey(shift.date, a, i) === placement.openMenu,
+        (a, i) => chipKey(shift.id, a, i) === placement.openMenu,
       )) ||
     null;
 
@@ -668,8 +663,8 @@ function ShiftRow({
       className="shift-add shift-closure"
       aria-label={
         shift.closed
-          ? `Reopen ${formatShiftDateLong(shift.date)}`
-          : `Close ${formatShiftDateLong(shift.date)}`
+          ? `Reopen ${formatShiftLong(shift)}`
+          : `Close ${formatShiftLong(shift)}`
       }
       onClick={edit.onSetClosed}
     >
@@ -701,7 +696,7 @@ function ShiftRow({
           // read out of the row's context, "Show details" does not say which
           // shift's, and the rows all look alike. "Details" rather than
           // "roles" because the roles are only what it opens onto today.
-          aria-label={`${expanded ? "Hide" : "Show"} details for ${formatShiftDateLong(shift.date)}`}
+          aria-label={`${expanded ? "Hide" : "Show"} details for ${formatShiftLong(shift)}`}
           onClick={() => setExpanded(!expanded)}
         >
           <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
@@ -741,9 +736,9 @@ function ShiftRow({
             <RoleGroups shape={shift.shape} people={planned}>
               {(group) => (
                 <PlannedList
-                  date={shift.date}
+                  shift={shift}
                   planned={group.people}
-                  label={`${roleGroupLabel(group.role)} expected on ${formatShiftDateLong(shift.date)}`}
+                  label={`${roleGroupLabel(group.role)} expected on ${formatShiftLong(shift)}`}
                   colourOf={colourOf}
                   stale={draftStale}
                   onUnpin={unpin}
@@ -752,9 +747,9 @@ function ShiftRow({
             </RoleGroups>
           ) : (
             <PlannedList
-              date={shift.date}
+              shift={shift}
               planned={planned}
-              label={`Expected on ${formatShiftDateLong(shift.date)}`}
+              label={`Expected on ${formatShiftLong(shift)}`}
               colourOf={colourOf}
               stale={draftStale}
               onUnpin={unpin}
@@ -767,7 +762,7 @@ function ShiftRow({
             <button
               type="button"
               className="shift-add shift-pin"
-              aria-label={`Pin someone to ${formatShiftDateLong(shift.date)}`}
+              aria-label={`Pin someone to ${formatShiftLong(shift)}`}
               onClick={edit.onPin}
             >
               + Pin
@@ -780,7 +775,7 @@ function ShiftRow({
               <button
                 type="button"
                 className="shift-add shift-shape-edit"
-                aria-label={`Change what ${formatShiftDateLong(shift.date)} asks for`}
+                aria-label={`Change what ${formatShiftLong(shift)} asks for`}
                 onClick={edit.onEditShape}
               >
                 Shape
@@ -807,15 +802,9 @@ function ShiftRow({
     // expanded, the same chips come out under the names of their Roles. The
     // same function either way, so the two cannot drift.
     const renderChip = ({ assignee: a, index: i }: (typeof seated)[number]) => {
-      const key = chipKey(shift.date, a, i);
+      const key = chipKey(shift.id, a, i);
       if (!editable) {
-        return (
-          <Chip
-            key={key}
-            assignee={a}
-            colourOf={colourOf}
-          />
-        );
+        return <Chip key={key} assignee={a} colourOf={colourOf} />;
       }
       // One chip either way, not one per state: `draggable` has to survive
       // the re-render that starting a drag causes. onDragStart sets the
@@ -886,7 +875,7 @@ function ShiftRow({
           <button
             type="button"
             className="shift-add"
-            aria-label={`Add someone to ${formatShiftDateLong(shift.date)}`}
+            aria-label={`Add someone to ${formatShiftLong(shift)}`}
             onClick={placement.onAdd}
           >
             + Add
@@ -927,7 +916,7 @@ function ShiftRow({
         <button
           type="button"
           className="shift-when shift-when-editable"
-          aria-label={`Change when ${formatShiftDateLong(shift.date)} runs`}
+          aria-label={`Change when ${formatShiftLong(shift)} runs`}
           onClick={edit.onEditTimes}
         >
           <ShiftWhen shift={shift} />

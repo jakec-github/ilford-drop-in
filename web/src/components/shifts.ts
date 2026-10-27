@@ -1,4 +1,5 @@
 import type { Assignee, PersonRef, Role, RotaShift, ShapeSeat } from "../types";
+import { timeOfDay } from "./shiftTimes";
 
 // The small facts about a shift and the people on it that both the shift rows
 // and the screens around them need. Their own module rather than exports from
@@ -76,6 +77,17 @@ export function formatShiftDate(dateStr: string): string {
   });
 }
 
+// "2 Feb 19:30" — a shift in a run of them, where two on one day (issue #294)
+// would otherwise read as the same date twice.
+export function formatShiftShort(shift: {
+  date: string;
+  start: string;
+}): string {
+  const date = formatShiftDate(shift.date);
+  const start = timeOfDay(shift.start);
+  return start === "00:00" ? date : `${date} ${start}`;
+}
+
 // MonthGroup is a run of consecutive shifts in one calendar month, under the
 // heading the shift list draws above them.
 export interface MonthGroup<T extends { date: string }> {
@@ -118,6 +130,30 @@ export function formatShiftDateLong(dateStr: string): string {
     day: "numeric",
     month: "short",
   });
+}
+
+// "Sun 2 Feb at 19:30" — a shift named out of the list's context. The start
+// time is part of the name because two shifts can share a day (issue #294), and
+// a dialog titled with the date alone would not say which of them it is about.
+// A shift running one midnight to the next has no start worth naming.
+export function formatShiftLong(shift: {
+  date: string;
+  start: string;
+}): string {
+  const date = formatShiftDateLong(shift.date);
+  const start = timeOfDay(shift.start);
+  return start === "00:00" ? date : `${date} at ${start}`;
+}
+
+// The shift a pin is on, named as formatShiftLong names it. A pin carries its
+// shift's date but not its hours, so they come from the rota beside it; the
+// date alone is the fallback for a rota that has not loaded.
+export function formatPinShift(
+  pin: { shiftId: string; date: string },
+  shifts: readonly RotaShift[] | null | undefined,
+): string {
+  const shift = shifts?.find((s) => s.id === pin.shiftId);
+  return shift ? formatShiftLong(shift) : formatShiftDateLong(pin.date);
 }
 
 // RoleGroup is one Role's people on one shift: everybody doing the same job,

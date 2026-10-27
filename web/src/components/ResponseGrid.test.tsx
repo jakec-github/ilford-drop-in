@@ -85,6 +85,8 @@ describe("ResponseGrid row order", () => {
     const shift = (id: string, closed = false) => ({
       id,
       date: "2026-10-04",
+      start: "2026-10-04T19:30:00",
+      end: "2026-10-04T21:30:00",
       closed,
       roles: [],
     });
@@ -148,5 +150,32 @@ describe("ResponseGrid resend", () => {
     expect(
       screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+});
+
+describe("ResponseGrid columns", () => {
+  test("two shifts on one day are headed by when each starts", () => {
+    const shift = (id: string, start: string) => ({
+      id,
+      date: "2026-10-04",
+      start: `2026-10-04T${start}:00`,
+      end: "2026-10-04T23:00:00",
+      closed: false,
+      roles: [],
+    });
+    const r = {
+      ...round([]),
+      shifts: [shift("a", "10:00"), shift("b", "19:30")],
+    };
+    render(<ResponseGrid round={r} onResend={() => {}} />);
+
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((h) => h.querySelector(".grid-hidden")?.textContent)
+      .filter((n): n is string => n != null);
+    expect(headers).toEqual([
+      "Sunday 4 October at 10:00",
+      "Sunday 4 October at 19:30",
+    ]);
   });
 });

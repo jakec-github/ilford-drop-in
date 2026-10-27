@@ -212,13 +212,13 @@ func sheetRota(
 	}
 
 	for _, shift := range shifts {
-		date, err := time.Parse("2006-01-02", shift.Date)
+		date, err := sheetDate(shift)
 		if err != nil {
-			return rotasheet.Rota{}, fmt.Errorf("invalid shift date %q: %w", shift.Date, err)
+			return rotasheet.Rota{}, err
 		}
 		row := rotasheet.Shift{
 			ID:     shift.ID,
-			Date:   date.Format("Mon Jan 02 2006"),
+			Date:   date,
 			Closed: shift.Closed,
 			Names:  map[string][]string{},
 		}
@@ -283,4 +283,19 @@ func archiveTabTitle(rotations []db.Rotation, last *rotasheet.Layout, target *db
 		return ""
 	}
 	return title
+}
+
+// sheetDate is a shift's Date cell: the day and when it starts, "Sun Jan 04
+// 2026 19:30". The start is there because two shifts can share a day (issue
+// #294), and two rows reading the same date would not say which was which. A
+// shift running one midnight to the next has no start worth naming.
+func sheetDate(shift db.Shift) (string, error) {
+	start, err := time.Parse(model.ShiftTimestampLayout, shift.StartAt)
+	if err != nil {
+		return "", fmt.Errorf("invalid shift start %q: %w", shift.StartAt, err)
+	}
+	if start.Hour() == 0 && start.Minute() == 0 {
+		return start.Format("Mon Jan 02 2006"), nil
+	}
+	return start.Format("Mon Jan 02 2006 15:04"), nil
 }

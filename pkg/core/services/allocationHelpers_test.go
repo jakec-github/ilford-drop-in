@@ -30,7 +30,7 @@ func sundayShifts(rotaID, start string, count int) []db.Shift {
 	shifts := make([]db.Shift, count)
 	for i := 0; i < count; i++ {
 		date := startDate.AddDate(0, 0, i*7).Format("2006-01-02")
-		shifts[i] = db.Shift{ID: date, RotaID: rotaID, Date: date}
+		shifts[i] = eveningShift(date, rotaID)
 	}
 	return shifts
 }
@@ -40,7 +40,7 @@ func sundayShifts(rotaID, start string, count int) []db.Shift {
 func shiftsOnDates(rotaID string, dates ...string) []db.Shift {
 	shifts := make([]db.Shift, len(dates))
 	for i, d := range dates {
-		shifts[i] = db.Shift{ID: d, RotaID: rotaID, Date: d}
+		shifts[i] = eveningShift(d, rotaID)
 	}
 	return shifts
 }
@@ -900,4 +900,15 @@ func TestBuildHistoricalShifts_KeepsShiftsNobodyWorked(t *testing.T) {
 	historicalShifts, err = buildHistoricalShifts(context.Background(), store, store.rotations, targetRota, volunteers, zap.NewNop())
 	require.NoError(t, err)
 	assert.Len(t, historicalShifts, 3)
+}
+
+// eveningShift is a 19:30–21:30 shift on date, with the date as its id.
+func eveningShift(date, rotaID string) db.Shift {
+	return db.Shift{
+		ID:      date,
+		RotaID:  rotaID,
+		Date:    date,
+		StartAt: date + "T19:30:00",
+		EndAt:   date + "T21:30:00",
+	}
 }

@@ -163,8 +163,8 @@ func TestPublishRota_LaysOutWhoIsOnEachShift(t *testing.T) {
 	sheet := sheets.plan(t).Sheet
 	assert.Equal(t, []string{"Date", "Team lead", "Service volunteer 1", "Service volunteer 2"}, sheet.Header)
 	assert.Equal(t, [][]string{
-		{"Sun Jan 05 2025", "Alice", "Bob", "Charlie"},
-		{"Sun Jan 12 2025", "Dave", "", ""},
+		{"Sun Jan 05 2025 19:30", "Alice", "Bob", "Charlie"},
+		{"Sun Jan 12 2025 19:30", "Dave", "", ""},
 	}, sheet.Rows)
 }
 
@@ -189,9 +189,9 @@ func TestPublishRota_ShowsTheRotaAsItNowIs(t *testing.T) {
 	sheet := sheets.plan(t).Sheet
 	assert.Equal(t, []string{"Date", "Team lead", "Service volunteer 1", "Service volunteer 2", "Unknown role"}, sheet.Header)
 	assert.Equal(t, [][]string{
-		{"Sun Jan 05 2025", "Alice", "Bob", "Dave", ""},
-		{"Sun Jan 12 2025", "Dave", "[Rotary Club]", "", "Bob"},
-		{"Sun Jan 19 2025", "CLOSED", "", "", ""},
+		{"Sun Jan 05 2025 19:30", "Alice", "Bob", "Dave", ""},
+		{"Sun Jan 12 2025 19:30", "Dave", "[Rotary Club]", "", "Bob"},
+		{"Sun Jan 19 2025 19:30", "CLOSED", "", "", ""},
 	}, sheet.Rows)
 }
 
@@ -215,7 +215,7 @@ func TestPublishRota_ARenamedRoleKeepsItsPeople(t *testing.T) {
 
 	sheet := sheets.plan(t).Sheet
 	assert.Equal(t, []string{"Date", "Shift lead", "Service volunteer 1", "Service volunteer 2"}, sheet.Header)
-	assert.Equal(t, []string{"Sun Jan 05 2025", "Alice", "Bob", "Charlie"}, sheet.Rows[0])
+	assert.Equal(t, []string{"Sun Jan 05 2025 19:30", "Alice", "Bob", "Charlie"}, sheet.Rows[0])
 }
 
 // A volunteer since removed from the roster still worked the shift. The row
@@ -227,7 +227,7 @@ func TestPublishRota_ShowsAVolunteerMissingFromTheRosterAsAPlaceholder(t *testin
 
 	require.NoError(t, publish(t, store, sheets))
 
-	assert.Equal(t, []string{"Sun Jan 12 2025", "Dave", "[unknown volunteer]", ""}, sheets.plan(t).Sheet.Rows[1])
+	assert.Equal(t, []string{"Sun Jan 12 2025 19:30", "Dave", "[unknown volunteer]", ""}, sheets.plan(t).Sheet.Rows[1])
 }
 
 // Latest holds the rota allocated most recently, whatever prompted the publish
@@ -397,4 +397,32 @@ func TestPublishRota_RefusesBeforeTheRosterHasLoaded(t *testing.T) {
 	require.ErrorContains(t, err, "roster")
 	assert.Empty(t, sheets.applied)
 	assert.False(t, store.markedStale, "nothing was sent, so the record still describes Latest")
+}
+
+// Two shifts on one day are two rows, and the Date column says when each starts
+// so they cannot be read as the same shift twice (issue #294).
+func TestPublishRota_TellsTwoShiftsOnOneDayApart(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.shifts[1].Date = "2025-01-05"
+	store.shifts[1].StartAt = "2025-01-05T10:00:00"
+	store.shifts[1].EndAt = "2025-01-05T12:00:00"
+	store.shifts[0], store.shifts[1] = store.shifts[1], store.shifts[0]
+	sheets := &mockSheetsClient{}
+	require.NoError(t, publish(t, store, sheets))
+
+	rows := sheets.plan(t).Sheet.Rows
+	require.Len(t, rows, 2)
+	assert.Equal(t, "Sun Jan 05 2025 10:00", rows[0][0])
+	assert.Equal(t, "Sun Jan 05 2025 19:30", rows[1][0])
+}
+
+// A shift running one midnight to the next has no start worth naming.
+func TestPublishRota_AnAllDayShiftIsItsDateAlone(t *testing.T) {
+	store := rotaOnTheSheet()
+	store.shifts[0].StartAt = "2025-01-05T00:00:00"
+	store.shifts[0].EndAt = "2025-01-06T00:00:00"
+	sheets := &mockSheetsClient{}
+	require.NoError(t, publish(t, store, sheets))
+
+	assert.Equal(t, "Sun Jan 05 2025", sheets.plan(t).Sheet.Rows[0][0])
 }

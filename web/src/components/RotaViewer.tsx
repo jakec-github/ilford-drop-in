@@ -33,8 +33,9 @@ import type { SeatCount } from "./shape";
 import { seatCounts } from "./shape";
 import {
   canJoin,
-  formatShiftDate,
-  formatShiftDateLong,
+  formatPinShift,
+  formatShiftShort,
+  formatShiftLong,
   isUnallocated,
   leavingRoleId,
   personKey,
@@ -78,7 +79,10 @@ function getAllNames(shifts: RotaShift[]): string[] {
   return Array.from(names).sort();
 }
 
-function getUpcomingShifts(shifts: RotaShift[], key: string | null): RotaShift[] {
+function getUpcomingShifts(
+  shifts: RotaShift[],
+  key: string | null,
+): RotaShift[] {
   if (!key) return [];
   return shifts.filter((shift) =>
     shift.assignees.some((a) => personKey(personRef(a)) === key),
@@ -536,7 +540,7 @@ export default function RotaViewer({
     setDialog({
       kind: "confirm",
       title: `Remove ${assignee.name}?`,
-      summary: `${assignee.name} comes off the shift on ${formatShiftDateLong(shift.date)}.`,
+      summary: `${assignee.name} comes off the shift on ${formatShiftLong(shift)}.`,
       confirmLabel: "Remove",
       change: {
         shiftId: shift.id,
@@ -571,7 +575,7 @@ export default function RotaViewer({
     setDialog({
       kind: "confirm",
       title: `Move ${pending.name}?`,
-      summary: `${pending.name} moves from ${formatShiftDateLong(pending.from.date)} to ${formatShiftDateLong(to.date)}.`,
+      summary: `${pending.name} moves from ${formatShiftLong(pending.from)} to ${formatShiftLong(to)}.`,
       confirmLabel: "Move",
       change: {
         shiftId: to.id,
@@ -594,7 +598,7 @@ export default function RotaViewer({
     setDialog({
       kind: "confirm",
       title: `Change ${assignee.name}'s role?`,
-      summary: `${assignee.name} stays on the shift on ${formatShiftDateLong(shift.date)} — only the job they are doing there changes.`,
+      summary: `${assignee.name} stays on the shift on ${formatShiftLong(shift)} — only the job they are doing there changes.`,
       confirmLabel: "Change role",
       change: {
         shiftId: shift.id,
@@ -613,8 +617,8 @@ export default function RotaViewer({
       kind: "confirm",
       title: `Swap ${pending.name} and ${assignee.name}?`,
       summary:
-        `${pending.name} takes ${assignee.name}'s shift on ${formatShiftDateLong(to.date)}, ` +
-        `and ${assignee.name} takes ${pending.name}'s on ${formatShiftDateLong(pending.from.date)}.`,
+        `${pending.name} takes ${assignee.name}'s shift on ${formatShiftLong(to)}, ` +
+        `and ${assignee.name} takes ${pending.name}'s on ${formatShiftLong(pending.from)}.`,
       confirmLabel: "Swap",
       change: {
         shiftId: pending.from.id,
@@ -759,7 +763,9 @@ export default function RotaViewer({
   function pinnableTo(shiftId: string): Volunteer[] | null {
     if (volunteers === null) return null;
     const pinned = new Set(
-      (pinsByShiftID.get(shiftId) ?? []).map((p) => p.volunteerId).filter(Boolean),
+      (pinsByShiftID.get(shiftId) ?? [])
+        .map((p) => p.volunteerId)
+        .filter(Boolean),
     );
     return volunteers.filter((v) => !pinned.has(v.id));
   }
@@ -845,7 +851,7 @@ export default function RotaViewer({
                 <span className="upcoming-dates">
                   {upcomingShifts
                     .slice(0, 5)
-                    .map((s) => formatShiftDate(s.date))
+                    .map((s) => formatShiftShort(s))
                     .join(" · ")}
                 </span>
                 {selectedVolunteerId && (
@@ -872,7 +878,7 @@ export default function RotaViewer({
           >
             <span>
               Carrying <strong>{pending.name}</strong> from{" "}
-              {formatShiftDateLong(pending.from.date)}. Choose a shift to move them to,
+              {formatShiftLong(pending.from)}. Choose a shift to move them to,
               or a person to swap them with.
             </span>
             <Button size="small" onClick={() => setPending(null)}>
@@ -885,7 +891,8 @@ export default function RotaViewer({
           <p className="rota-edit-hint">
             Drag a name to another shift to move them, or onto another name to
             swap. Tap a name for everything else you can do to one person on one
-            shift: move or swap, change their role, replace them, or remove them.
+            shift: move or swap, change their role, replace them, or remove
+            them.
             {/* Only where there is a shift it applies to. On a rota that has all
                 been allocated there is nothing to pin to, and the sentence would
                 send someone looking for a button that is not on any row. */}
@@ -901,8 +908,8 @@ export default function RotaViewer({
             {hasClosable && (
               <>
                 {" "}
-                Close one for a date the organisation is not running, up until the rota
-                is allocated.
+                Close one for a date the organisation is not running, up until
+                the rota is allocated.
               </>
             )}{" "}
             {/* Not conditional on allocation, unlike the two above: the times
@@ -934,7 +941,10 @@ export default function RotaViewer({
             them yet. Pins, closures and what a shift asks for can be set here;
             the draft the solver makes of them, asking volunteers about it and
             allocating it all happen on{" "}
-            <Link href="/organiser/allocation">Organiser &rarr; Allocation</Link>.
+            <Link href="/organiser/allocation">
+              Organiser &rarr; Allocation
+            </Link>
+            .
           </p>
         )}
         {signedIn && !canEditShifts && hasUnallocated && (
@@ -980,7 +990,7 @@ export default function RotaViewer({
 
         {editing && dialog?.kind === "assignee" && (
           <AssigneeDialog
-            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            dateLabel={formatShiftLong(dialog.shift)}
             change={dialog.change}
             volunteers={addableTo(dialog.shift.id)}
             volunteersError={volunteersError}
@@ -1010,7 +1020,7 @@ export default function RotaViewer({
 
         {editing && dialog?.kind === "pin" && (
           <PinDialog
-            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            dateLabel={formatShiftLong(dialog.shift)}
             volunteers={pinnableTo(dialog.shift.id)}
             volunteersError={volunteersError}
             roles={roleNames}
@@ -1030,7 +1040,7 @@ export default function RotaViewer({
 
         {editing && dialog?.kind === "closure" && (
           <ClosureDialog
-            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            dateLabel={formatShiftLong(dialog.shift)}
             closing={!dialog.shift.closed}
             pinnedCount={(pinsByShiftID.get(dialog.shift.id) ?? []).length}
             busy={saving}
@@ -1041,12 +1051,14 @@ export default function RotaViewer({
 
         {editing && dialog?.kind === "times" && (
           <ShiftTimesDialog
-            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            dateLabel={formatShiftLong(dialog.shift)}
             start={dialog.shift.start}
             end={dialog.shift.end}
             busy={saving}
             onCancel={() => setDialog(null)}
-            onConfirm={(start, end) => void submitTimes(dialog.shift, start, end)}
+            onConfirm={(start, end) =>
+              void submitTimes(dialog.shift, start, end)
+            }
           />
         )}
 
@@ -1056,7 +1068,7 @@ export default function RotaViewer({
             the number can be corrected rather than retyped. */}
         {editing && dialog?.kind === "shape" && roles && (
           <ShapeForm
-            title={`What does ${formatShiftDateLong(dialog.shift.date)} ask for?`}
+            title={`What does ${formatShiftLong(dialog.shift)} ask for?`}
             intro="How many places of each Role this shift has. It starts from the default shape and can differ from every other shift; leave a Role at 0 if this one does not need it."
             saveLabel="Save shape"
             roles={roles}
@@ -1069,7 +1081,7 @@ export default function RotaViewer({
         {editing && dialog?.kind === "unpin" && (
           <UnpinDialog
             name={dialog.pin.name}
-            dateLabel={formatShiftDateLong(dialog.pin.date)}
+            dateLabel={formatPinShift(dialog.pin, visibleShifts)}
             busy={saving}
             onCancel={() => setDialog(null)}
             onConfirm={() => void submitUnpin(dialog.pin)}

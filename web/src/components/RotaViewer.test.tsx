@@ -683,7 +683,9 @@ describe("RotaViewer expanded shift view", () => {
     // 4 Jan has Alice on Duty lead and Dan greeting.
     const row = rowFor("4 Jan");
     fireEvent.click(
-      within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+      within(row).getByRole("button", {
+        name: "Show details for Sun 4 Jan at 19:30",
+      }),
     );
 
     const duty = groupFor(row, DUTY_LEAD);
@@ -692,7 +694,9 @@ describe("RotaViewer expanded shift view", () => {
     expect(within(greeters).getByText("Dan")).toBeInTheDocument();
 
     fireEvent.click(
-      within(row).getByRole("button", { name: "Hide details for Sun 4 Jan" }),
+      within(row).getByRole("button", {
+        name: "Hide details for Sun 4 Jan at 19:30",
+      }),
     );
 
     expect(within(row).queryByText(DUTY_LEAD)).not.toBeInTheDocument();
@@ -705,14 +709,16 @@ describe("RotaViewer expanded shift view", () => {
 
     const row = rowFor("4 Jan");
     const toggle = within(row).getByRole("button", {
-      name: "Show details for Sun 4 Jan",
+      name: "Show details for Sun 4 Jan at 19:30",
     });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(toggle);
 
     expect(
-      within(row).getByRole("button", { name: "Hide details for Sun 4 Jan" }),
+      within(row).getByRole("button", {
+        name: "Hide details for Sun 4 Jan at 19:30",
+      }),
     ).toHaveAttribute("aria-expanded", "true");
   });
 
@@ -721,7 +727,7 @@ describe("RotaViewer expanded shift view", () => {
 
     fireEvent.click(
       within(rowFor("4 Jan")).getByRole("button", {
-        name: "Show details for Sun 4 Jan",
+        name: "Show details for Sun 4 Jan at 19:30",
       }),
     );
 
@@ -737,7 +743,9 @@ describe("RotaViewer expanded shift view", () => {
 
     const row = rowFor("4 Jan");
     fireEvent.click(
-      within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+      within(row).getByRole("button", {
+        name: "Show details for Sun 4 Jan at 19:30",
+      }),
     );
     fireEvent.click(within(row).getByRole("button", { name: "Alice" }));
 
@@ -773,7 +781,9 @@ describe("RotaViewer expanded shift view", () => {
 
     const row = rowFor("25 Jan");
     fireEvent.click(
-      within(row).getByRole("button", { name: "Show details for Sun 25 Jan" }),
+      within(row).getByRole("button", {
+        name: "Show details for Sun 25 Jan at 19:30",
+      }),
     );
 
     expect(
@@ -820,7 +830,9 @@ describe("RotaViewer expanded shift view", () => {
 
     const row = rowFor("4 Jan");
     fireEvent.click(
-      within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+      within(row).getByRole("button", {
+        name: "Show details for Sun 4 Jan at 19:30",
+      }),
     );
 
     expect(
@@ -871,7 +883,9 @@ function redCrossShifts(): RotaShift[] {
 function openRedCross(role: string) {
   const row = rowFor("4 Jan");
   fireEvent.click(
-    within(row).getByRole("button", { name: "Show details for Sun 4 Jan" }),
+    within(row).getByRole("button", {
+      name: "Show details for Sun 4 Jan at 19:30",
+    }),
   );
   fireEvent.click(
     within(groupFor(row, role)).getByRole("button", {
