@@ -249,10 +249,14 @@ export interface Volunteer {
 // PlannedShift is a Shift by its wall-clock times, "2026-11-01T19:30:00".
 //
 // overrides are the Overrides that matched it, in the order they applied; only
-// a planned Shift carries them.
+// a planned Shift carries them. movedFrom is the start the pattern generated,
+// where an Override moved it, and "" where none did; clash marks one that would
+// run at the same moment as another Shift.
 export interface PlannedShift {
   start: string;
   end: string;
+  movedFrom?: string;
+  clash?: boolean;
   overrides?: OverrideTouch[];
 }
 
@@ -673,8 +677,10 @@ export interface NewPin {
 // description is the rule in plain English, read by the server; problems is
 // set instead for a rule this build cannot read. granularity says how it
 // matches: "time" the Shift generated at the time the rule names, "date" every
-// Shift on its dates. shape is null when it leaves the default Shape, and an
-// empty list when it asks for nobody.
+// Shift on its dates. startTime ("19:00") moves the Shifts it matches within
+// their own day and lengthMinutes changes how long they run; each is null where
+// it leaves the pattern's. shape is null when it leaves the default Shape, and
+// an empty list when it asks for nobody.
 export interface Override {
   id: string;
   number: number;
@@ -683,6 +689,8 @@ export interface Override {
   granularity: OverrideGranularity;
   description: string;
   problems: string[];
+  startTime: string | null;
+  lengthMinutes: number | null;
   shape: ShapeSeat[] | null;
   pins: OverridePin[];
 }
@@ -700,11 +708,14 @@ export interface OverridePin {
   name: string;
 }
 
-// OverrideDraft is an Override as an edit states it, whole. shape null leaves
-// the default Shape.
+// OverrideDraft is an Override as an edit states it, whole. startTime,
+// lengthMinutes and shape null leave the pattern's start, its length and the
+// default Shape.
 export interface OverrideDraft {
   rrule: string;
   startFrom: string;
+  startTime: string | null;
+  lengthMinutes: number | null;
   shape: { roleId: string; count: number }[] | null;
   pins: { roleId: string; person: PersonRef }[];
 }
@@ -719,9 +730,11 @@ export interface OverrideRuleReading {
 }
 
 // OverrideTouch is one Override matching one planned Shift, and what it set
-// there.
+// there: startTime "" and lengthMinutes 0 where it set neither.
 export interface OverrideTouch {
   number: number;
+  startTime: string;
+  lengthMinutes: number;
   shape: boolean;
   pins: number;
 }

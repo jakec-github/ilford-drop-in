@@ -494,6 +494,8 @@ function overrideBody(draft: OverrideDraft): string {
   return JSON.stringify({
     rrule: draft.rrule,
     startFrom: draft.startFrom,
+    startTime: draft.startTime,
+    lengthMinutes: draft.lengthMinutes,
     shape: draft.shape,
     pins: draft.pins.map((pin) => ({ roleId: pin.roleId, ...pin.person })),
   });

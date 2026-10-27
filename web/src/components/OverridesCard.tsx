@@ -7,7 +7,13 @@ import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import SettingsSection from "./SettingsSection";
 import ShapeSeats from "./ShapeSeats";
-import { formatDay, isDate, today } from "./patternDates";
+import {
+  formatDay,
+  formatLength,
+  isDate,
+  lengthChoices,
+  today,
+} from "./patternDates";
 import { describeShape, seatCountsOf, seatsOf, type SeatCounts } from "./shape";
 import type {
   ConfiguredRole,
@@ -199,6 +205,11 @@ export function OverrideEditor({
   const [rrule, setRRule] = useState(override?.rrule ?? NEW_RULE);
   // Today for a new one, as for the pattern; the server settles what today is.
   const [startFrom, setStartFrom] = useState(override?.startFrom ?? today());
+  const [startOn, setStartOn] = useState(override?.startTime != null);
+  const [startTime, setStartTime] = useState(override?.startTime ?? "");
+  const [lengthOn, setLengthOn] = useState(override?.lengthMinutes != null);
+  // Two hours until somebody picks one, the commonest session.
+  const [length, setLength] = useState(override?.lengthMinutes ?? 120);
   const [shapeOn, setShapeOn] = useState(override?.shape != null);
   const [counts, setCounts] = useState<SeatCounts>(() =>
     seatCountsOf(roles, override?.shape ?? []),
@@ -221,6 +232,8 @@ export function OverrideEditor({
   const { reading, error: readingError } = useOverrideRule(rrule, anchor);
   const problems = reading?.problems ?? [];
   const readable = rrule.trim() !== "" && problems.length === 0;
+  // A start time switched on says when; the time box is empty until then.
+  const ready = readable && (!startOn || startTime !== "");
 
   // One person once on an Override: pinning them again changes their Role,
   // since a person fills one Seat on a Shift. Custom entries may repeat.
@@ -243,6 +256,8 @@ export function OverrideEditor({
       await onSave({
         rrule: rrule.trim(),
         startFrom,
+        startTime: startOn ? startTime : null,
+        lengthMinutes: lengthOn ? length : null,
         shape: shapeOn ? seatsOf(roles, counts) : null,
         pins: pins.map((p) => ({ roleId: p.roleId, person: p.person })),
       });
@@ -304,7 +319,8 @@ export function OverrideEditor({
 
       <p className="settings-hint">
         With BYHOUR and BYMINUTE it changes only the shift the pattern starts at
-        that time. Without them, it changes every shift on those days.
+        that time. Without them, it changes every shift on those days. A start
+        time moves a shift within its own day, and the shift runs on from there.
       </p>
 
       <div className="override-props">
@@ -316,6 +332,55 @@ export function OverrideEditor({
             value={startFrom}
             onChange={(e) => setStartFrom(e.target.value)}
           />
+        </div>
+
+        <label>
+          <input
+            type="checkbox"
+            checked={startOn}
+            onChange={(e) => setStartOn(e.target.checked)}
+          />{" "}
+          Start time
+        </label>
+        <div>
+          {startOn ? (
+            <input
+              type="time"
+              aria-label={`Override ${number} start time`}
+              step={300}
+              required
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
+          ) : (
+            <span className="override-off">as the pattern generates it</span>
+          )}
+        </div>
+
+        <label>
+          <input
+            type="checkbox"
+            checked={lengthOn}
+            onChange={(e) => setLengthOn(e.target.checked)}
+          />{" "}
+          Length
+        </label>
+        <div>
+          {lengthOn ? (
+            <select
+              aria-label={`Override ${number} length`}
+              value={length}
+              onChange={(e) => setLength(Number(e.target.value))}
+            >
+              {lengthChoices(length).map((m) => (
+                <option key={m} value={m}>
+                  {formatLength(m)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="override-off">the pattern's length</span>
+          )}
         </div>
 
         <label>
@@ -373,7 +438,7 @@ export function OverrideEditor({
         <Button onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!readable || saving}>
+        <Button type="submit" disabled={!ready || saving}>
           {saving ? "Saving…" : override ? "Save override" : "Add override"}
         </Button>
       </div>
@@ -485,6 +550,18 @@ function OverrideView({
           <dt>Start from</dt>
           <dd>{formatDay(override.startFrom)}</dd>
         </div>
+        {override.startTime !== null && (
+          <div>
+            <dt>Start time</dt>
+            <dd>{override.startTime}</dd>
+          </div>
+        )}
+        {override.lengthMinutes !== null && (
+          <div>
+            <dt>Length</dt>
+            <dd>{formatLength(override.lengthMinutes)}</dd>
+          </div>
+        )}
         {override.shape !== null && (
           <div>
             <dt>Shape</dt>

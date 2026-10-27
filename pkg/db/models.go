@@ -193,6 +193,12 @@ type Override struct {
 	SetsShape bool
 	Seats     []OverrideSeat
 	Pins      []OverridePin
+	// StartTime moves the Shifts it matches to this time of their own day,
+	// "15:04", and "" leaves the start the pattern generated.
+	StartTime string
+	// LengthMinutes is how long they run from wherever they start, and 0
+	// leaves the pattern's length.
+	LengthMinutes int
 }
 
 // What an Override matches: the Shift generated at exactly the time its rule

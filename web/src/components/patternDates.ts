@@ -55,6 +55,18 @@ export function today(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+// The lengths offered for a Shift, a quarter of an hour apart up to sixteen
+// hours. The server takes anything from a minute to a day; these are the ones
+// anybody runs, and a length saved outside them is offered too rather than
+// lost.
+const SHIFT_LENGTHS = Array.from({ length: 64 }, (_, i) => (i + 1) * 15);
+
+export function lengthChoices(current: number): number[] {
+  return SHIFT_LENGTHS.includes(current)
+    ? SHIFT_LENGTHS
+    : [...SHIFT_LENGTHS, current].sort((a, b) => a - b);
+}
+
 // "2 hours", "45 minutes", "2 hours 15 minutes".
 export function formatLength(minutes: number): string {
   const hours = Math.floor(minutes / 60);

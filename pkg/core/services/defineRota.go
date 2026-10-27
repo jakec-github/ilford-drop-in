@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -134,13 +135,14 @@ func DefineRota(
 	// The rotation's span is its shifts' span (ADR 0001): setting it here means
 	// the returned rotation reads the same as one fetched back from the store,
 	// which derives both ends from the shift rows. Where it stopped is the
-	// generated start of its last Shift, which is the one thing about it the
-	// next rota needs.
+	// latest start the pattern generated, which is the one thing about it the
+	// next rota needs: not where an Override moved that Shift to, or the next
+	// rota would generate it again, or skip one.
 	last := shifts[len(shifts)-1]
 	rotation.Start = shifts[0].Date
 	rotation.End = last.Date
 	rotation.ShiftCount = len(shifts)
-	rotation.StoppedAfter = last.StartAt
+	rotation.StoppedAfter = slices.Max(plan.Generated)
 
 	// Copy the default Shape onto every Shift, or the Shape the Overrides gave
 	// it. From here it is that Shift's Shape and nothing else's: editing it

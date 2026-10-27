@@ -143,6 +143,37 @@ describe("OverrideEditor", () => {
     expect(onSave.mock.calls[0][0].shape).toEqual([]);
   });
 
+  test("leaves the pattern's start and length unless they are ticked", async () => {
+    const onSave = renderEditor();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add override" }));
+    await settle();
+    expect(onSave.mock.calls[0][0].startTime).toBeNull();
+    expect(onSave.mock.calls[0][0].lengthMinutes).toBeNull();
+  });
+
+  test("a ticked start time and length are sent, the time once it is said", async () => {
+    const onSave = renderEditor();
+    await settle();
+    fireEvent.click(screen.getByLabelText("Start time"));
+    const add = screen.getByRole("button", {
+      name: "Add override",
+    }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Override 1 start time"), {
+      target: { value: "19:00" },
+    });
+    fireEvent.click(screen.getByLabelText("Length"));
+    fireEvent.change(screen.getByLabelText("Override 1 length"), {
+      target: { value: "150" },
+    });
+    expect(add.disabled).toBe(false);
+    fireEvent.click(add);
+    await settle();
+    expect(onSave.mock.calls[0][0].startTime).toBe("19:00");
+    expect(onSave.mock.calls[0][0].lengthMinutes).toBe(150);
+  });
+
   test("a rule the server cannot read cannot be saved", async () => {
     reading = {
       startFrom: "2026-11-01",
@@ -175,6 +206,8 @@ describe("OverridesCard reordering", () => {
       granularity: "date",
       description,
       problems: [],
+      startTime: null,
+      lengthMinutes: null,
       shape: null,
       pins: [],
     };

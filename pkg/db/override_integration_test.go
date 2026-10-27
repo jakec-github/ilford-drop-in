@@ -66,6 +66,8 @@ func TestOverrideInsertReadUpdateDelete(t *testing.T) {
 	assert.ElementsMatch(t, first.Pins, got.Pins)
 	assert.True(t, overrides[1].SetsShape)
 	assert.Empty(t, overrides[1].Seats)
+	assert.Equal(t, "", got.StartTime, "no start time leaves the pattern's")
+	assert.Equal(t, 0, got.LengthMinutes, "no length leaves the pattern's")
 
 	// An update replaces the Shape and the Pins whole, and keeps the place.
 	first.SetsShape = true
@@ -73,6 +75,8 @@ func TestOverrideInsertReadUpdateDelete(t *testing.T) {
 	first.Pins = []db.OverridePin{{ID: uuid.New().String(), RoleID: service, VolunteerID: "bob"}}
 	first.Granularity = db.OverrideMatchesTime
 	first.RRule = "FREQ=MONTHLY;BYDAY=1SU;BYHOUR=19;BYMINUTE=30"
+	first.StartTime = "18:45"
+	first.LengthMinutes = 150
 	require.NoError(t, database.UpdateOverride(ctx, first))
 
 	overrides, err = database.GetOverrides(ctx)
@@ -84,6 +88,16 @@ func TestOverrideInsertReadUpdateDelete(t *testing.T) {
 	assert.Equal(t, []db.OverrideSeat{{RoleID: lead, Seats: 1}, {RoleID: service, Seats: 4}}, got.Seats,
 		"Seats come back in the order they are filled")
 	assert.Equal(t, first.Pins, got.Pins)
+	assert.Equal(t, "18:45", got.StartTime)
+	assert.Equal(t, 150, got.LengthMinutes)
+
+	// And clearing them leaves the pattern's again.
+	first.StartTime, first.LengthMinutes = "", 0
+	require.NoError(t, database.UpdateOverride(ctx, first))
+	overrides, err = database.GetOverrides(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "", overrides[0].StartTime)
+	assert.Equal(t, 0, overrides[0].LengthMinutes)
 
 	deleted, err := database.DeleteOverride(ctx, first.ID)
 	require.NoError(t, err)

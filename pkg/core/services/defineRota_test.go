@@ -342,6 +342,86 @@ func TestDefineRota_AnOverridesShapeReplacesTheDefault(t *testing.T) {
 	}, mock.insertedSeats[0])
 }
 
+// An Override can move a Shift within its day. The last Saturday's 21:00 Shift
+// moved to 19:00 is minted at 19:00 and still runs the pattern's two hours, and
+// the next rota carries on from 21:00, where the pattern put it: the move is
+// what an Organiser asked of that one evening, not where the pattern is up to.
+func TestDefineRota_AnOverrideMovesAShiftAndTheNextRotaCarriesOn(t *testing.T) {
+	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;BYDAY=SA;BYHOUR=21;BYMINUTE=0")
+	mock.defaults.PatternStartFrom = "2026-08-01"
+	mock.overrides = []db.Override{{
+		ID: "early", RRule: "FREQ=MONTHLY;BYDAY=-1SA;BYHOUR=21;BYMINUTE=0", StartFrom: "2026-08-01",
+		Granularity: db.OverrideMatchesTime, StartTime: "19:00",
+	}}
+
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(5))
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"2026-08-01T21:00:00", "2026-08-08T21:00:00", "2026-08-15T21:00:00", "2026-08-22T21:00:00",
+		"2026-08-29T19:00:00",
+	}, starts(result.Shifts))
+	assert.Equal(t, "2026-08-29T21:00:00", result.Shifts[4].EndAt, "it keeps the pattern's length")
+	assert.Equal(t, "2026-08-29T21:00:00", result.Rotation.StoppedAfter, "where it stopped is the generated start")
+
+	result.Rotation.AllocatedDatetime = "2026-08-30T09:00:00Z"
+	mock.rotations = append(mock.rotations, *result.Rotation)
+	mock.shiftsByRota = map[string][]db.Shift{result.Rotation.ID: result.Shifts}
+	mock.existingShifts = append(mock.existingShifts, result.Shifts...)
+
+	next, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(1))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"2026-09-05T21:00:00"}, starts(next.Shifts))
+}
+
+// An Override's length runs from wherever the Shift starts, past midnight if it
+// is long enough, and a Shift moved ahead of another on its day is minted in
+// the order it now starts. The plan keeps where the pattern put each one.
+func TestPlanRota_AnOverrideMovesAndLengthensAShift(t *testing.T) {
+	mock := withPattern(definable(), twoShiftSundays)
+	mock.overrides = []db.Override{
+		{ID: "late", RRule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30", StartFrom: "2026-08-02",
+			Granularity: db.OverrideMatchesTime, LengthMinutes: 300},
+		{ID: "early", RRule: "FREQ=MONTHLY;BYDAY=1SU;BYHOUR=19;BYMINUTE=30", StartFrom: "2026-08-02",
+			Granularity: db.OverrideMatchesTime, StartTime: "04:00"},
+	}
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(4))
+	require.NoError(t, err)
+	require.NoError(t, plan.Refusal)
+	assert.Equal(t, []string{
+		"2026-08-02T04:00:00", "2026-08-02T10:00:00", "2026-08-09T10:00:00", "2026-08-09T19:30:00",
+	}, starts(plan.Shifts))
+	assert.Equal(t, []string{
+		"2026-08-02T19:30:00", "2026-08-02T10:00:00", "2026-08-09T10:00:00", "2026-08-09T19:30:00",
+	}, plan.Generated, "aligned with the Shifts, each where the pattern put it")
+	assert.Equal(t, "2026-08-02T09:00:00", plan.Shifts[0].EndAt, "moved and lengthened, it runs five hours")
+	assert.Equal(t, "2026-08-10T00:30:00", plan.Shifts[3].EndAt, "and the next day where that takes it")
+	assert.Equal(t, []int{1, 2}, touchedNumbers(plan.Overridden[0]), "what the Overrides did moves with it")
+	assert.Equal(t, OverrideTouch{Number: 2, StartTime: "04:00"}, plan.Overridden[0].Touches[1])
+	assert.Nil(t, plan.Clashing)
+}
+
+// An Override lengthening a Shift into the next one is a clash, refused as one
+// from the pattern would be, with both Shifts marked for the preview.
+func TestDefineRota_RefusesAnOverrideLengtheningIntoTheNextShift(t *testing.T) {
+	mock := withPattern(definable(), twoShiftSundays)
+	mock.overrides = []db.Override{{
+		ID: "long", RRule: "FREQ=MONTHLY;BYDAY=1SU;BYHOUR=10;BYMINUTE=0", StartFrom: "2026-08-02",
+		Granularity: db.OverrideMatchesTime, LengthMinutes: 600,
+	}}
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(4))
+	require.NoError(t, err)
+	require.ErrorIs(t, plan.Refusal, ErrConflict)
+	assert.Equal(t, []bool{true, true, false, false}, plan.Clashing)
+
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
+	assert.Nil(t, result)
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "would still be running")
+	assert.Empty(t, mock.insertedRotas)
+}
+
 // No Overrides is the ordinary state of a deployment nobody has configured,
 // not a reason to refuse a rota.
 func TestDefineRota_NoOverrides(t *testing.T) {

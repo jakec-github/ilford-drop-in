@@ -221,6 +221,8 @@
 }
 
 .override-props input[type="date"],
+.override-props input[type="time"],
+.override-props select,
 .override-adder select,
 .override-adder input {
   padding: 0.25rem 0.375rem;

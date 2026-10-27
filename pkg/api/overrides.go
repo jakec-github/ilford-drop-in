@@ -12,11 +12,17 @@ import (
 // Shape is null to leave the default Shape, and a list — possibly empty, a
 // Shift that asks for nobody — to replace it whole. A Role it leaves out is a
 // Role it asks for none of.
+//
+// StartTime, "15:04", moves the Shifts it matches within their own day, and is
+// null to leave the start the pattern generated. LengthMinutes is how long
+// they run, and null for the pattern's length.
 type overrideRequest struct {
-	RRule     string               `json:"rrule"`
-	StartFrom string               `json:"startFrom"`
-	Shape     *[]seatRequest       `json:"shape"`
-	Pins      []overridePinRequest `json:"pins"`
+	RRule         string               `json:"rrule"`
+	StartFrom     string               `json:"startFrom"`
+	StartTime     *string              `json:"startTime"`
+	LengthMinutes *int                 `json:"lengthMinutes"`
+	Shape         *[]seatRequest       `json:"shape"`
+	Pins          []overridePinRequest `json:"pins"`
 }
 
 // overridePinRequest is one Pin: a Role by id, and exactly one of a volunteer
@@ -46,17 +52,20 @@ type listOverridesResponse struct {
 // generated at the time it names, "date" for one that matches every Shift on
 // its dates.
 //
-// Shape is null when the Override leaves the default Shape.
+// StartTime, LengthMinutes and Shape are null where the Override leaves the
+// pattern's start, its length, and the default Shape.
 type overrideResponse struct {
-	ID          string                `json:"id"`
-	Number      int                   `json:"number"`
-	RRule       string                `json:"rrule"`
-	StartFrom   string                `json:"startFrom"`
-	Granularity string                `json:"granularity"`
-	Description string                `json:"description"`
-	Problems    []string              `json:"problems"`
-	Shape       *[]seatResponse       `json:"shape"`
-	Pins        []overridePinResponse `json:"pins"`
+	ID            string                `json:"id"`
+	Number        int                   `json:"number"`
+	RRule         string                `json:"rrule"`
+	StartFrom     string                `json:"startFrom"`
+	Granularity   string                `json:"granularity"`
+	Description   string                `json:"description"`
+	Problems      []string              `json:"problems"`
+	StartTime     *string               `json:"startTime"`
+	LengthMinutes *int                  `json:"lengthMinutes"`
+	Shape         *[]seatResponse       `json:"shape"`
+	Pins          []overridePinResponse `json:"pins"`
 }
 
 // overridePinResponse carries the Role and the person both ways, the id that
@@ -183,6 +192,14 @@ func (h *Handler) writeOverrides(w http.ResponseWriter, r *http.Request, status 
 			Problems:    emptyIfNil(v.Problems),
 			Pins:        make([]overridePinResponse, 0, len(v.Pins)),
 		}
+		if v.StartTime != "" {
+			start := v.StartTime
+			o.StartTime = &start
+		}
+		if v.LengthMinutes != 0 {
+			length := v.LengthMinutes
+			o.LengthMinutes = &length
+		}
 		if v.Shape != nil {
 			seats := toSeatResponses(v.Shape)
 			o.Shape = &seats
@@ -203,7 +220,10 @@ func (h *Handler) writeOverrides(w http.ResponseWriter, r *http.Request, status 
 }
 
 func toOverrideParams(req overrideRequest) services.OverrideParams {
-	params := services.OverrideParams{RRule: req.RRule, StartFrom: req.StartFrom}
+	params := services.OverrideParams{RRule: req.RRule, StartFrom: req.StartFrom, LengthMinutes: req.LengthMinutes}
+	if req.StartTime != nil {
+		params.StartTime = *req.StartTime
+	}
 	if req.Shape != nil {
 		params.Shape = make([]services.SeatParams, 0, len(*req.Shape))
 		for _, seat := range *req.Shape {
