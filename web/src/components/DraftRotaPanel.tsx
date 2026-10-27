@@ -298,14 +298,14 @@ export default function DraftRotaPanel({
     removePin,
   } = usePins();
 
-  const pinsByDate = useMemo(() => {
-    const byDate = new Map<string, Pin[]>();
+  const pinsByShiftID = useMemo(() => {
+    const byShift = new Map<string, Pin[]>();
     for (const pin of pins ?? []) {
-      const forDate = byDate.get(pin.date);
-      if (forDate) forDate.push(pin);
-      else byDate.set(pin.date, [pin]);
+      const forShift = byShift.get(pin.shiftId);
+      if (forShift) forShift.push(pin);
+      else byShift.set(pin.shiftId, [pin]);
     }
-    return byDate;
+    return byShift;
   }, [pins]);
 
   const draftByShiftID = useMemo(() => {
@@ -339,10 +339,10 @@ export default function DraftRotaPanel({
   // Who can still be pinned to a shift: the whole roster, inactive included
   // (ADR 0010), less anyone already pinned there — the server refuses a repeat
   // of a pin that already exists.
-  function pinnableTo(date: string) {
+  function pinnableTo(shiftId: string) {
     if (volunteers === null) return null;
     const pinned = new Set(
-      (pinsByDate.get(date) ?? []).map((p) => p.volunteerId).filter(Boolean),
+      (pinsByShiftID.get(shiftId) ?? []).map((p) => p.volunteerId).filter(Boolean),
     );
     return volunteers.filter((v) => !pinned.has(v.id));
   }
@@ -387,7 +387,7 @@ export default function DraftRotaPanel({
       () =>
         roleId === null
           ? Promise.reject(new Error(`There is no role called ${role}`))
-          : addPin({ date: shift.date, person, roleId }),
+          : addPin({ shiftId: shift.id, person, roleId }),
       "The pin was not saved",
     );
   }
@@ -396,8 +396,7 @@ export default function DraftRotaPanel({
     // Only ever called for a pin the listing gave an id, which is all of them.
     if (pin.id === null) return;
     const id = pin.id;
-    const shift = (shifts ?? []).find((s) => s.date === pin.date);
-    return run(shift?.id ?? "", () => removePin(id), "The pin was not removed");
+    return run(pin.shiftId, () => removePin(id), "The pin was not removed");
   }
 
   function open(next: PrepDialog) {
@@ -520,7 +519,7 @@ export default function DraftRotaPanel({
       ) : (
         <ShiftList
           shifts={shifts}
-          pinsByDate={pinsByDate}
+          pinsByShiftID={pinsByShiftID}
           draftByShiftID={draftByShiftID}
           // An infeasible solve is not an answer about any one shift — it is
           // the solver saying there is no rota to be had — and the sentence
@@ -551,16 +550,16 @@ export default function DraftRotaPanel({
       {dialog?.kind === "pin" && (
         <PinDialog
           dateLabel={formatShiftDateLong(dialog.shift.date)}
-          volunteers={pinnableTo(dialog.shift.date)}
+          volunteers={pinnableTo(dialog.shift.id)}
           volunteersError={volunteersError}
           roles={roles?.map((role) => role.name) ?? null}
           // This shift's own Shape, with the pins already made against it
           // counted, whichever way each came to be made.
           seats={seatCounts(
             dialog.shift.shape,
-            (pinsByDate.get(dialog.shift.date) ?? []).map((p) => p.roleId),
+            (pinsByShiftID.get(dialog.shift.id) ?? []).map((p) => p.roleId),
           )}
-          pinnedNames={(pinsByDate.get(dialog.shift.date) ?? []).map(
+          pinnedNames={(pinsByShiftID.get(dialog.shift.id) ?? []).map(
             (p) => p.name,
           )}
           busy={saving}
@@ -585,7 +584,7 @@ export default function DraftRotaPanel({
         <ClosureDialog
           dateLabel={formatShiftDateLong(dialog.shift.date)}
           closing={!dialog.shift.closed}
-          pinnedCount={(pinsByDate.get(dialog.shift.date) ?? []).length}
+          pinnedCount={(pinsByShiftID.get(dialog.shift.id) ?? []).length}
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={() =>

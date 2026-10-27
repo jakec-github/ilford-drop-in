@@ -87,7 +87,8 @@ const NO_DRAFT: Map<string, Assignee[]> = new Map();
 // The same state backs both routes to a move or a swap, so the drop handlers do
 // not care which was used.
 export interface Pending {
-  date: string;
+  // The shift they were picked up from.
+  from: RotaShift;
   person: PersonRef;
   name: string;
   // The Role they hold on the shift they were picked up from — the move
@@ -330,7 +331,7 @@ function swapBlockedReason(
   if (!canReceive) return `${pending.name} is already on this shift`;
   if (samePerson(pending.person, personRef(assignee)))
     return `${assignee.name}, the same as the one you are moving`;
-  return `${assignee.name} is already on ${formatShiftDateLong(pending.date)}`;
+  return `${assignee.name} is already on ${formatShiftDateLong(pending.from.date)}`;
 }
 
 // What a pin means. There is one kind, whether somebody made it here or a
@@ -634,7 +635,7 @@ function ShiftRow({
   const pending = placement?.pending ?? null;
   // The row someone was picked up from is not a destination: moving a person to
   // where they already are is a no-op the server would reject.
-  const isSource = pending?.date === shift.date;
+  const isSource = pending?.from.id === shift.id;
   const isDestination =
     editable && pending !== null && !isSource && placement.canReceive;
 
@@ -977,7 +978,7 @@ function ShiftRow({
 // pins, its draft and its controls together is the shape of that job.
 export default function ShiftList({
   shifts,
-  pinsByDate,
+  pinsByShiftID,
   draftByShiftID = NO_DRAFT,
   draftSolved = false,
   draftStale = false,
@@ -988,8 +989,8 @@ export default function ShiftList({
   // the caller's decision: the public rota hides the ones nobody has been
   // allocated to, and the Allocation tab shows only those.
   shifts: RotaShift[];
-  // Who is pinned to each shift, keyed by date as the pins themselves are.
-  pinsByDate: Map<string, Pin[]>;
+  // Who is pinned to each shift, keyed by shift id: two shifts can share a day.
+  pinsByShiftID: Map<string, Pin[]>;
   // Who the last solve put on each shift, keyed by shift id (ADR 0001). Absent
   // where the caller shows no draft at all — the rota page, which shows what has
   // been decided and leaves the solver's guess to the Allocation tab.
@@ -1018,7 +1019,7 @@ export default function ShiftList({
             <ShiftRow
               key={shift.id}
               shift={shift}
-              pins={pinsByDate.get(shift.date) ?? []}
+              pins={pinsByShiftID.get(shift.id) ?? []}
               drafted={draftByShiftID.get(shift.id) ?? []}
               draftSolved={draftSolved}
               draftStale={draftStale}

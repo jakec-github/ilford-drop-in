@@ -188,7 +188,7 @@ func TestChangeRota_SuccessWithInOut(t *testing.T) {
 	assert.Equal(t, "2025-01-05", addAlt.ShiftID)
 }
 
-func TestChangeRota_SwapDate(t *testing.T) {
+func TestChangeRota_SwapShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -762,7 +762,7 @@ func TestChangeRota_OnlyIn(t *testing.T) {
 	assert.Equal(t, "bob", result.Alterations[0].VolunteerID)
 }
 
-func TestChangeRota_SwapDateDifferentRota(t *testing.T) {
+func TestChangeRota_SwapShiftDifferentRota(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 
@@ -1603,7 +1603,7 @@ func TestChangeRota_SwitchRoleRejectsSomeoneNotOnTheShift(t *testing.T) {
 // Naming the same person on both sides of a swap says nothing: they would come
 // off a shift and go back onto it, on two dates at once. Refused rather than
 // silently recorded as a pair of no-ops.
-func TestChangeRota_SwitchRoleRejectsASwapDate(t *testing.T) {
+func TestChangeRota_SwitchRoleRejectsASwapShift(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
 

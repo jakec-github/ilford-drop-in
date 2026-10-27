@@ -187,9 +187,9 @@ function CalendarCopyButton({ volunteerId }: { volunteerId: string }) {
 // someone off a shift with nobody in their place, and accepts every other one
 // with the field left blank (issue #148).
 type EditDialog =
-  // Someone joining the shift on date, either alongside the people already on
-  // it or in place of one of them.
-  | { kind: "assignee"; date: string; change: AssigneeChange }
+  // Someone joining the shift, either alongside the people already on it or in
+  // place of one of them.
+  | { kind: "assignee"; shift: RotaShift; change: AssigneeChange }
   | {
       kind: "confirm";
       title: string;
@@ -208,7 +208,7 @@ type EditDialog =
     }
   // Someone being pinned to, or unpinned from, a shift the rota has not been
   // run for. Not alterations: nothing is on the rota yet to alter.
-  | { kind: "pin"; date: string }
+  | { kind: "pin"; shift: RotaShift }
   | { kind: "unpin"; pin: Pin }
   // A shift being shut or opened again, which is neither an alteration nor a
   // pin: it changes whether the Organisation runs that day at all.
@@ -255,7 +255,7 @@ export default function RotaViewer({
   const [dialog, setDialog] = useState<EditDialog | null>(null);
   const [saving, setSaving] = useState(false);
   const [changeError, setChangeError] = useState<{
-    date: string;
+    shiftId: string;
     message: string;
   } | null>(null);
 
@@ -311,14 +311,14 @@ export default function RotaViewer({
     [roles],
   );
 
-  const pinsByDate = useMemo(() => {
-    const byDate = new Map<string, Pin[]>();
+  const pinsByShiftID = useMemo(() => {
+    const byShift = new Map<string, Pin[]>();
     for (const pin of pins ?? []) {
-      const forDate = byDate.get(pin.date);
-      if (forDate) forDate.push(pin);
-      else byDate.set(pin.date, [pin]);
+      const forShift = byShift.get(pin.shiftId);
+      if (forShift) forShift.push(pin);
+      else byShift.set(pin.shiftId, [pin]);
     }
-    return byDate;
+    return byShift;
   }, [pins]);
 
   // The public only sees shifts with something to show — allocated or closed.
@@ -452,7 +452,7 @@ export default function RotaViewer({
   // what the change contradicts, so it is shown against the shift it was refused
   // for and nothing is rolled back — nothing was applied.
   async function run(
-    date: string,
+    shiftId: string,
     apply: () => Promise<void>,
     fallback: string,
   ) {
@@ -462,7 +462,7 @@ export default function RotaViewer({
       setChangeError(null);
     } catch (err) {
       setChangeError({
-        date,
+        shiftId,
         message: err instanceof Error ? err.message : fallback,
       });
     } finally {
@@ -480,7 +480,7 @@ export default function RotaViewer({
   function submit(change: Omit<RotaChange, "roleId">, role?: Role) {
     const roleId = role ? idOf(role) : undefined;
     return run(
-      change.date,
+      change.shiftId,
       () =>
         roleId === null
           ? Promise.reject(new Error(`There is no role called ${role}`))
@@ -492,24 +492,24 @@ export default function RotaViewer({
   // Pinning goes through the same path as an alteration but is not one: it
   // changes what allocation will do rather than what a published rota says, so
   // it is its own request and its own reload.
-  function submitPin(date: string, person: PersonRef, role: Role) {
+  function submitPin(shift: RotaShift, person: PersonRef, role: Role) {
     // The picker names a Role the way the roster spells it; a pin references
     // one by id. A name nothing answers to is a pin that cannot be made, and
     // saying so beats sending a reference the server would refuse.
     const roleId = idOf(role);
     return run(
-      date,
+      shift.id,
       () =>
         roleId === null
           ? Promise.reject(new Error(`There is no role called ${role}`))
-          : addPin({ date, person, roleId }),
+          : addPin({ shiftId: shift.id, person, roleId }),
       "The pin was not saved",
     );
   }
 
   function submitClosure(shift: RotaShift) {
     return run(
-      shift.date,
+      shift.id,
       () => onSetClosed(shift.id, !shift.closed),
       shift.closed ? "The shift was not reopened" : "The shift was not closed",
     );
@@ -517,7 +517,7 @@ export default function RotaViewer({
 
   function submitTimes(shift: RotaShift, start: string, end: string) {
     return run(
-      shift.date,
+      shift.id,
       () => onSetTimes(shift.id, start, end),
       "The shift times were not saved",
     );
@@ -527,19 +527,19 @@ export default function RotaViewer({
     // Only ever called for a manual pin, which is the only kind with an id.
     if (pin.id === null) return;
     const id = pin.id;
-    return run(pin.date, () => removePin(id), "The pin was not removed");
+    return run(pin.shiftId, () => removePin(id), "The pin was not removed");
   }
 
-  function askRemove(date: string, assignee: Assignee) {
+  function askRemove(shift: RotaShift, assignee: Assignee) {
     setOpenMenu(null);
     setChangeError(null);
     setDialog({
       kind: "confirm",
       title: `Remove ${assignee.name}?`,
-      summary: `${assignee.name} comes off the shift on ${formatShiftDateLong(date)}.`,
+      summary: `${assignee.name} comes off the shift on ${formatShiftDateLong(shift.date)}.`,
       confirmLabel: "Remove",
       change: {
-        date,
+        shiftId: shift.id,
         out: personRef(assignee),
         ...leaving("outRoleId", personRef(assignee), assignee.roleId),
       },
@@ -549,34 +549,34 @@ export default function RotaViewer({
     });
   }
 
-  // A replacement is one request on one date: the outgoing person leaves and
+  // A replacement is one request on one shift: the outgoing person leaves and
   // the incoming one arrives together, so the shift is never briefly short of
   // someone and the incoming volunteer takes the role that was just vacated.
-  function askReplace(date: string, assignee: Assignee) {
+  function askReplace(shift: RotaShift, assignee: Assignee) {
     setOpenMenu(null);
     setChangeError(null);
     setDialog({
       kind: "assignee",
-      date,
+      shift,
       change: { kind: "replace", outgoing: assignee },
     });
   }
 
   // A move is a swap with nobody coming back: the change is applied on the
-  // destination and reversed on swapDate, which takes them off the shift they
+  // destination and reversed on swapShiftId, which takes them off the shift they
   // came from. One request, so the rota is never briefly missing them or
   // showing them twice.
-  function askMove(to: string) {
+  function askMove(to: RotaShift) {
     if (!pending) return;
     setDialog({
       kind: "confirm",
       title: `Move ${pending.name}?`,
-      summary: `${pending.name} moves from ${formatShiftDateLong(pending.date)} to ${formatShiftDateLong(to)}.`,
+      summary: `${pending.name} moves from ${formatShiftDateLong(pending.from.date)} to ${formatShiftDateLong(to.date)}.`,
       confirmLabel: "Move",
       change: {
-        date: to,
+        shiftId: to.id,
         in: pending.person,
-        swapDate: pending.date,
+        swapShiftId: pending.from.id,
         ...leaving("swapOutRoleId", pending.person, pending.roleId),
       },
       role: { initial: pending.role, required: false },
@@ -588,16 +588,16 @@ export default function RotaViewer({
   // shift and go straight back onto it in another Role. One request, so the
   // rota never briefly shows the shift a pair of hands short, and no reason —
   // the shift is as well staffed after as before (issue #147).
-  function askChangeRole(date: string, assignee: Assignee) {
+  function askChangeRole(shift: RotaShift, assignee: Assignee) {
     setOpenMenu(null);
     setChangeError(null);
     setDialog({
       kind: "confirm",
       title: `Change ${assignee.name}'s role?`,
-      summary: `${assignee.name} stays on the shift on ${formatShiftDateLong(date)} — only the job they are doing there changes.`,
+      summary: `${assignee.name} stays on the shift on ${formatShiftDateLong(shift.date)} — only the job they are doing there changes.`,
       confirmLabel: "Change role",
       change: {
-        date,
+        shiftId: shift.id,
         out: personRef(assignee),
         ...leaving("outRoleId", personRef(assignee), assignee.roleId),
         in: personRef(assignee),
@@ -607,32 +607,32 @@ export default function RotaViewer({
     });
   }
 
-  function askSwap(to: string, assignee: Assignee) {
+  function askSwap(to: RotaShift, assignee: Assignee) {
     if (!pending) return;
     setDialog({
       kind: "confirm",
       title: `Swap ${pending.name} and ${assignee.name}?`,
       summary:
-        `${pending.name} takes ${assignee.name}'s shift on ${formatShiftDateLong(to)}, ` +
-        `and ${assignee.name} takes ${pending.name}'s on ${formatShiftDateLong(pending.date)}.`,
+        `${pending.name} takes ${assignee.name}'s shift on ${formatShiftDateLong(to.date)}, ` +
+        `and ${assignee.name} takes ${pending.name}'s on ${formatShiftDateLong(pending.from.date)}.`,
       confirmLabel: "Swap",
       change: {
-        date: pending.date,
+        shiftId: pending.from.id,
         out: pending.person,
         ...leaving("outRoleId", pending.person, pending.roleId),
         in: personRef(assignee),
-        swapDate: to,
+        swapShiftId: to.id,
         ...leaving("swapOutRoleId", personRef(assignee), assignee.roleId),
       },
       reasonRequired: false,
     });
   }
 
-  function pickUp(date: string, assignee: Assignee, dragging: boolean) {
+  function pickUp(shift: RotaShift, assignee: Assignee, dragging: boolean) {
     setOpenMenu(null);
     setChangeError(null);
     setPending({
-      date,
+      from: shift,
       person: personRef(assignee),
       name: assignee.name,
       roleId: assignee.roleId,
@@ -651,16 +651,16 @@ export default function RotaViewer({
     // three; ruling them out here means the editor is not offered a drop that
     // can only end in a refusal.
     const carriedFrom = pending
-      ? rotaShifts.find((s) => s.date === pending.date)
+      ? rotaShifts.find((s) => s.id === pending.from.id)
       : undefined;
     const alreadyHere = pending !== null && !canJoin(shift, pending.person);
 
     return {
-      error: changeError?.date === shift.date ? changeError.message : null,
+      error: changeError?.shiftId === shift.id ? changeError.message : null,
       onPin: () => {
         setChangeError(null);
         setOpenMenu(null);
-        setDialog({ kind: "pin", date: shift.date });
+        setDialog({ kind: "pin", shift });
       },
       onUnpin: (pin) => {
         setChangeError(null);
@@ -700,25 +700,25 @@ export default function RotaViewer({
           !(pending && samePerson(pending.person, personRef(a))) &&
           (!carriedFrom || canJoin(carriedFrom, personRef(a))),
         onOpenMenu: setOpenMenu,
-        onRemove: (a) => askRemove(shift.date, a),
-        onReplace: (a) => askReplace(shift.date, a),
+        onRemove: (a) => askRemove(shift, a),
+        onReplace: (a) => askReplace(shift, a),
         // Offered while the Roles are still loading: the dialog says so, and
         // a button that switches itself off a moment later would be worse.
         canChangeRole: (a) =>
           roles === null || roles.some((role) => role.id !== a.roleId),
-        onChangeRole: (a) => askChangeRole(shift.date, a),
-        onPickUp: (a) => pickUp(shift.date, a, false),
-        onDragStart: (a) => pickUp(shift.date, a, true),
+        onChangeRole: (a) => askChangeRole(shift, a),
+        onPickUp: (a) => pickUp(shift, a, false),
+        onDragStart: (a) => pickUp(shift, a, true),
         // Only clears a drag; a pick made by tapping outlives the pointer.
         onDragEnd: () => setPending((p) => (p?.dragging ? null : p)),
-        onSwapWith: (a) => askSwap(shift.date, a),
-        onMoveHere: () => askMove(shift.date),
+        onSwapWith: (a) => askSwap(shift, a),
+        onMoveHere: () => askMove(shift),
         onAdd: () => {
           setChangeError(null);
           setOpenMenu(null);
           setDialog({
             kind: "assignee",
-            date: shift.date,
+            shift,
             change: { kind: "add" },
           });
         },
@@ -729,11 +729,11 @@ export default function RotaViewer({
   // Who can still join a shift: everyone the roster knows, less the people
   // already on it, whom the server would refuse anyway. Replacing someone draws
   // on the same list, which rules out replacing them with themselves.
-  function addableTo(date: string): Volunteer[] | null {
+  function addableTo(shiftId: string): Volunteer[] | null {
     if (volunteers === null) return null;
     const onShift = new Set(
       rotaShifts
-        .find((s) => s.date === date)
+        .find((s) => s.id === shiftId)
         ?.assignees.map((a) => a.volunteerId)
         .filter(Boolean),
     );
@@ -744,11 +744,11 @@ export default function RotaViewer({
   // pin dialog reads this to say which Roles have a Seat free and which a pin
   // would go past — never to refuse one, since a Shape bounds the allocator and
   // not people's decisions (ADR 0010).
-  function seatsOn(date: string): SeatCount[] {
-    const shift = rotaShifts.find((s) => s.date === date);
+  function seatsOn(shiftId: string): SeatCount[] {
+    const shift = rotaShifts.find((s) => s.id === shiftId);
     return seatCounts(
       shift?.shape ?? [],
-      (pinsByDate.get(date) ?? []).map((p) => p.roleId),
+      (pinsByShiftID.get(shiftId) ?? []).map((p) => p.roleId),
     );
   }
 
@@ -756,10 +756,10 @@ export default function RotaViewer({
   // included (ADR 0010), less anyone already pinned there from either source —
   // the server refuses a repeat of a manual pin, and silently drops a manual pin
   // that repeats a config one, which would look like it had worked.
-  function pinnableTo(date: string): Volunteer[] | null {
+  function pinnableTo(shiftId: string): Volunteer[] | null {
     if (volunteers === null) return null;
     const pinned = new Set(
-      (pinsByDate.get(date) ?? []).map((p) => p.volunteerId).filter(Boolean),
+      (pinsByShiftID.get(shiftId) ?? []).map((p) => p.volunteerId).filter(Boolean),
     );
     return volunteers.filter((v) => !pinned.has(v.id));
   }
@@ -872,7 +872,7 @@ export default function RotaViewer({
           >
             <span>
               Carrying <strong>{pending.name}</strong> from{" "}
-              {formatShiftDateLong(pending.date)}. Choose a shift to move them to,
+              {formatShiftDateLong(pending.from.date)}. Choose a shift to move them to,
               or a person to swap them with.
             </span>
             <Button size="small" onClick={() => setPending(null)}>
@@ -947,7 +947,7 @@ export default function RotaViewer({
 
         <ShiftList
           shifts={visibleShifts}
-          pinsByDate={pinsByDate}
+          pinsByShiftID={pinsByShiftID}
           colourOf={colourOf}
           rowEdit={editing ? rowEdit : null}
         />
@@ -980,9 +980,9 @@ export default function RotaViewer({
 
         {editing && dialog?.kind === "assignee" && (
           <AssigneeDialog
-            dateLabel={formatShiftDateLong(dialog.date)}
+            dateLabel={formatShiftDateLong(dialog.shift.date)}
             change={dialog.change}
-            volunteers={addableTo(dialog.date)}
+            volunteers={addableTo(dialog.shift.id)}
             volunteersError={volunteersError}
             roles={roleNames}
             busy={saving}
@@ -990,7 +990,7 @@ export default function RotaViewer({
             onConfirm={(person, reason, role) =>
               void submit(
                 {
-                  date: dialog.date,
+                  shiftId: dialog.shift.id,
                   in: person,
                   ...(dialog.change.kind === "replace" && {
                     out: personRef(dialog.change.outgoing),
@@ -1010,18 +1010,20 @@ export default function RotaViewer({
 
         {editing && dialog?.kind === "pin" && (
           <PinDialog
-            dateLabel={formatShiftDateLong(dialog.date)}
-            volunteers={pinnableTo(dialog.date)}
+            dateLabel={formatShiftDateLong(dialog.shift.date)}
+            volunteers={pinnableTo(dialog.shift.id)}
             volunteersError={volunteersError}
             roles={roleNames}
             // This shift's own Shape, with the pins already made against it
             // counted, whichever way each came to be made.
-            seats={seatsOn(dialog.date)}
-            pinnedNames={(pinsByDate.get(dialog.date) ?? []).map((p) => p.name)}
+            seats={seatsOn(dialog.shift.id)}
+            pinnedNames={(pinsByShiftID.get(dialog.shift.id) ?? []).map(
+              (p) => p.name,
+            )}
             busy={saving}
             onCancel={() => setDialog(null)}
             onConfirm={(person, role) =>
-              void submitPin(dialog.date, person, role)
+              void submitPin(dialog.shift, person, role)
             }
           />
         )}
@@ -1030,7 +1032,7 @@ export default function RotaViewer({
           <ClosureDialog
             dateLabel={formatShiftDateLong(dialog.shift.date)}
             closing={!dialog.shift.closed}
-            pinnedCount={(pinsByDate.get(dialog.shift.date) ?? []).length}
+            pinnedCount={(pinsByShiftID.get(dialog.shift.id) ?? []).length}
             busy={saving}
             onCancel={() => setDialog(null)}
             onConfirm={() => void submitClosure(dialog.shift)}
