@@ -73,6 +73,18 @@ func TestOverrideEndpoints(t *testing.T) {
 	require.NotNil(t, overrides[0].Shape)
 	assert.Equal(t, []seatResponse{{RoleID: "role-service-volunteer", Role: "Service volunteer", Count: 2}}, *overrides[0].Shape)
 	assert.Empty(t, overrides[0].Pins)
+	assert.Nil(t, overrides[0].StartTime, "null leaves the pattern's start")
+	assert.Nil(t, overrides[0].LengthMinutes, "and its length")
+
+	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/overrides/"+first.ID,
+		`{"rrule":"FREQ=MONTHLY;BYDAY=1SU","startFrom":"2026-12-06","startTime":"18:00","lengthMinutes":150}`,
+		organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	overrides = overridesOf(t, rec)
+	require.NotNil(t, overrides[0].StartTime)
+	assert.Equal(t, "18:00", *overrides[0].StartTime)
+	require.NotNil(t, overrides[0].LengthMinutes)
+	assert.Equal(t, 150, *overrides[0].LengthMinutes)
 
 	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/overrides/order",
 		`{"ids":["`+second.ID+`","`+first.ID+`"]}`, organiserCookie())
@@ -122,6 +134,9 @@ func TestAddOverrideRejectsBadInput(t *testing.T) {
 		"a volunteer not on the roster": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"zed"}]}`,
 			http.StatusNotFound},
 		"an unknown field": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","colour":"blue"}`, http.StatusBadRequest},
+		"a start time not a time": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","startTime":"25:00"}`, http.StatusBadRequest},
+		"a length of nothing":     {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","lengthMinutes":0}`, http.StatusBadRequest},
+		"a length past a day":     {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","lengthMinutes":1441}`, http.StatusBadRequest},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -196,6 +211,9 @@ func TestReadOverrideRuleEndpoint(t *testing.T) {
 type overriddenPlanBody struct {
 	Shifts []struct {
 		Start     string                  `json:"start"`
+		End       string                  `json:"end"`
+		MovedFrom string                  `json:"movedFrom"`
+		Clash     bool                    `json:"clash"`
 		Overrides []overrideTouchResponse `json:"overrides"`
 	} `json:"shifts"`
 	Overrides []overrideReachResponse `json:"overrides"`
@@ -225,4 +243,30 @@ func TestRotaPlanEndpointCarriesTheOverrides(t *testing.T) {
 	assert.NotEmpty(t, plan.Overrides[0].Description)
 	assert.Equal(t, 0, plan.Overrides[1].Matched)
 	assert.True(t, plan.Overrides[1].MissedByTime)
+}
+
+// A Shift an Override moved says where the pattern put it, and one that would
+// run into another is marked, beside the refusal that names it.
+func TestRotaPlanEndpointSaysWhatMovedAndWhatClashes(t *testing.T) {
+	store := &mockStore{overrides: []db.Override{
+		{ID: "early", RRule: "FREQ=MONTHLY;BYDAY=1SU", StartFrom: "2026-01-04", Granularity: db.OverrideMatchesDate,
+			StartTime: "17:00", LengthMinutes: 24 * 60},
+	}}
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/next?shiftCount=2", "", organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var plan struct {
+		overriddenPlanBody
+		Refusal string `json:"refusal"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &plan))
+
+	require.Len(t, plan.Shifts, 2)
+	first := plan.Shifts[0]
+	assert.NotEmpty(t, first.MovedFrom)
+	assert.NotEqual(t, first.MovedFrom, first.Start)
+	assert.Contains(t, first.Start, "T17:00:00")
+	assert.Equal(t, []overrideTouchResponse{{Number: 1, StartTime: "17:00", LengthMinutes: 24 * 60}}, first.Overrides)
+	assert.Empty(t, plan.Shifts[1].MovedFrom, "a Shift nothing moved")
+	assert.False(t, first.Clash, "a day long is not a week long")
+	assert.Empty(t, plan.Refusal)
 }

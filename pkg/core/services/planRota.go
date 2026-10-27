@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
@@ -48,9 +49,18 @@ type RotaPlan struct {
 	PatternSet bool
 	// Previous is the rota this one carries on from, nil for the first.
 	Previous *PreviousRota
-	// Shifts are the Shifts that would be minted, in order, with no id or
-	// rota yet: they do not exist until the rota is defined.
+	// Shifts are the Shifts that would be minted, in the order they start,
+	// with no id or rota yet: they do not exist until the rota is defined.
+	// Each is where the Overrides put it and as long as they make it.
 	Shifts []db.Shift
+	// Generated is the start the pattern generated for each of Shifts,
+	// aligned with it. It differs from the Shift's own start only where an
+	// Override moved it, and it is what the next rota carries on from.
+	Generated []string
+	// Clashing marks, aligned with Shifts, each that would run at the same
+	// moment as another, so the screen can show every one and not only the
+	// first the Refusal names. Nil when none does.
+	Clashing []bool
 	// Overridden is what the Overrides make of each of Shifts, aligned with
 	// it, and Overrides how far each Override reached, in list order. Both are
 	// empty when the pattern could not fill the rota.
@@ -130,6 +140,7 @@ func PlanRota(ctx context.Context, store PlanRotaStore, params DefineRotaParams)
 			StartAt: start.Format(model.ShiftTimestampLayout),
 			EndAt:   start.Add(length).Format(model.ShiftTimestampLayout),
 		})
+		plan.Generated = append(plan.Generated, start.Format(model.ShiftTimestampLayout))
 	}
 
 	if len(plan.Shifts) < params.ShiftCount {
@@ -149,12 +160,69 @@ func PlanRota(ctx context.Context, store PlanRotaStore, params DefineRotaParams)
 	if err != nil {
 		return nil, err
 	}
+	if err := moveOverridden(plan, length); err != nil {
+		return nil, err
+	}
 
-	plan.Refusal, err = clash(ctx, store, plan.Shifts)
+	plan.Clashing, plan.Refusal, err = clash(ctx, store, plan.Shifts)
 	if err != nil {
 		return nil, err
 	}
 	return plan, nil
+}
+
+// moveOverridden puts each Shift where the Overrides say and makes it as long
+// as they say, then puts the Shifts back in the order they start, keeping
+// everything aligned with them. A Shift is moved within its own day — the
+// start time is a time of that date, in the pattern's wall-clock time — and
+// runs on from there, past midnight if it is long enough.
+func moveOverridden(plan *RotaPlan, defaultLength time.Duration) error {
+	moved := false
+	for i := range plan.Shifts {
+		o := plan.Overridden[i]
+		if o.StartTime == "" && o.LengthMinutes == 0 {
+			continue
+		}
+		s := &plan.Shifts[i]
+		start, err := time.Parse(model.ShiftTimestampLayout, s.StartAt)
+		if err != nil {
+			return fmt.Errorf("planned shift has an unreadable start %q: %w", s.StartAt, err)
+		}
+		if o.StartTime != "" {
+			start, err = time.Parse("2006-01-02 15:04", s.Date+" "+o.StartTime)
+			if err != nil {
+				return fmt.Errorf("override start time %q cannot be read: %w", o.StartTime, err)
+			}
+			moved = true
+		}
+		length := defaultLength
+		if o.LengthMinutes != 0 {
+			length = time.Duration(o.LengthMinutes) * time.Minute
+		}
+		s.StartAt = start.Format(model.ShiftTimestampLayout)
+		s.EndAt = start.Add(length).Format(model.ShiftTimestampLayout)
+	}
+	if !moved {
+		return nil
+	}
+
+	order := make([]int, len(plan.Shifts))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return plan.Shifts[order[a]].StartAt < plan.Shifts[order[b]].StartAt
+	})
+	shifts := make([]db.Shift, len(order))
+	generated := make([]string, len(order))
+	overridden := make([]OverriddenShift, len(order))
+	for to, from := range order {
+		shifts[to] = plan.Shifts[from]
+		generated[to] = plan.Generated[from]
+		overridden[to] = plan.Overridden[from]
+	}
+	plan.Shifts, plan.Generated, plan.Overridden = shifts, generated, overridden
+	return nil
 }
 
 // compileStoredPattern reads the pattern the Rota Defaults hold. It was valid
@@ -217,32 +285,56 @@ func ranOut(found, wanted int) error {
 }
 
 // clash refuses a plan any of whose Shifts would run at the same moment as
-// another: one already defined, or one of its own neighbours, which a length
-// longer than the gap between two generated starts makes. It names the first
-// clash, since that is the one to fix first.
-func clash(ctx context.Context, store PlanRotaStore, shifts []db.Shift) (error, error) {
-	for i := 1; i < len(shifts); i++ {
-		if shifts[i-1].EndAt > shifts[i].StartAt {
-			return wrapf(ErrConflict,
-				"the shift on %s would still be running when the one on %s starts; shorten the shift length or change the pattern in the rota defaults",
-				shiftSpan(shifts[i-1]), shiftSpan(shifts[i])), nil
+// another: one already defined, or one of its own, which a length longer than
+// the gap between two starts makes, or an Override moving one onto another. It
+// marks every Shift that clashes and names the first clash, since that is the
+// one to fix first. The Shifts are in the order they start.
+func clash(ctx context.Context, store PlanRotaStore, shifts []db.Shift) ([]bool, error, error) {
+	var marks []bool
+	mark := func(i int) {
+		if marks == nil {
+			marks = make([]bool, len(shifts))
+		}
+		marks[i] = true
+	}
+	var refusal error
+
+	// The layout sorts as it reads, so comparing the strings compares the
+	// times. A long Shift can run past more than its next neighbour, so each
+	// is checked against every earlier one still running.
+	end := ""
+	for i := range shifts {
+		for j := 0; j < i; j++ {
+			if shifts[j].EndAt > shifts[i].StartAt {
+				mark(i)
+				mark(j)
+				if refusal == nil {
+					refusal = wrapf(ErrConflict,
+						"the shift on %s would still be running when the one on %s starts; shorten it, or change the pattern or an override in the rota defaults",
+						shiftSpan(shifts[j]), shiftSpan(shifts[i]))
+				}
+			}
+		}
+		if shifts[i].EndAt > end {
+			end = shifts[i].EndAt
 		}
 	}
 
-	existing, err := store.GetShiftsOverlapping(ctx, shifts[0].StartAt, shifts[len(shifts)-1].EndAt)
+	existing, err := store.GetShiftsOverlapping(ctx, shifts[0].StartAt, end)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	for _, s := range shifts {
+	for i, s := range shifts {
 		for _, other := range existing {
-			// The layout sorts as it reads, so comparing the strings compares
-			// the times.
 			if s.StartAt < other.EndAt && other.StartAt < s.EndAt {
-				return wrapf(ErrConflict,
-					"the shift on %s would overlap the one already defined on %s, and two shifts cannot run at once; leave a gap with not before, or change the pattern in the rota defaults",
-					shiftSpan(s), shiftSpan(other)), nil
+				mark(i)
+				if refusal == nil {
+					refusal = wrapf(ErrConflict,
+						"the shift on %s would overlap the one already defined on %s, and two shifts cannot run at once; leave a gap with not before, or change the pattern or an override in the rota defaults",
+						shiftSpan(s), shiftSpan(other))
+				}
 			}
 		}
 	}
-	return nil, nil
+	return marks, refusal, nil
 }

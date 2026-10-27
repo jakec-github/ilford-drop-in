@@ -118,11 +118,13 @@ type overrideReachResponse struct {
 }
 
 // overrideTouchResponse is one Override that matched a planned Shift, and
-// what it set there.
+// what it set there: StartTime is "" and LengthMinutes 0 where it set neither.
 type overrideTouchResponse struct {
-	Number int  `json:"number"`
-	Shape  bool `json:"shape"`
-	Pins   int  `json:"pins"`
+	Number        int    `json:"number"`
+	StartTime     string `json:"startTime"`
+	LengthMinutes int    `json:"lengthMinutes"`
+	Shape         bool   `json:"shape"`
+	Pins          int    `json:"pins"`
 }
 
 // previousRotaResponse is where the rota before stopped: the generated start
@@ -137,10 +139,15 @@ type previousRotaResponse struct {
 // no id yet; a tail Shift's id is left off too, since nothing here acts on it.
 //
 // Overrides are the Overrides that matched it, in the order they applied;
-// always empty on a tail Shift, which was defined already.
+// always empty on a tail Shift, which was defined already. MovedFrom is the
+// start the pattern generated where an Override moved it, and "" where none
+// did. Clash marks one that would run at the same moment as another Shift,
+// planned or already defined.
 type plannedShiftResponse struct {
 	Start     string                  `json:"start"`
 	End       string                  `json:"end"`
+	MovedFrom string                  `json:"movedFrom"`
+	Clash     bool                    `json:"clash"`
 	Overrides []overrideTouchResponse `json:"overrides"`
 }
 
@@ -174,9 +181,21 @@ func (h *Handler) handleGetRotaPlan(w http.ResponseWriter, r *http.Request) {
 	for i, overridden := range plan.Overridden {
 		for _, touch := range overridden.Touches {
 			resp.Shifts[i].Overrides = append(resp.Shifts[i].Overrides, overrideTouchResponse{
-				Number: touch.Number, Shape: touch.SetsShape, Pins: touch.Pins,
+				Number:        touch.Number,
+				StartTime:     touch.StartTime,
+				LengthMinutes: touch.LengthMinutes,
+				Shape:         touch.SetsShape,
+				Pins:          touch.Pins,
 			})
 		}
+	}
+	for i, generated := range plan.Generated {
+		if generated != plan.Shifts[i].StartAt {
+			resp.Shifts[i].MovedFrom = generated
+		}
+	}
+	for i, clashing := range plan.Clashing {
+		resp.Shifts[i].Clash = clashing
 	}
 	for _, reach := range plan.Overrides {
 		resp.Overrides = append(resp.Overrides, overrideReachResponse{

@@ -20,7 +20,8 @@ import (
 
 // Overrides are part of the Rota Defaults (ADR 0013): rules that pick out some
 // of the Shifts the Shift pattern generates and change them as a rota is
-// defined — a whole Shape in place of the default one, and Pins. They are an
+// defined — a new start time on the same day, a new length, a whole Shape in
+// place of the default one, and Pins. They are an
 // ordered list, and a later one wins.
 //
 // Like the rest of the Rota Defaults they seed and never reach back. Defining a
@@ -50,6 +51,12 @@ type OverrideParams struct {
 	// StartFrom is the date the rule counts from, "2006-01-02". Empty means
 	// today in the Organisation's zone, as for the pattern.
 	StartFrom string
+	// StartTime moves every Shift the Override matches to this time of its
+	// own day, "15:04". Empty leaves the start the pattern generated.
+	StartTime string
+	// LengthMinutes is how long they run from wherever they start. Nil leaves
+	// the pattern's length.
+	LengthMinutes *int
 	// Shape replaces the default Shape on every Shift the Override matches.
 	// Nil leaves the default; an empty list asks for nobody.
 	Shape []SeatParams
@@ -78,6 +85,9 @@ type OverrideView struct {
 	// Problems is set instead for a rule this build cannot read.
 	Description string
 	Problems    []string
+	// StartTime is "" and LengthMinutes 0 when the Override leaves them.
+	StartTime     string
+	LengthMinutes int
 	// Shape is nil when the Override leaves the default Shape.
 	Shape model.Shape
 	Pins  []OverridePinView
@@ -133,11 +143,13 @@ func ListOverrides(
 	views := make([]OverrideView, 0, len(rows))
 	for i, row := range rows {
 		view := OverrideView{
-			ID:          row.ID,
-			Number:      i + 1,
-			RRule:       row.RRule,
-			StartFrom:   row.StartFrom,
-			Granularity: row.Granularity,
+			ID:            row.ID,
+			Number:        i + 1,
+			RRule:         row.RRule,
+			StartFrom:     row.StartFrom,
+			Granularity:   row.Granularity,
+			StartTime:     row.StartTime,
+			LengthMinutes: row.LengthMinutes,
 		}
 		if line, _ := readOverrideRule(row.RRule, row.StartFrom); len(line.Problems) > 0 {
 			view.Problems = line.Problems
@@ -321,8 +333,10 @@ func ReadOverrideRule(ctx context.Context, store RotaDefaultsStore, rrule, start
 // why it will not.
 //
 // It refuses only what cannot be represented (ADR 0010): a rule the evaluator
-// cannot read, a Role that does not exist, a Pin naming nobody or two people,
-// one person pinned twice. Pinning somebody into a Role they do not hold, or
+// cannot read, a start that is not a time of day, a length no Shift can run
+// for, a Role that does not exist, a Pin naming nobody or two people, one
+// person pinned twice. A start or length that makes Shifts overlap is refused
+// when a rota is defined, where the Shifts it would clash with are known. Pinning somebody into a Role they do not hold, or
 // past the Seats a Shape asks for, is an Organiser's decision.
 func statedOverride(
 	ctx context.Context,
@@ -347,6 +361,20 @@ func statedOverride(
 	}
 
 	row := db.Override{RRule: rrule, StartFrom: startFrom, Granularity: granularityOf(rule)}
+	if start := strings.TrimSpace(params.StartTime); start != "" {
+		at, err := time.Parse("15:04", start)
+		if err != nil {
+			return db.Override{}, wrapf(ErrInvalidInput, "%q is not a time of day - write the start time as 19:00", start)
+		}
+		row.StartTime = at.Format("15:04")
+	}
+	if params.LengthMinutes != nil {
+		length := *params.LengthMinutes
+		if length <= 0 || length > maxShiftLengthMinutes {
+			return db.Override{}, wrapf(ErrInvalidInput, "a shift lasts from 1 minute to 24 hours, not %d minutes", length)
+		}
+		row.LengthMinutes = length
+	}
 	if params.Shape != nil {
 		seats, err := statedSeats(params.Shape, roles)
 		if err != nil {

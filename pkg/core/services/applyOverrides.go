@@ -16,12 +16,19 @@ import (
 // Each Override is applied in list order to every Shift it matches: on its
 // generated start for one that names a time, on its date for one that does
 // not (ADR 0013). Matching is always against the start the pattern generated —
-// nothing an Override sets moves it. A later Shape replaces an earlier one
-// whole; a later Pin for a volunteer replaces their earlier one, since a person
+// nothing an Override sets moves it, so a later Override still finds a Shift
+// an earlier one moved where the pattern put it. A later start time or length
+// replaces an earlier one; a later Shape replaces an earlier one whole; a later Pin for a volunteer replaces their earlier one, since a person
 // fills at most one Seat on a Shift; custom entries add up.
 
 // OverriddenShift is what the Overrides make of one planned Shift.
 type OverriddenShift struct {
+	// StartTime is the time of its own day the Overrides move it to, "15:04",
+	// and "" when none did.
+	StartTime string
+	// LengthMinutes is how long the Overrides make it run, and 0 when none
+	// did and it runs the pattern's length.
+	LengthMinutes int
 	// Seats is the Shape the Overrides give it, and SetsShape whether any did.
 	// Without one the Shift takes the default Shape.
 	SetsShape bool
@@ -34,9 +41,12 @@ type OverriddenShift struct {
 
 // OverrideTouch is one Override matching one Shift, and what it set there.
 type OverrideTouch struct {
-	Number    int
-	SetsShape bool
-	Pins      int
+	Number int
+	// StartTime and LengthMinutes are what it set, "" and 0 for neither.
+	StartTime     string
+	LengthMinutes int
+	SetsShape     bool
+	Pins          int
 }
 
 // OverrideReach is how far one Override reached across a rota's Shifts.
@@ -94,6 +104,12 @@ func applyOverrides(rows []db.Override, shifts []db.Shift) ([]OverriddenShift, [
 			}
 			r.Matched++
 			shift := &out[i]
+			if row.StartTime != "" {
+				shift.StartTime = row.StartTime
+			}
+			if row.LengthMinutes != 0 {
+				shift.LengthMinutes = row.LengthMinutes
+			}
 			if row.SetsShape {
 				shift.SetsShape = true
 				shift.Seats = row.Seats
@@ -105,7 +121,11 @@ func applyOverrides(rows []db.Override, shifts []db.Shift) ([]OverriddenShift, [
 				shift.Pins = append(shift.Pins, pin)
 			}
 			shift.Touches = append(shift.Touches, OverrideTouch{
-				Number: number, SetsShape: row.SetsShape, Pins: len(row.Pins),
+				Number:        number,
+				StartTime:     row.StartTime,
+				LengthMinutes: row.LengthMinutes,
+				SetsShape:     row.SetsShape,
+				Pins:          len(row.Pins),
 			})
 		}
 		if exact && r.Matched == 0 {
