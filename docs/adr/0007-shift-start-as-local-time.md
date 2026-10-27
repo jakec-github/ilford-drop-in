@@ -1,6 +1,9 @@
 # A Shift's start is local wall-clock time, and its date is derived
 
-Status: accepted
+Status: accepted. Partly superseded by
+[ADR 0013](0013-shifts-come-from-a-pattern.md) (proposed): Shifts may not
+overlap, and several may start on one date, in place of at most one Shift per
+date. Wall-clock time and the derived date stand.
 
 A Shift carries `start_at` and `end_at` as `TIMESTAMP` **without** time zone,
 holding local time in the drop-in's own zone, which is a settings property.

@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#23 — Shift pattern, Overrides and minting a rota (faked)</title>
+<style>
+:root{--text:#6b6375;--text-h:#08060d;--bg:#fff;--bg2:#faf9fb;--border:#e5e4e7;--accent:#aa3bff;--accent-bg:rgba(170,59,255,.1);
+--teal:#0a8168;--blue:#1d68c7;--amber:#8a6100;--rose:#c02a51;--sans:system-ui,"Segoe UI",Roboto,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--text:#9ca3af;--text-h:#f3f4f6;--bg:#16171d;--bg2:#1c1d24;--border:#2e303a;--accent:#c084fc;--accent-bg:rgba(192,132,252,.15);--teal:#2dd4a7;--blue:#60a5fa;--amber:#fbbf24;--rose:#fb7185}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 var(--sans);color:var(--text);background:var(--bg2)}
+h1,h2,h3,h4{color:var(--text-h);margin:0}
+main{max-width:1320px;margin:0 auto;padding:28px 24px 80px}
+.lede{max-width:80ch;margin:8px 0 14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:20px;font-size:13px}
+.toolbar b{color:var(--text-h);margin-right:4px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media(max-width:960px){.cols{grid-template-columns:1fr}}
+.sticky{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;border-radius:16px}
+@media(max-width:960px){.sticky{position:static;max-height:none}}
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-bottom:20px}
+.panel>h2{font-size:18px;display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.panel>h2 small{font-weight:400;font-size:13px;color:var(--text)}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}
+.hint{font-size:13px;margin:4px 0 10px;max-width:70ch}
+h3{font-size:14px;margin:16px 0 6px}
+textarea,input,select{font:inherit;color:var(--text-h);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 8px}
+textarea,input.rule{font:13px/1.5 var(--mono);width:100%}
+textarea{resize:vertical}
+textarea:focus,input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.fields{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0}
+.fields label{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.fields input[type=number]{width:90px}
+button{font:inherit;cursor:pointer}
+.btn{border:1px solid var(--border);background:var(--bg);color:var(--text-h);border-radius:8px;padding:5px 12px;font-size:13px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08);color:#fff}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.link{border:0;background:none;color:var(--accent);padding:0;font-size:12px;text-decoration:underline}
+.icon{border:1px solid transparent;background:none;color:var(--text);width:26px;height:26px;border-radius:6px;font-size:14px;line-height:1}
+.icon:hover{border-color:var(--border);color:var(--text-h)}
+.icon[disabled]{opacity:.3;cursor:default}
+
+/* parsed lines under a rule */
+.lines{list-style:none;padding:0;margin:6px 0 0;font-size:13px}
+.lines li{display:flex;gap:8px;padding:3px 0}
+.lines li::before{content:"✓";color:var(--teal);font-weight:700}
+.lines li.err{color:var(--rose)}
+.lines li.err::before{content:"✕";color:var(--rose)}
+.lines code{font:12px var(--mono);color:var(--text)}
+
+/* steppers */
+.shape{display:flex;flex-direction:column;gap:6px}
+.step{display:flex;align-items:center;gap:8px;font-size:14px}
+.step .rname{flex:1;color:var(--text-h)}
+.step button{width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--bg);color:var(--text-h)}
+.step output{width:22px;text-align:center;font-variant-numeric:tabular-nums;color:var(--text-h);font-weight:600}
+/* pattern calendar */
+.cal-nav{display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:13px}
+.cal-nav .note{margin-left:auto;font-size:12px}
+.cal-months{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media(max-width:1200px) and (min-width:961px){.cal-months{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-month:nth-child(3){display:none}}
+.cal-month h4{font-size:12px;margin:0 0 4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:11px;text-align:center}
+.cal-grid .dow{font-size:10px;padding-bottom:2px}
+.cal-day{position:relative;height:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;font-variant-numeric:tabular-nums}
+.cal-day.before{opacity:.35}
+.cal-day.on{background:var(--accent-bg);color:var(--accent);font-weight:700;cursor:default}
+.cal-day.on:hover,.cal-day.on:focus{background:var(--accent);color:#fff;outline:none}
+.cal-day.today{box-shadow:inset 0 0 0 1.5px var(--text-h)}
+.cal-dots{display:flex;gap:2px;height:4px}
+.cal-dots i{width:4px;height:4px;border-radius:50%;background:currentColor}
+.cal-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--text-h);color:var(--bg);padding:6px 9px;border-radius:8px;font-weight:400;white-space:nowrap;z-index:5;text-align:left;font-size:12px;line-height:1.5;box-shadow:0 8px 20px -8px rgba(0,0,0,.4);pointer-events:none}
+.cal-tip b{display:block;font-weight:600}
+.cal-day:hover .cal-tip,.cal-day:focus .cal-tip{display:block}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--k);display:inline-block}
+
+/* overrides */
+.ovr{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin:10px 0;position:relative}
+.ovr header{display:flex;gap:8px;align-items:center}
+.num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.sum{font-size:13px;margin:8px 0 2px;color:var(--text-h)}
+.sum.err{color:var(--rose)}
+.badge{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:999px;font-size:12px;background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)}
+.badge.exact{background:color-mix(in srgb,var(--teal) 14%,transparent);color:var(--teal)}
+.props{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:start;margin-top:10px;font-size:13px}
+.props>label{display:flex;gap:6px;align-items:center;color:var(--text-h);padding-top:3px}
+.props .off{color:var(--text);font-style:italic;padding-top:3px}
+.pins{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.adder{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.adder select,.adder input{font-size:12px;padding:3px 6px}
+
+/* chips, after web/src/ui/Chip.css: pill for a volunteer, tag for a custom entry */
+.chip{--chip:#53616f;display:inline-flex;align-items:center;gap:5px;padding:2px 9px;font:600 12px/1.35 var(--sans);border:1.5px solid var(--chip);color:var(--chip);background:var(--bg);border-radius:12px}
+.chip.tag{border-radius:5px}
+.chip small{font-weight:400;opacity:.8}
+.chip button{border:0;background:none;color:inherit;padding:0 0 0 2px;opacity:.7}
+.chip button:hover{opacity:1}
+
+/* define + preview */
+.prev{font-size:13px;background:var(--bg2);border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.prev b{color:var(--text-h)}
+.headline{font-size:16px;color:var(--text-h);margin:14px 0 4px}
+.headline b{font-variant-numeric:tabular-nums}
+.warn{list-style:none;padding:0;margin:8px 0;font-size:13px}
+.warn li{padding:6px 10px;border-radius:8px;margin-bottom:6px;background:color-mix(in srgb,var(--amber) 12%,transparent);color:var(--amber)}
+.warn li.bad{background:color-mix(in srgb,var(--rose) 12%,transparent);color:var(--rose)}
+.month{font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;color:var(--text)}
+.shifts{list-style:none;padding:0;margin:0}
+.shift{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg)}
+.shift.past{opacity:.55;border-style:dashed}
+.shift.clash{border-color:var(--rose);background:color-mix(in srgb,var(--rose) 6%,var(--bg))}
+.when b{display:block;color:var(--text-h)}
+.when span{font-size:13px;font-variant-numeric:tabular-nums}
+.when em{display:block;font-size:11px;font-style:normal;color:var(--amber)}
+.roles{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.role{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.role .rn{min-width:120px;color:var(--text-h)}
+.seats{font-variant-numeric:tabular-nums}
+.seats.over{color:var(--amber)}
+.tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.tags span{font-size:11px;padding:0 7px;border-radius:999px;background:var(--accent-bg);color:var(--accent)}
+.clashnote{grid-column:1/-1;font-size:12px;color:var(--rose)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text-h);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+.toast.on{opacity:1}
+details.notes{font-size:13px;margin-top:6px}
+details.notes summary{cursor:pointer;color:var(--text-h)}
+details.notes ul{margin:6px 0;padding-left:20px}
+</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">Issue #23 · faked prototype</p>
+<h1>Shift pattern, Overrides and minting a rota</h1>
+<p class="lede">Everything here is faked and kept in this browser only. The RRULEs are evaluated in the page, the same way the server would: in wall-clock time, and starting at midnight on the “Start from” date. Pressing <b>Define rota</b> turns the preview into the “previous rota”, so you can mint batch after batch and see each one carry on from the last.</p>
+<div class="toolbar"><b>Presets:</b><span id="presets"></span><button class="btn" data-act="reset">Reset</button></div>
+<details class="notes"><summary>What this prototype decides that you have not</summary>
+<ul>
+<li>An Override can <b>move a shift's start time</b>, but only within its own date. Moving it to another day is not offered.</li>
+<li>An Override is one RRULE line, not a set.</li>
+<li>Overrides match the times the pattern generates, even when an earlier Override has moved the shift. Editing the pattern's time leaves time-specific Overrides matching nothing, and the preview says so (your “quirk”).</li>
+<li>A shift's length is kept when its start moves, so the end moves with it.</li>
+<li>A Shape set by an Override replaces the whole Shape, rather than adjusting it.</li>
+<li>When two Overrides pin one volunteer on the same shift, the later one's Role wins. A custom entry can be pinned more than once.</li>
+<li>Refused in the pattern: DTSTART (“Start from” supplies it), RDATE (no one-off shifts), EXDATE, and FREQ finer than DAILY. Not understood: BYSETPOS, BYWEEKNO, BYYEARDAY and BYSECOND.</li>
+<li>The minting search gives up five years past the start date, and says how many shifts it found.</li>
+<li>A rota only takes shifts the pattern generates <b>after the previous rota's last one</b>, compared by the generated start time, not a moved one. There is no start date: a rota that stopped after a morning shift carries on with that evening's. “Leave a gap…” reveals a “not before” date for a break, and it starts a week later. In the real thing, this means storing where the last rota stopped (the generated start of its last shift), because an Override may have moved that shift's actual start.</li>
+<li>Every “Start from” date, the pattern's and each Override's, defaults to the day it is created. A preset counts as created today, and so does its pretend previous rota.</li>
+</ul></details>
+<div class="cols" style="margin-top:16px">
+  <div id="left"></div>
+  <div class="sticky"><div id="right"></div></div>
+</div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- fake domain data ---------- */
+const ROLES = [
+  { id: "lead", name: "Team lead", colour: "var(--accent)" },
+  { id: "service", name: "Service volunteer", colour: "var(--blue)" },
+  { id: "food", name: "Food collector", colour: "var(--amber)" },
+];
+const VOLUNTEERS = ["Amira Khan","Ben Okafor","Chloe Brennan","Dev Patel","Ellie Morgan","Femi Adeyemi","Grace Liu","Hassan Ali","Mark Davies","Priya Shah"];
+
+/* ---------- dates, as whole days and minutes in floating wall-clock time ---------- */
+const DAY = 864e5;
+const WD = ["MO","TU","WE","TH","FR","SA","SU"];
+const DAYNAME = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const MONTHNAME = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const toDay = (s) => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d) / DAY; };
+const isoOf = (n) => new Date(n * DAY).toISOString().slice(0, 10);
+const parts = (n) => { const t = new Date(n * DAY); return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate(), wd: (t.getUTCDay() + 6) % 7 }; };
+const monthLen = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const yearLen = (y) => ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 366 : 365);
+const dayOfYear = (n) => n - Date.UTC(parts(n).y, 0, 1) / DAY + 1;
+const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
+const validIso = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "") && !isNaN(toDay(s));
+const hhmm = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+const fmtDay = (n, year = true) => new Date(n * DAY).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) }).replace(",", "");
+const fmtLen = (min) => `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}m` : ""}`;
+const ordinal = (n) => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const ORD = { 1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", [-1]: "last", [-2]: "second-to-last", [-3]: "third-to-last" };
+const listJoin = (xs) => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ---------- RRULE: parse one line ---------- */
+function intList(v, lo, hi, name, errs, allowNeg = false) {
+  const out = [];
+  for (const x of v.split(",")) {
+    const n = Number(x);
+    const ok = Number.isInteger(n) && (allowNeg ? (n !== 0 && Math.abs(n) <= hi) : (n >= lo && n <= hi));
+    if (!ok) { errs.push(`${name}: “${x}” is out of range`); continue; }
+    out.push(n);
+  }
+  return out.length ? [...new Set(out)].sort((a, b) => a - b) : null;
+}
+
+function parseRule(line, kind) {
+  let s = line.trim();
+  const up = s.toUpperCase();
+  if (up.startsWith("DTSTART")) return { error: "No DTSTART here — the “Start from” date supplies it." };
+  if (up.startsWith("RDATE")) return { error: "RDATE adds a one-off shift, which is not supported." };
+  if (up.startsWith("EXDATE") || up.startsWith("EXRULE")) return { error: "EXDATE and EXRULE are not supported in this prototype. Close a shift by hand." };
+  if (up.startsWith("RRULE:")) s = s.slice(6);
+  const r = { interval: 1, wkst: 0 };
+  const errs = [];
+  const seen = new Set();
+  for (const part of s.toUpperCase().split(";").map((p) => p.trim()).filter(Boolean)) {
+    const [k, v, extra] = part.split("=");
+    if (v === undefined || v === "" || extra !== undefined) { errs.push(`“${part}” is not KEY=VALUE`); continue; }
+    if (seen.has(k)) { errs.push(`${k} appears twice`); continue; }
+    seen.add(k);
+    switch (k) {
+      case "FREQ":
+        if (["DAILY","WEEKLY","MONTHLY","YEARLY"].includes(v)) r.freq = v;
+        else if (["HOURLY","MINUTELY","SECONDLY"].includes(v)) errs.push(`FREQ=${v} is refused — the finest is DAILY, with times set by BYHOUR and BYMINUTE`);
+        else errs.push(`FREQ=${v} is not a frequency`);
+        break;
+      case "INTERVAL": { const n = Number(v); if (Number.isInteger(n) && n >= 1) r.interval = n; else errs.push("INTERVAL must be a whole number of at least 1"); break; }
+      case "COUNT": { const n = Number(v); if (Number.isInteger(n) && n >= 1) r.count = n; else errs.push("COUNT must be a whole number of at least 1"); break; }
+      case "UNTIL": {
+        const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z?)?$/);
+        if (!m) { errs.push("UNTIL must look like 20270301 or 20270301T193000"); break; }
+        const day = Date.UTC(+m[1], +m[2] - 1, +m[3]) / DAY;
+        r.until = day * 1440 + (m[4] ? +m[4] * 60 + +m[5] : 1439);
+        r.untilDay = day;
+        break;
+      }
+      case "WKST": { const i = WD.indexOf(v); if (i < 0) errs.push(`WKST=${v} is not a weekday`); else r.wkst = i; break; }
+      case "BYDAY": {
+        const out = [];
+        for (const x of v.split(",")) {
+          const m = x.match(/^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$/);
+          if (!m) { errs.push(`BYDAY: “${x}” is not a weekday like SU, 1SU or -1SU`); continue; }
+          const n = m[1] ? Number(m[1]) : 0;
+          if (m[1] && (n === 0 || Math.abs(n) > 53)) { errs.push(`BYDAY: “${x}” has an impossible position`); continue; }
+          out.push({ n, wd: WD.indexOf(m[2]) });
+        }
+        r.byday = out.length ? out : null;
+        break;
+      }
+      case "BYMONTHDAY": r.bymonthday = intList(v, 1, 31, "BYMONTHDAY", errs, true); break;
+      case "BYMONTH": r.bymonth = intList(v, 1, 12, "BYMONTH", errs); break;
+      case "BYHOUR": r.byhour = intList(v, 0, 23, "BYHOUR", errs); break;
+      case "BYMINUTE": r.byminute = intList(v, 0, 59, "BYMINUTE", errs); break;
+      case "BYSETPOS": case "BYWEEKNO": case "BYYEARDAY": case "BYSECOND":
+        errs.push(`${k} is not understood by this prototype`); break;
+      default: errs.push(`${k} is not an RRULE part`);
+    }
+  }
+  if (!r.freq && !errs.some((e) => e.startsWith("FREQ"))) errs.push("FREQ is missing");
+  if (r.count && r.until != null) errs.push("COUNT and UNTIL cannot both be given");
+  if (r.byday && r.byday.some((b) => b.n) && (r.freq === "DAILY" || r.freq === "WEEKLY"))
+    errs.push("A position like 1SU only means something with FREQ=MONTHLY or YEARLY");
+  if (kind === "pattern" && (!r.byhour || !r.byminute))
+    errs.push("Each pattern line needs BYHOUR and BYMINUTE — they are the shift's start time");
+  if (kind === "override" && (!r.byhour !== !r.byminute))
+    errs.push("Give BYHOUR and BYMINUTE together (an exact start time), or neither (every shift on those days)");
+  return errs.length ? { error: errs.join("; ") } : { rule: r };
+}
+
+function parseSet(text, kind) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.map((raw) => ({ raw, ...parseRule(raw, kind) }));
+}
+
+/* ---------- RRULE: evaluate. DTSTART is the anchor at 00:00, floating ---------- */
+function weekStart(day, wkst) { const p = parts(day); return day - ((p.wd - wkst + 7) % 7); }
+
+function bydayHit(b, r, p, day) {
+  if (b.wd !== p.wd) return false;
+  if (!b.n) return true;
+  if (r.freq === "MONTHLY" || (r.freq === "YEARLY" && r.bymonth)) {
+    const ml = monthLen(p.y, p.m);
+    return b.n > 0 ? Math.floor((p.d - 1) / 7) + 1 === b.n : Math.floor((ml - p.d) / 7) + 1 === -b.n;
+  }
+  const dy = dayOfYear(day), yl = yearLen(p.y);
+  return b.n > 0 ? Math.floor((dy - 1) / 7) + 1 === b.n : Math.floor((yl - dy) / 7) + 1 === -b.n;
+}
+
+function dayMatches(r, day, anchor) {
+  const p = parts(day), a = parts(anchor), iv = r.interval;
+  if (r.bymonth && !r.bymonth.includes(p.m)) return false;
+  switch (r.freq) {
+    case "DAILY": if ((day - anchor) % iv) return false; break;
+    case "WEEKLY": if (((weekStart(day, r.wkst) - weekStart(anchor, r.wkst)) / 7) % iv) return false; break;
+    case "MONTHLY": if (((p.y * 12 + p.m) - (a.y * 12 + a.m)) % iv) return false; break;
+    case "YEARLY": if ((p.y - a.y) % iv) return false; break;
+  }
+  if (r.bymonthday) { const ml = monthLen(p.y, p.m); if (!r.bymonthday.some((v) => (v > 0 ? v : ml + 1 + v) === p.d)) return false; }
+  if (r.byday && !r.byday.some((b) => bydayHit(b, r, p, day))) return false;
+  // What the rule leaves out, the anchor fills in.
+  if (r.freq === "WEEKLY" && !r.byday && p.wd !== a.wd) return false;
+  if (r.freq === "MONTHLY" && !r.byday && !r.bymonthday && p.d !== a.d) return false;
+  if (r.freq === "YEARLY" && !r.byday && !r.bymonthday) { if (!r.bymonth && p.m !== a.m) return false; if (p.d !== a.d) return false; }
+  return true;
+}
+
+function ruleTimes(r) {
+  const out = [];
+  for (const h of r.byhour || [0]) for (const m of r.byminute || [0]) out.push(h * 60 + m);
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
+// Occurrences from the anchor through endDay, as minute keys (day * 1440 + minute).
+function occurrences(r, anchor, endDay) {
+  const out = [], times = ruleTimes(r);
+  let n = 0;
+  for (let day = anchor; day <= endDay; day++) {
+    if (r.untilDay != null && day > r.untilDay) break;
+    if (!dayMatches(r, day, anchor)) continue;
+    for (const t of times) {
+      const k = day * 1440 + t;
+      if (r.until != null && k > r.until) return out;
+      out.push(k);
+      if (r.count && ++n >= r.count) return out;
+    }
+  }
+  return out;
+}
+
+/* ---------- RRULE: plain English ---------- */
+function describe(r, anchor, kind) {
+  const a = parts(anchor);
+  const unit = { DAILY: ["day","days"], WEEKLY: ["week","weeks"], MONTHLY: ["month","months"], YEARLY: ["year","years"] }[r.freq];
+  const bits = [r.interval === 1 ? `Every ${unit[0]}` : `Every ${r.interval} ${unit[1]}`];
+  if (r.byday) {
+    const plain = r.byday.filter((b) => !b.n).map((b) => DAYNAME[b.wd]);
+    const pos = r.byday.filter((b) => b.n).map((b) => `the ${ORD[b.n] || ordinal(b.n)} ${DAYNAME[b.wd]}`);
+    const scope = r.freq === "YEARLY" && !r.bymonth ? " of the year" : "";
+    if (plain.length) bits.push(`on ${listJoin(plain)}`);
+    if (pos.length) bits.push(`on ${listJoin(pos)}${scope}`);
+  }
+  if (r.bymonthday) bits.push(`on ${listJoin(r.bymonthday.map((v) => v > 0 ? `the ${ordinal(v)}` : v === -1 ? "the last day" : `the ${ordinal(-v)}-from-last day`))}`);
+  if (r.bymonth) bits.push(`in ${listJoin(r.bymonth.map((m) => MONTHNAME[m - 1]))}`);
+  if (r.freq === "WEEKLY" && !r.byday) bits.push(`on ${DAYNAME[a.wd]} <i>(the weekday it starts from)</i>`);
+  if (r.freq === "MONTHLY" && !r.byday && !r.bymonthday) bits.push(`on the ${ordinal(a.d)} <i>(the day of the month it starts from)</i>${a.d > 28 ? " — months without one are skipped" : ""}`);
+  if (r.freq === "YEARLY" && !r.byday && !r.bymonthday) bits.push(r.bymonth ? `on the ${ordinal(a.d)} <i>(the day of the month it starts from)</i>` : `on ${a.d} ${MONTHNAME[a.m - 1]} <i>(the date it starts from)</i>`);
+  if (kind === "pattern") bits.push(`at ${listJoin(ruleTimes(r).map(hhmm))}`);
+  if (r.count) bits.push(`, ${r.count} time${r.count > 1 ? "s" : ""} from its start`);
+  if (r.until != null) bits.push(`, until ${fmtDay(r.untilDay)}`);
+  if (r.interval > 1) bits.push(`— counting from ${fmtDay(anchor)}`);
+  return bits.join(" ").replace(/ ,/g, ",");
+}
+
+/* ---------- state ---------- */
+const KEY = "issue23-shift-patterns-v3";
+const newId = () => Math.random().toString(36).slice(2, 9);
+
+const PRESETS = {
+  sunday: {
+    label: "Sunday evenings (today)",
+    pattern: "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
+    length: 150, shape: { lead: 1, service: 6, food: 1 },
+    overrides: [
+      { rule: "RRULE:FREQ=MONTHLY;BYDAY=1SU", pins: [{ custom: "St Mary's youth group", role: "service" }] },
+      { rule: "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU", pins: [{ volunteer: "Mark Davies", role: "lead" }] },
+      { rule: "RRULE:FREQ=MONTHLY;BYDAY=-1SU;BYHOUR=19;BYMINUTE=30", start: 18 * 60 },
+      { rule: "RRULE:FREQ=YEARLY;BYMONTH=12;BYDAY=-1SU", length: 210, shape: { lead: 2, service: 8, food: 2 } },
+    ],
+  },
+  twice: {
+    label: "Daily, morning and evening",
+    pattern: "RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=0\nRRULE:FREQ=DAILY;BYHOUR=19;BYMINUTE=30",
+    length: 180, shape: { lead: 1, service: 4, food: 0 }, count: 14, splitDay: true,
+    overrides: [
+      { rule: "RRULE:FREQ=WEEKLY;BYDAY=SA;BYHOUR=19;BYMINUTE=30", start: 18 * 60, length: 240 },
+      { rule: "RRULE:FREQ=WEEKLY;BYDAY=SU", shape: { lead: 1, service: 2, food: 0 } },
+      { rule: "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=10;BYMINUTE=0", pins: [{ volunteer: "Grace Liu", role: "lead" }] },
+    ],
+  },
+  mixed: {
+    label: "Fortnightly + first Saturday",
+    pattern: "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE;BYHOUR=18;BYMINUTE=0\nRRULE:FREQ=MONTHLY;BYDAY=1SA;BYHOUR=10;BYMINUTE=0",
+    length: 120, shape: { lead: 1, service: 5, food: 1 },
+    overrides: [
+      { rule: "RRULE:FREQ=MONTHLY;BYDAY=1SA;BYHOUR=10;BYMINUTE=0", start: 9 * 60 + 30, length: 240, pins: [{ custom: "Rotary Club", role: "food" }] },
+      { rule: "RRULE:FREQ=WEEKLY;INTERVAL=4;BYDAY=WE", pins: [{ volunteer: "Priya Shah", role: "lead" }] },
+    ],
+  },
+  overnight: {
+    label: "Overnight shelter",
+    pattern: "RRULE:FREQ=WEEKLY;BYDAY=FR,SA;BYHOUR=21;BYMINUTE=0",
+    length: 600, shape: { lead: 1, service: 3, food: 0 },
+    overrides: [
+      { rule: "RRULE:FREQ=WEEKLY;BYDAY=SA", length: 660 },
+      { rule: "RRULE:FREQ=MONTHLY;BYDAY=-1SA;BYHOUR=21;BYMINUTE=0", start: 19 * 60 },
+    ],
+  },
+};
+
+function fromPreset(key) {
+  const p = PRESETS[key];
+  const anchor = today();
+  const s = {
+    preset: key, pattern: p.pattern, anchor, tz: "Europe/London", length: p.length, shape: { ...p.shape },
+    overrides: p.overrides.map((o) => ({ id: newId(), rule: o.rule, anchor, start: o.start ?? null, length: o.length ?? null, shape: o.shape ? { ...o.shape } : null, pins: (o.pins || []).map((x) => ({ ...x, id: newId() })) })),
+    start: null, count: p.count ?? 12, prev: null, pinDraft: {},
+  };
+  // The previous rota: up to nine of the pattern's shifts in the five weeks from today, Overrides applied.
+  const m = mintFrom(s, toDay(anchor), Infinity, toDay(anchor) + 34);
+  const tail = p.splitDay ? m.shifts.slice(-10, -1) : m.shifts.slice(-9);
+  if (m.shifts) s.prev = tail.map((x) => ({ key: x.key, gen: x.gen, length: x.length }));
+  return s;
+}
+
+let state;
+try { state = JSON.parse(localStorage.getItem(KEY)); } catch { state = null; }
+if (!state || !state.pattern) state = fromPreset("sunday");
+const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+
+/* ---------- minting ---------- */
+// Where the previous rota stopped: the generated start of its last shift, whatever an Override moved it to.
+function cursorOf(prev) { return prev && prev.length ? Math.max(...prev.map((p) => p.gen ?? p.key)) : null; }
+const prefillStart = () => state.prev && state.prev.length ? isoOf(Math.floor(cursorOf(state.prev) / 1440)) : state.anchor;
+const startDate = () => state.start || prefillStart();
+const SEARCH_YEARS = 5;
+
+// Mint `count` shifts on or after startDay (or every one through endDay), with Overrides applied.
+function mintFrom(s, startDay, count, endDay) {
+  const lines = parseSet(s.pattern, "pattern");
+  if (!lines.length) return { error: "The pattern is empty." };
+  if (lines.some((l) => l.error)) return { error: "The pattern has a line that cannot be read — see the Shift pattern card." };
+  if (!validIso(s.anchor)) return { error: "“Start from” is not a date." };
+  const anchor = toDay(s.anchor);
+  const bound = endDay ?? startDay + SEARCH_YEARS * 366;
+  const keys = new Set();
+  for (const l of lines) for (const k of occurrences(l.rule, anchor, bound)) keys.add(k);
+  const cursor = cursorOf(s.prev);
+  const picked = [...keys].sort((a, b) => a - b).filter((k) => k >= startDay * 1440 && (cursor == null || k > cursor)).slice(0, count);
+
+  const shifts = picked.map((key) => ({
+    key, gen: key, day: Math.floor(key / 1440), min: key % 1440, length: s.length, shape: { ...s.shape },
+    pins: [], from: [],
+  }));
+
+  const overrideReport = [];
+  if (shifts.length) {
+    const last = shifts.at(-1).day;
+    s.overrides.forEach((o, i) => {
+      const parsed = parseRule(o.rule, "override");
+      if (parsed.error) { overrideReport.push({ i, error: true, matched: 0 }); return; }
+      const r = parsed.rule;
+      const oAnchor = validIso(o.anchor) ? toDay(o.anchor) : anchor;
+      const occ = occurrences(r, oAnchor, last);
+      const exact = !!r.byhour;
+      const hits = new Set(exact ? occ : occ.map((k) => Math.floor(k / 1440)));
+      let matched = 0;
+      for (const sh of shifts) {
+        // Matched against the time the pattern generated, never a changed one.
+        if (!hits.has(exact ? sh.gen : sh.day)) continue;
+        matched++;
+        const did = [];
+        if (o.start != null) { sh.min = o.start; sh.key = sh.day * 1440 + o.start; did.push(`start ${hhmm(o.start)}`); }
+        if (o.length != null) { sh.length = o.length; did.push("length"); }
+        if (o.shape) { sh.shape = { ...o.shape }; did.push("shape"); }
+        for (const p of o.pins) {
+          if (p.volunteer) sh.pins = sh.pins.filter((q) => q.volunteer !== p.volunteer);
+          sh.pins.push({ ...p, by: i });
+        }
+        if (o.pins.length) did.push(o.pins.length === 1 ? "pin" : "pins");
+        sh.from.push({ i, did });
+      }
+      overrideReport.push({ i, exact, matched });
+    });
+    shifts.sort((a, b) => a.key - b.key);
+  }
+  return { shifts, overrideReport, anchor };
+}
+
+function preview() {
+  if (!validIso(startDate())) return { error: "The “not before” date is not a date." };
+  const count = Number(state.count);
+  if (!Number.isInteger(count) || count < 1) return { error: "Shifts must be a whole number of at least 1." };
+  const startDay = toDay(startDate());
+  const m = mintFrom(state, startDay, count);
+  if (m.error) return m;
+  const warns = [];
+  if (startDay < m.anchor) warns.push({ bad: false, text: `The “not before” date is before the pattern's “Start from” date. Nothing occurs before ${fmtDay(m.anchor)}.` });
+  if (m.shifts.length < count) warns.push({ bad: true, text: `Only ${m.shifts.length} of ${count} shifts occur in the ${SEARCH_YEARS} years after ${fmtDay(startDay)}. Check COUNT and UNTIL, or whether the rule can happen at all.` });
+  for (const r of m.overrideReport) {
+    if (r.error) warns.push({ bad: true, text: `Override ${r.i + 1} cannot be read, so it is skipped.` });
+    else if (!r.matched) warns.push({ bad: false, text: `Override ${r.i + 1} matches no shift in this rota${r.exact ? ". Its time is not one the pattern starts a shift at, so did the pattern's time change?" : "."}` });
+  }
+  // Overlaps, including with the previous rota.
+  const all = [...(state.prev || []).map((p) => ({ ...p, prev: true })), ...m.shifts].sort((a, b) => a.key - b.key);
+  for (let i = 0; i + 1 < all.length; i++) {
+    const a = all[i], b = all[i + 1];
+    if (a.key + a.length > b.key) {
+      const target = b.prev ? a : b;
+      target.clash = a.key === b.key
+        ? `Starts at the same moment as ${a.prev || b.prev ? "a shift in the previous rota" : "another shift"}.`
+        : `Starts before the ${a.prev ? "previous rota's" : ""} ${fmtDay(Math.floor(a.key / 1440), false)} ${hhmm(a.key % 1440)} shift ends (${hhmm((a.key + a.length) % 1440)}).`.replace("the  ", "the ");
+      if (!a.prev) a.clash = a.clash || `Runs into the next shift.`;
+    }
+  }
+  const clashes = m.shifts.filter((s) => s.clash).length;
+  if (clashes) warns.unshift({ bad: true, text: `${clashes} shift${clashes > 1 ? "s" : ""} would overlap another. Shifts may not overlap, so this rota cannot be defined.` });
+  return { ...m, warns, clashes };
+}
+
+/* ---------- rendering ---------- */
+const $ = (sel) => document.querySelector(sel);
+const roleName = (id) => ROLES.find((r) => r.id === id)?.name ?? id;
+const roleColour = (id) => ROLES.find((r) => r.id === id)?.colour ?? "#53616f";
+
+function lengthSelect(value, act, i) {
+  let opts = "";
+  for (let m = 15; m <= 16 * 60; m += 15) opts += `<option value="${m}"${m === value ? " selected" : ""}>${fmtLen(m)}</option>`;
+  return `<select data-act="${act}"${i != null ? ` data-i="${i}"` : ""}>${opts}</select>`;
+}
+
+function shapeEditor(shape, act, i) {
+  return `<div class="shape">${ROLES.map((r) => `
+    <div class="step" style="--k:${r.colour}"><span class="dot"></span><span class="rname">${r.name}</span>
+      <button data-act="${act}" data-role="${r.id}" data-d="-1"${i != null ? ` data-i="${i}"` : ""} aria-label="Fewer ${r.name}">−</button>
+      <output>${shape[r.id] || 0}</output>
+      <button data-act="${act}" data-role="${r.id}" data-d="1"${i != null ? ` data-i="${i}"` : ""} aria-label="More ${r.name}">+</button></div>`).join("")}</div>`;
+}
+
+function chip(p, removeAct, i) {
+  const name = p.volunteer || p.custom;
+  return `<span class="chip${p.custom ? " tag" : ""}" style="--chip:${roleColour(p.role)}">${esc(name)} <small>${esc(roleName(p.role))}</small>${removeAct ? `<button data-act="${removeAct}" data-i="${i}" data-id="${p.id}" aria-label="Unpin ${esc(name)}">×</button>` : ""}</span>`;
+}
+
+function patternCard() {
+  return `<section class="panel">
+    <p class="eyebrow">Rota defaults</p>
+    <h2>Shift pattern</h2>
+    <p class="hint">An RRULE set, one rule per line. Every occurrence is the start of a shift, so each line states its time with BYHOUR and BYMINUTE. Two lines give two start times.</p>
+    <textarea data-bind="pattern" rows="${Math.max(2, state.pattern.split("\n").length + 1)}" spellcheck="false" aria-label="Shift pattern">${esc(state.pattern)}</textarea>
+    <ul class="lines" id="pattern-lines"></ul>
+    <div class="fields">
+      <label>Start from<input type="date" data-bind="anchor" value="${esc(state.anchor)}"></label>
+      <label>Time zone<select data-bind="tz">${["Europe/London","Europe/Dublin","Europe/Paris","America/New_York"].map((z) => `<option${z === state.tz ? " selected" : ""}>${z}</option>`).join("")}</select></label>
+      <label>Default length${lengthSelect(state.length, "length")}</label>
+    </div>
+    <p class="hint">“Start from” is where “every other week” counts from, and it fills in whatever a rule leaves out: the weekday for a bare FREQ=WEEKLY, and the day of the month for a bare FREQ=MONTHLY. Nothing occurs before it. Times are wall-clock in the time zone, so 19:30 stays 19:30 when the clocks change. A shift that runs past midnight belongs to the day it starts.</p>
+    <h3>Calendar</h3>
+    <div id="pattern-cal"></div>
+    <h3>Default shape</h3>
+    ${shapeEditor(state.shape, "shape")}
+  </section>`;
+}
+
+function overrideCard(o, i, n) {
+  const draft = state.pinDraft[o.id] || { who: "", role: "service", custom: "" };
+  return `<article class="ovr">
+    <header><span class="num">${i + 1}</span>
+      <input class="rule" data-bind="ovr-rule" data-i="${i}" value="${esc(o.rule)}" spellcheck="false" aria-label="Override ${i + 1} rule">
+      <button class="icon" data-act="ovr-up" data-i="${i}" ${i === 0 ? "disabled" : ""} title="Earlier (loses to later ones)">↑</button>
+      <button class="icon" data-act="ovr-down" data-i="${i}" ${i === n - 1 ? "disabled" : ""} title="Later (wins over earlier ones)">↓</button>
+      <button class="icon" data-act="ovr-rm" data-i="${i}" title="Remove">✕</button></header>
+    <div id="ovr-sum-${i}"></div>
+    <div class="fields"><label>Start from<input type="date" data-bind="ovr-anchor" data-i="${i}" value="${esc(o.anchor)}"></label></div>
+    <div class="props">
+      <label><input type="checkbox" data-act="ovr-start-toggle" data-i="${i}" ${o.start != null ? "checked" : ""}> Start time</label>
+      <div>${o.start != null ? `<input type="time" step="300" data-act="ovr-start" data-i="${i}" value="${hhmm(o.start)}">` : `<span class="off">as the pattern generates it</span>`}</div>
+      <label><input type="checkbox" data-act="ovr-len-toggle" data-i="${i}" ${o.length != null ? "checked" : ""}> Length</label>
+      <div>${o.length != null ? lengthSelect(o.length, "ovr-length", i) : `<span class="off">default (${fmtLen(state.length)})</span>`}</div>
+      <label><input type="checkbox" data-act="ovr-shape-toggle" data-i="${i}" ${o.shape ? "checked" : ""}> Shape</label>
+      <div>${o.shape ? shapeEditor(o.shape, "ovr-shape", i) : `<span class="off">default</span>`}</div>
+      <label style="padding-top:5px">Pins</label>
+      <div><div class="pins">${o.pins.map((p) => chip(p, "pin-rm", i)).join("") || `<span class="off">none</span>`}</div>
+        <div class="adder">
+          <select data-act="pin-who" data-i="${i}" aria-label="Who">
+            <option value="">Pin somebody…</option>
+            ${VOLUNTEERS.map((v) => `<option${draft.who === v ? " selected" : ""}>${v}</option>`).join("")}
+            <option value="__custom"${draft.who === "__custom" ? " selected" : ""}>Custom entry…</option>
+          </select>
+          ${draft.who === "__custom" ? `<input data-act="pin-custom" data-i="${i}" placeholder="e.g. Rotary Club" value="${esc(draft.custom)}">` : ""}
+          <select data-act="pin-role" data-i="${i}" aria-label="Role">${ROLES.map((r) => `<option value="${r.id}"${draft.role === r.id ? " selected" : ""}>${r.name}</option>`).join("")}</select>
+          <button class="btn" data-act="pin-add" data-i="${i}">Pin</button>
+        </div></div>
+    </div>
+  </article>`;
+}
+
+function overridesCard() {
+  return `<section class="panel">
+    <p class="eyebrow">Rota defaults</p>
+    <h2>Overrides <small>later ones win</small></h2>
+    <p class="hint">An Override is one RRULE that picks out shifts the pattern has already generated, and changes them. With BYHOUR and BYMINUTE it matches shifts starting at exactly that time. Without them, it matches every shift on those days. When two Overrides set the same thing on a shift, the one lower in the list wins. Pins add together.</p>
+    ${state.overrides.map((o, i) => overrideCard(o, i, state.overrides.length)).join("")}
+    <button class="btn" data-act="ovr-add">+ Add an Override</button>
+  </section>`;
+}
+
+function defineCard() {
+  const p = state.prev;
+  const prevLine = p && p.length
+    ? `<span>Previous rota: <b>${p.length} shifts</b>, stopped after <b>${fmtDay(Math.floor(cursorOf(p) / 1440))} at ${hhmm(cursorOf(p) % 1440)}</b></span><button class="link" data-act="forget-prev">Pretend this is the first rota</button>`
+    : `<span>No previous rota. This is the first, so it starts from the pattern's “Start from” date, ${validIso(state.anchor) ? fmtDay(toDay(state.anchor)) : "once one is set"}.</span>`;
+  return `<section class="panel">
+    <p class="eyebrow">Allocation tab</p>
+    <h2>Define the next rota</h2>
+    <div class="prev">${prevLine}</div>
+    <div class="fields">
+      <label>Shifts<input type="number" min="1" data-bind="count" value="${esc(state.count)}"></label>
+      ${state.start != null
+        ? `<label>Not before<input type="date" data-bind="start" value="${esc(state.start)}"></label>
+           <button class="link" data-act="start-reset" style="align-self:end;margin-bottom:8px">No gap after all</button>`
+        : `<button class="link" data-act="gap" style="align-self:end;margin-bottom:8px">Leave a gap…</button>`}
+    </div>
+    <p class="hint">${state.start != null
+      ? "The rota carries on from the previous one, skipping any shift before the date you pick."
+      : p && p.length ? "The rota carries on from the exact shift the previous one stopped after." : "The first rota starts from the pattern's “Start from” date."}</p>
+    <div id="preview"></div>
+  </section>`;
+}
+
+function shiftRow(s, past) {
+  const end = s.min + s.length;
+  const nextDay = end >= 1440;
+  const roles = ROLES.map((r) => {
+    const seats = s.shape[r.id] || 0;
+    const pins = s.pins.filter((p) => p.role === r.id);
+    if (!seats && !pins.length) return "";
+    return `<div class="role"><span class="rn">${r.name}</span><span class="seats${pins.length > seats ? " over" : ""}">${pins.length ? `${pins.length} of ` : ""}${seats} seat${seats === 1 ? "" : "s"}</span>${pins.map((p) => chip(p)).join("")}</div>`;
+  }).join("");
+  const tags = s.from.map((f) => `<span title="Override ${f.i + 1}">Override ${f.i + 1}: ${f.did.join(", ") || "nothing to change"}</span>`).join("");
+  return `<li class="shift${past ? " past" : ""}${s.clash ? " clash" : ""}">
+    <div class="when"><b>${fmtDay(s.day, false)}</b><span>${hhmm(s.min)}–${hhmm(end % 1440)}</span>${s.gen != null && s.key !== s.gen ? `<em>moved from ${hhmm(s.gen % 1440)}</em>` : ""}${nextDay ? `<em>ends the next day</em>` : ""}</div>
+    <div class="roles">${past ? `<span class="off">already defined</span>` : roles || `<span class="off">asks for nobody</span>`}${tags ? `<div class="tags">${tags}</div>` : ""}</div>
+    ${s.clash ? `<div class="clashnote">${esc(s.clash)}</div>` : ""}
+  </li>`;
+}
+
+function renderPreview() {
+  const el = $("#preview");
+  const pv = preview();
+  if (pv.error) { el.innerHTML = `<ul class="warn"><li class="bad">${esc(pv.error)}</li></ul>`; return; }
+  const sh = pv.shifts;
+  let html = sh.length
+    ? `<p class="headline"><b>${sh.length}</b> shift${sh.length === 1 ? "" : "s"}, from <b>${fmtDay(sh[0].day)}</b> to <b>${fmtDay(sh.at(-1).day)}</b></p>`
+    : `<p class="headline">No shifts.</p>`;
+  html += pv.warns.length ? `<ul class="warn">${pv.warns.map((w) => `<li class="${w.bad ? "bad" : ""}">${esc(w.text)}</li>`).join("")}</ul>` : "";
+  html += `<button class="btn primary" data-act="define" ${!sh.length || pv.clashes ? "disabled" : ""}>Define rota</button>`;
+
+  // The previous rota's last two shifts, for continuity.
+  const prevTail = (state.prev || []).slice(-2).map((p) => ({ key: p.key, gen: p.gen, day: Math.floor(p.key / 1440), min: p.key % 1440, length: p.length, shape: {}, pins: [], from: [] }));
+  if (prevTail.length) html += `<h4 class="month">End of the previous rota</h4><ul class="shifts">${prevTail.map((s) => shiftRow(s, true)).join("")}</ul>`;
+
+  let month = "";
+  let open = false;
+  for (const s of sh) {
+    const p = parts(s.day);
+    const label = `${MONTHNAME[p.m - 1]} ${p.y}`;
+    if (label !== month) { if (open) html += "</ul>"; html += `<h4 class="month">${label}</h4><ul class="shifts">`; month = label; open = true; }
+    html += shiftRow(s, false);
+  }
+  if (open) html += "</ul>";
+  el.innerHTML = html;
+}
+
+// Which dates the pattern puts shifts on, three months at a time from the month it starts from.
+function renderCalendar() {
+  const el = $("#pattern-cal");
+  if (!el) return;
+  const lines = parseSet(state.pattern, "pattern");
+  if (!lines.length || lines.some((l) => l.error) || !validIso(state.anchor)) {
+    el.innerHTML = `<p class="hint">Fix the pattern to see its calendar.</p>`;
+    return;
+  }
+  const anchor = toDay(state.anchor), a = parts(anchor);
+  const offset = state.calOffset || 0;
+  const months = [0, 1, 2].map((k) => { const n = a.y * 12 + (a.m - 1) + offset + k; return { y: Math.floor(n / 12), m: (n % 12) + 1 }; });
+  const last = months.at(-1);
+  const endDay = Date.UTC(last.y, last.m - 1, monthLen(last.y, last.m)) / DAY;
+  const byDay = new Map();
+  for (const l of lines) for (const k of occurrences(l.rule, anchor, endDay)) {
+    const d = Math.floor(k / 1440);
+    if (!byDay.has(d)) byDay.set(d, new Set());
+    byDay.get(d).add(k % 1440);
+  }
+  const todayDay = toDay(today());
+  const month = ({ y, m }) => {
+    const first = Date.UTC(y, m - 1, 1) / DAY;
+    let cells = ["M","T","W","T","F","S","S"].map((d) => `<span class="dow">${d}</span>`).join("");
+    cells += `<span></span>`.repeat(parts(first).wd);
+    for (let d = first; d < first + monthLen(y, m); d++) {
+      const times = byDay.has(d) ? [...byDay.get(d)].sort((x, z) => x - z) : [];
+      const cls = ["cal-day", times.length ? "on" : "", d < anchor ? "before" : "", d === todayDay ? "today" : ""].filter(Boolean).join(" ");
+      const tip = times.length
+        ? `<span class="cal-tip" role="tooltip"><b>${fmtDay(d)}</b>${times.map((t) => `${hhmm(t)}–${hhmm((t + state.length) % 1440)}${t + state.length >= 1440 ? " <small>(next day)</small>" : ""}`).join("<br>")}</span>`
+        : "";
+      const label = times.length ? ` aria-label="${fmtDay(d)}: ${times.map(hhmm).join(", ")}"` : "";
+      cells += `<span class="${cls}"${times.length ? ` tabindex="0"${label}` : ""}>${parts(d).d}${times.length ? `<span class="cal-dots">${"<i></i>".repeat(Math.min(times.length, 4))}</span>` : ""}${tip}</span>`;
+    }
+    return `<div class="cal-month"><h4>${MONTHNAME[m - 1]} ${y}</h4><div class="cal-grid">${cells}</div></div>`;
+  };
+  el.innerHTML = `<div class="cal-nav">
+      <button class="icon" data-act="cal-prev" aria-label="Earlier months">‹</button>
+      <button class="icon" data-act="cal-next" aria-label="Later months">›</button>
+      ${offset ? `<button class="link" data-act="cal-home">Back to where it starts</button>` : ""}
+      <span class="note">Hover a date for its times. A dot is a shift.</span>
+    </div>
+    <div class="cal-months">${months.map(month).join("")}</div>`;
+}
+
+function renderDerived() {
+  renderCalendar();
+  // Pattern lines
+  const lines = parseSet(state.pattern, "pattern");
+  const anchorOk = validIso(state.anchor);
+  $("#pattern-lines").innerHTML = lines.length
+    ? lines.map((l) => l.error
+        ? `<li class="err"><span><code>${esc(l.raw)}</code><br>${esc(l.error)}</span></li>`
+        : `<li><span>${anchorOk ? describe(l.rule, toDay(state.anchor), "pattern") : "Set a “Start from” date"}</span></li>`).join("")
+    : `<li class="err"><span>No lines yet.</span></li>`;
+  // Override summaries
+  state.overrides.forEach((o, i) => {
+    const el = document.getElementById(`ovr-sum-${i}`);
+    if (!el) return;
+    const p = parseRule(o.rule, "override");
+    if (p.error) { el.innerHTML = `<p class="sum err">${esc(p.error)}</p>`; return; }
+    const anchor = validIso(o.anchor) ? toDay(o.anchor) : toDay(state.anchor);
+    const exact = !!p.rule.byhour;
+    el.innerHTML = `<p class="sum">${describe(p.rule, anchor, "override")}</p>
+      <span class="badge${exact ? " exact" : ""}">${exact ? `Applies only to shifts starting at ${listJoin(ruleTimes(p.rule).map(hhmm))}` : "Applies to every shift on these days"}</span>`;
+  });
+  // The start date follows the previous rota (or the anchor) until somebody types one.
+  renderPreview();
+}
+
+function renderAll() {
+  $("#presets").innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button class="btn${state.preset === k ? " primary" : ""}" data-act="preset" data-k="${k}">${p.label}</button>`).join(" ");
+  $("#left").innerHTML = patternCard() + overridesCard();
+  $("#right").innerHTML = defineCard();
+  renderDerived();
+}
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 3200); }
+
+/* ---------- events ---------- */
+document.addEventListener("input", (e) => {
+  const t = e.target, b = t.dataset.bind, i = Number(t.dataset.i);
+  if (!b) return;
+  if (b === "pattern") state.pattern = t.value;
+  else if (b === "anchor") state.anchor = t.value;
+  else if (b === "tz") state.tz = t.value;
+  else if (b === "start") state.start = t.value;
+  else if (b === "count") state.count = t.value;
+  else if (b === "ovr-rule") state.overrides[i].rule = t.value;
+  else if (b === "ovr-anchor") state.overrides[i].anchor = t.value;
+  save();
+  renderDerived();
+});
+
+document.addEventListener("change", (e) => {
+  const t = e.target, act = t.dataset.act, i = Number(t.dataset.i);
+  if (!act) return;
+  const o = state.overrides[i];
+  const draft = o && (state.pinDraft[o.id] ||= { who: "", role: "service", custom: "" });
+  switch (act) {
+    case "length": state.length = Number(t.value); break;
+    case "ovr-length": o.length = Number(t.value); break;
+    case "ovr-len-toggle": o.length = t.checked ? state.length : null; break;
+    case "ovr-start-toggle": {
+      const p = parseRule(o.rule, "override");
+      o.start = t.checked ? (p.rule?.byhour ? ruleTimes(p.rule)[0] : 18 * 60) : null;
+      break;
+    }
+    case "ovr-start": { const [h, m] = t.value.split(":").map(Number); if (Number.isInteger(h) && Number.isInteger(m)) o.start = h * 60 + m; break; }
+    case "ovr-shape-toggle": o.shape = t.checked ? { ...state.shape } : null; break;
+    case "pin-who": draft.who = t.value; break;
+    case "pin-role": draft.role = t.value; break;
+    case "pin-custom": draft.custom = t.value; break;
+    default: return;
+  }
+  save(); renderAll();
+});
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-act]");
+  if (!t || t.tagName === "SELECT" || t.tagName === "INPUT") return;
+  const act = t.dataset.act, i = Number(t.dataset.i), o = state.overrides[i];
+  switch (act) {
+    case "preset": state = fromPreset(t.dataset.k); break;
+    case "reset": state = fromPreset("sunday"); break;
+    case "shape": state.shape[t.dataset.role] = Math.max(0, (state.shape[t.dataset.role] || 0) + Number(t.dataset.d)); break;
+    case "ovr-shape": o.shape[t.dataset.role] = Math.max(0, (o.shape[t.dataset.role] || 0) + Number(t.dataset.d)); break;
+    case "ovr-add": state.overrides.push({ id: newId(), rule: "RRULE:FREQ=MONTHLY;BYDAY=1SU", anchor: today(), start: null, length: null, shape: null, pins: [] }); break;
+    case "ovr-rm": state.overrides.splice(i, 1); break;
+    case "ovr-up": [state.overrides[i - 1], state.overrides[i]] = [state.overrides[i], state.overrides[i - 1]]; break;
+    case "ovr-down": [state.overrides[i + 1], state.overrides[i]] = [state.overrides[i], state.overrides[i + 1]]; break;
+    case "pin-rm": o.pins = o.pins.filter((p) => p.id !== t.dataset.id); break;
+    case "pin-add": {
+      const d = state.pinDraft[o.id] || { who: "", role: "service", custom: "" };
+      if (!d.who) { toast("Choose who to pin first."); return; }
+      if (d.who === "__custom") {
+        const c = (document.querySelector(`[data-act="pin-custom"][data-i="${i}"]`)?.value || "").trim();
+        if (!c) { toast("Type the custom entry first."); return; }
+        o.pins.push({ id: newId(), custom: c, role: d.role });
+      } else {
+        // One person once per Override; pinning them again changes their Role.
+        o.pins = o.pins.filter((p) => p.volunteer !== d.who);
+        o.pins.push({ id: newId(), volunteer: d.who, role: d.role });
+      }
+      state.pinDraft[o.id] = { who: "", role: d.role, custom: "" };
+      break;
+    }
+    case "forget-prev": state.prev = null; state.start = null; break;
+    case "start-reset": state.start = null; break;
+    case "cal-prev": state.calOffset = (state.calOffset || 0) - 1; break;
+    case "cal-next": state.calOffset = (state.calOffset || 0) + 1; break;
+    case "cal-home": state.calOffset = 0; break;
+    case "gap": state.start = isoOf(toDay(prefillStart()) + 7); break;
+    case "define": {
+      const pv = preview();
+      if (pv.error || !pv.shifts.length || pv.clashes) return;
+      state.prev = pv.shifts.map((s) => ({ key: s.key, gen: s.gen, length: s.length }));
+      state.start = null;
+      toast(`Faked: ${pv.shifts.length} shifts defined. The next rota now starts after ${fmtDay(pv.shifts.at(-1).day)}.`);
+      break;
+    }
+    default: return;
+  }
+  save(); renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>
