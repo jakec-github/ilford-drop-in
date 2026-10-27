@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -29,10 +30,12 @@ const tailLength = 3
 const maxShiftCount = 366
 
 // PlanRotaStore is what planning a rota reads: the pattern and its length, the
-// rotas that exist, to carry on from the latest, that rota's Shifts for its
-// tail, and the Shifts already running at the planned times.
+// Overrides that change what it generates, the rotas that exist, to carry on
+// from the latest, that rota's Shifts for its tail, and the Shifts already
+// running at the planned times.
 type PlanRotaStore interface {
 	RotaDefaultsStore
+	OverrideStore
 	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error)
 	GetShiftsOverlapping(ctx context.Context, startAt, endAt string) ([]db.Shift, error)
@@ -48,6 +51,11 @@ type RotaPlan struct {
 	// Shifts are the Shifts that would be minted, in order, with no id or
 	// rota yet: they do not exist until the rota is defined.
 	Shifts []db.Shift
+	// Overridden is what the Overrides make of each of Shifts, aligned with
+	// it, and Overrides how far each Override reached, in list order. Both are
+	// empty when the pattern could not fill the rota.
+	Overridden []OverriddenShift
+	Overrides  []OverrideReach
 	// Refusal is why this rota cannot be defined as it stands — no pattern, a
 	// pattern that has run out, a clash with a Shift that already exists — and
 	// nil when it can. A plan with a refusal still carries whatever Shifts
@@ -127,6 +135,19 @@ func PlanRota(ctx context.Context, store PlanRotaStore, params DefineRotaParams)
 	if len(plan.Shifts) < params.ShiftCount {
 		plan.Refusal = ranOut(len(plan.Shifts), params.ShiftCount)
 		return plan, nil
+	}
+
+	overrides, err := store.GetOverrides(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch overrides: %w", err)
+	}
+	plan.Overridden, plan.Overrides, err = applyOverrides(overrides, plan.Shifts)
+	if errors.Is(err, ErrInvalidInput) {
+		plan.Refusal = err
+		return plan, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	plan.Refusal, err = clash(ctx, store, plan.Shifts)

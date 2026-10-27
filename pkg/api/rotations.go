@@ -94,11 +94,35 @@ func (h *Handler) handleDefineRota(w http.ResponseWriter, r *http.Request) {
 // It is part of the answer rather than an error status, because a plan that
 // cannot be defined is still a plan the screen shows — the Shifts that would
 // clash, beside the sentence saying so.
+//
+// Overrides is how far each Override reaches across the planned Shifts, in
+// list order, so the screen can say which match nothing.
 type rotaPlanResponse struct {
-	PatternSet bool                   `json:"patternSet"`
-	Previous   *previousRotaResponse  `json:"previous"`
-	Shifts     []plannedShiftResponse `json:"shifts"`
-	Refusal    string                 `json:"refusal"`
+	PatternSet bool                    `json:"patternSet"`
+	Previous   *previousRotaResponse   `json:"previous"`
+	Shifts     []plannedShiftResponse  `json:"shifts"`
+	Overrides  []overrideReachResponse `json:"overrides"`
+	Refusal    string                  `json:"refusal"`
+}
+
+// overrideReachResponse is one Override and how many of the planned Shifts it
+// matched. MissedByTime marks an exact-time Override that matched none though
+// it falls on a date one of them is on: the pattern's time has likely changed
+// under it.
+type overrideReachResponse struct {
+	Number       int    `json:"number"`
+	Description  string `json:"description"`
+	Granularity  string `json:"granularity"`
+	Matched      int    `json:"matched"`
+	MissedByTime bool   `json:"missedByTime"`
+}
+
+// overrideTouchResponse is one Override that matched a planned Shift, and
+// what it set there.
+type overrideTouchResponse struct {
+	Number int  `json:"number"`
+	Shape  bool `json:"shape"`
+	Pins   int  `json:"pins"`
 }
 
 // previousRotaResponse is where the rota before stopped: the generated start
@@ -111,9 +135,13 @@ type previousRotaResponse struct {
 
 // plannedShiftResponse is a Shift by its wall-clock times. A planned one has
 // no id yet; a tail Shift's id is left off too, since nothing here acts on it.
+//
+// Overrides are the Overrides that matched it, in the order they applied;
+// always empty on a tail Shift, which was defined already.
 type plannedShiftResponse struct {
-	Start string `json:"start"`
-	End   string `json:"end"`
+	Start     string                  `json:"start"`
+	End       string                  `json:"end"`
+	Overrides []overrideTouchResponse `json:"overrides"`
 }
 
 // handleGetRotaPlan answers what defining a rota of shiftCount Shifts, none
@@ -141,6 +169,23 @@ func (h *Handler) handleGetRotaPlan(w http.ResponseWriter, r *http.Request) {
 	resp := rotaPlanResponse{
 		PatternSet: plan.PatternSet,
 		Shifts:     toPlannedShifts(plan.Shifts),
+		Overrides:  make([]overrideReachResponse, 0, len(plan.Overrides)),
+	}
+	for i, overridden := range plan.Overridden {
+		for _, touch := range overridden.Touches {
+			resp.Shifts[i].Overrides = append(resp.Shifts[i].Overrides, overrideTouchResponse{
+				Number: touch.Number, Shape: touch.SetsShape, Pins: touch.Pins,
+			})
+		}
+	}
+	for _, reach := range plan.Overrides {
+		resp.Overrides = append(resp.Overrides, overrideReachResponse{
+			Number:       reach.Number,
+			Description:  reach.Description,
+			Granularity:  reach.Granularity,
+			Matched:      reach.Matched,
+			MissedByTime: reach.MissedByTime,
+		})
 	}
 	if plan.Previous != nil {
 		resp.Previous = &previousRotaResponse{
@@ -158,7 +203,7 @@ func (h *Handler) handleGetRotaPlan(w http.ResponseWriter, r *http.Request) {
 func toPlannedShifts(shifts []db.Shift) []plannedShiftResponse {
 	out := make([]plannedShiftResponse, 0, len(shifts))
 	for _, s := range shifts {
-		out = append(out, plannedShiftResponse{Start: s.StartAt, End: s.EndAt})
+		out = append(out, plannedShiftResponse{Start: s.StartAt, End: s.EndAt, Overrides: []overrideTouchResponse{}})
 	}
 	return out
 }

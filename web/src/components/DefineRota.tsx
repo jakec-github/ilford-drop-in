@@ -1,9 +1,10 @@
 import { useState } from "react";
 import Button from "../ui/Button";
 import { useDefineRota } from "../hooks/useDefineRota";
+import OverridesCard from "./OverridesCard";
 import RotaDefaultsCard from "./RotaDefaultsCard";
 import { formatDay, formatStart, endOf } from "./patternDates";
-import type { PlannedShift } from "../types";
+import type { OverrideReach, OverrideTouch, PlannedShift } from "../types";
 import "./DefineRota.css";
 
 // The count as typed, or null while it is not yet a whole number of shifts.
@@ -29,10 +30,22 @@ function shiftLength(shift: PlannedShift): number {
   return (Date.parse(`${shift.end}Z`) - Date.parse(`${shift.start}Z`)) / 60000;
 }
 
+// What one Override did to one Shift, in a few words: "Override 2: shape, 1 pin".
+function touchLabel(touch: OverrideTouch): string {
+  const did: string[] = [];
+  if (touch.shape) did.push("shape");
+  if (touch.pins > 0) did.push(`${touch.pins} ${touch.pins === 1 ? "pin" : "pins"}`);
+  return `Override ${touch.number}: ${did.join(", ") || "nothing to change"}`;
+}
+
 // One Shift as a row: the day, then its hours, with "(next day)" for one that
-// runs past midnight. The end is the server's; it is only said here.
+// runs past midnight. The end is the server's; it is only said here. A planned
+// Shift is tagged with the Overrides that touched it, in the order they
+// applied, so an Organiser can see which shifts their Overrides land on before
+// defining.
 function ShiftRow({ shift, note }: { shift: PlannedShift; note?: string }) {
   const end = endOf(shift.start, shiftLength(shift));
+  const touches = shift.overrides ?? [];
   return (
     <li className={note ? "define-rota-shift defined" : "define-rota-shift"}>
       <span className="define-rota-shift-day">
@@ -43,7 +56,36 @@ function ShiftRow({ shift, note }: { shift: PlannedShift; note?: string }) {
         {end.nextDay && <small> (next day)</small>}
       </span>
       {note && <span className="define-rota-shift-note">{note}</span>}
+      {touches.length > 0 && (
+        <span className="define-rota-shift-tags">
+          {touches.map((touch) => (
+            <span key={touch.number} className="define-rota-shift-tag">
+              {touchLabel(touch)}
+            </span>
+          ))}
+        </span>
+      )}
     </li>
+  );
+}
+
+// An Override that matched none of the planned Shifts is worth a word: it may
+// be aimed past this rota, or — for one naming a time — at a time the pattern
+// no longer starts a shift at.
+function OverrideWarnings({ reach }: { reach: OverrideReach[] }) {
+  const missed = reach.filter((r) => r.matched === 0);
+  if (missed.length === 0) return null;
+  return (
+    <ul className="define-rota-override-warnings">
+      {missed.map((r) => (
+        <li key={r.number}>
+          Override {r.number} ({r.description}) matches no shift in this rota
+          {r.missedByTime
+            ? ". It falls on days this rota has shifts, but not at a time the pattern starts one — has the pattern's time changed?"
+            : "."}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -89,9 +131,9 @@ function PlannedShifts({ shifts }: { shifts: PlannedShift[] }) {
 // shown above them so the join can be checked by eye: an Organiser who expected
 // the 19:30 after a 10:00 sees it there.
 //
-// The Rota Defaults card is the same one the settings screen shows (issue
-// #176). It is here because this is the moment those settings are spent, and
-// a change to it re-plans the form above.
+// The Rota Defaults and Overrides cards are the same ones the settings screen
+// shows (issue #176). They are here because this is the moment those settings
+// are spent, and a change to either re-plans the form above.
 export default function DefineRota({
   onDefined,
 }: {
@@ -252,6 +294,7 @@ export default function DefineRota({
                     </ol>
                   </div>
                 )}
+                <OverrideWarnings reach={plan?.overrides ?? []} />
                 <PlannedShifts shifts={shifts} />
               </>
             )}
@@ -299,6 +342,7 @@ export default function DefineRota({
       </section>
 
       <RotaDefaultsCard onSaved={() => setReload((n) => n + 1)} />
+      <OverridesCard onSaved={() => setReload((n) => n + 1)} />
     </>
   );
 }

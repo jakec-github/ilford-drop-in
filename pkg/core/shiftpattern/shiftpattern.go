@@ -72,7 +72,7 @@ func Read(text string, startFrom time.Time) ([]Line, *Pattern) {
 			continue
 		}
 		line := Line{Number: i + 1, Text: trimmed}
-		option, problems := parseLine(trimmed)
+		option, problems := parseLine(trimmed, true)
 		if len(problems) > 0 {
 			line.Problems = problems
 			usable = false
@@ -198,11 +198,17 @@ var (
 // Organiser fixing a line wants every problem in words they can act on. And
 // the ADR narrows RRULE: some parts are refused outright, and two that RRULE
 // leaves optional are required here.
-func parseLine(text string) (rrule.ROption, []string) {
+//
+// needsTime is whether the line must state a time. A pattern line must, since
+// its time is when the Shift starts. An Override's rule may state one or not,
+// but not half of one: with BYHOUR and BYMINUTE it picks out the Shift
+// generated at that time, and without either it picks out every Shift on the
+// dates it names.
+func parseLine(text string, needsTime bool) (rrule.ROption, []string) {
 	s := strings.ToUpper(strings.TrimSpace(text))
 	switch {
 	case strings.HasPrefix(s, "DTSTART"):
-		return rrule.ROption{}, []string{"DTSTART is not written in the pattern - Start from says where it counts from"}
+		return rrule.ROption{}, []string{"DTSTART is not written in the rule - Start from says where it counts from"}
 	case strings.HasPrefix(s, "RDATE"):
 		return rrule.ROption{}, []string{"RDATE adds a one-off shift, and every shift comes from the pattern"}
 	case strings.HasPrefix(s, "EXDATE"), strings.HasPrefix(s, "EXRULE"):
@@ -301,7 +307,7 @@ func parseLine(text string) (rrule.ROption, []string) {
 		case "BYSETPOS", "BYWEEKNO", "BYYEARDAY", "BYSECOND":
 			problems = append(problems, key+" is not supported")
 		case "DTSTART":
-			problems = append(problems, "DTSTART is not written in the pattern - Start from says where it counts from")
+			problems = append(problems, "DTSTART is not written in the rule - Start from says where it counts from")
 		default:
 			problems = append(problems, key+" is not an RRULE part")
 		}
@@ -316,8 +322,12 @@ func parseLine(text string) (rrule.ROption, []string) {
 	if positional && (option.Freq == rrule.DAILY || option.Freq == rrule.WEEKLY) {
 		problems = append(problems, "a position like 1SU only means something with FREQ=MONTHLY or YEARLY")
 	}
-	if len(option.Byhour) == 0 || len(option.Byminute) == 0 {
+	hasHour, hasMinute := len(option.Byhour) > 0, len(option.Byminute) > 0
+	switch {
+	case needsTime && (!hasHour || !hasMinute):
 		problems = append(problems, "every line needs BYHOUR and BYMINUTE - they are the shift's start time")
+	case hasHour != hasMinute:
+		problems = append(problems, "give BYHOUR and BYMINUTE together for shifts starting at that time, or neither for every shift on those days")
 	}
 	return option, problems
 }

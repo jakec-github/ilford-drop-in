@@ -28,10 +28,9 @@ type mockStore struct {
 	allocations   []db.Allocation
 	alterations   []db.Alteration
 	manualPins    []db.Pin
-	// standingPreallocations are the Rota Defaults' Standing Preallocations,
-	// which seed ordinary ones when a rota is defined.
-	standingPreallocations []db.StandingPreallocation
-	availabilityRequests   []db.AvailabilityRequest
+	// overrides are the Rota Defaults' Overrides, in the order they apply.
+	overrides            []db.Override
+	availabilityRequests []db.AvailabilityRequest
 	// repliedRequestIDs are the requests a volunteer has answered, which is all
 	// the round counts need to know about a response.
 	repliedRequestIDs map[string]bool
@@ -43,8 +42,6 @@ type mockStore struct {
 	insertedRotations   []db.Rotation
 	insertedShifts      []db.Shift
 	deletedPinIDs       []string
-	insertedStanding    []db.StandingPreallocation
-	deletedStandingIDs  []string
 	storedDrafts        []db.DraftRotaAllocation
 	storedDraftSeats    [][]db.DraftAllocation
 	insertedAllocations []db.Allocation
@@ -57,9 +54,9 @@ type mockStore struct {
 	// discardErr is what the database says to a discard that fails outright, as
 	// opposed to one it refuses (db.ErrRotaAllocated).
 	discardErr error
-	// standingWriteErr is what the database says to a Standing Preallocation
-	// write — db.ErrDuplicateStandingPreallocation for a promise already made.
-	standingWriteErr error
+	// overrideWriteErr is what the database says to an Override write —
+	// db.ErrDuplicateOverridePin for one person pinned twice.
+	overrideWriteErr error
 	insertErr        error
 	pingErr          error
 	getShiftsErr     error
@@ -339,28 +336,56 @@ func (m *mockStore) GetShiftShapes(_ context.Context, shiftIDs []string) (map[st
 	return shapes, nil
 }
 
-func (m *mockStore) GetStandingPreallocations(context.Context) ([]db.StandingPreallocation, error) {
-	return m.standingPreallocations, nil
+func (m *mockStore) GetOverrides(context.Context) ([]db.Override, error) {
+	return m.overrides, nil
 }
 
-func (m *mockStore) InsertStandingPreallocation(_ context.Context, s db.StandingPreallocation) error {
-	if m.standingWriteErr != nil {
-		return m.standingWriteErr
+func (m *mockStore) InsertOverride(_ context.Context, o db.Override) error {
+	if m.overrideWriteErr != nil {
+		return m.overrideWriteErr
 	}
-	m.standingPreallocations = append(m.standingPreallocations, s)
-	m.insertedStanding = append(m.insertedStanding, s)
+	m.overrides = append(m.overrides, o)
 	return nil
 }
 
-func (m *mockStore) DeleteStandingPreallocationByID(_ context.Context, id string) (bool, error) {
-	for i := range m.standingPreallocations {
-		if m.standingPreallocations[i].ID == id {
-			m.standingPreallocations = append(m.standingPreallocations[:i], m.standingPreallocations[i+1:]...)
-			m.deletedStandingIDs = append(m.deletedStandingIDs, id)
+func (m *mockStore) UpdateOverride(_ context.Context, o db.Override) error {
+	if m.overrideWriteErr != nil {
+		return m.overrideWriteErr
+	}
+	for i := range m.overrides {
+		if m.overrides[i].ID == o.ID {
+			m.overrides[i] = o
+			return nil
+		}
+	}
+	return db.ErrOverrideNotFound
+}
+
+func (m *mockStore) DeleteOverride(_ context.Context, id string) (bool, error) {
+	for i := range m.overrides {
+		if m.overrides[i].ID == id {
+			m.overrides = append(m.overrides[:i], m.overrides[i+1:]...)
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func (m *mockStore) ReorderOverrides(_ context.Context, ids []string) error {
+	byID := map[string]db.Override{}
+	for _, o := range m.overrides {
+		byID[o.ID] = o
+	}
+	reordered := make([]db.Override, 0, len(ids))
+	for _, id := range ids {
+		o, ok := byID[id]
+		if !ok {
+			return db.ErrOverrideNotFound
+		}
+		reordered = append(reordered, o)
+	}
+	m.overrides = reordered
+	return nil
 }
 
 func (m *mockStore) GetAllocationsByShiftIDs(ctx context.Context, shiftIDs []string) ([]db.Allocation, error) {

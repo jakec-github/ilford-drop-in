@@ -449,8 +449,8 @@ func buildPinOverrides(
 // Having gone inactive is not a failure: solverVolunteers sends anybody a pin
 // names, active or not (ADR 0010).
 //
-// It matters most for the pins nobody typed recently: a Standing Preallocation
-// seeds one at definition and an Organiser may not look at it again before
+// It matters most for the pins nobody typed recently: an Override
+// makes one at definition and an Organiser may not look at it again before
 // allocating, by which time the person can have left.
 //
 // Closed shifts are skipped: InitShifts strips their pins, so a stale one there

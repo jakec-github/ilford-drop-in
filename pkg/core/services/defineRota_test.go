@@ -24,7 +24,7 @@ type mockDB struct {
 	existingShifts  []db.Shift
 	defaults        db.RotaDefaults
 	shape           []db.DefaultShapeSeat
-	standing        []db.StandingPreallocation
+	overrides       []db.Override
 	insertedRotas   []*db.Rotation
 	insertedShifts  [][]db.Shift
 	insertedPins    [][]db.Pin
@@ -74,8 +74,8 @@ func (m *mockDB) GetDefaultShape(ctx context.Context) ([]db.DefaultShapeSeat, er
 	return m.shape, nil
 }
 
-func (m *mockDB) GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error) {
-	return m.standing, nil
+func (m *mockDB) GetOverrides(ctx context.Context) ([]db.Override, error) {
+	return m.overrides, nil
 }
 
 func (m *mockDB) InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, pins []db.Pin, requirements []db.ShiftRequirement) error {
@@ -292,24 +292,29 @@ func TestDefineRota_WritesTheDefaultShapeOntoEveryShift(t *testing.T) {
 	assert.Equal(t, expected, mock.insertedSeats[0])
 }
 
-// Defining a rota spends the Standing Preallocations: they become ordinary
-// Pins on the Shifts their rules land on, written in the same
-// transaction as the rota itself.
-func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
+// Defining a rota spends the Overrides: their Pins become ordinary Pins on the
+// Shifts their rules match, written in the same transaction as the rota itself.
+func TestDefineRota_PinsTheShiftsAnOverrideMatches(t *testing.T) {
 	// A rota starting on the first Sunday of a month, so a "first Sunday" rule
 	// lands on its opening shift and on nothing else in a four-shift run.
 	mock := definable()
-	mock.standing = []db.StandingPreallocation{
-		{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
-	}
+	mock.overrides = []db.Override{firstSundayOverride(
+		db.OverridePin{ID: "op-1", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
+		db.OverridePin{ID: "op-2", RoleID: "role-team-lead", VolunteerID: "v1"},
+	)}
 
 	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
 
-	require.Len(t, result.Pins, 1)
-	assert.Equal(t, result.Shifts[0].ID, result.Pins[0].ShiftID)
+	require.Len(t, result.Pins, 2)
+	for _, pin := range result.Pins {
+		assert.Equal(t, result.Shifts[0].ID, pin.ShiftID)
+		assert.NotEqual(t, "op-1", pin.ID, "a minted Pin is a Pin of its own, not the Override's")
+	}
 	assert.Equal(t, "St John's team", result.Pins[0].CustomValue)
 	assert.Equal(t, "role-service-volunteer", result.Pins[0].RoleID)
+	assert.Equal(t, "v1", result.Pins[1].VolunteerID)
+	assert.Equal(t, "role-team-lead", result.Pins[1].RoleID)
 
 	// One store call, so a rota can never exist with only some of the pins an
 	// Organiser was promised.
@@ -317,9 +322,29 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 	assert.Equal(t, result.Pins, mock.insertedPins[0])
 }
 
-// No Standing Preallocations is the ordinary state of a deployment nobody has
-// configured, not a reason to refuse a rota.
-func TestDefineRota_NoStandingPreallocations(t *testing.T) {
+// An Override's Shape replaces the default Shape whole on the Shifts it
+// matches, and only on those.
+func TestDefineRota_AnOverridesShapeReplacesTheDefault(t *testing.T) {
+	mock := definable()
+	quiet := firstSundayOverride()
+	quiet.SetsShape = true
+	quiet.Seats = []db.OverrideSeat{{RoleID: "role-service-volunteer", Seats: 2}}
+	mock.overrides = []db.Override{quiet}
+
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(2))
+	require.NoError(t, err)
+
+	first, second := result.Shifts[0].ID, result.Shifts[1].ID
+	assert.Equal(t, []db.ShiftRequirement{
+		{ShiftID: first, RoleID: "role-service-volunteer", Seats: 2},
+		{ShiftID: second, RoleID: "role-team-lead", Seats: 1},
+		{ShiftID: second, RoleID: "role-service-volunteer", Seats: 4},
+	}, mock.insertedSeats[0])
+}
+
+// No Overrides is the ordinary state of a deployment nobody has configured,
+// not a reason to refuse a rota.
+func TestDefineRota_NoOverrides(t *testing.T) {
 	mock := definable()
 
 	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))

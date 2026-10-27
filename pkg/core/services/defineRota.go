@@ -13,8 +13,7 @@ import (
 )
 
 // RotaResult represents the result of defining a new rota: the rotation, the
-// shifts it minted, in date order, and the Pins its Standing
-// Preallocations seeded. Callers get the shifts themselves rather than bare
+// shifts it minted, in date order, and the Pins its Overrides seeded. Callers get the shifts themselves rather than bare
 // dates, because a shift's id is its identity everywhere downstream (ADR 0001).
 type RotaResult struct {
 	Rotation *db.Rotation
@@ -44,21 +43,21 @@ type DefineRotaParams struct {
 }
 
 // DefineRotaStore defines the database operations needed for defining a rota:
-// everything planning one reads, the default Shape each Shift is minted with a
-// copy of (issue #137) and the Roles that come with it, the Standing
-// Preallocations it seeds, and the links the round is opened with.
+// everything planning one reads, Overrides included, the default Shape each
+// Shift is minted with a copy of (issue #137) and the Roles that come with it,
+// and the links the round is opened with.
 type DefineRotaStore interface {
 	PlanRotaStore
 	DefaultShapeStore
 	MintRequestsStore
-	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
 	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, pins []db.Pin, requirements []db.ShiftRequirement) error
 }
 
 // DefineRota creates the rota an Organiser has asked for and mints the next
-// Shifts its Shift pattern generates, each with a copy of the default Shape, with the
-// Standing Preallocations seeded onto the Shifts their rules land on. It then
-// opens the rota's availability round, giving every active volunteer their link.
+// Shifts its Shift pattern generates, each with a copy of the default Shape,
+// then applies the Overrides to the Shifts their rules match: their Shapes in
+// place of the default, and their Pins. It then opens the rota's availability
+// round, giving every active volunteer their link.
 //
 // The round is opened here rather than being an Organiser's next click because
 // there is no rota a round is not wanted for: asking is how a rota is staffed,
@@ -143,41 +142,45 @@ func DefineRota(
 	rotation.ShiftCount = len(shifts)
 	rotation.StoppedAfter = last.StartAt
 
-	// Copy the default Shape onto every Shift. From here it is that Shift's
-	// Shape and nothing else's: editing it changes one evening, and editing the
-	// setting it was copied from changes what the *next* rota asks for. That is
-	// the whole of issue #137 in three lines, and the reason the copy is made
-	// here rather than being resolved from the settings on every read.
+	// Copy the default Shape onto every Shift, or the Shape the Overrides gave
+	// it. From here it is that Shift's Shape and nothing else's: editing it
+	// changes one evening, and editing the setting it was copied from changes
+	// what the *next* rota asks for. That is the whole of issue #137, and the
+	// reason the copy is made here rather than being resolved from the
+	// settings on every read.
+	//
+	// The Overrides' Pins become ordinary Pins on the same Shifts: nothing marks
+	// them as seeded, and an Organiser may remove any of them.
 	requirements := make([]db.ShiftRequirement, 0, len(shifts)*len(shape))
-	for _, s := range shifts {
-		for _, seat := range shape {
-			requirements = append(requirements, db.ShiftRequirement{
-				ShiftID: s.ID,
-				RoleID:  seat.Role.ID,
-				Seats:   seat.Count,
+	var pins []db.Pin
+	for i, s := range shifts {
+		overridden := plan.Overridden[i]
+		if overridden.SetsShape {
+			for _, seat := range overridden.Seats {
+				requirements = append(requirements, db.ShiftRequirement{
+					ShiftID: s.ID,
+					RoleID:  seat.RoleID,
+					Seats:   seat.Seats,
+				})
+			}
+		} else {
+			for _, seat := range shape {
+				requirements = append(requirements, db.ShiftRequirement{
+					ShiftID: s.ID,
+					RoleID:  seat.Role.ID,
+					Seats:   seat.Count,
+				})
+			}
+		}
+		for _, pin := range overridden.Pins {
+			pins = append(pins, db.Pin{
+				ID:          uuid.New().String(),
+				ShiftID:     s.ID,
+				RoleID:      pin.RoleID,
+				VolunteerID: pin.VolunteerID,
+				CustomValue: pin.CustomValue,
 			})
 		}
-	}
-
-	// Spend the Standing Preallocations: they become ordinary Pins on
-	// the Shifts their rules land on. Defining is the only moment they are read,
-	// which is what makes them a convenience rather than a standing fact —
-	// editing one later changes what the next rota starts from, never what this
-	// one holds.
-	standing, err := database.GetStandingPreallocations(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch standing preallocations: %w", err)
-	}
-	// A pin names its Role by id and records its name, so the Roles are read
-	// here rather than being read off the Shape: a Standing Preallocation may
-	// promise a Role this rota's Shape does not name.
-	roles, err := RoleTable(ctx, database)
-	if err != nil {
-		return nil, err
-	}
-	pins, err := seedPins(standing, shifts, roles, logger)
-	if err != nil {
-		return nil, err
 	}
 
 	// Insert the rotation, its shifts, their Shapes and its seeded pins

@@ -43,12 +43,12 @@ type AddPinParams struct {
 // which shift, in which role. Date is the shift's, carried for display and
 // ordering; ShiftID is what identifies it.
 //
-// Role carries both the id and the name, as StandingPreallocationView does and
+// Role carries both the id and the name, as OverridePinView does and
 // for the same reason: the id is what the row references and what an edit would
 // name, the name is what an Organiser recognises (issue #195).
 //
 // There is one kind of these (issue #131). A pin somebody added by hand and a
-// pin a Standing Preallocation seeded when the rota was defined are the same
+// pin an Override made when the rota was defined are the same
 // row, read the same way, and either may be removed — so nothing here says where
 // it came from, and nothing downstream branches on it.
 type PinView struct {

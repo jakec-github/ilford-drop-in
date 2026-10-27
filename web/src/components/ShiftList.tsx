@@ -329,8 +329,8 @@ function swapBlockedReason(
   return `${assignee.name} is already on ${formatShiftLong(pending.from)}`;
 }
 
-// What a pin means. There is one kind, whether somebody made it here or a
-// Standing Preallocation seeded it when the rota was defined, so there is one
+// What a pin means. There is one kind, whether somebody made it here or an
+// Override made it when the rota was defined, so there is one
 // thing to say about it.
 function pinTitle(pin: Pin): string {
   return `${pin.name} is pinned${roleSuffix(pin.role)} to this shift, and will be placed here when the rota is allocated.`;

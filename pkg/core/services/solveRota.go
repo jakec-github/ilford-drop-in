@@ -129,8 +129,8 @@ func solveRotaInFlight(
 
 	// Read before anything is sent to the solver, because a pin decides who is:
 	// an inactive volunteer it names goes too (ADR 0010). The `pin`
-	// table is the whole set — pins an Organiser made by hand and pins a
-	// Standing Preallocation seeded when the rota was defined are the same rows
+	// table is the whole set — pins an Organiser made by hand and pins an
+	// Override made when the rota was defined are the same rows
 	// (issue #131).
 	pins, err := database.GetPinsByShiftIDs(ctx, shiftIDs)
 	if err != nil {

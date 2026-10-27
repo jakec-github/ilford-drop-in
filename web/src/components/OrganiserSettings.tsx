@@ -2,13 +2,10 @@ import { useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { useRoles } from "../hooks/useRoles";
-import { useStandingPreallocations } from "../hooks/useStandingPreallocations";
-import { useVolunteers } from "../hooks/useVolunteers";
 import AllocationRulesSettings from "./AllocationRules";
+import OverridesCard from "./OverridesCard";
 import RotaDefaultsCard from "./RotaDefaultsCard";
 import SettingsSection from "./SettingsSection";
-import StandingPreallocationForm from "./StandingPreallocationForm";
-import { describeRule } from "./standingRules";
 import type {
   ConfiguredRole,
   RoleColour,
@@ -263,131 +260,23 @@ function RolesSettings() {
   );
 }
 
-// StandingPreallocationsSettings is the pins an Organiser expects to make every
-// rota. Add and remove are the only actions: a Standing Preallocation is one
-// promise, and half-changing one is not a thing to want.
-function StandingPreallocationsSettings() {
-  const { standing, error, addStanding, removeStanding } =
-    useStandingPreallocations();
-  const { roles } = useRoles();
-  const { volunteers, error: volunteersError } = useVolunteers();
-  const [adding, setAdding] = useState(false);
-  const [removeError, setRemoveError] = useState<string | null>(null);
-  // The pins whose removal is on its way, so a second press cannot send the
-  // same delete again while the first is still out (issue #149).
-  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
-
-  // Nothing to pin anybody into until Roles exist, and the Roles section above
-  // says so — offering the button here would open a form with an empty picker.
-  const canAdd = roles !== null && roles.length > 0;
-
-  return (
-    <SettingsSection
-      title="Standing preallocations"
-      blurb="The pins you expect to make every rota. Each one pins somebody to the matching shifts of a rota as it is defined."
-      action={
-        canAdd && (
-          <Button size="small" onClick={() => setAdding(true)}>
-            New pin
-          </Button>
-        )
-      }
-    >
-      {error && (
-        <p className="settings-error">Could not load the pins: {error}</p>
-      )}
-      {removeError && <p className="settings-error">{removeError}</p>}
-
-      {standing === null && !error && (
-        <p className="settings-empty">Loading…</p>
-      )}
-
-      {standing !== null && standing.length === 0 && (
-        <p className="settings-empty">
-          Nothing is pinned every rota. Add one for the people who always take
-          the same shift — everyone else is pinned on the rota itself.
-        </p>
-      )}
-
-      {standing !== null && standing.length > 0 && (
-        <>
-          <ul className="roles">
-            {standing.map((pin) => (
-              <li key={pin.id} className="role-row">
-                <span className="role-name">{pin.name}</span>
-                <span className="role-facts">
-                  <span className="role-fact standing-role">{pin.role}</span>
-                  <span className="role-fact standing-rule">
-                    {describeRule(pin.rrule)}
-                  </span>
-                </span>
-                <Button
-                  size="small"
-                  disabled={removing.has(pin.id)}
-                  onClick={() => {
-                    setRemoveError(null);
-                    setRemoving((ids) => new Set(ids).add(pin.id));
-                    void removeStanding(pin.id)
-                      .catch((err: unknown) => {
-                        setRemoveError(
-                          err instanceof Error
-                            ? err.message
-                            : "Failed to remove the pin",
-                        );
-                      })
-                      .finally(() =>
-                        setRemoving((ids) => {
-                          const rest = new Set(ids);
-                          rest.delete(pin.id);
-                          return rest;
-                        }),
-                      );
-                  }}
-                >
-                  {removing.has(pin.id) ? "Removing…" : "Remove"}
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {/* Says the one thing about these that is not obvious from the list,
-              and the thing an Organiser is most likely to get wrong: removing one
-              does not unpin anybody from a rota that already exists. */}
-          <p className="settings-caption">
-            Removing a pin changes what the next rota starts from. The people it
-            has already pinned stay pinned — unpin them on the rota itself.
-          </p>
-        </>
-      )}
-
-      {adding && roles && (
-        <StandingPreallocationForm
-          roles={roles}
-          volunteers={volunteers}
-          volunteersError={volunteersError}
-          onSave={addStanding}
-          onClose={() => setAdding(false)}
-        />
-      )}
-    </SettingsSection>
-  );
-}
-
 // OrganiserSettings is everything an Organiser decides about how the Organisation runs, as
 // opposed to what an operator sets when deploying it (ADR 0006). It is a stack
-// of independent sections: the Rota Defaults the whole Organisation runs on, the
-// Allocation Rules the allocator keeps, the Roles volunteers hold, and the pins made every rota.
+// of independent sections: the Rota Defaults the whole Organisation runs on and
+// the Overrides to them, the Allocation Rules the allocator keeps, and the
+// Roles volunteers hold.
 //
-// The Rota Defaults card is the one section that is not only here — the define
-// screen shows the same component, because defining a rota is spending it
-// (issue #176). This screen remains where it belongs: an Organiser looking for a
-// setting finds every one of them in one place.
+// The Rota Defaults and Overrides cards are the sections that are not only
+// here — the define screen shows the same components, because defining a rota
+// is spending them (issue #176). This screen remains where they belong: an
+// Organiser looking for a setting finds every one of them in one place.
 export default function OrganiserSettings() {
   return (
     <>
       <RotaDefaultsCard />
+      <OverridesCard />
       <AllocationRulesSettings />
       <RolesSettings />
-      <StandingPreallocationsSettings />
     </>
   );
 }

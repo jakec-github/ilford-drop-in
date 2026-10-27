@@ -15,7 +15,6 @@ import type {
   DraftRotaState,
   NewPin,
   NewRota,
-  NewStandingPreallocation,
   PersonRef,
   Pin,
   RoleColour,
@@ -30,7 +29,9 @@ import type {
   ShapeSeat,
   ShiftPattern,
   ShiftPatternPreview,
-  StandingPreallocation,
+  Override,
+  OverrideDraft,
+  OverrideRuleReading,
   Volunteer,
   VolunteerHistory,
 } from "./types";
@@ -476,78 +477,99 @@ export async function deletePin(id: string): Promise<void> {
   }
 }
 
-interface ApiStandingPreallocation {
-  id: string;
-  rrule: string;
-  roleId: string;
-  role: string;
-  volunteerId?: string;
-  custom?: string;
-  name: string;
+interface OverridesResponse {
+  overrides: Override[];
 }
 
-interface ListStandingPreallocationsResponse {
-  standingPreallocations: ApiStandingPreallocation[];
-}
-
-// fetchStandingPreallocations returns the pins an Organiser has said to make every
-// rota, in the order the settings screen lists them. Organiser-only.
-export async function fetchStandingPreallocations(): Promise<
-  StandingPreallocation[]
-> {
-  const res = await fetch(`${BASE_PATH}/api/standing-preallocations`);
+// The Overrides endpoints all answer with the whole list as it now stands, so
+// the screen holds one thing after any write rather than patching its copy.
+async function overridesFrom(res: Response, fallback: string) {
   if (!res.ok) {
-    throw new Error(
-      await errorMessage(res, "Failed to load the standing preallocations"),
-    );
+    throw new Error(await errorMessage(res, fallback));
   }
-  const data = (await res.json()) as ListStandingPreallocationsResponse;
-  return data.standingPreallocations.map((s) => ({
-    id: s.id,
-    rrule: s.rrule,
-    roleId: s.roleId,
-    role: s.role,
-    name: s.name,
-    custom: !s.volunteerId,
-    volunteerId: s.volunteerId ?? null,
-  }));
+  return ((await res.json()) as OverridesResponse).overrides;
 }
 
-// createStandingPreallocation adds one. Throws the server's own message, which
-// names what was wrong with the rule or who was already promised those shifts.
-export async function createStandingPreallocation(
-  standing: NewStandingPreallocation,
-): Promise<void> {
-  const body: Record<string, string> = {
-    rrule: standing.rrule,
-    roleId: standing.roleId,
-  };
-  if ("volunteerId" in standing.person) {
-    body.volunteerId = standing.person.volunteerId;
-  } else {
-    body.custom = standing.person.custom;
-  }
+function overrideBody(draft: OverrideDraft): string {
+  return JSON.stringify({
+    rrule: draft.rrule,
+    startFrom: draft.startFrom,
+    shape: draft.shape,
+    pins: draft.pins.map((pin) => ({ roleId: pin.roleId, ...pin.person })),
+  });
+}
 
-  const res = await fetch(`${BASE_PATH}/api/standing-preallocations`, {
+// fetchOverrides reads the Overrides in the order they apply. Organiser-only.
+export async function fetchOverrides(): Promise<Override[]> {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/overrides`);
+  return overridesFrom(res, "Failed to load the overrides");
+}
+
+// addOverride adds one at the end of the list, where it wins over every one
+// before it. Throws the server's own message for a rule it cannot read.
+export async function addOverride(draft: OverrideDraft): Promise<Override[]> {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/overrides`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: overrideBody(draft),
   });
-  if (!res.ok) {
-    throw new Error(await errorMessage(res, "Failed to add the pin"));
-  }
+  return overridesFrom(res, "Failed to add the override");
 }
 
-// deleteStandingPreallocation removes one. The pins it has already seeded belong
-// to the rotas that minted them and are left exactly as they are.
-export async function deleteStandingPreallocation(id: string): Promise<void> {
+// updateOverride rewrites one whole, in its place in the list.
+export async function updateOverride(
+  id: string,
+  draft: OverrideDraft,
+): Promise<Override[]> {
   const res = await fetch(
-    `${BASE_PATH}/api/standing-preallocations/${encodeURIComponent(id)}`,
+    `${BASE_PATH}/api/rota-defaults/overrides/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: overrideBody(draft),
+    },
+  );
+  return overridesFrom(res, "Failed to save the override");
+}
+
+// removeOverride deletes one. The pins it has already made on defined rotas
+// are ordinary pins and stay.
+export async function removeOverride(id: string): Promise<Override[]> {
+  const res = await fetch(
+    `${BASE_PATH}/api/rota-defaults/overrides/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
+  return overridesFrom(res, "Failed to remove the override");
+}
+
+// reorderOverrides puts every Override in the order given. A list that is out
+// of date is refused, and the caller reloads.
+export async function reorderOverrides(ids: string[]): Promise<Override[]> {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/overrides/order`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  return overridesFrom(res, "Failed to move the override");
+}
+
+// readOverrideRule reads a rule that has not been saved: what it says and how
+// it matches, or what is wrong with it. It writes nothing.
+export async function readOverrideRule(
+  rrule: string,
+  startFrom: string,
+  signal?: AbortSignal,
+): Promise<OverrideRuleReading> {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/overrides/reading`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rrule, startFrom }),
+    signal,
+  });
   if (!res.ok) {
-    throw new Error(await errorMessage(res, "Failed to remove the pin"));
+    throw new Error(await errorMessage(res, "Failed to read the rule"));
   }
+  return (await res.json()) as OverrideRuleReading;
 }
 
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,

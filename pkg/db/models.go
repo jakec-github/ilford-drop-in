@@ -166,7 +166,7 @@ type DraftAllocation struct {
 // Role: a rename must not orphan the Seat a pin promises.
 //
 // There is one kind of these however it came to exist (issue #131): a row an
-// Organiser added by hand and a row a Standing Preallocation seeded at definition
+// Organiser added by hand and a row an Override made at definition
 // are the same thing, and either may be removed.
 type Pin struct {
 	ID          string // UUID
@@ -176,17 +176,43 @@ type Pin struct {
 	CustomValue string // nullable
 }
 
-// StandingPreallocation is a Pin an Organiser expects to make every rota,
-// held in the Rota Defaults and used to seed real ones when a Rotation is
-// defined (issue #131). RRule says which of the rota's Shifts it lands on, the
-// same recurrence-rule vocabulary the config's Rota Overrides used.
-//
-// RoleID rather than a Role name: these outlive any number of rotas and a Role
-// may be renamed at any time, so the id is the only reference that survives it.
-// The Pins it seeds hold the id too, for the same reason (issue #195).
-type StandingPreallocation struct {
+// Override picks out some of the Shifts a Shift pattern generates with a rule
+// of its own and changes them as a rota is defined (ADR 0013): a whole Shape
+// in place of the default one, and Pins. An Organisation's Overrides are a
+// list read in Position order, and a later one wins.
+type Override struct {
+	ID       string // UUID
+	Position int
+	RRule    string
+	// StartFrom is the date the rule counts from, "2006-01-02".
+	StartFrom string
+	// Granularity is OverrideMatchesTime or OverrideMatchesDate.
+	Granularity string
+	// SetsShape is whether Seats is a Shape at all: no Seats with SetsShape is
+	// a Shape that asks for nobody, and without it the default stands.
+	SetsShape bool
+	Seats     []OverrideSeat
+	Pins      []OverridePin
+}
+
+// What an Override matches: the Shift generated at exactly the time its rule
+// names, or every Shift on the dates it names.
+const (
+	OverrideMatchesTime = "time"
+	OverrideMatchesDate = "date"
+)
+
+// OverrideSeat is one line of an Override's Shape.
+type OverrideSeat struct {
+	RoleID string // UUID, references role(id)
+	Seats  int
+}
+
+// OverridePin is one Pin an Override makes on every Shift it matches. RoleID
+// rather than a Role name, as every Role reference is: an Override outlives
+// any number of renames.
+type OverridePin struct {
 	ID          string // UUID
-	RRule       string
 	RoleID      string // UUID, references role(id)
 	VolunteerID string // nullable
 	CustomValue string // nullable
