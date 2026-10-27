@@ -12,27 +12,27 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// shiftTimesOf reads the shift-time part of a settings response. The record
-// carries more than that now — the allocation settings and the registry of
-// rules they answer — so a test about the times says which part it means
-// rather than restating the whole document every time one grows.
-func shiftTimesOf(t *testing.T, rec *httptest.ResponseRecorder) struct {
-	ShiftStartTime string `json:"shiftStartTime"`
-	ShiftEndTime   string `json:"shiftEndTime"`
-	ShiftTimezone  string `json:"shiftTimezone"`
-} {
+// shiftPatternBody is the Shift pattern part of a settings response.
+type shiftPatternBody struct {
+	ShiftPattern       string `json:"shiftPattern"`
+	PatternStartFrom   string `json:"patternStartFrom"`
+	ShiftLengthMinutes int    `json:"shiftLengthMinutes"`
+	ShiftTimezone      string `json:"shiftTimezone"`
+}
+
+// shiftPatternOf reads the Shift pattern part of a settings response. The
+// record carries more than that — the Shape, the allocation settings and the
+// registry of rules they answer — so a test about the pattern says which part
+// it means rather than restating the whole document every time one grows.
+func shiftPatternOf(t *testing.T, rec *httptest.ResponseRecorder) shiftPatternBody {
 	t.Helper()
-	var body struct {
-		ShiftStartTime string `json:"shiftStartTime"`
-		ShiftEndTime   string `json:"shiftEndTime"`
-		ShiftTimezone  string `json:"shiftTimezone"`
-	}
+	var body shiftPatternBody
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	return body
 }
 
 // defaultShapeOf reads the Shape part of a settings response, for the same
-// reason shiftTimesOf reads the times: a test says which section it means.
+// reason shiftPatternOf reads the pattern: a test says which section it means.
 func defaultShapeOf(t *testing.T, rec *httptest.ResponseRecorder) []seatResponse {
 	t.Helper()
 	var body struct {
@@ -42,6 +42,8 @@ func defaultShapeOf(t *testing.T, rec *httptest.ResponseRecorder) []seatResponse
 	return body.DefaultShape
 }
 
+const weeklySunday = "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30"
+
 func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	store := &mockStore{}
 
@@ -50,10 +52,12 @@ func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 
-	body := shiftTimesOf(t, rec)
-	assert.Equal(t, "19:30", body.ShiftStartTime)
-	assert.Equal(t, "21:30", body.ShiftEndTime)
-	assert.Equal(t, "Europe/London", body.ShiftTimezone)
+	assert.Equal(t, shiftPatternBody{
+		ShiftPattern:       weeklySunday,
+		PatternStartFrom:   "2026-01-04",
+		ShiftLengthMinutes: 120,
+		ShiftTimezone:      "Europe/London",
+	}, shiftPatternOf(t, rec))
 
 	// Each Seat carries the Role's name as well as its id: the id is what an
 	// edit names, the name is what an Organiser reads.
@@ -63,9 +67,9 @@ func TestGetRotaDefaultsEndpoint(t *testing.T) {
 	}, defaultShapeOf(t, rec))
 }
 
-// Settings nobody has filled in are a state to render, not an error: the times
-// come back empty so the screen can say they are unset, and the zone falls back
-// so the form has something to start on.
+// Settings nobody has filled in are a state to render, not an error: the
+// pattern comes back empty so the screen can say it is unset, and the zone
+// falls back so the form has something to start on.
 func TestGetRotaDefaultsEndpointUnset(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}, noShape: true}
 
@@ -73,14 +77,11 @@ func TestGetRotaDefaultsEndpointUnset(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	body := shiftTimesOf(t, rec)
-	assert.Empty(t, body.ShiftStartTime)
-	assert.Empty(t, body.ShiftEndTime)
+	assert.Equal(t, shiftPatternBody{ShiftTimezone: "Europe/London"}, shiftPatternOf(t, rec))
 	assert.Empty(t, defaultShapeOf(t, rec))
-	assert.Equal(t, "Europe/London", body.ShiftTimezone)
 }
 
-// Both verbs are Organiser-only. Nothing a logged-out visitor sees needs the
+// Every verb is Organiser-only. Nothing a logged-out visitor sees needs the
 // settings record, and the sections joining it are an Organiser's business.
 func TestRotaDefaultsEndpointIsOrganiserOnly(t *testing.T) {
 	handler := newTestHandler(&mockStore{}, testVolunteers())
@@ -88,8 +89,12 @@ func TestRotaDefaultsEndpointIsOrganiserOnly(t *testing.T) {
 	rec := doRequest(t, handler, http.MethodGet, "/api/rota-defaults", "")
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/shift-times",
-		`{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":"Europe/London"}`)
+	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/shift-pattern",
+		`{"shiftPattern":"`+weeklySunday+`","shiftLengthMinutes":120}`)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+
+	rec = doRequest(t, handler, http.MethodPost, "/api/rota-defaults/shift-pattern/preview",
+		`{"shiftPattern":"`+weeklySunday+`","from":"2026-11-01","to":"2026-12-01"}`)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
 	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/shape",
@@ -97,33 +102,34 @@ func TestRotaDefaultsEndpointIsOrganiserOnly(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestSaveRotaDefaultsEndpoint(t *testing.T) {
+func TestSaveShiftPatternEndpoint(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
-		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, organiserCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-pattern",
+		`{"shiftPattern":"`+weeklySunday+`","patternStartFrom":"2026-11-01","shiftTimezone":"UTC","shiftLengthMinutes":135}`,
+		organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	want := db.RotaDefaults{
+		ShiftPattern: weeklySunday, PatternStartFrom: "2026-11-01", ShiftLengthMinutes: 135, ShiftTimezone: "UTC",
+	}
 	require.Len(t, store.savedRotaDefaults, 1)
-	assert.Equal(t, db.RotaDefaults{
-		ShiftStartTime: "09:00", ShiftEndTime: "12:15", ShiftTimezone: "UTC",
-	}, store.savedRotaDefaults[0])
+	assert.Equal(t, want, store.savedRotaDefaults[0])
 
-	body := shiftTimesOf(t, rec)
-	assert.Equal(t, "09:00", body.ShiftStartTime)
-	assert.Equal(t, "12:15", body.ShiftEndTime)
-	assert.Equal(t, "UTC", body.ShiftTimezone)
+	assert.Equal(t, shiftPatternBody{
+		ShiftPattern: weeklySunday, PatternStartFrom: "2026-11-01", ShiftLengthMinutes: 135, ShiftTimezone: "UTC",
+	}, shiftPatternOf(t, rec))
 }
 
-// Saving the times answers with the whole record, rules and all, so the screen
-// does not lose the rules it is showing by holding the answer.
-func TestSaveShiftTimesAnswersWithTheRules(t *testing.T) {
+// Saving the pattern answers with the whole record, rules and all, so the
+// screen does not lose the rules it is showing by holding the answer.
+func TestSaveShiftPatternAnswersWithTheRules(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{
 		AllocationSettings: `{"rules":[{"id":"a","kind":"shift_gap","value":1,"scope":{}}]}`,
 	}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
-		`{"shiftStartTime":"09:00","shiftEndTime":"12:15","shiftTimezone":"UTC"}`, organiserCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-pattern",
+		`{"shiftPattern":"`+weeklySunday+`","shiftLengthMinutes":120}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	body := rulesOf(t, rec)
@@ -131,36 +137,39 @@ func TestSaveShiftTimesAnswersWithTheRules(t *testing.T) {
 	assert.Equal(t, "a", body.AllocationRules[0].ID)
 }
 
-// The answer carries the zone that was filled in for an Organiser who left the
-// field blank, so the form shows what was actually stored rather than what was
-// typed.
-func TestSaveRotaDefaultsEndpointFillsInTheZone(t *testing.T) {
+// The answer carries what was filled in for an Organiser who left Start from
+// and the zone blank, so the form shows what was actually stored rather than
+// what was typed.
+func TestSaveShiftPatternEndpointFillsInTheBlanks(t *testing.T) {
 	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times",
-		`{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":""}`, organiserCookie())
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-pattern",
+		`{"shiftPattern":"`+weeklySunday+`","patternStartFrom":"","shiftTimezone":"","shiftLengthMinutes":120}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Equal(t, "Europe/London", shiftTimesOf(t, rec).ShiftTimezone)
+	body := shiftPatternOf(t, rec)
+	assert.Equal(t, "Europe/London", body.ShiftTimezone)
+	assert.NotEmpty(t, body.PatternStartFrom)
 }
 
 // An Organiser's mistake is a 400 carrying the message the service wrote, not a
 // 500: the screen shows it beside the field.
-func TestSaveRotaDefaultsEndpointRejectsBadInput(t *testing.T) {
+func TestSaveShiftPatternEndpointRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
-		"end before start": `{"shiftStartTime":"21:30","shiftEndTime":"19:30","shiftTimezone":"Europe/London"}`,
-		"not a time":       `{"shiftStartTime":"half seven","shiftEndTime":"21:30","shiftTimezone":"Europe/London"}`,
-		"no start":         `{"shiftStartTime":"","shiftEndTime":"21:30","shiftTimezone":"Europe/London"}`,
-		"unknown zone":     `{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftTimezone":"Not/AZone"}`,
-		"unknown field":    `{"shiftStartTime":"19:30","shiftEndTime":"21:30","shiftSize":4}`,
-		"not json":         `nonsense`,
+		"no pattern":    `{"shiftPattern":"","shiftLengthMinutes":120}`,
+		"a bad line":    `{"shiftPattern":"FREQ=HOURLY;BYHOUR=1;BYMINUTE=0","shiftLengthMinutes":120}`,
+		"no length":     `{"shiftPattern":"` + weeklySunday + `"}`,
+		"not a date":    `{"shiftPattern":"` + weeklySunday + `","patternStartFrom":"1/11/2026","shiftLengthMinutes":120}`,
+		"unknown zone":  `{"shiftPattern":"` + weeklySunday + `","shiftTimezone":"Not/AZone","shiftLengthMinutes":120}`,
+		"unknown field": `{"shiftPattern":"` + weeklySunday + `","shiftLengthMinutes":120,"shiftStartTime":"19:30"}`,
+		"not json":      `nonsense`,
 	}
 
 	for name, request := range cases {
 		t.Run(name, func(t *testing.T) {
 			store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
 
-			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-times", request, organiserCookie())
+			rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shift-pattern", request, organiserCookie())
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			assert.Empty(t, store.savedRotaDefaults)
@@ -170,6 +179,41 @@ func TestSaveRotaDefaultsEndpointRejectsBadInput(t *testing.T) {
 			assert.NotEmpty(t, body["error"], "the message is shown beside the field")
 		})
 	}
+}
+
+// The preview answers a pattern still being written line by line, and with
+// where its Shifts start, so the screen can describe it and draw its calendar
+// from the same arithmetic that mints Shifts. It writes nothing.
+func TestShiftPatternPreviewEndpoint(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{}}
+
+	request := `{"shiftPattern":"` + weeklySunday + `\n\nRDATE:20261101T100000","patternStartFrom":"2026-11-01","from":"2026-11-01","to":"2026-11-15"}`
+	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rota-defaults/shift-pattern/preview",
+		request, organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body shiftPatternPreviewResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "2026-11-01", body.PatternStartFrom)
+	require.Len(t, body.Lines, 2)
+	assert.Equal(t, 1, body.Lines[0].Number)
+	assert.Equal(t, "Every week on Sunday at 19:30", body.Lines[0].Description)
+	assert.Equal(t, 3, body.Lines[1].Number, "a blank line still counts")
+	assert.NotEmpty(t, body.Lines[1].Problems)
+	assert.Empty(t, body.Starts, "a pattern with a problem generates nothing")
+	assert.Empty(t, store.savedRotaDefaults)
+
+	rec = doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rota-defaults/shift-pattern/preview",
+		`{"shiftPattern":"`+weeklySunday+`","patternStartFrom":"2026-11-01","from":"2026-11-01","to":"2026-11-15"}`, organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, []string{"2026-11-01T19:30:00", "2026-11-08T19:30:00"}, body.Starts)
+}
+
+func TestShiftPatternPreviewEndpointRejectsARangeItCannotRead(t *testing.T) {
+	rec := doRequest(t, newTestHandler(&mockStore{}, testVolunteers()), http.MethodPost, "/api/rota-defaults/shift-pattern/preview",
+		`{"shiftPattern":"`+weeklySunday+`","from":"2026-12-01","to":"2026-11-01"}`, organiserCookie())
+	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 }
 
 // rulesBody is the part of the settings record the rules section reads.
@@ -237,7 +281,7 @@ func TestGetRotaDefaultsCarriesTheRulesAndTheLibrary(t *testing.T) {
 // Every change to a rule answers with the whole settings record, so the screen
 // holds one thing after any save.
 func TestAllocationRuleEndpoints(t *testing.T) {
-	store := &mockStore{rotaDefaults: &db.RotaDefaults{ShiftStartTime: "19:30"}}
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{ShiftPattern: weeklySunday}}
 	handler := newTestHandler(store, testVolunteers())
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rota-defaults/allocation-rules",
@@ -247,7 +291,7 @@ func TestAllocationRuleEndpoints(t *testing.T) {
 	require.Len(t, rules, 1)
 	id := rules[0].ID
 	assert.NotEmpty(t, id)
-	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime, "it is the whole record")
+	assert.Equal(t, weeklySunday, shiftPatternOf(t, rec).ShiftPattern, "it is the whole record")
 
 	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/allocation-rules/"+id,
 		`{"value":2,"scope":{"include":[],"exclude":["bob"]},"note":""}`, organiserCookie())
@@ -316,8 +360,8 @@ func TestSaveDefaultShapeEndpoint(t *testing.T) {
 		{RoleID: "role-team-lead", Role: "Team lead", Count: 1},
 		{RoleID: "role-service-volunteer", Role: "Service volunteer", Count: 6},
 	}, defaultShapeOf(t, rec))
-	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime,
-		"the times are in the answer too - it is the whole record")
+	assert.Equal(t, weeklySunday, shiftPatternOf(t, rec).ShiftPattern,
+		"the pattern is in the answer too - it is the whole record")
 }
 
 // A Role dropped from the list is a Role the Shape no longer asks for, and an
@@ -336,15 +380,15 @@ func TestSaveDefaultShapeEndpointEmpties(t *testing.T) {
 
 // Saving one section leaves the others alone — the store is told about this
 // section only.
-func TestSaveDefaultShapeLeavesTheShiftTimesAlone(t *testing.T) {
+func TestSaveDefaultShapeLeavesTheShiftPatternAlone(t *testing.T) {
 	store := &mockStore{}
 
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPut, "/api/rota-defaults/shape",
 		`{"seats":[{"roleId":"role-team-lead","count":1}]}`, organiserCookie())
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Empty(t, store.savedRotaDefaults, "the shift-time section is not written")
-	assert.Equal(t, "19:30", shiftTimesOf(t, rec).ShiftStartTime)
+	assert.Empty(t, store.savedRotaDefaults, "the shift pattern section is not written")
+	assert.Equal(t, weeklySunday, shiftPatternOf(t, rec).ShiftPattern)
 }
 
 // An Organiser's mistake is a 400 carrying the service's message.

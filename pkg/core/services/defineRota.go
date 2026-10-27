@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -31,73 +29,34 @@ type RotaResult struct {
 	Asked int
 }
 
-// DefineRotaParams is the rota an Organiser has decided to make: how many shifts,
-// and from when.
+// DefineRotaParams is the rota an Organiser has decided to make: how many
+// Shifts, and optionally a date none of them may start before.
 //
-// The hours and the Shape are not here. They are the Rota Defaults, and the
-// Rota Defaults are the only place they are stated (issue #176) — defining
-// spends them rather than restating them. What made them fields of this request
-// was issue #140, which put the whole rota on the define form; the two ways to
-// say the same thing turned out to be one way too many, so the form now shows
-// the settings card itself and the settings are what the shifts are minted from.
-//
-// The shift count and the start date stay stated, because neither is a setting:
-// how long the next rota runs is a decision nobody has made yet, and a rota can
-// begin after a break rather than the week after the last one.
+// Neither the dates nor the hours are here. Which Shifts come next is the Shift
+// pattern's to say (ADR 0013): the rota carries on from the exact Shift the
+// previous one stopped after, so the only thing left to decide is how far it
+// runs, and whether to leave a gap first.
 type DefineRotaParams struct {
 	ShiftCount int
-	// StartDate is the first shift's date, in "2006-01-02". Its weekday is the
-	// cadence: shifts are minted weekly from it. Deliberately stated rather
-	// than derived, so a rota can start after a break (issue #140).
-	StartDate string
+	// NotBefore is a date, "2006-01-02", before which no Shift of this rota
+	// starts: a break between rotas. Empty means no gap.
+	NotBefore string
 }
 
-// DefineRotaStore defines the database operations needed for defining a rota.
-// Defining a rota is where the Rota Defaults are spent, so it reads all of
-// them: the shift times, because minting a Shift means deciding when it runs
-// (ADR 0007), and the default Shape, which each Shift is minted with a copy of
-// (issue #137). The Roles come with the Shape, because a Seat names a Role by
-// id while the pins seeded beside it record its name; the rotations, because
-// one rota is in flight at a time and this is where that is enforced.
-// The links the round is opened with are the last thing written, which is why
-// MintRequestsStore is in here too.
+// DefineRotaStore defines the database operations needed for defining a rota:
+// everything planning one reads, the default Shape each Shift is minted with a
+// copy of (issue #137) and the Roles that come with it, the Standing
+// Preallocations it seeds, and the links the round is opened with.
 type DefineRotaStore interface {
-	RotaDefaultsStore
+	PlanRotaStore
 	DefaultShapeStore
 	MintRequestsStore
-	GetRotations(ctx context.Context) ([]db.Rotation, error)
 	GetStandingPreallocations(ctx context.Context) ([]db.StandingPreallocation, error)
 	InsertDefinedRota(ctx context.Context, rotation *db.Rotation, shifts []db.Shift, pins []db.Pin, requirements []db.ShiftRequirement) error
 }
 
-// definition is a validated DefineRotaParams: the same rota, in the spellings
-// the database holds and with every question about it already answered.
-type definition struct {
-	shiftCount int
-	startDate  time.Time
-}
-
-// validate reads a stated rota, or says why it will not.
-//
-// Only the two fields an Organiser states are checked here. The hours and the Shape
-// are read from the settings, which were validated where they were written, and
-// what defining asks of them is whether they were written at all.
-func (p DefineRotaParams) validate() (definition, error) {
-	if p.ShiftCount <= 0 {
-		return definition{}, wrapf(ErrInvalidInput, "shift count must be positive, got %d", p.ShiftCount)
-	}
-
-	startDate, err := time.Parse("2006-01-02", p.StartDate)
-	if err != nil {
-		return definition{}, wrapf(ErrInvalidInput,
-			"%q is not a date — write the first shift's date as 2026-08-02", p.StartDate)
-	}
-
-	return definition{shiftCount: p.ShiftCount, startDate: startDate}, nil
-}
-
-// DefineRota creates the rota an Organiser has stated and mints its weekly shifts,
-// each carrying the default hours and a copy of the default Shape, with the
+// DefineRota creates the rota an Organiser has asked for and mints the next
+// Shifts its Shift pattern generates, each with a copy of the default Shape, with the
 // Standing Preallocations seeded onto the Shifts their rules land on. It then
 // opens the rota's availability round, giving every active volunteer their link.
 //
@@ -118,41 +77,23 @@ func DefineRota(
 	logger *zap.Logger,
 	params DefineRotaParams,
 ) (*RotaResult, error) {
-	stated, err := params.validate()
+	plan, err := PlanRota(ctx, database, params)
 	if err != nil {
 		return nil, err
+	}
+	if plan.Refusal != nil {
+		return nil, plan.Refusal
 	}
 
 	logger.Debug("Defining new rota",
-		zap.Int("shift_count", stated.shiftCount),
-		zap.String("start_date", params.StartDate))
-
-	// The hours each minted shift will run come from the Rota Defaults, and
-	// nothing can be minted without them: a Shift's date is the date of its
-	// start, so a Shift with no start is not a Shift with unknown hours, it is
-	// a Shift on no day at all (issue #135, ADR 0007).
-	//
-	// This is the second path incomplete settings block, alongside allocation,
-	// and it is a narrowing of ADR 0006's "allocation and nothing else". The
-	// reason is the same one that made allocation the exception: defining a rota
-	// is an act that creates something people are told to turn up to, not a page
-	// that renders. Everything that only reads still reads.
-	defaults, err := RotaDefaults(ctx, database)
-	if err != nil {
-		return nil, err
-	}
-	if missing := defaults.MissingShiftTimes(); len(missing) > 0 {
-		return nil, wrapf(ErrInvalidInput,
-			"the organisation's settings are incomplete - %s %s not been set; set the rota defaults before defining a rota",
-			joinWithAnd(missing), plural(len(missing), "has", "have"))
-	}
+		zap.Int("shift_count", len(plan.Shifts)),
+		zap.String("not_before", params.NotBefore))
 
 	// The Shape each minted Shift will ask for, copied onto every one of them
-	// below. An unset one is a refusal for the same reason the times are: a
-	// rota whose shifts ask for nobody solves perfectly and staffs nothing.
-	// One Shift can be emptied afterwards, deliberately (issue #138) — a week
-	// the Organisation is shut — but a whole rota of them is a mistake rather than
-	// an intention.
+	// below. An unset one is a refusal: a rota whose shifts ask for nobody
+	// solves perfectly and staffs nothing. One Shift can be emptied afterwards,
+	// deliberately (issue #138) — a week the Organisation is shut — but a whole
+	// rota of them is a mistake rather than an intention.
 	shape, err := DefaultShape(ctx, database)
 	if err != nil {
 		return nil, err
@@ -174,46 +115,33 @@ func DefineRota(
 	//
 	// Read-then-insert, without a lock, is enough: a concurrent define that has
 	// not committed yet is invisible to this read, but the no-overlap
-	// constraint refuses whichever of the two commits second wherever their
-	// times overlap (hazard B1, InsertDefinedRota).
+	// constraint refuses whichever of the two commits second, since both carry
+	// on from the same stop point and so mint the same hours (hazard B1,
+	// InsertDefinedRota).
 	if inFlight := unallocatedRota(rotations); inFlight != nil {
 		return nil, wrapf(ErrConflict,
 			"a rota is already in flight - the one running %s to %s has not been allocated yet; allocate it or discard it before defining another",
 			inFlight.Start, inFlight.End)
 	}
 
-	rotation := &db.Rotation{
-		ID:         uuid.New().String(),
-		Start:      stated.startDate.Format("2006-01-02"),
-		ShiftCount: stated.shiftCount,
+	rotation := &db.Rotation{ID: uuid.New().String()}
+	shifts := make([]db.Shift, len(plan.Shifts))
+	for i, planned := range plan.Shifts {
+		planned.ID = uuid.New().String()
+		planned.RotaID = rotation.ID
+		shifts[i] = planned
 	}
 
-	// Mint this rotation's shifts, weekly from the stated start. Rota
-	// definition is the sole place shift-date arithmetic lives, and the cadence
-	// is not offered: anything richer than "the same weekday, every week" is
-	// the Shift pattern's job (ADR 0013).
-	shifts := make([]db.Shift, stated.shiftCount)
-	for i := range shifts {
-		date := stated.startDate.AddDate(0, 0, 7*i).Format("2006-01-02")
-
-		startAt, endAt, err := model.ShiftTimestamps(date, defaults.ShiftStartTime, defaults.ShiftEndTime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to derive shift times for %s: %w", date, err)
-		}
-
-		shifts[i] = db.Shift{
-			ID:      uuid.New().String(),
-			RotaID:  rotation.ID,
-			Date:    date,
-			StartAt: startAt,
-			EndAt:   endAt,
-		}
-	}
-
-	// The rotation's span is its shifts' span (ADR 0001): setting End here means
+	// The rotation's span is its shifts' span (ADR 0001): setting it here means
 	// the returned rotation reads the same as one fetched back from the store,
-	// which derives both ends from the shift rows.
-	rotation.End = shifts[len(shifts)-1].Date
+	// which derives both ends from the shift rows. Where it stopped is the
+	// generated start of its last Shift, which is the one thing about it the
+	// next rota needs.
+	last := shifts[len(shifts)-1]
+	rotation.Start = shifts[0].Date
+	rotation.End = last.Date
+	rotation.ShiftCount = len(shifts)
+	rotation.StoppedAfter = last.StartAt
 
 	// Copy the default Shape onto every Shift. From here it is that Shift's
 	// Shape and nothing else's: editing it changes one evening, and editing the
@@ -255,22 +183,22 @@ func DefineRota(
 	// Insert the rotation, its shifts, their Shapes and its seeded pins
 	// atomically, so a rota can never exist half-formed.
 	if err := database.InsertDefinedRota(ctx, rotation, shifts, pins, requirements); err != nil {
-		// The no-overlap constraint answering. Reachable by hand now that the
-		// start date is an Organiser's to state — a rota begun a week too early
-		// overlaps the last one — so it is answered as the ordinary mistake it
-		// is rather than as a failed insert.
+		// The no-overlap constraint answering. PlanRota has already looked for
+		// a clash, so this is a Shift written between that read and this
+		// write — another rota defined at the same moment.
 		if errors.Is(err, db.ErrShiftOverlap) {
-			return nil, datesAlreadyTaken(shifts, rotations)
+			return nil, wrapf(ErrConflict,
+				"another shift was defined at one of these times while this rota was being defined - reload and try again")
 		}
 		return nil, fmt.Errorf("failed to insert rotation and shifts: %w", err)
 	}
 
 	logger.Debug("Rotation created successfully",
 		zap.String("rotation_id", rotation.ID),
-		zap.Int("shift_count", stated.shiftCount),
+		zap.Int("shift_count", len(shifts)),
 		zap.Int("pin_count", len(pins)),
-		zap.String("first_shift", shifts[0].Date),
-		zap.String("last_shift", shifts[len(shifts)-1].Date))
+		zap.String("first_shift", shifts[0].StartAt),
+		zap.String("stopped_after", rotation.StoppedAfter))
 
 	return &RotaResult{
 		Rotation: rotation,
@@ -319,28 +247,6 @@ func openRound(
 		return 0
 	}
 	return asked
-}
-
-// datesAlreadyTaken says that this rota would have run a shift at the same time
-// as one the Organisation already runs, and points at the rota in the way.
-//
-// The constraint names no shift, so this works out which day it must have been:
-// the first minted date that falls inside a rota that already exists. That is the
-// day an Organiser has to move off, and naming the wrong one would be worse than
-// naming none — so where nothing overlaps, the refusal says only what is
-// certain.
-func datesAlreadyTaken(shifts []db.Shift, rotations []db.Rotation) error {
-	for _, s := range shifts {
-		for _, r := range rotations {
-			if r.Start <= s.Date && s.Date <= r.End {
-				return wrapf(ErrConflict,
-					"the organisation already runs a shift at that time on %s, and two shifts cannot run at once - the rota running %s to %s covers it, so start after %s",
-					readableDate(s.Date), readableDate(r.Start), readableDate(r.End), readableDate(r.End))
-			}
-		}
-	}
-	return wrapf(ErrConflict,
-		"a shift already runs at one of those times, and two shifts cannot run at once - start the rota on a different date")
 }
 
 // unallocatedRota returns the earliest-starting rota that has not been

@@ -26,69 +26,57 @@ func TestGetRotaDefaultsUnset(t *testing.T) {
 	assert.Equal(t, db.RotaDefaults{}, defaults)
 }
 
-// The first save writes the row; a later one rewrites it. Times come back in
-// the "15:04" the app states them in, not in Postgres's own rendering.
-func TestSaveRotaDefaults(t *testing.T) {
+// The first save writes the row; a later one rewrites it. Start from comes
+// back as the date it was written, not as a midnight in some zone.
+func TestSaveShiftPattern(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
-	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
-		ShiftTimezone:  "Europe/London",
-	}))
+	weekly := db.RotaDefaults{
+		ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
+		PatternStartFrom:   "2026-11-01",
+		ShiftLengthMinutes: 120,
+		ShiftTimezone:      "Europe/London",
+	}
+	require.NoError(t, database.SaveShiftPattern(ctx, weekly))
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, db.RotaDefaults{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
-		ShiftTimezone:  "Europe/London",
-	}, defaults)
+	assert.Equal(t, weekly, defaults)
 
-	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
-		ShiftStartTime: "09:00",
-		ShiftEndTime:   "12:15",
-		ShiftTimezone:  "UTC",
-	}))
+	daily := db.RotaDefaults{
+		ShiftPattern:       "RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=0\nRRULE:FREQ=DAILY;BYHOUR=19;BYMINUTE=30",
+		PatternStartFrom:   "2027-01-04",
+		ShiftLengthMinutes: 195,
+		ShiftTimezone:      "UTC",
+	}
+	require.NoError(t, database.SaveShiftPattern(ctx, daily))
 
 	defaults, err = database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, db.RotaDefaults{
-		ShiftStartTime: "09:00",
-		ShiftEndTime:   "12:15",
-		ShiftTimezone:  "UTC",
-	}, defaults)
+	assert.Equal(t, daily, defaults)
 }
 
 // An empty field is stored as null and reads back empty, so "not set" survives
-// the round trip rather than coming back as midnight.
-func TestSaveRotaDefaultsClearsFields(t *testing.T) {
+// the round trip.
+func TestSaveShiftPatternClearsFields(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
-	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
-		ShiftTimezone:  "Europe/London",
-	}))
-	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{}))
+	dbtest.SeedRotaDefaults(t, database)
+	require.NoError(t, database.SaveShiftPattern(ctx, db.RotaDefaults{}))
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, db.RotaDefaults{}, defaults)
 }
 
-// The database is the backstop for a shift that ends before it starts. The
-// service refuses it first with a message an Organiser can act on; this is what
-// stops anything else writing one.
-func TestSaveRotaDefaultsRefusesEndBeforeStart(t *testing.T) {
+// The database is the backstop for a Shift that lasts no time at all. The
+// service refuses it first with a message an Organiser can act on.
+func TestSaveShiftPatternRefusesANegativeLength(t *testing.T) {
 	database, _ := dbtest.New(t)
 
-	err := database.SaveRotaDefaults(context.Background(), db.RotaDefaults{
-		ShiftStartTime: "21:30",
-		ShiftEndTime:   "19:30",
-	})
+	err := database.SaveShiftPattern(context.Background(), db.RotaDefaults{ShiftLengthMinutes: -30})
 	require.Error(t, err)
 }
 
@@ -166,7 +154,7 @@ func TestConcurrentAllocationSettingsEditsBothLand(t *testing.T) {
 }
 
 // Each section of the settings is saved without touching the others, so an
-// Organiser editing the rules cannot blank the shift times and the other way
+// Organiser editing the rules cannot blank the Shift pattern and the other way
 // round.
 func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 	database, _ := dbtest.New(t)
@@ -176,23 +164,19 @@ func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 	}
 
 	require.NoError(t, database.UpdateAllocationSettings(ctx, write(`{"rules":[{"id":"1"}]}`)))
-	require.NoError(t, database.SaveRotaDefaults(ctx, db.RotaDefaults{
-		ShiftStartTime: "19:30",
-		ShiftEndTime:   "21:30",
-		ShiftTimezone:  "Europe/London",
-	}))
+	dbtest.SeedRotaDefaults(t, database)
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "19:30", defaults.ShiftStartTime)
+	assert.Equal(t, 120, defaults.ShiftLengthMinutes)
 	assert.JSONEq(t, `{"rules":[{"id":"1"}]}`, defaults.AllocationSettings)
 
-	// And the other way round: editing the rules leaves the times alone.
+	// And the other way round: editing the rules leaves the pattern alone.
 	require.NoError(t, database.UpdateAllocationSettings(ctx, write(`{"rules":[]}`)))
 
 	defaults, err = database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "21:30", defaults.ShiftEndTime)
+	assert.Equal(t, dbtest.SeedPatternStartFrom, defaults.PatternStartFrom)
 }
 
 // A deployment nobody has configured reads as no settings at all rather than

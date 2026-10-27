@@ -34,7 +34,8 @@ var gatedRoutes = []gatedRoute{
 	{http.MethodPost, "/api/roles", LevelOrganiser},
 	{http.MethodPut, "/api/roles/r1", LevelOrganiser},
 	{http.MethodGet, "/api/rota-defaults", LevelOrganiser},
-	{http.MethodPut, "/api/rota-defaults/shift-times", LevelOrganiser},
+	{http.MethodPut, "/api/rota-defaults/shift-pattern", LevelOrganiser},
+	{http.MethodPost, "/api/rota-defaults/shift-pattern/preview", LevelOrganiser},
 	{http.MethodPut, "/api/rota-defaults/shape", LevelOrganiser},
 	{http.MethodPost, "/api/rota-defaults/allocation-rules", LevelOrganiser},
 	{http.MethodPut, "/api/rota-defaults/allocation-rules/some-id", LevelOrganiser},
@@ -43,7 +44,7 @@ var gatedRoutes = []gatedRoute{
 	{http.MethodPost, "/api/standing-preallocations", LevelOrganiser},
 	{http.MethodDelete, "/api/standing-preallocations/sp1", LevelOrganiser},
 	{http.MethodPost, "/api/rotations", LevelOrganiser},
-	{http.MethodGet, "/api/rotations/proposed", LevelOrganiser},
+	{http.MethodGet, "/api/rotations/next", LevelOrganiser},
 	{http.MethodDelete, "/api/rotations/rota1", LevelOrganiser},
 	{http.MethodPost, "/api/rotations/in-flight/allocation", LevelOrganiser},
 	// Not even to read: a draft is the Organisers' working, not a Rota

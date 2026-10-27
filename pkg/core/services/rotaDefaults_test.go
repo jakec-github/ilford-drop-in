@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,17 +43,13 @@ func (s *stubRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefault
 	return s.defaults, nil
 }
 
-func (s *stubRotaDefaultsStore) SaveRotaDefaults(_ context.Context, defaults db.RotaDefaults) error {
+func (s *stubRotaDefaultsStore) SaveShiftPattern(_ context.Context, defaults db.RotaDefaults) error {
 	if s.writeErr != nil {
 		return s.writeErr
 	}
 	s.saved = append(s.saved, defaults)
 	s.defaults = defaults
 	return nil
-}
-
-func shiftTimeParams() ShiftTimeParams {
-	return ShiftTimeParams{Start: "19:30", End: "21:30", Timezone: "Europe/London"}
 }
 
 // A deployment nobody has configured reads as empty settings, not as a failure:
@@ -66,100 +61,19 @@ func TestRotaDefaultsUnset(t *testing.T) {
 	defaults, err := RotaDefaults(context.Background(), store)
 	require.NoError(t, err)
 	assert.Equal(t, model.RotaDefaults{}, defaults)
-	assert.False(t, defaults.HasShiftTimes())
+	assert.False(t, defaults.HasShiftPattern())
 }
 
 func TestRotaDefaultsReadsTheRecord(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
-		ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Europe/London",
+		ShiftPattern: weeklySunday, PatternStartFrom: "2026-11-01", ShiftLengthMinutes: 120, ShiftTimezone: "Europe/London",
 	}}
 
 	defaults, err := RotaDefaults(context.Background(), store)
 	require.NoError(t, err)
 	assert.Equal(t, model.RotaDefaults{
-		ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Europe/London",
+		ShiftPattern: weeklySunday, PatternStartFrom: "2026-11-01", ShiftLengthMinutes: 120, ShiftTimezone: "Europe/London",
 	}, defaults)
-}
-
-func TestSaveShiftTimeDefaults(t *testing.T) {
-	store := &stubRotaDefaultsStore{}
-
-	saved, err := SaveShiftTimeDefaults(context.Background(), store, shiftTimeParams(), zap.NewNop())
-	require.NoError(t, err)
-
-	require.Len(t, store.saved, 1)
-	assert.Equal(t, db.RotaDefaults{
-		ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Europe/London",
-	}, store.saved[0])
-	assert.Equal(t, "19:30", saved.ShiftStartTime)
-	assert.True(t, saved.HasShiftTimes())
-}
-
-// An Organiser who never touches the zone field still saves settings that compute a
-// time, rather than settings that fall back for the rest of their life.
-func TestSaveShiftTimeDefaultsFillsInTheZone(t *testing.T) {
-	store := &stubRotaDefaultsStore{}
-	params := shiftTimeParams()
-	params.Timezone = ""
-
-	saved, err := SaveShiftTimeDefaults(context.Background(), store, params, zap.NewNop())
-	require.NoError(t, err)
-	assert.Equal(t, model.DefaultShiftTimezone, saved.ShiftTimezone)
-	assert.Equal(t, model.DefaultShiftTimezone, store.saved[0].ShiftTimezone)
-}
-
-// A shift ends the evening it starts, so a session running past midnight is
-// refused rather than stored as one ending before it began.
-func TestSaveShiftTimeDefaultsRefusesEndBeforeStart(t *testing.T) {
-	store := &stubRotaDefaultsStore{}
-	params := shiftTimeParams()
-	params.Start, params.End = "22:00", "00:30"
-
-	_, err := SaveShiftTimeDefaults(context.Background(), store, params, zap.NewNop())
-	require.ErrorIs(t, err, ErrInvalidInput)
-	assert.Empty(t, store.saved)
-}
-
-func TestSaveShiftTimeDefaultsRefusesEqualTimes(t *testing.T) {
-	store := &stubRotaDefaultsStore{}
-	params := shiftTimeParams()
-	params.End = params.Start
-
-	_, err := SaveShiftTimeDefaults(context.Background(), store, params, zap.NewNop())
-	require.ErrorIs(t, err, ErrInvalidInput)
-}
-
-// Every way of getting a time wrong is an ordinary mistake with a message, not
-// a failure: an Organiser is typing into a form.
-func TestSaveShiftTimeDefaultsRefusesBadInput(t *testing.T) {
-	cases := map[string]ShiftTimeParams{
-		"no start":         {Start: "", End: "21:30"},
-		"no end":           {Start: "19:30", End: ""},
-		"not a time":       {Start: "half seven", End: "21:30"},
-		"twelve hour":      {Start: "7:30pm", End: "21:30"},
-		"with seconds":     {Start: "19:30:00", End: "21:30"},
-		"unknown timezone": {Start: "19:30", End: "21:30", Timezone: "Not/AZone"},
-	}
-
-	for name, params := range cases {
-		t.Run(name, func(t *testing.T) {
-			store := &stubRotaDefaultsStore{}
-
-			_, err := SaveShiftTimeDefaults(context.Background(), store, params, zap.NewNop())
-			require.ErrorIs(t, err, ErrInvalidInput)
-			assert.Empty(t, store.saved)
-		})
-	}
-}
-
-// A write the database refuses is a failure rather than an Organiser's mistake, and
-// stays one all the way out — the API answers 500, not 400.
-func TestSaveShiftTimeDefaultsSurfacesAWriteFailure(t *testing.T) {
-	store := &stubRotaDefaultsStore{writeErr: errors.New("connection refused")}
-
-	_, err := SaveShiftTimeDefaults(context.Background(), store, shiftTimeParams(), zap.NewNop())
-	require.Error(t, err)
-	assert.NotErrorIs(t, err, ErrInvalidInput)
 }
 
 // The rules are stored as a JSON document, and reading them is what turns it
@@ -181,7 +95,7 @@ func TestRotaDefaultsReadsTheAllocationRules(t *testing.T) {
 // down with it: it reads as no rules (ADR 0006 — never an error).
 func TestRotaDefaultsToleratesUnreadableAllocationSettings(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
-		ShiftStartTime:     "19:30",
+		ShiftPattern:       weeklySunday,
 		AllocationSettings: `{"rules":"all of them"}`,
 	}}
 
@@ -189,7 +103,7 @@ func TestRotaDefaultsToleratesUnreadableAllocationSettings(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, defaults.AllocationSettings.Rules)
-	assert.Equal(t, "19:30", defaults.ShiftStartTime, "the rest of the record still reads")
+	assert.Equal(t, weeklySunday, defaults.ShiftPattern, "the rest of the record still reads")
 }
 
 func storedRules(t *testing.T, store *stubRotaDefaultsStore) []model.AllocationRule {
@@ -324,8 +238,6 @@ func TestEditsLeaveWhatThisBuildDoesNotUnderstandAlone(t *testing.T) {
 // left out, and the solve goes ahead (ADR 0006).
 func TestSettingsForAllocationIgnoresRulesItCannotApply(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
-		ShiftStartTime:     "19:30",
-		ShiftEndTime:       "21:30",
 		AllocationSettings: `{"rules":[{"id":"a","kind":"phase_of_the_moon"},{"id":"b","kind":"shift_gap","value":0}]}`,
 	}}
 

@@ -11,12 +11,6 @@ import (
 // is one Organisation in one place.
 const DefaultShiftTimezone = "Europe/London"
 
-// ShiftTimeLayout is how a time of day is spelled everywhere it crosses a
-// boundary — the settings API, the database, an Organiser's form field. Hours and
-// minutes only: the Organisation does not start at half past seven and eleven
-// seconds.
-const ShiftTimeLayout = "15:04"
-
 // ShiftTimestampLayout is how a Shift's own start and end are spelled: a date
 // and a time of day with no zone on the end of it, because a Shift's times are
 // wall-clock facts about Ilford rather than instants on a global timeline
@@ -26,20 +20,24 @@ const ShiftTimestampLayout = "2006-01-02T15:04:05"
 
 // RotaDefaults is what an Organiser has decided about how the Organisation as a whole
 // runs: one live, global record, edited on the Settings screen rather than set
-// by an operator in the config file (ADR 0006). It holds the default shift
-// times today; the default Shape, the allocation toggles and the Standing
-// Preallocations join it in later tickets.
+// by an operator in the config file (ADR 0006): the Shift pattern rotas are
+// minted from (ADR 0013), the zone their times are read in, and which optional
+// allocator rules apply.
 //
 // Nothing seeds it, so every field is empty on a deployment nobody has
-// configured. Empty is an ordinary state rather than a fault: it blocks
-// allocation, with a message naming what is missing, and nothing else. The rota
-// still renders, availability still works, and the parts that cannot be drawn
-// without a time say so by leaving the time out rather than by failing.
+// configured. Empty is an ordinary state rather than a fault: without a pattern
+// no rota can be defined, and that is all. Rotas already defined carry their
+// own times and still render, allocate and publish.
 type RotaDefaults struct {
-	// ShiftStartTime and ShiftEndTime are wall-clock times of day in the
-	// Organisation's own timezone, spelled in ShiftTimeLayout. Empty means unset.
-	ShiftStartTime string
-	ShiftEndTime   string
+	// ShiftPattern is the RRULE lines Shifts are generated from, as an Organiser
+	// typed them. Empty means unset.
+	ShiftPattern string
+	// PatternStartFrom is the date the pattern counts from, "2006-01-02".
+	// Empty means unset.
+	PatternStartFrom string
+	// ShiftLengthMinutes is how long each generated Shift runs. Zero means
+	// unset.
+	ShiftLengthMinutes int
 	// ShiftTimezone is an IANA zone name. Empty means unset, and reads as
 	// DefaultShiftTimezone.
 	ShiftTimezone string
@@ -57,28 +55,10 @@ func (d RotaDefaults) Timezone() string {
 	return d.ShiftTimezone
 }
 
-// MissingShiftTimes names the shift-time settings an Organiser has yet to fill in,
-// worded as they read on the Settings screen so the message an allocation
-// refuses with can be acted on without translation. Empty means a time can be
-// computed.
-//
-// The timezone is deliberately not here. It falls back rather than blocking:
-// the only way to reach this app with no zone is to have set nothing at all,
-// where the two times already say so.
-func (d RotaDefaults) MissingShiftTimes() []string {
-	var missing []string
-	if d.ShiftStartTime == "" {
-		missing = append(missing, "the default shift start time")
-	}
-	if d.ShiftEndTime == "" {
-		missing = append(missing, "the default shift end time")
-	}
-	return missing
-}
-
-// HasShiftTimes reports whether both times of day have been stated.
-func (d RotaDefaults) HasShiftTimes() bool {
-	return len(d.MissingShiftTimes()) == 0
+// HasShiftPattern reports whether a rota could be minted from these settings:
+// a pattern, the date it counts from, and how long its Shifts run.
+func (d RotaDefaults) HasShiftPattern() bool {
+	return d.ShiftPattern != "" && d.PatternStartFrom != "" && d.ShiftLengthMinutes > 0
 }
 
 // ShiftInstants reads a Shift's own start and end — the local wall-clock times
@@ -87,11 +67,10 @@ func (d RotaDefaults) HasShiftTimes() bool {
 // an instant makes: a subscriber's calendar client and a browser both want to
 // know when 19:30 in Ilford is where they are (ADR 0007).
 //
-// Unlike ShiftTimes it does not consult the shift-time settings at all. The
-// times come from the Shift, which has carried its own since it was minted; the
-// settings supply only the zone to read them in, and that always has an answer.
-// So a Shift keeps the times it was minted with even after an Organiser changes the
-// defaults, which is the point of storing them on the Shift.
+// The times come from the Shift, which has carried its own since it was minted;
+// the settings supply only the zone to read them in, and that always has an
+// answer. So a Shift keeps the times it was minted with even after an Organiser
+// changes the pattern, which is the point of storing them on the Shift.
 //
 // An untimed Shift is refused rather than answered with a midnight nobody
 // chose. Callers render one by leaving the time out.
@@ -112,39 +91,4 @@ func (d RotaDefaults) ShiftInstants(startAt, endAt string) (start, end time.Time
 	}
 
 	return start, end, nil
-}
-
-// ShiftTimestamps writes two times of day onto a date, giving the local times a
-// Shift carries: what it stores (ADR 0007), spelled in ShiftTimestampLayout.
-//
-// No zone is applied, and none is asked for. A Shift's times are wall-clock
-// facts about Ilford — 19:30 on the second of August — and the stored zone says
-// how to read them later rather than moving them, so a shift in July and one in
-// January come out the same.
-//
-// A free function rather than a method on the settings, because the times a
-// Shift is minted with are not the settings': defining a rota states them, and
-// the Rota Defaults are only what that form starts from (issue #140).
-func ShiftTimestamps(dateStr, startTime, endTime string) (start, end string, err error) {
-	start, err = shiftTimestamp(dateStr, startTime, "start")
-	if err != nil {
-		return "", "", err
-	}
-
-	end, err = shiftTimestamp(dateStr, endTime, "end")
-	if err != nil {
-		return "", "", err
-	}
-
-	return start, end, nil
-}
-
-// shiftTimestamp writes one time of day onto a date, naming which one it was
-// when it cannot.
-func shiftTimestamp(dateStr, timeOfDay, which string) (string, error) {
-	parsed, err := time.Parse("2006-01-02 "+ShiftTimeLayout, dateStr+" "+timeOfDay)
-	if err != nil {
-		return "", fmt.Errorf("failed to read the shift %s %q on %q: %w", which, timeOfDay, dateStr, err)
-	}
-	return parsed.Format(ShiftTimestampLayout), nil
 }

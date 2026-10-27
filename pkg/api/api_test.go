@@ -133,11 +133,9 @@ func (m *mockStore) allShiftsInRange() []db.ShiftInRange {
 		// A synthesised shift carries the times the settings would have minted
 		// it with, as a real one does — every Shift has them (ADR 0007). An
 		// explicit shiftsInRange is left exactly as the test wrote it.
-		// apiTestDefaults always answers, so there is no error a test can reach.
 		// Its rota and whether it is closed are kept from the fixture.
-		startAt, endAt, _ := model.ShiftTimestamps(date, apiTestDefaults.ShiftStartTime, apiTestDefaults.ShiftEndTime)
 		out = append(out, db.ShiftInRange{
-			Shift:     db.Shift{ID: id, RotaID: shift.RotaID, Date: date, Closed: shift.Closed, StartAt: startAt, EndAt: endAt},
+			Shift:     db.Shift{ID: id, RotaID: shift.RotaID, Date: date, Closed: shift.Closed, StartAt: date + "T19:30:00", EndAt: date + "T21:30:00"},
 			Allocated: true,
 		})
 	}
@@ -295,6 +293,8 @@ func (m *mockStore) InsertDefinedRota(ctx context.Context, rotation *db.Rotation
 		Start:      shifts[0].Date,
 		End:        shifts[len(shifts)-1].Date,
 		ShiftCount: len(shifts),
+		// Where it stopped, as the real write records it.
+		StoppedAfter: rotation.StoppedAfter,
 	}
 	m.rotations = append(m.rotations, stored)
 	m.shifts = append(m.shifts, shifts...)
@@ -528,6 +528,18 @@ func (m *mockStore) DeletePinByID(ctx context.Context, id string) (bool, error) 
 }
 
 // GetShiftsByRotaID returns a rota's shifts in date order, as the real store does.
+// GetShiftsOverlapping answers from the Shifts this store holds that carry
+// times; a fixture written with only a date runs at no moment.
+func (m *mockStore) GetShiftsOverlapping(ctx context.Context, startAt, endAt string) ([]db.Shift, error) {
+	var out []db.Shift
+	for _, s := range m.shifts {
+		if s.StartAt != "" && s.StartAt < endAt && startAt < s.EndAt {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 func (m *mockStore) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
 	if m.getShiftsErr != nil {
 		return nil, m.getShiftsErr
@@ -745,12 +757,12 @@ func (m *mockStore) GetRotaDefaults(context.Context) (db.RotaDefaults, error) {
 	return apiTestRotaDefaults, nil
 }
 
-func (m *mockStore) SaveRotaDefaults(_ context.Context, defaults db.RotaDefaults) error {
+func (m *mockStore) SaveShiftPattern(_ context.Context, defaults db.RotaDefaults) error {
 	if m.rotaDefaultsWriteErr != nil {
 		return m.rotaDefaultsWriteErr
 	}
 	m.savedRotaDefaults = append(m.savedRotaDefaults, defaults)
-	// The shift times only, as the real write: the Allocation Settings are
+	// The shift pattern section only, as the real write: the Allocation Settings are
 	// UpdateAllocationSettings' to change.
 	if m.rotaDefaults != nil {
 		defaults.AllocationSettings = m.rotaDefaults.AllocationSettings
@@ -809,17 +821,10 @@ func intPtr(i int) *int { return &i }
 // session the real one runs. Every endpoint that renders a time reads these, so
 // they are the fixture rather than a per-test setup.
 var apiTestRotaDefaults = db.RotaDefaults{
-	ShiftStartTime: "19:30",
-	ShiftEndTime:   "21:30",
-	ShiftTimezone:  "Europe/London",
-}
-
-// apiTestDefaults is the same settings as the domain reads them, which is what
-// mints a synthesised shift's times.
-var apiTestDefaults = model.RotaDefaults{
-	ShiftStartTime: apiTestRotaDefaults.ShiftStartTime,
-	ShiftEndTime:   apiTestRotaDefaults.ShiftEndTime,
-	ShiftTimezone:  apiTestRotaDefaults.ShiftTimezone,
+	ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
+	PatternStartFrom:   "2026-01-04",
+	ShiftLengthMinutes: 120,
+	ShiftTimezone:      "Europe/London",
 }
 
 // apiTestDefaultShape is what a configured Organisation's Shifts ask for, against the

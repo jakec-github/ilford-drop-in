@@ -4,10 +4,16 @@ import "time"
 
 // Rotation represents a database rotation record
 type Rotation struct {
-	ID                string
-	Start             string // DATE
-	End               string // DATE
-	ShiftCount        int
+	ID         string
+	Start      string // DATE
+	End        string // DATE
+	ShiftCount int
+	// StoppedAfter is the generated start of the rota's last Shift, in the
+	// wall-clock layout a Shift's own times use: where the next rota carries
+	// on from (ADR 0013). Generated rather than read off the last Shift,
+	// because that Shift's start can be moved afterwards and the pattern does
+	// not move with it.
+	StoppedAfter      string // TIMESTAMP
 	AllocatedDatetime string // TIMESTAMPTZ, empty string if NULL
 	// InputsChangedAt is when an allocator input last moved under this
 	// Rotation, zero when none has. A time rather than a string, unlike the

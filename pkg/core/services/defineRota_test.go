@@ -20,6 +20,8 @@ type mockDB struct {
 	testRoleStore
 
 	rotations       []db.Rotation
+	shiftsByRota    map[string][]db.Shift
+	existingShifts  []db.Shift
 	defaults        db.RotaDefaults
 	shape           []db.DefaultShapeSeat
 	standing        []db.StandingPreallocation
@@ -46,6 +48,22 @@ func (m *mockDB) GetRotations(ctx context.Context) ([]db.Rotation, error) {
 		return nil, m.getRotationsErr
 	}
 	return m.rotations, nil
+}
+
+func (m *mockDB) GetShiftsByRotaID(ctx context.Context, rotaID string) ([]db.Shift, error) {
+	return m.shiftsByRota[rotaID], nil
+}
+
+// GetShiftsOverlapping answers as the store does: every Shift already defined
+// that runs at some moment between the two.
+func (m *mockDB) GetShiftsOverlapping(ctx context.Context, startAt, endAt string) ([]db.Shift, error) {
+	var overlapping []db.Shift
+	for _, s := range m.existingShifts {
+		if s.StartAt < endAt && startAt < s.EndAt {
+			overlapping = append(overlapping, s)
+		}
+	}
+	return overlapping, nil
 }
 
 func (m *mockDB) GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error) {
@@ -81,13 +99,61 @@ var testShape = []db.DefaultShapeSeat{
 }
 
 // definable is a deployment a rota can be defined against: an Organiser has said
-// when the Organisation runs and what a shift asks for. Everything else about it is
-// empty, and tests that care about one part set it.
+// when the Organisation runs — every Sunday at 19:30 for two hours, from Sunday
+// 2 August 2026 — and what a shift asks for. Everything else about it is empty,
+// and tests that care about one part set it.
 func definable() *mockDB {
 	return &mockDB{
-		defaults: db.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Europe/London"},
-		shape:    testShape,
+		defaults: db.RotaDefaults{
+			ShiftPattern:       weeklySunday,
+			PatternStartFrom:   "2026-08-02",
+			ShiftLengthMinutes: 120,
+			ShiftTimezone:      "Europe/London",
+		},
+		shape: testShape,
 	}
+}
+
+// withPattern points a deployment at another Shift pattern, counted from the
+// same Start from.
+func withPattern(m *mockDB, pattern string) *mockDB {
+	m.defaults.ShiftPattern = pattern
+	return m
+}
+
+// pastRota is a rota that has been and gone, stopping after the given
+// Shifts. It is what the next rota carries on from.
+func pastRota(m *mockDB, id string, shifts ...db.Shift) {
+	last := shifts[len(shifts)-1]
+	m.rotations = append(m.rotations, db.Rotation{
+		ID: id, Start: shifts[0].Date, End: last.Date, ShiftCount: len(shifts),
+		StoppedAfter: last.StartAt, AllocatedDatetime: "2026-01-01T09:00:00Z",
+	})
+	if m.shiftsByRota == nil {
+		m.shiftsByRota = map[string][]db.Shift{}
+	}
+	m.shiftsByRota[id] = shifts
+	m.existingShifts = append(m.existingShifts, shifts...)
+}
+
+// existing is a Shift already defined, starting at start and running for two hours.
+func existing(id, start string) db.Shift {
+	at, err := time.Parse(model.ShiftTimestampLayout, start)
+	if err != nil {
+		panic(err)
+	}
+	return db.Shift{
+		ID: id, Date: at.Format("2006-01-02"), StartAt: start,
+		EndAt: at.Add(2 * time.Hour).Format(model.ShiftTimestampLayout),
+	}
+}
+
+func starts(shifts []db.Shift) []string {
+	var out []string
+	for _, s := range shifts {
+		out = append(out, s.StartAt)
+	}
+	return out
 }
 
 // definableRoster is the roster defining reads to open the new rota's round:
@@ -101,29 +167,28 @@ func definableRoster() *mockVolunteerClient {
 	}}
 }
 
-// statedRota is the whole of what defining takes: how many shifts, and from
-// when. The hours and the Shape are the Rota Defaults' to say and are not here
-// (issue #176).
-func statedRota(shiftCount int, startDate string) DefineRotaParams {
-	return DefineRotaParams{ShiftCount: shiftCount, StartDate: startDate}
+// statedRota is the whole of what defining takes: how many shifts, and no gap.
+// Which Shifts, and their hours, are the Shift pattern's to say (ADR 0013).
+func statedRota(shiftCount int) DefineRotaParams {
+	return DefineRotaParams{ShiftCount: shiftCount}
 }
 
-func TestDefineRota_MintsWeeklyFromTheStatedStart(t *testing.T) {
+// Weekly with a count of 12 gives 12 Shifts, a week apart, from Start from when
+// there is no rota before it to carry on from.
+func TestDefineRota_MintsTheNextShiftsThePatternGenerates(t *testing.T) {
 	mock := definable()
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(12, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(12))
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	assert.NotEmpty(t, result.Rotation.ID)
 	assert.Equal(t, 12, result.Rotation.ShiftCount)
 	assert.Equal(t, "2026-08-02", result.Rotation.Start)
-
 	// End spans to the last shift, so the returned rotation reads the same as one
 	// later fetched back from the store.
-	startDate, err := time.Parse("2006-01-02", result.Rotation.Start)
-	require.NoError(t, err)
-	assert.Equal(t, startDate.AddDate(0, 0, 7*11).Format("2006-01-02"), result.Rotation.End)
+	assert.Equal(t, "2026-10-18", result.Rotation.End)
+	assert.Equal(t, "2026-10-18T19:30:00", result.Rotation.StoppedAfter, "where it stopped is its last Shift's start")
 
 	assert.Len(t, mock.insertedRotas, 1)
 	assert.Equal(t, result.Rotation, mock.insertedRotas[0])
@@ -131,73 +196,78 @@ func TestDefineRota_MintsWeeklyFromTheStatedStart(t *testing.T) {
 	// Rotation and its shifts are created together in a single store call, and
 	// the result carries exactly the shifts that were inserted.
 	require.Len(t, mock.insertedShifts, 1)
-	require.Len(t, result.Shifts, 12, "one shift minted per shift date")
+	require.Len(t, result.Shifts, 12)
 	assert.Equal(t, mock.insertedShifts[0], result.Shifts)
 
+	first, err := time.Parse("2006-01-02", "2026-08-02")
+	require.NoError(t, err)
 	seenIDs := make(map[string]bool)
 	for i, s := range result.Shifts {
 		assert.NotEmpty(t, s.ID, "shift %d has an identity", i)
 		assert.False(t, seenIDs[s.ID], "shift ids are unique")
 		seenIDs[s.ID] = true
-
 		assert.Equal(t, result.Rotation.ID, s.RotaID, "shift %d belongs to the minting rotation", i)
-		expected := startDate.AddDate(0, 0, 7*i)
-		assert.Equal(t, expected.Format("2006-01-02"), s.Date, "shift %d is a week after the one before", i)
+
+		date := first.AddDate(0, 0, 7*i).Format("2006-01-02")
+		assert.Equal(t, date, s.Date, "shift %d is a week after the one before", i)
+		assert.Equal(t, date+"T19:30:00", s.StartAt, "shift %d starts when the pattern says", i)
+		assert.Equal(t, date+"T21:30:00", s.EndAt, "and runs for the shift length")
 	}
 }
 
-// The cadence is the start date's own weekday, not Sunday: a rota an Organiser
-// began on a Saturday runs on Saturdays. Nothing offers a cadence beyond
-// weekly, which is deliberate (issue #140).
-func TestDefineRota_KeepsTheStartDatesWeekday(t *testing.T) {
-	mock := definable()
+// A rota carries on from the exact Shift the last one stopped after, not from
+// the day after it: on a day with two Shifts, a rota that stopped after the
+// morning one is followed by the evening one that same day.
+func TestDefineRota_CarriesOnFromTheShiftTheLastRotaStoppedAfter(t *testing.T) {
+	mock := withPattern(definable(),
+		"RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30")
+	pastRota(mock, "previous",
+		existing("a", "2026-08-02T10:00:00"),
+		existing("b", "2026-08-02T19:30:00"),
+		existing("c", "2026-08-09T10:00:00"),
+	)
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(3, "2026-08-01"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(3))
 	require.NoError(t, err)
-
-	for i, s := range result.Shifts {
-		date, err := time.Parse("2006-01-02", s.Date)
-		require.NoError(t, err)
-		assert.Equal(t, time.Saturday, date.Weekday(), "shift %d falls on the weekday the rota started on", i)
-	}
-	assert.Equal(t, []string{"2026-08-01", "2026-08-08", "2026-08-15"},
-		[]string{result.Shifts[0].Date, result.Shifts[1].Date, result.Shifts[2].Date})
+	assert.Equal(t, []string{"2026-08-09T19:30:00", "2026-08-16T10:00:00", "2026-08-16T19:30:00"}, starts(result.Shifts))
 }
 
-// A rota may start whenever an Organiser says, including after a break — which is
-// the reason the date is stated rather than derived. Nothing here consults the
-// rota that came before beyond the one-rota-in-flight rule.
-func TestDefineRota_StartsAfterABreak(t *testing.T) {
+// Not before leaves a gap: the rota carries on with the first Shift the
+// pattern generates on or after it, and none before.
+func TestDefineRota_LeavesAGapWithNotBefore(t *testing.T) {
 	mock := definable()
-	mock.rotations = []db.Rotation{
-		{ID: "existing", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, AllocatedDatetime: "2026-05-31T09:00:00Z"},
-	}
+	pastRota(mock, "previous", existing("a", "2026-08-02T19:30:00"))
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-09-06"))
+	params := statedRota(2)
+	params.NotBefore = "2026-09-01"
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), params)
 	require.NoError(t, err)
-	assert.Equal(t, "2026-09-06", result.Rotation.Start, "the stated date stands, gap and all")
+	assert.Equal(t, []string{"2026-09-06T19:30:00", "2026-09-13T19:30:00"}, starts(result.Shifts))
 }
 
-// Defining a rota is where a Shift gets the hours it runs: the default times of
-// day, written onto each shift's own date (issue #133). They are local
-// wall-clock, so no zone moves them and a shift in July reads the same as one
-// in January.
-func TestDefineRota_WritesTheDefaultShiftTimes(t *testing.T) {
-	mock := definable()
-	mock.defaults = db.RotaDefaults{ShiftStartTime: "18:00", ShiftEndTime: "20:15", ShiftTimezone: "Europe/London"}
+// "Every other week" counts from Start from rather than from where the last
+// rota stopped, so a rota that stopped on the wrong week does not move the
+// fortnight.
+func TestDefineRota_EveryOtherWeekCountsFromStartFrom(t *testing.T) {
+	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;BYHOUR=19;BYMINUTE=30")
+	// Stopped after the 9th, which is not one of the pattern's weeks.
+	pastRota(mock, "previous", existing("a", "2026-08-09T19:30:00"))
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(3, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(2))
 	require.NoError(t, err)
+	assert.Equal(t, []string{"2026-08-16T19:30:00", "2026-08-30T19:30:00"}, starts(result.Shifts))
+}
 
-	require.Len(t, result.Shifts, 3)
-	for i, s := range result.Shifts {
-		assert.Equal(t, s.Date+"T18:00:00", s.StartAt, "shift %d starts at the default time on its own date", i)
-		assert.Equal(t, s.Date+"T20:15:00", s.EndAt, "shift %d ends at the default time on its own date", i)
-	}
+// The previous rota is the one that stopped latest, which is the one the next
+// carries on from, whatever order they were defined in.
+func TestDefineRota_CarriesOnFromTheRotaThatStoppedLatest(t *testing.T) {
+	mock := definable()
+	pastRota(mock, "later", existing("b", "2026-09-06T19:30:00"))
+	pastRota(mock, "earlier", existing("a", "2026-08-02T19:30:00"))
 
-	// What was returned is what was written.
-	require.Len(t, mock.insertedShifts, 1)
-	assert.Equal(t, result.Shifts, mock.insertedShifts[0])
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(1))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"2026-09-13T19:30:00"}, starts(result.Shifts))
 }
 
 // Defining a rota is also where a Shift gets its Shape: the default Shape,
@@ -207,7 +277,7 @@ func TestDefineRota_WritesTheDefaultShiftTimes(t *testing.T) {
 func TestDefineRota_WritesTheDefaultShapeOntoEveryShift(t *testing.T) {
 	mock := definable()
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(3, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(3))
 	require.NoError(t, err)
 	require.Len(t, result.Shifts, 3)
 
@@ -233,7 +303,7 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 		{ID: "standing-1", RRule: "FREQ=MONTHLY;BYDAY=1SU", RoleID: "role-service-volunteer", CustomValue: "St John's team"},
 	}
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
 
 	require.Len(t, result.Pins, 1)
@@ -252,44 +322,34 @@ func TestDefineRota_SeedsStandingPreallocations(t *testing.T) {
 func TestDefineRota_NoStandingPreallocations(t *testing.T) {
 	mock := definable()
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
 	assert.Empty(t, result.Pins)
 	require.Len(t, mock.insertedRotas, 1)
 }
 
 func TestDefineRota_InvalidShiftCount(t *testing.T) {
-	for _, tt := range []struct {
-		name       string
-		shiftCount int
-	}{
-		{"zero shifts", 0},
-		{"negative shifts", -5},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, count := range map[string]int{"zero shifts": 0, "negative shifts": -5, "too many": maxShiftCount + 1} {
+		t.Run(name, func(t *testing.T) {
 			mock := definable()
 
-			result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(tt.shiftCount, "2026-08-02"))
-			assert.Error(t, err)
+			result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(count))
 			assert.Nil(t, result)
-			assert.Contains(t, err.Error(), "shift count must be positive")
 			// Classified as bad input, so callers such as the HTTP API answer
 			// 400 rather than 500.
-			assert.ErrorIs(t, err, ErrInvalidInput)
+			require.ErrorIs(t, err, ErrInvalidInput)
+			assert.Contains(t, err.Error(), "a rota has from 1 to")
 			assert.Empty(t, mock.insertedRotas)
 		})
 	}
 }
 
-// A start date is the one field with no sensible default at this level: a rota
-// on no day is not a rota, so a missing or unreadable one is refused rather
-// than quietly becoming today (ADR 0007).
-func TestDefineRota_RefusesAnUnreadableStartDate(t *testing.T) {
-	for _, stated := range []string{"", "2 August 2026", "02/08/2026", "2026-02-30"} {
+func TestDefineRota_RefusesAnUnreadableNotBefore(t *testing.T) {
+	for _, stated := range []string{"2 August 2026", "02/08/2026", "2026-02-30"} {
 		t.Run(stated, func(t *testing.T) {
 			mock := definable()
 
-			result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, stated))
+			result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), DefineRotaParams{ShiftCount: 4, NotBefore: stated})
 			assert.Nil(t, result)
 			require.ErrorIs(t, err, ErrInvalidInput)
 			assert.Contains(t, err.Error(), "is not a date")
@@ -298,33 +358,57 @@ func TestDefineRota_RefusesAnUnreadableStartDate(t *testing.T) {
 	}
 }
 
-// Hours nobody has stated stop a rota being defined, and the refusal says where
-// to go and state them. A Shift's date is the date of its start (ADR 0007), so
-// a rota minted without them would be a rota on no days at all — which is why
-// defining is the second path that refuses over incomplete settings, alongside
-// allocation (a narrowing of ADR 0006).
-func TestDefineRota_RefusesShiftTimesNobodyHasSet(t *testing.T) {
-	for _, tt := range []struct {
-		name       string
-		start, end string
-		says       string
-	}{
-		{"neither", "", "", "the default shift start time and the default shift end time have not been set"},
-		{"no start", "", "21:30", "the default shift start time has not been set"},
-		{"no end", "19:30", "", "the default shift end time has not been set"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			mock := definable()
-			mock.defaults = db.RotaDefaults{ShiftStartTime: tt.start, ShiftEndTime: tt.end, ShiftTimezone: "Europe/London"}
+// With no Shift pattern there is nothing to say when Shifts run, so nothing is
+// minted, and the refusal says where to go and write one.
+func TestDefineRota_RefusesWithoutAShiftPattern(t *testing.T) {
+	mock := definable()
+	mock.defaults = db.RotaDefaults{ShiftTimezone: "Europe/London"}
 
-			result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
-			assert.Nil(t, result)
-			require.ErrorIs(t, err, ErrInvalidInput)
-			assert.Contains(t, err.Error(), tt.says)
-			assert.Contains(t, err.Error(), "rota defaults", "and where to go and say so")
-			assert.Empty(t, mock.insertedRotas, "nothing is minted on hours nobody has stated")
-		})
-	}
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
+	assert.Nil(t, result)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "no shift pattern has been set")
+	assert.Contains(t, err.Error(), "rota defaults", "and where to go and say so")
+	assert.Empty(t, mock.insertedRotas)
+}
+
+// A pattern that has run out — a COUNT or an UNTIL spent — cannot fill the
+// rota, and the refusal says how many it could.
+func TestDefineRota_RefusesWhenThePatternRunsOut(t *testing.T) {
+	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30;COUNT=3")
+
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
+	assert.Nil(t, result)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "generates only 3 more shifts, not the 4 asked for")
+	assert.Empty(t, mock.insertedRotas)
+}
+
+// A Shift the pattern generates can land on hours a Shift already runs — one
+// added by hand, or a pattern changed under a rota. Two Shifts cannot run at
+// once, so the rota is refused as a conflict naming both.
+func TestDefineRota_RefusesAShiftThatOverlapsOneAlreadyDefined(t *testing.T) {
+	mock := definable()
+	mock.existingShifts = []db.Shift{existing("by-hand", "2026-08-09T20:00:00")}
+
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
+	assert.Nil(t, result)
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "already defined")
+	assert.Contains(t, err.Error(), "9 August 2026", "the day of the clash is named")
+	assert.Empty(t, mock.insertedRotas)
+}
+
+// A length longer than the gap between two generated starts makes a rota
+// overlap itself, which is refused for the same reason.
+func TestDefineRota_RefusesShiftsThatOverlapEachOther(t *testing.T) {
+	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10,11;BYMINUTE=0")
+
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
+	assert.Nil(t, result)
+	require.ErrorIs(t, err, ErrConflict)
+	assert.Contains(t, err.Error(), "would still be running")
+	assert.Empty(t, mock.insertedRotas)
 }
 
 // A rota whose shifts ask for nobody solves perfectly and staffs nobody, so a
@@ -335,7 +419,7 @@ func TestDefineRota_RefusesADefaultShapeAskingForNobody(t *testing.T) {
 	mock := definable()
 	mock.shape = nil
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrInvalidInput)
 	assert.Contains(t, err.Error(), "the default shape has not been set")
@@ -348,11 +432,11 @@ func TestDefineRota_RefusesADefaultShapeAskingForNobody(t *testing.T) {
 func TestDefineRota_RefusedWhileARotaIsInFlight(t *testing.T) {
 	mock := definable()
 	mock.rotations = []db.Rotation{
-		{ID: "allocated", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, AllocatedDatetime: "2026-05-31T09:00:00Z"},
-		{ID: "in-flight", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4},
+		{ID: "allocated", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, StoppedAfter: "2026-06-28T19:30:00", AllocatedDatetime: "2026-05-31T09:00:00Z"},
+		{ID: "in-flight", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, StoppedAfter: "2026-07-26T19:30:00"},
 	}
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "2026-07-05 to 2026-07-26", "the message points at the rota in the way")
@@ -364,13 +448,13 @@ func TestDefineRota_RefusedWhileARotaIsInFlight(t *testing.T) {
 func TestDefineRota_AllowedWhenEveryRotaIsAllocated(t *testing.T) {
 	mock := definable()
 	mock.rotations = []db.Rotation{
-		{ID: "older", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, AllocatedDatetime: "2026-05-31T09:00:00Z"},
-		{ID: "latest", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, AllocatedDatetime: "2026-06-28T09:00:00Z"},
+		{ID: "older", Start: "2026-06-07", End: "2026-06-28", ShiftCount: 4, StoppedAfter: "2026-06-28T19:30:00", AllocatedDatetime: "2026-05-31T09:00:00Z"},
+		{ID: "latest", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, StoppedAfter: "2026-07-26T19:30:00", AllocatedDatetime: "2026-06-28T09:00:00Z"},
 	}
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
-	assert.Equal(t, "2026-08-02", result.Rotation.Start)
+	assert.Equal(t, "2026-08-02", result.Rotation.Start, "carrying on from neither, since both stopped before Start from")
 	assert.Len(t, mock.insertedRotas, 1)
 }
 
@@ -380,45 +464,25 @@ func TestDefineRota_AllowedWhenEveryRotaIsAllocated(t *testing.T) {
 func TestDefineRota_NamesTheEarliestRotaInFlight(t *testing.T) {
 	mock := definable()
 	mock.rotations = []db.Rotation{
-		{ID: "later", Start: "2026-09-06", End: "2026-09-27", ShiftCount: 4},
-		{ID: "earlier", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4},
+		{ID: "later", Start: "2026-09-06", End: "2026-09-27", ShiftCount: 4, StoppedAfter: "2026-09-27T19:30:00"},
+		{ID: "earlier", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, StoppedAfter: "2026-07-26T19:30:00"},
 	}
 
-	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-10-04"))
+	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.ErrorIs(t, err, ErrConflict)
 	assert.Contains(t, err.Error(), "2026-07-05")
 	assert.NotContains(t, err.Error(), "2026-09-06")
 }
 
-// A start date an Organiser chose can land on hours the Organisation already runs, which
-// the no-overlap constraint refuses. It is an ordinary mistake, so it is
-// answered as one: the day, the rota covering it, and where to start instead.
-func TestDefineRota_RefusesADateAlreadyTaken(t *testing.T) {
-	mock := definable()
-	mock.rotations = []db.Rotation{
-		{ID: "allocated", Start: "2026-07-05", End: "2026-07-26", ShiftCount: 4, AllocatedDatetime: "2026-06-28T09:00:00Z"},
-	}
-	mock.insertErr = db.ErrShiftOverlap
-
-	// Starts a fortnight before the last rota ends, so its first two shifts land
-	// on days that already have one.
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-07-19"))
-	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "19 July 2026", "the first day that clashes is named")
-	assert.Contains(t, err.Error(), "26 July 2026", "so is the rota in the way, and where to start after")
-}
-
-// Where nothing overlaps and the index still refuses — a concurrent define that
-// committed first — the refusal says only what is certain rather than naming a
-// day it would be guessing at.
-func TestDefineRota_ADateTakenByNothingItCanSee(t *testing.T) {
+// Where PlanRota saw no clash and the no-overlap constraint still refuses — a
+// concurrent define that committed first — the refusal says only that.
+func TestDefineRota_AShiftDefinedMeanwhile(t *testing.T) {
 	mock := definable()
 	mock.insertErr = db.ErrShiftOverlap
 
-	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.ErrorIs(t, err, ErrConflict)
-	assert.Contains(t, err.Error(), "already runs at one of those times")
+	assert.Contains(t, err.Error(), "reload and try again")
 }
 
 // Anything else the insert reports is a fault rather than a mistake, so it
@@ -427,7 +491,7 @@ func TestDefineRota_InsertFailure(t *testing.T) {
 	mock := definable()
 	mock.insertErr = errors.New("boom")
 
-	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	_, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrConflict)
 	assert.NotErrorIs(t, err, ErrInvalidInput)
@@ -439,7 +503,7 @@ func TestDefineRota_RotationsReadFails(t *testing.T) {
 	mock := definable()
 	mock.getRotationsErr = errors.New("boom")
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(2, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(2))
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Empty(t, mock.insertedShifts, "nothing is written when the rotas cannot be read")
@@ -451,7 +515,7 @@ func TestDefineRota_RotationsReadFails(t *testing.T) {
 func TestDefineRota_OpensTheRound(t *testing.T) {
 	mock := definable()
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
 
 	assert.Equal(t, 2, result.Asked, "the two active volunteers, not the one who has stopped")
@@ -473,7 +537,7 @@ func TestDefineRota_RosterFailureDoesNotCostTheRota(t *testing.T) {
 	mock := definable()
 	roster := &mockVolunteerClient{err: errors.New("sheets is down")}
 
-	result, err := DefineRota(context.Background(), mock, roster, nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, roster, nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, result.Asked)
@@ -487,7 +551,7 @@ func TestDefineRota_MintFailureDoesNotCostTheRota(t *testing.T) {
 	mock := definable()
 	mock.mintErr = errors.New("boom")
 
-	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4, "2026-08-02"))
+	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, result.Asked)

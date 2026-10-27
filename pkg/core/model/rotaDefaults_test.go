@@ -13,69 +13,33 @@ import (
 // A zone an Organiser has chosen is used; no zone falls back rather than failing,
 // because without one a time of day cannot become a moment at all.
 func TestShiftTimezone(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
+	var defaults model.RotaDefaults
 	assert.Equal(t, model.DefaultShiftTimezone, defaults.Timezone())
 
 	defaults.ShiftTimezone = "UTC"
 	assert.Equal(t, "UTC", defaults.Timezone())
 }
 
-// Settings nobody has filled in are the ordinary first state of a deployment,
-// named a section at a time so the refusal an allocation gives can be acted on.
-func TestShiftTimesUnset(t *testing.T) {
-	var defaults model.RotaDefaults
+// A rota can be minted only from a pattern, the date it counts from and a
+// length; any one missing is no pattern at all.
+func TestHasShiftPattern(t *testing.T) {
+	complete := model.RotaDefaults{
+		ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
+		PatternStartFrom:   "2026-11-01",
+		ShiftLengthMinutes: 120,
+	}
+	assert.True(t, complete.HasShiftPattern())
 
-	assert.False(t, defaults.HasShiftTimes())
-	assert.Equal(t, []string{
-		"the default shift start time",
-		"the default shift end time",
-	}, defaults.MissingShiftTimes())
-}
-
-// Half-filled settings name only the half that is missing — the message an
-// allocation refuses with has to say what to go and do.
-func TestMissingShiftTimesNamesOnlyWhatIsMissing(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30"}
-
-	assert.Equal(t, []string{"the default shift end time"}, defaults.MissingShiftTimes())
-	assert.False(t, defaults.HasShiftTimes())
-}
-
-func TestHasShiftTimes(t *testing.T) {
-	defaults := model.RotaDefaults{ShiftStartTime: "19:30", ShiftEndTime: "21:30"}
-
-	assert.True(t, defaults.HasShiftTimes())
-	assert.Empty(t, defaults.MissingShiftTimes())
-}
-
-// A Shift's own start and end are wall-clock, so they carry no zone at all: the
-// same 19:30 on a winter date and a summer date spell the same timestamp, and
-// only ShiftInstants below turns either into a moment (ADR 0007).
-func TestShiftTimestampsAreWallClock(t *testing.T) {
-	start, end, err := model.ShiftTimestamps("2026-01-12", "19:30", "21:30")
-	require.NoError(t, err)
-	assert.Equal(t, "2026-01-12T19:30:00", start)
-	assert.Equal(t, "2026-01-12T21:30:00", end)
-
-	start, end, err = model.ShiftTimestamps("2026-07-13", "19:30", "21:30")
-	require.NoError(t, err)
-	assert.Equal(t, "2026-07-13T19:30:00", start)
-	assert.Equal(t, "2026-07-13T21:30:00", end)
-}
-
-// A caller with no readable times to write must not write half of them, and is
-// told which half it got wrong.
-func TestShiftTimestampsRefuses(t *testing.T) {
-	_, _, err := model.ShiftTimestamps("2026-07-13", "", "21:30")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "start")
-
-	_, _, err = model.ShiftTimestamps("2026-07-13", "19:30", "half nine")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "end")
-
-	_, _, err = model.ShiftTimestamps("13/07/2026", "19:30", "21:30")
-	assert.Error(t, err)
+	assert.False(t, model.RotaDefaults{}.HasShiftPattern())
+	for _, blank := range []func(*model.RotaDefaults){
+		func(d *model.RotaDefaults) { d.ShiftPattern = "" },
+		func(d *model.RotaDefaults) { d.PatternStartFrom = "" },
+		func(d *model.RotaDefaults) { d.ShiftLengthMinutes = 0 },
+	} {
+		partial := complete
+		blank(&partial)
+		assert.False(t, partial.HasShiftPattern())
+	}
 }
 
 // A Shift's own times are read in the Organisation's zone, so the same stored 19:30

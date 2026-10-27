@@ -45,7 +45,7 @@ type RotaInFlight struct {
 // invariant that a rotation always has at least one shift.
 func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.allocated_datetime, r.inputs_changed_at
+		SELECT r.id, MIN(`+shiftDateExpr+`), MAX(`+shiftDateExpr+`), COUNT(*), r.stopped_after, r.allocated_datetime, r.inputs_changed_at
 		FROM rotation r
 		JOIN shift s ON s.rota_id = r.id
 		WHERE r.organisation_id = $1
@@ -59,11 +59,12 @@ func (d *DB) GetRotations(ctx context.Context) ([]Rotation, error) {
 	var rotations []Rotation
 	for rows.Next() {
 		var r Rotation
-		var start, end time.Time
+		var start, end, stoppedAfter time.Time
 		var allocatedDatetime, inputsChangedAt *time.Time
-		if err := rows.Scan(&r.ID, &start, &end, &r.ShiftCount, &allocatedDatetime, &inputsChangedAt); err != nil {
+		if err := rows.Scan(&r.ID, &start, &end, &r.ShiftCount, &stoppedAfter, &allocatedDatetime, &inputsChangedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan rotation: %w", err)
 		}
+		r.StoppedAfter = localTimestamp(stoppedAfter)
 		r.Start = start.Format("2006-01-02")
 		r.End = end.Format("2006-01-02")
 		if allocatedDatetime != nil {

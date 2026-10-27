@@ -57,7 +57,7 @@ func (s testRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefaults
 		return *s.rotaDefaults, nil
 	}
 	return db.RotaDefaults{
-		ShiftStartTime: "19:30", ShiftEndTime: "21:30", ShiftTimezone: "Europe/London",
+		ShiftPattern: weeklySunday, PatternStartFrom: "2026-01-01", ShiftLengthMinutes: 120, ShiftTimezone: "Europe/London",
 	}, nil
 }
 
