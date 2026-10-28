@@ -15,7 +15,7 @@ import (
 // trade-off (see docs/oidc_admin_sync_plan.md).
 type volunteerStore struct {
 	mu     sync.RWMutex
-	cached []model.Volunteer
+	cached model.Roster
 }
 
 // NewVolunteerStore returns an empty volunteer store. It satisfies
@@ -33,13 +33,21 @@ func NewVolunteerStore() *volunteerStore {
 func (s *volunteerStore) ListVolunteers(_ *config.Organisation, _ model.Roles) ([]model.Volunteer, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.cached, nil
+	return s.cached.Volunteers, nil
+}
+
+// UnknownRoles returns the Role names the last sync's sheet used that match no
+// Role the app had at the time.
+func (s *volunteerStore) UnknownRoles() []model.UnknownRole {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cached.UnknownRoles
 }
 
 // Replace swaps the whole roster for the freshly synced one. It is the only way
 // data enters the store.
-func (s *volunteerStore) Replace(volunteers []model.Volunteer) {
+func (s *volunteerStore) Replace(roster model.Roster) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.cached = volunteers
+	s.cached = roster
 }

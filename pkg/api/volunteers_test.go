@@ -150,7 +150,7 @@ func TestListVolunteersIncludesInactive(t *testing.T) {
 func TestListVolunteersEmptyRoster(t *testing.T) {
 	rec := doRequest(t, newTestHandler(&mockStore{}, &mockVolunteerClient{}), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.JSONEq(t, `{"volunteers":[]}`, rec.Body.String())
+	assert.JSONEq(t, `{"volunteers":[],"unknownRoles":[]}`, rec.Body.String())
 }
 
 // TestListVolunteersRequiresASession proves the roster is Organiser-only: it exposes
@@ -167,4 +167,29 @@ func TestListVolunteersRosterError(t *testing.T) {
 	client := &mockVolunteerClient{err: errors.New("sheet unavailable")}
 	rec := doRequest(t, newTestHandler(&mockStore{}, client), http.MethodGet, "/api/volunteers", "", organiserCookie())
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+// The Role names the roster uses and the app does not have ride along with the
+// roster, so the Roles section can offer to create them.
+func TestListVolunteersReportsUnknownRoles(t *testing.T) {
+	client := rosterVolunteers()
+	client.unknownRoles = []model.UnknownRole{{Name: "Kitchen", Volunteers: 2}}
+	h := newTestHandler(&mockStore{}, client)
+
+	rec := doRequest(t, h, http.MethodGet, "/api/volunteers", "", organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		UnknownRoles []map[string]any `json:"unknownRoles"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, []map[string]any{{"name": "Kitchen", "volunteers": float64(2)}}, resp.UnknownRoles)
+}
+
+func TestListVolunteersReportsNoUnknownRolesAsEmpty(t *testing.T) {
+	h := newTestHandler(&mockStore{}, rosterVolunteers())
+
+	rec := doRequest(t, h, http.MethodGet, "/api/volunteers", "", organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"unknownRoles":[]`)
 }

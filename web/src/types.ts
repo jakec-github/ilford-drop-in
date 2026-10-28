@@ -246,6 +246,21 @@ export interface Volunteer {
   active: boolean;
 }
 
+// UnknownRole is a Role name the roster sheet uses that no Role here has, and
+// how many volunteers carry it. It is either a Role nobody has created yet or one
+// renamed here and not on the sheet (ADR 0006) — the app cannot tell which.
+export interface UnknownRole {
+  name: string;
+  volunteers: number;
+}
+
+// Roster is one read of the synced roster: the volunteers, and the Role names
+// they carry that match no Role here.
+export interface Roster {
+  volunteers: Volunteer[];
+  unknownRoles: UnknownRole[];
+}
+
 // PlannedShift is a Shift by its wall-clock times, "2026-11-01T19:30:00".
 //
 // overrides are the Overrides that matched it, in the order they applied; only

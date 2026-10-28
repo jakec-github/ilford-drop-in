@@ -256,12 +256,12 @@ func newOrganisation(
 			if err != nil {
 				return err
 			}
-			fetched, err := devmode.LoadVolunteers(dev.VolunteersCSV, roles)
+			fetched, err := devmode.LoadRoster(dev.VolunteersCSV, roles)
 			if err != nil {
 				return err
 			}
 			volunteers.Replace(fetched)
-			logger.Info("Volunteer roster loaded from CSV", zap.Int("count", len(fetched)))
+			logger.Info("Volunteer roster loaded from CSV", zap.Int("count", len(fetched.Volunteers)))
 			return nil
 		}
 
@@ -281,12 +281,12 @@ func newOrganisation(
 			if err != nil {
 				return err
 			}
-			fetched, err := client.ListVolunteers(org, roles)
+			fetched, err := client.ReadRoster(org, roles)
 			if err != nil {
 				return fmt.Errorf("failed to fetch volunteers for sync: %w", err)
 			}
 			volunteers.Replace(fetched)
-			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched)))
+			logger.Info("Volunteer roster synced", zap.Int("count", len(fetched.Volunteers)))
 			// The sheet shows display names, and the roster is where they
 			// come from. On the startup sync this is the startup publish,
 			// which puts right a change made while the server was down or

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import Button from "../ui/Button";
 import DragHandle from "../ui/DragHandle";
 import IconButton from "../ui/IconButton";
 import { useDragReorder } from "../ui/useDragReorder";
@@ -16,7 +17,13 @@ import RotaDefaultsCard from "./RotaDefaultsCard";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import { settingsSummary } from "./settingsSummary";
-import type { ConfiguredRole, RoleColour, RoleEdit, Volunteer } from "../types";
+import type {
+  ConfiguredRole,
+  RoleColour,
+  RoleEdit,
+  UnknownRole,
+  Volunteer,
+} from "../types";
 import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./OrganiserConfig.css";
 
@@ -238,6 +245,62 @@ export function NewRoleCard({
   );
 }
 
+// UnknownRoleSuggestions offers each Role name the roster uses that no Role here
+// has. Creating one re-reads the roster, so the volunteers carrying it pick it
+// up. A Role renamed here and not on the sheet looks exactly the same, and
+// creating it would make a duplicate — so the warning comes first.
+export function UnknownRoleSuggestions({
+  unknown,
+  onCreate,
+}: {
+  unknown: UnknownRole[];
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const [creating, setCreating] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (unknown.length === 0) return null;
+
+  async function create(name: string) {
+    setCreating(name);
+    setError(null);
+    try {
+      await onCreate(name);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create it");
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  return (
+    <aside className="unknown-roles" aria-label="Roles on the roster">
+      <p className="unknown-roles-lede">
+        The roster gives volunteers Roles this app does not have. If one is a
+        Role you renamed here, change the roster&rsquo;s Roles column to the new
+        name instead of creating it again.
+      </p>
+      <ul>
+        {unknown.map((u) => (
+          <li key={u.name}>
+            <span className="unknown-roles-name">{u.name}</span>
+            <span className="unknown-roles-count">
+              {u.volunteers} {u.volunteers === 1 ? "volunteer" : "volunteers"}
+            </span>
+            <Button
+              size="small"
+              disabled={creating !== null}
+              onClick={() => void create(u.name)}
+            >
+              Create {u.name}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="settings-error">{error}</p>}
+    </aside>
+  );
+}
+
 // What re-reading the roster after a Role change is doing, said under the list.
 const SYNC_NOTE: Record<SyncState, string> = {
   idle: "",
@@ -254,7 +317,7 @@ const SYNC_NOTE: Record<SyncState, string> = {
 // priority order, so each of those changes who holds what.
 function RolesSettings({ incomplete }: { incomplete: boolean }) {
   const { roles, error, addRole, saveRole } = useRoles();
-  const { volunteers, syncState, sync } = useVolunteers();
+  const { volunteers, unknownRoles, syncState, sync } = useVolunteers();
   const [adding, setAdding] = useState(false);
   // The order being written, held over the list while the writes land one by
   // one, so it does not shuffle through every order in between.
@@ -323,6 +386,13 @@ function RolesSettings({ incomplete }: { incomplete: boolean }) {
     void sync();
   }
 
+  // Awaits the re-read, so the suggestion stays up until the roster no longer
+  // makes it.
+  async function createUnknown(name: string) {
+    await addRole({ name, colour: NEW_ROLE_COLOUR, priority: nextPriority });
+    await sync();
+  }
+
   return (
     <SettingsSection
       title="Roles"
@@ -375,6 +445,13 @@ function RolesSettings({ incomplete }: { incomplete: boolean }) {
       )}
 
       {adding && <NewRoleCard onAdd={add} onDiscard={() => setAdding(false)} />}
+
+      {roles !== null && (
+        <UnknownRoleSuggestions
+          unknown={unknownRoles}
+          onCreate={createUnknown}
+        />
+      )}
 
       <p className={`roles-sync roles-sync--${syncState}`} aria-live="polite">
         {SYNC_NOTE[syncState]}

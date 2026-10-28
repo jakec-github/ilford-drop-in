@@ -725,9 +725,14 @@ func (m *mockStore) InsertCoverAndAlterations(ctx context.Context, cover *db.Cov
 
 // mockVolunteerClient implements services.VolunteerClient for testing
 type mockVolunteerClient struct {
-	volunteers []model.Volunteer
-	err        error
-	calls      int
+	volunteers   []model.Volunteer
+	unknownRoles []model.UnknownRole
+	err          error
+	calls        int
+}
+
+func (m *mockVolunteerClient) UnknownRoles() []model.UnknownRole {
+	return m.unknownRoles
 }
 
 func (m *mockVolunteerClient) ListVolunteers(_ *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
