@@ -1,4 +1,4 @@
-.rota-defaults-editor {
+.rota-defaults-card {
   margin-top: 0.25rem;
 }
 
@@ -10,7 +10,11 @@
   width: 100%;
   margin-top: 0.25rem;
   padding: 0.5rem;
-  font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    14px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
   color: var(--text-h);
   background: var(--bg);
   border: 1px solid var(--border);
@@ -55,7 +59,11 @@
 }
 
 .shift-pattern-lines code {
-  font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    0.8125rem ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
   word-break: break-all;
 }
 

@@ -214,7 +214,7 @@ export default function AvailabilityPanel() {
                 ? "Starting…"
                 : total === 0
                   ? "Start round"
-                  : "Top up round"}
+                  : "Regenerate volunteers"}
             </Button>
           )}
         </header>

@@ -13,10 +13,14 @@ export default function SettingsSection({
   title,
   blurb,
   action,
+  incomplete = false,
   children,
 }: {
   title: string;
   blurb: string;
+  // A section setup cannot do without, still empty. It is drawn as wanting
+  // attention, since nothing else in Config opens until it is filled in.
+  incomplete?: boolean;
   // The one thing this section can be asked to do, in the header rather than
   // below the list — a list that grows would otherwise walk its own button off
   // the bottom of the screen.
@@ -24,10 +28,15 @@ export default function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="organiser-panel settings-section">
+    <section
+      className={`organiser-panel settings-section${incomplete ? " settings-section--incomplete" : ""}`}
+    >
       <header className="settings-section-head">
         <div>
-          <h2>{title}</h2>
+          <h2>
+            {title}
+            {incomplete && <span className="settings-needed">Needed</span>}
+          </h2>
           <p className="settings-blurb">{blurb}</p>
         </div>
         {action}

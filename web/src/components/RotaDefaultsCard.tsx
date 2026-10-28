@@ -1,63 +1,120 @@
-import { useState } from "react";
-import Button from "../ui/Button";
+import { useEffect, useState } from "react";
+import {
+  useDraft,
+  useSaveWhenSettled,
+  type SaveState,
+} from "../hooks/useAutosave";
 import { useRoles } from "../hooks/useRoles";
-import { useRotaDefaults } from "../hooks/useRotaDefaults";
-import SettingsSection from "./SettingsSection";
-import { describeShape } from "./shape";
+import {
+  patternSet,
+  shapeSet,
+  useRotaDefaults,
+} from "../hooks/useRotaDefaults";
 import { useShiftPatternPreview } from "../hooks/useShiftPatternPreview";
-import RotaDefaultsEditor from "./RotaDefaultsEditor";
-import { addDays, formatDay, formatLength } from "./patternDates";
-import type { ShiftPattern } from "../types";
+import PatternCalendar from "./PatternCalendar";
+import SaveStatus from "./SaveStatus";
+import SettingsSection from "./SettingsSection";
+import ShapeSeats from "./ShapeSeats";
+import { seatCountsOf, seatsKey, seatsOf, type SeatCounts } from "./shape";
+import {
+  formatLength,
+  isDate,
+  lengthChoices,
+  monthsFrom,
+  today as todayDate,
+} from "./patternDates";
+import type { ConfiguredRole, RotaDefaults, ShiftPattern } from "../types";
+import "./RotaDefaultsCard.css";
 
-// PatternReading is the saved Shift pattern in plain English, one line per
-// line of it, as the server reads it back. Empty until the reading arrives:
-// the raw RRULE is not worth showing an Organiser for the moment it takes.
-function PatternReading({
-  pattern,
-  startFrom,
-  timezone,
+// What the length starts at before one has been saved: the commonest session,
+// and a value rather than a blank so a first pattern can be saved without a
+// detour through the list.
+const DEFAULT_LENGTH = 60;
+
+// How many months the calendar shows at once.
+const MONTHS_SHOWN = 3;
+
+// The pattern half as the card holds it. Start from and the length are filled
+// in for a pattern never saved — today, and an hour — so that only the lines
+// are left to write; the server would take a blank Start from as today too.
+function patternOf(defaults: RotaDefaults): ShiftPattern {
+  return {
+    shiftPattern: defaults.shiftPattern,
+    patternStartFrom: defaults.patternStartFrom || todayDate(),
+    shiftTimezone: defaults.shiftTimezone,
+    shiftLengthMinutes: defaults.shiftLengthMinutes || DEFAULT_LENGTH,
+  };
+}
+
+const samePattern = (a: ShiftPattern, b: ShiftPattern) =>
+  a.shiftPattern === b.shiftPattern &&
+  a.patternStartFrom === b.patternStartFrom &&
+  a.shiftTimezone.trim() === b.shiftTimezone.trim() &&
+  a.shiftLengthMinutes === b.shiftLengthMinutes;
+
+// Both halves save on their own; the card says the busier of the two.
+function either(a: SaveState, b: SaveState): SaveState {
+  if (a === "saving" || b === "saving") return "saving";
+  if (a === "saved" || b === "saved") return "saved";
+  return "idle";
+}
+
+// ShapeHalf is the default Shape, saved whenever its counts stop moving. Its
+// own component so its draft can be read from the Roles, which it cannot be
+// until they have loaded.
+function ShapeHalf({
+  defaults,
+  roles,
+  onSave,
+  onState,
 }: {
-  pattern: string;
-  startFrom: string;
-  timezone: string;
+  defaults: RotaDefaults;
+  roles: ConfiguredRole[];
+  onSave: (seats: { roleId: string; count: number }[]) => Promise<void>;
+  onState: (state: SaveState) => void;
 }) {
-  // Any span will do: only the lines' readings are wanted here.
-  const { preview } = useShiftPatternPreview(
-    pattern,
-    startFrom,
-    timezone,
-    startFrom,
-    addDays(startFrom, 1),
-  );
-  if (!preview) return null;
+  const sameCounts = (a: SeatCounts, b: SeatCounts) =>
+    seatsKey(seatsOf(roles, a)) === seatsKey(seatsOf(roles, b));
+  const { draft, setDraft, saved } = useDraft({
+    source: defaults.defaultShape,
+    toDraft: (shape) => seatCountsOf(roles, shape),
+    same: sameCounts,
+  });
+  const { saveState, error } = useSaveWhenSettled({
+    draft,
+    saved,
+    same: sameCounts,
+    save: (counts) => onSave(seatsOf(roles, counts)),
+  });
+  // Said up to the card, which shows one status for both halves.
+  useEffect(() => onState(saveState), [saveState, onState]);
+
   return (
-    <ul className="settings-pattern-lines">
-      {preview.lines.map((line) => (
-        <li key={line.number}>
-          {line.problems.length > 0 ? (
-            <code>{line.text}</code>
-          ) : (
-            line.description
-          )}
-        </li>
-      ))}
-    </ul>
+    <>
+      <p className="settings-hint">
+        How many places of each Role a shift has. Every shift of a rota is
+        minted with this; leave a Role at 0 if a shift does not need one, and a
+        single shift can be changed on its own once the rota exists.
+      </p>
+      <div className="rota-defaults-shape">
+        <ShapeSeats roles={roles} counts={draft} onChange={setDraft} />
+      </div>
+      {error && <p className="settings-error">{error}</p>}
+    </>
   );
 }
 
-// RotaDefaultsCard is the settings an Organiser keeps for the Organisation as a whole:
-// when the Organisation runs, and what a shift asks for.
+// RotaDefaultsCard is the Rota: what every rota is made from — when the
+// Organisation runs (the Shift pattern, ADR 0013) and what a shift asks for
+// (the default Shape) — edited where it stands. Each half saves itself once it
+// stops moving: the pattern only once the server has read every line of it
+// without a problem, so a half-typed line is never stored.
 //
-// It is the one settings card read on two screens. On Settings it sits with the
+// It is the one settings card read on two screens. On Config it sits with the
 // rest; on the Allocation tab it sits under the define form, because those two
-// facts are what defining a rota spends and this is where they are stated
-// (issue #176). One component rather than a read-only copy: an Organiser who finds
-// the pattern wrong at the moment of defining should fix it there, and a copy
-// would be a second thing to keep true.
-//
-// Nothing seeds these, so "not set yet" is the state a new deployment is in
-// rather than a fault — and the caption says what that costs, because a rota
-// cannot be defined until they are stated.
+// facts are what defining a rota spends (issue #176). One component rather
+// than a read-only copy: an Organiser who finds the pattern wrong at the moment
+// of defining should fix it there.
 //
 // onSaved is for the screen around it: the define screen previews the next
 // rota from these settings, and re-reads it when one of them changes.
@@ -68,116 +125,211 @@ export default function RotaDefaultsCard({
 } = {}) {
   const rotaDefaults = useRotaDefaults();
   const { defaults, error } = rotaDefaults;
-  const saveShiftPattern = async (pattern: ShiftPattern) => {
-    await rotaDefaults.saveShiftPattern(pattern);
-    onSaved?.();
-  };
-  const saveShape = async (seats: { roleId: string; count: number }[]) => {
-    await rotaDefaults.saveShape(seats);
-    onSaved?.();
-  };
   const { roles } = useRoles();
-  const [editing, setEditing] = useState(false);
-
-  const patternSet =
-    defaults !== null &&
-    defaults.shiftPattern !== "" &&
-    defaults.patternStartFrom !== "" &&
-    defaults.shiftLengthMinutes > 0;
-  const shapeSet = defaults !== null && defaults.defaultShape.length > 0;
 
   return (
     <SettingsSection
-      title="Rota Defaults"
-      blurb="What every rota is made from. When the organisation runs, and how many people each shift asks for."
-      action={
-        defaults &&
-        roles !== null &&
-        !editing && (
-          // Named in full for a screen reader: every Role on Settings has an
-          // Edit button of its own.
-          <Button
-            size="small"
-            aria-label="Edit Rota Defaults"
-            onClick={() => setEditing(true)}
-          >
-            Edit
-          </Button>
-        )
+      title="Rota"
+      blurb="What every rota is made from: when the organisation runs, and how many people each shift asks for."
+      incomplete={
+        defaults !== null && (!patternSet(defaults) || !shapeSet(defaults))
       }
     >
       {error && (
         <p className="settings-error">Could not load the settings: {error}</p>
       )}
-
       {defaults === null && !error && (
         <p className="settings-empty">Loading…</p>
       )}
-
-      {editing && defaults && roles && (
-        <RotaDefaultsEditor
-          saved={defaults}
+      {defaults !== null && (
+        <RotaDefaultsForm
+          defaults={defaults}
           roles={roles}
-          onSavePattern={saveShiftPattern}
-          onSaveShape={saveShape}
-          onClose={() => setEditing(false)}
+          onSavePattern={async (pattern) => {
+            await rotaDefaults.saveShiftPattern(pattern);
+            onSaved?.();
+          }}
+          onSaveShape={async (seats) => {
+            await rotaDefaults.saveShape(seats);
+            onSaved?.();
+          }}
+        />
+      )}
+    </SettingsSection>
+  );
+}
+
+function RotaDefaultsForm({
+  defaults,
+  roles,
+  onSavePattern,
+  onSaveShape,
+}: {
+  defaults: RotaDefaults;
+  roles: ConfiguredRole[] | null;
+  onSavePattern: (pattern: ShiftPattern) => Promise<void>;
+  onSaveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
+}) {
+  const today = todayDate();
+  const { draft, setDraft, saved } = useDraft({
+    source: defaults,
+    toDraft: patternOf,
+    same: samePattern,
+  });
+  const [offset, setOffset] = useState(0);
+  const [shapeState, setShapeState] = useState<SaveState>("idle");
+
+  // The calendar opens on the month the pattern starts from — or this month,
+  // while Start from is not a date.
+  const anchor = isDate(draft.patternStartFrom)
+    ? draft.patternStartFrom
+    : today;
+  const months = monthsFrom(anchor, offset, MONTHS_SHOWN);
+  const {
+    preview,
+    current,
+    error: previewError,
+  } = useShiftPatternPreview(
+    draft.shiftPattern,
+    draft.patternStartFrom,
+    draft.shiftTimezone,
+    months[0].first,
+    months[months.length - 1].next,
+  );
+  const blank = draft.shiftPattern.trim() === "";
+  const hasProblems = preview?.lines.some((l) => l.problems.length > 0);
+
+  const { saveState, error } = useSaveWhenSettled({
+    draft,
+    saved,
+    same: samePattern,
+    save: (pattern) =>
+      onSavePattern({
+        ...pattern,
+        shiftTimezone: pattern.shiftTimezone.trim(),
+      }),
+    ready: !blank && current && !hasProblems,
+  });
+
+  const change = (part: Partial<ShiftPattern>) =>
+    setDraft((d) => ({ ...d, ...part }));
+
+  return (
+    <div className="rota-defaults-card">
+      <div className="rota-defaults-status">
+        <SaveStatus state={either(saveState, shapeState)} />
+      </div>
+      <label className="settings-field">
+        Shift pattern
+        <textarea
+          className="shift-pattern-text"
+          value={draft.shiftPattern}
+          rows={Math.max(3, draft.shiftPattern.split("\n").length + 1)}
+          spellCheck={false}
+          placeholder="RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30"
+          onChange={(e) => change({ shiftPattern: e.target.value })}
+        />
+      </label>
+      <p className="settings-hint">
+        One RRULE per line. Each line says when shifts start, with BYHOUR and
+        BYMINUTE giving the time; two lines give two start times.
+      </p>
+
+      <ul className="shift-pattern-lines" aria-live="polite">
+        {blank && <li className="problem">No lines yet.</li>}
+        {!blank &&
+          preview?.lines.map((line) =>
+            line.problems.length > 0 ? (
+              <li key={line.number} className="problem">
+                <span>
+                  Line {line.number}: <code>{line.text}</code>
+                  <br />
+                  {line.problems.join("; ")}
+                </span>
+              </li>
+            ) : (
+              <li key={line.number}>{line.description}</li>
+            ),
+          )}
+      </ul>
+      {previewError && <p className="settings-error">{previewError}</p>}
+
+      <div className="shift-pattern-fields">
+        <label className="settings-field">
+          Start from
+          <input
+            type="date"
+            value={draft.patternStartFrom}
+            onChange={(e) => change({ patternStartFrom: e.target.value })}
+          />
+        </label>
+        <label className="settings-field">
+          Timezone
+          <input
+            type="text"
+            value={draft.shiftTimezone}
+            onChange={(e) => change({ shiftTimezone: e.target.value })}
+            placeholder="Europe/London"
+          />
+        </label>
+        <label className="settings-field">
+          Shift length
+          <select
+            value={draft.shiftLengthMinutes}
+            onChange={(e) =>
+              change({ shiftLengthMinutes: Number(e.target.value) })
+            }
+          >
+            {lengthChoices(draft.shiftLengthMinutes).map((m) => (
+              <option key={m} value={m}>
+                {formatLength(m)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="settings-hint">
+        Start from is where “every other week” counts from, and it fills in what
+        a line leaves out: the weekday for a bare FREQ=WEEKLY, the day of the
+        month for a bare FREQ=MONTHLY. Nothing occurs before it. Times are
+        wall-clock in the timezone, so 19:30 stays 19:30 when the clocks change.
+      </p>
+      {error && <p className="settings-error">{error}</p>}
+
+      <h3 className="shift-pattern-heading">Calendar</h3>
+      {blank || hasProblems ? (
+        <p className="settings-empty">Write the pattern to see its calendar.</p>
+      ) : (
+        <PatternCalendar
+          months={months}
+          starts={preview?.starts ?? []}
+          startFrom={preview?.patternStartFrom ?? anchor}
+          lengthMinutes={draft.shiftLengthMinutes}
+          today={today}
+          moved={offset !== 0}
+          onMove={(by) => setOffset((o) => o + by)}
+          onHome={() => setOffset(0)}
         />
       )}
 
-      {defaults !== null && !editing && (
-        <>
-          <dl className="settings-facts">
-            <div className="settings-fact">
-              <dt>Shift pattern</dt>
-              <dd>
-                {patternSet ? (
-                  <PatternReading
-                    pattern={defaults.shiftPattern}
-                    startFrom={defaults.patternStartFrom}
-                    timezone={defaults.shiftTimezone}
-                  />
-                ) : (
-                  <span className="settings-unset">Not set yet</span>
-                )}
-              </dd>
-            </div>
-            {patternSet && (
-              <>
-                <div className="settings-fact">
-                  <dt>Start from</dt>
-                  <dd>{formatDay(defaults.patternStartFrom)}</dd>
-                </div>
-                <div className="settings-fact">
-                  <dt>Shift length</dt>
-                  <dd>{formatLength(defaults.shiftLengthMinutes)}</dd>
-                </div>
-              </>
-            )}
-            <div className="settings-fact">
-              <dt>Timezone</dt>
-              <dd>{defaults.shiftTimezone}</dd>
-            </div>
-            <div className="settings-fact">
-              <dt>Shape</dt>
-              <dd>
-                {shapeSet ? (
-                  describeShape(defaults.defaultShape)
-                ) : (
-                  <span className="settings-unset">Not set yet</span>
-                )}
-              </dd>
-            </div>
-          </dl>
-          {(!patternSet || !shapeSet) && (
-            <p className="settings-caption">
-              {roles !== null && roles.length === 0
-                ? "No roles have been added yet, so there is nothing a shift can ask for. Add them on Settings, then say what every shift needs here."
-                : "A rota cannot be defined until the shift pattern and the shape are set. Everything else — the rota, availability, the calendar feed — works without them."}
-            </p>
-          )}
-        </>
+      <h3 className="shift-pattern-heading">Shape</h3>
+      {roles === null ? (
+        <p className="settings-empty">Loading…</p>
+      ) : roles.length === 0 ? (
+        // A Shape is counts of Roles, so there is nothing to ask for until
+        // one exists, and no control is offered.
+        <p className="settings-error">
+          Define roles first: a shift's shape says how many of each Role it asks
+          for. Add them under Roles on Config.
+        </p>
+      ) : (
+        <ShapeHalf
+          defaults={defaults}
+          roles={roles}
+          onSave={onSaveShape}
+          onState={setShapeState}
+        />
       )}
-
-    </SettingsSection>
+    </div>
   );
 }

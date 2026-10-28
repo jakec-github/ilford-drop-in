@@ -64,7 +64,7 @@ or renames.
 A step that used to be "run X after the merge" is now **"run X on preprod, then
 on prod before promoting"**. After a merge, preprod is running the new build
 and prod the old one, so anything the new build needs — a config change, a
-Role created on Organiser → Settings, a one-off command — is done on preprod
+Role created on Organiser → Config, a one-off command — is done on preprod
 straight away, and on prod just before promoting: not at the merge, while prod
 still runs the build that does not need it.
 
@@ -416,7 +416,7 @@ purpose, so a database is in this state until somebody fills it, and the server
 warns at startup when it is. With no Roles nobody on the roster holds one and
 allocation refuses to run.
 
-They are created on **Organiser → Settings**, which is reachable as soon as an Organiser
+They are created on **Organiser → Config**, which is reachable as soon as an Organiser
 can log in — no SQL and no deploy. This is the pair the config used to carry:
 
 | Name | Most per shift | Priority | Colour |
@@ -475,7 +475,7 @@ droplet it comes to:
 
 A fresh preprod database is empty, as prod's was:
 
-1. Create the Roles on **Organiser → Settings**, named as in the synthetic
+1. Create the Roles on **Organiser → Config**, named as in the synthetic
    roster's `Roles` column (see [Domain settings](#domain-settings)).
 2. Define a rota and open its availability round from the Organiser screens.
 3. Answer the round with made-up availability, logged in as an Organiser and

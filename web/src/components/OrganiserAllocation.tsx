@@ -6,6 +6,8 @@ import { useDraftRotaAllocation } from "../hooks/useDraftRotaAllocation";
 import { useRota } from "../hooks/useRota";
 import { useRotaInFlight } from "../hooks/useRotaInFlight";
 import AvailabilityPanel from "./AvailabilityPanel";
+import { SetupNeeded } from "./SetupNeeded";
+import { useSetup } from "../hooks/useSetup";
 import DefineRota from "./DefineRota";
 import { DraftRules } from "./AllocationRules";
 import DraftRotaPanel from "./DraftRotaPanel";
@@ -303,7 +305,18 @@ function InFlightRota({
 // what shows one — so allocating leaves for it rather than describing it from
 // here. Landing on the finished rota is the confirmation the allocation worked,
 // and it is where every change from then on is made anyway.
+// OrganiserAllocation is the Allocation tab. Nothing on it can be done until
+// the Roles and the Rota are set, so until then it says so and points at Config.
 export default function OrganiserAllocation() {
+  const { done } = useSetup();
+  if (done === null) return null;
+  if (!done) {
+    return <SetupNeeded lead="A rota is made from the Roles and the Rota." />;
+  }
+  return <AllocationTab />;
+}
+
+function AllocationTab() {
   const [, navigate] = useLocation();
   const { inFlight, loading, error, reload, discard } = useRotaInFlight();
   const {

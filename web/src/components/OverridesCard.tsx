@@ -1,34 +1,44 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
+import DragHandle from "../ui/DragHandle";
+import IconButton from "../ui/IconButton";
+import { useDragReorder } from "../ui/useDragReorder";
+import { useDraft, useSaveWhenSettled } from "../hooks/useAutosave";
 import { useOverrideRule } from "../hooks/useOverrideRule";
 import { useOverrides } from "../hooks/useOverrides";
 import { useRoles } from "../hooks/useRoles";
+import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
+import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import ShapeSeats from "./ShapeSeats";
-import {
-  formatDay,
-  formatLength,
-  isDate,
-  lengthChoices,
-  today,
-} from "./patternDates";
-import { describeShape, seatCountsOf, seatsOf, type SeatCounts } from "./shape";
+import { formatLength, isDate, lengthChoices, today } from "./patternDates";
+import { seatCountsOf, seatsOf, type SeatCounts } from "./shape";
 import type {
   ConfiguredRole,
   Override,
   OverrideDraft,
   OverrideGranularity,
   PersonRef,
+  ShapeSeat,
   Volunteer,
 } from "../types";
 import { CUSTOM_CHOICE } from "../types";
 import "./OverridesCard.css";
 
-// What a new Override's rule box starts with: the commonest thing an
-// Organiser overrides, and a working example of the syntax to edit from.
-const NEW_RULE = "FREQ=MONTHLY;BYDAY=1SU";
+// What a new Override starts as: the commonest thing an Organiser overrides,
+// a working example of the syntax to edit from, and nothing changed yet — so it
+// can be added at once, and the card it becomes is where it is stated.
+const NEW_OVERRIDE: OverrideDraft = {
+  rrule: "FREQ=MONTHLY;BYDAY=1SU",
+  // Today, filled in when it is added.
+  startFrom: "",
+  startTime: null,
+  lengthMinutes: null,
+  shape: null,
+  pins: [],
+};
 
 // How an Override matches, in the words the card uses for it.
 function GranularityBadge({
@@ -181,445 +191,405 @@ function PinAdder({
   );
 }
 
-// OverrideEditor is the whole of stating one Override: its rule, read back as
-// it is typed, the date it counts from, and what it changes. It edits in place
-// in the list, as the prototype does, rather than in a dialog, so the
-// Overrides around it stay in view while one is written.
-export function OverrideEditor({
-  number,
+// OverrideEdit is one Override as its card holds it. A part that is switched
+// off keeps what it was set to, so switching it back on does not lose it; only
+// what the switches leave on is sent.
+interface OverrideEdit {
+  rrule: string;
+  startFrom: string;
+  startOn: boolean;
+  startTime: string;
+  lengthOn: boolean;
+  length: number;
+  shapeOn: boolean;
+  counts: SeatCounts;
+  pins: PinDraft[];
+}
+
+// Two hours until somebody picks one, the commonest session.
+const DEFAULT_LENGTH = 120;
+
+function editOf(
+  override: Override,
+  roles: ConfiguredRole[],
+  defaultShape: ShapeSeat[],
+): OverrideEdit {
+  return {
+    rrule: override.rrule,
+    startFrom: override.startFrom,
+    startOn: override.startTime !== null,
+    startTime: override.startTime ?? "",
+    lengthOn: override.lengthMinutes !== null,
+    length: override.lengthMinutes ?? DEFAULT_LENGTH,
+    shapeOn: override.shape !== null,
+    // Ticking "Replace the shape" starts from the default, which is what the
+    // shift asked for until then, rather than from nobody.
+    counts: seatCountsOf(roles, override.shape ?? defaultShape),
+    pins: override.pins.map((pin) => ({
+      key: pinKey(),
+      roleId: pin.roleId,
+      person: pin.volunteerId
+        ? { volunteerId: pin.volunteerId }
+        : { custom: pin.custom ?? pin.name },
+      name: pin.name,
+    })),
+  };
+}
+
+function draftOf(edit: OverrideEdit, roles: ConfiguredRole[]): OverrideDraft {
+  return {
+    rrule: edit.rrule.trim(),
+    startFrom: edit.startFrom,
+    startTime: edit.startOn ? edit.startTime : null,
+    lengthMinutes: edit.lengthOn ? edit.length : null,
+    shape: edit.shapeOn ? seatsOf(roles, edit.counts) : null,
+    pins: edit.pins.map((p) => ({ roleId: p.roleId, person: p.person })),
+  };
+}
+
+// One person once on an Override: pinning them again changes their Role,
+// since a person fills one Seat on a Shift. Custom entries may repeat.
+function withPin(pins: PinDraft[], pin: Omit<PinDraft, "key">): PinDraft[] {
+  const id = "volunteerId" in pin.person ? pin.person.volunteerId : null;
+  const kept = id
+    ? pins.filter(
+        (p) => !("volunteerId" in p.person && p.person.volunteerId === id),
+      )
+    : pins;
+  return [...kept, { ...pin, key: pinKey() }];
+}
+
+// OverrideCard is one Override, edited where it stands, in two halves an
+// Organiser can tell apart at a glance: what it matches — the rule and the date
+// it counts from — and what it sets on the shifts it matches. Changes save
+// themselves once they stop moving; removing asks first, on the card.
+export function OverrideCard({
   override,
+  number,
+  count,
   roles,
+  defaultShape,
   volunteers,
   volunteersError,
+  fresh,
+  busy,
+  held,
   onSave,
-  onCancel,
+  onRemove,
+  onGrab,
+  onMove,
 }: {
+  override: Override;
   number: number;
-  override: Override | null;
+  count: number;
   roles: ConfiguredRole[];
+  defaultShape: ShapeSeat[];
   volunteers: Volunteer[] | null;
   volunteersError: string | null;
+  // Just added: the card takes focus and comes into view.
+  fresh: boolean;
+  // Something else is being written: the handle waits for it.
+  busy: boolean;
+  held: boolean;
   onSave: (draft: OverrideDraft) => Promise<void>;
-  onCancel: () => void;
+  onRemove: () => Promise<void>;
+  onGrab: (e: PointerEvent<HTMLButtonElement>) => void;
+  onMove: (by: -1 | 1) => void;
 }) {
-  const [rrule, setRRule] = useState(override?.rrule ?? NEW_RULE);
-  // Today for a new one, as for the pattern; the server settles what today is.
-  const [startFrom, setStartFrom] = useState(override?.startFrom ?? today());
-  const [startOn, setStartOn] = useState(override?.startTime != null);
-  const [startTime, setStartTime] = useState(override?.startTime ?? "");
-  const [lengthOn, setLengthOn] = useState(override?.lengthMinutes != null);
-  // Two hours until somebody picks one, the commonest session.
-  const [length, setLength] = useState(override?.lengthMinutes ?? 120);
-  const [shapeOn, setShapeOn] = useState(override?.shape != null);
-  const [counts, setCounts] = useState<SeatCounts>(() =>
-    seatCountsOf(roles, override?.shape ?? []),
-  );
-  const [pins, setPins] = useState<PinDraft[]>(
-    () =>
-      override?.pins.map((pin) => ({
-        key: pinKey(),
-        roleId: pin.roleId,
-        person: pin.volunteerId
-          ? { volunteerId: pin.volunteerId }
-          : { custom: pin.custom ?? pin.name },
-        name: pin.name,
-      })) ?? [],
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const same = (a: OverrideEdit, b: OverrideEdit) =>
+    JSON.stringify(draftOf(a, roles)) === JSON.stringify(draftOf(b, roles));
+  const { draft, setDraft, saved } = useDraft({
+    source: override,
+    toDraft: (o: Override) => editOf(o, roles, defaultShape),
+    same,
+  });
 
-  const anchor = isDate(startFrom) ? startFrom : today();
-  const { reading, error: readingError } = useOverrideRule(rrule, anchor);
+  // The rule is read as it is typed, and the card saves only once the reading
+  // is of what is in the box and found nothing wrong with it.
+  const anchor = isDate(draft.startFrom) ? draft.startFrom : today();
+  const {
+    reading,
+    current,
+    error: readingError,
+  } = useOverrideRule(draft.rrule, anchor);
   const problems = reading?.problems ?? [];
-  const readable = rrule.trim() !== "" && problems.length === 0;
-  // A start time switched on says when; the time box is empty until then.
-  const ready = readable && (!startOn || startTime !== "");
+  const { saveState, error, setError } = useSaveWhenSettled({
+    draft,
+    saved,
+    same,
+    save: (edit) => onSave(draftOf(edit, roles)),
+    ready:
+      current &&
+      problems.length === 0 &&
+      (!draft.startOn || draft.startTime !== ""),
+  });
 
-  // One person once on an Override: pinning them again changes their Role,
-  // since a person fills one Seat on a Shift. Custom entries may repeat.
-  function addPin(pin: Omit<PinDraft, "key">) {
-    setPins((current) => {
-      const id = "volunteerId" in pin.person ? pin.person.volunteerId : null;
-      const kept = id
-        ? current.filter(
-            (p) => !("volunteerId" in p.person && p.person.volunteerId === id),
-          )
-        : current;
-      return [...kept, { ...pin, key: pinKey() }];
+  const [asking, setAsking] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const card = useRef<HTMLElement>(null);
+  const ruleBox = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!fresh) return;
+    card.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    ruleBox.current?.focus();
+  }, [fresh]);
+
+  const change = (part: Partial<OverrideEdit>) =>
+    setDraft((d) => ({ ...d, ...part }));
+  const roleOf = (id: string) => roles.find((r) => r.id === id);
+  const n = number;
+  const editable = !removing;
+
+  function remove() {
+    setRemoving(true);
+    setError(null);
+    onRemove().catch((err: unknown) => {
+      setRemoving(false);
+      setAsking(false);
+      setError(
+        err instanceof Error ? err.message : "The override was not removed",
+      );
     });
   }
 
-  async function save() {
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave({
-        rrule: rrule.trim(),
-        startFrom,
-        startTime: startOn ? startTime : null,
-        lengthMinutes: lengthOn ? length : null,
-        shape: shapeOn ? seatsOf(roles, counts) : null,
-        pins: pins.map((p) => ({ roleId: p.roleId, person: p.person })),
-      });
-    } catch (err: unknown) {
-      // The server's own message says what it could not accept, and the
-      // editor stays open on what was typed.
-      setError(
-        err instanceof Error ? err.message : "Failed to save the override",
-      );
-      setSaving(false);
-    }
-  }
-
-  const roleOf = (id: string) => roles.find((r) => r.id === id);
-
-  return (
-    <form
-      className="override override--editing"
-      aria-label={`Override ${number}`}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <header className="override-head">
-        <span className="override-number" aria-hidden="true">
-          {number}
-        </span>
-        <input
-          className="override-rule"
-          type="text"
-          aria-label={`Override ${number} rule`}
-          spellCheck={false}
-          autoFocus
-          value={rrule}
-          onChange={(e) => setRRule(e.target.value)}
-        />
-      </header>
-
-      <div className="override-reading" aria-live="polite">
-        {readingError && <p className="settings-error">{readingError}</p>}
-        {problems.length > 0 ? (
-          <ul className="override-problems">
-            {problems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        ) : (
-          reading && (
-            <p className="override-description">
-              {reading.description}{" "}
-              {reading.granularity && (
-                <GranularityBadge granularity={reading.granularity} />
-              )}
-            </p>
-          )
-        )}
-      </div>
-
-      <p className="settings-hint">
-        With BYHOUR and BYMINUTE it changes only the shift the pattern starts at
-        that time. Without them, it changes every shift on those days. A start
-        time moves a shift within its own day, and the shift runs on from there.
-      </p>
-
-      <div className="override-props">
-        <label htmlFor={`override-${number}-start`}>Start from</label>
-        <div>
-          <input
-            id={`override-${number}-start`}
-            type="date"
-            value={startFrom}
-            onChange={(e) => setStartFrom(e.target.value)}
-          />
-        </div>
-
-        <label>
-          <input
-            type="checkbox"
-            checked={startOn}
-            onChange={(e) => setStartOn(e.target.checked)}
-          />{" "}
-          Start time
-        </label>
-        <div>
-          {startOn ? (
-            <input
-              type="time"
-              aria-label={`Override ${number} start time`}
-              step={300}
-              required
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          ) : (
-            <span className="override-off">as the pattern generates it</span>
-          )}
-        </div>
-
-        <label>
-          <input
-            type="checkbox"
-            checked={lengthOn}
-            onChange={(e) => setLengthOn(e.target.checked)}
-          />{" "}
-          Length
-        </label>
-        <div>
-          {lengthOn ? (
-            <select
-              aria-label={`Override ${number} length`}
-              value={length}
-              onChange={(e) => setLength(Number(e.target.value))}
-            >
-              {lengthChoices(length).map((m) => (
-                <option key={m} value={m}>
-                  {formatLength(m)}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="override-off">the pattern's length</span>
-          )}
-        </div>
-
-        <label>
-          <input
-            type="checkbox"
-            checked={shapeOn}
-            onChange={(e) => setShapeOn(e.target.checked)}
-          />{" "}
-          Replace the shape
-        </label>
-        <div>
-          {shapeOn ? (
-            <div className="override-shape">
-              <ShapeSeats roles={roles} counts={counts} onChange={setCounts} />
-            </div>
-          ) : (
-            <span className="override-off">the default shape</span>
-          )}
-        </div>
-
-        <span className="override-label">Pins</span>
-        <div>
-          <div className="override-pins">
-            {pins.length === 0 && <span className="override-off">none</span>}
-            {pins.map((pin) => {
-              const role = roleOf(pin.roleId);
-              return (
-                <PinChip
-                  key={pin.key}
-                  name={pin.name}
-                  role={role?.name ?? "unknown role"}
-                  custom={"custom" in pin.person}
-                  colour={role?.colour}
-                  onRemove={() =>
-                    setPins((current) =>
-                      current.filter((p) => p.key !== pin.key),
-                    )
-                  }
-                />
-              );
-            })}
-          </div>
-          <PinAdder
-            roles={roles}
-            volunteers={volunteers}
-            volunteersError={volunteersError}
-            onAdd={addPin}
-          />
-        </div>
-      </div>
-
-      {error && <p className="settings-error">{error}</p>}
-
-      <div className="settings-actions">
-        <Button onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={!ready || saving}>
-          {saving ? "Saving…" : override ? "Save override" : "Add override"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-// OverrideView is one saved Override, read: its rule in plain English, how it
-// matches, and what it changes, with the actions that change it.
-function OverrideView({
-  override,
-  count,
-  roles,
-  busy,
-  dragging,
-  onEdit,
-  onGrab,
-  onMove,
-  onRemove,
-}: {
-  override: Override;
-  count: number;
-  roles: ConfiguredRole[];
-  busy: boolean;
-  dragging: boolean;
-  onEdit: () => void;
-  onGrab: (e: PointerEvent<HTMLButtonElement>) => void;
-  onMove: (by: -1 | 1) => void;
-  onRemove: () => void;
-}) {
-  const n = override.number;
   return (
     <article
-      className={`override${dragging ? " override--dragging" : ""}`}
+      ref={card}
+      className={`override${held ? " override--dragging" : ""}${fresh ? " override--fresh" : ""}`}
       aria-label={`Override ${n}`}
     >
       <header className="override-head">
         <span className="override-number" aria-hidden="true">
           {n}
         </span>
-        <p className="override-description">
-          {override.problems.length > 0 ? (
-            <>
-              <code>{override.rrule}</code>{" "}
-              <span className="settings-error">
-                cannot be read: {override.problems.join("; ")}
-              </span>
-            </>
-          ) : (
-            <>
-              {override.description}{" "}
-              <GranularityBadge granularity={override.granularity} />
-            </>
-          )}
-        </p>
-        <div className="override-actions">
-          <Button
-            size="small"
-            aria-label={`Edit override ${n}`}
-            disabled={busy}
-            onClick={onEdit}
-          >
-            Edit
-          </Button>
-          <Button
-            size="small"
+        <span className="override-title">Override {n}</span>
+        <SaveStatus state={saveState} />
+        {asking ? (
+          <span className="override-confirm">
+            Remove this override?
+            <Button size="small" onClick={() => setAsking(false)}>
+              Keep
+            </Button>
+            <Button
+              size="small"
+              className="override-confirm-remove"
+              disabled={removing}
+              onClick={remove}
+            >
+              {removing ? "Removing…" : "Remove"}
+            </Button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="override-remove"
             aria-label={`Remove override ${n}`}
-            disabled={busy}
-            onClick={onRemove}
+            title="Remove"
+            disabled={removing}
+            onClick={() => setAsking(true)}
           >
-            Remove
-          </Button>
-        </div>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="8" />
+              <path d="M6 10h8" />
+            </svg>
+          </button>
+        )}
         {/* Order is what decides between two Overrides, so it is moved by
-            hand: dragged with a mouse or a finger, or a place at a time with
-            the arrow keys once the handle has focus. */}
-        <button
-          type="button"
-          className="override-handle"
-          aria-label={`Reorder override ${n}`}
+            hand. */}
+        <DragHandle
+          label={`Reorder override ${n}`}
           title="Drag to reorder: a later override wins. Arrow keys move it a place."
-          // Not disabled while busy, only marked so: a disabled button drops
-          // its focus, and a keyboard user moving one several places would
-          // lose the handle after the first.
-          disabled={count < 2}
-          aria-disabled={busy || undefined}
-          onPointerDown={(e) => {
-            if (!busy) onGrab(e);
-          }}
-          onKeyDown={(e) => {
-            const by = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
-            if (by === 0) return;
-            e.preventDefault();
-            if (!busy && n + by >= 1 && n + by <= count) onMove(by);
-          }}
-        >
-          <svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true">
-            {[3, 8, 13].map((y) =>
-              [2.5, 7.5].map((x) => (
-                <circle key={`${x}-${y}`} cx={x} cy={y} r="1.5" />
-              )),
-            )}
-          </svg>
-        </button>
+          place={n - 1}
+          count={count}
+          busy={busy}
+          onGrab={onGrab}
+          onMove={onMove}
+        />
       </header>
 
-      <dl className="override-facts">
-        <div>
-          <dt>Start from</dt>
-          <dd>{formatDay(override.startFrom)}</dd>
-        </div>
-        {override.startTime !== null && (
-          <div>
-            <dt>Start time</dt>
-            <dd>{override.startTime}</dd>
-          </div>
-        )}
-        {override.lengthMinutes !== null && (
-          <div>
-            <dt>Length</dt>
-            <dd>{formatLength(override.lengthMinutes)}</dd>
-          </div>
-        )}
-        {override.shape !== null && (
-          <div>
-            <dt>Shape</dt>
-            <dd>
-              {override.shape.length > 0
-                ? describeShape(override.shape)
-                : "asks for nobody"}
-            </dd>
-          </div>
-        )}
-        {override.pins.length > 0 && (
-          <div>
-            <dt>Pins</dt>
-            <dd className="override-pins">
-              {override.pins.map((pin) => (
-                <PinChip
-                  key={pin.id}
-                  name={pin.name}
-                  role={pin.role}
-                  custom={!pin.volunteerId}
-                  colour={roles.find((r) => r.id === pin.roleId)?.colour}
-                />
+      <section
+        className="override-part override-part--match"
+        aria-label={`Override ${n} matches`}
+      >
+        <h3 className="override-part-title">Matches</h3>
+        <input
+          ref={ruleBox}
+          className="override-rule"
+          type="text"
+          aria-label={`Override ${n} rule`}
+          spellCheck={false}
+          value={draft.rrule}
+          disabled={!editable}
+          onChange={(e) => change({ rrule: e.target.value })}
+        />
+        <div className="override-reading" aria-live="polite">
+          {readingError && <p className="settings-error">{readingError}</p>}
+          {draft.rrule.trim() === "" ? (
+            <p className="override-problems">Write a rule to match shifts.</p>
+          ) : problems.length > 0 ? (
+            <ul className="override-problems">
+              {problems.map((problem) => (
+                <li key={problem}>{problem}</li>
               ))}
-            </dd>
+            </ul>
+          ) : (
+            reading && (
+              <p className="override-description">
+                {reading.description}{" "}
+                {reading.granularity && (
+                  <GranularityBadge granularity={reading.granularity} />
+                )}
+              </p>
+            )
+          )}
+        </div>
+        <p className="settings-hint">
+          With BYHOUR and BYMINUTE it matches only the shift the pattern starts
+          at that time; without them, every shift on those days. Nothing before
+          the date below is matched.
+        </p>
+        <label className="override-from">
+          Starting from
+          <input
+            type="date"
+            aria-label={`Override ${n} start from`}
+            value={draft.startFrom}
+            disabled={!editable}
+            onChange={(e) => change({ startFrom: e.target.value })}
+          />
+        </label>
+      </section>
+
+      <section
+        className="override-part override-part--set"
+        aria-label={`Override ${n} sets`}
+      >
+        <h3 className="override-part-title">Sets</h3>
+        <div className="override-props">
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.startOn}
+              disabled={!editable}
+              onChange={(e) => change({ startOn: e.target.checked })}
+            />{" "}
+            Start time
+          </label>
+          <div>
+            {draft.startOn ? (
+              <input
+                type="time"
+                aria-label={`Override ${n} start time`}
+                step={300}
+                required
+                value={draft.startTime}
+                disabled={!editable}
+                onChange={(e) => change({ startTime: e.target.value })}
+              />
+            ) : (
+              <span className="override-off">as the pattern generates it</span>
+            )}
           </div>
-        )}
-      </dl>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.lengthOn}
+              disabled={!editable}
+              onChange={(e) => change({ lengthOn: e.target.checked })}
+            />{" "}
+            Length
+          </label>
+          <div>
+            {draft.lengthOn ? (
+              <select
+                aria-label={`Override ${n} length`}
+                value={draft.length}
+                disabled={!editable}
+                onChange={(e) => change({ length: Number(e.target.value) })}
+              >
+                {lengthChoices(draft.length).map((m) => (
+                  <option key={m} value={m}>
+                    {formatLength(m)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="override-off">the pattern's length</span>
+            )}
+          </div>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.shapeOn}
+              disabled={!editable}
+              onChange={(e) => change({ shapeOn: e.target.checked })}
+            />{" "}
+            Shape
+          </label>
+          <div>
+            {draft.shapeOn ? (
+              <div className="override-shape">
+                <ShapeSeats
+                  roles={roles}
+                  counts={draft.counts}
+                  onChange={(counts) => change({ counts })}
+                />
+              </div>
+            ) : (
+              <span className="override-off">the default shape</span>
+            )}
+          </div>
+
+          <span className="override-label">Pins</span>
+          <div>
+            <div className="override-pins">
+              {draft.pins.length === 0 && (
+                <span className="override-off">none</span>
+              )}
+              {draft.pins.map((pin) => {
+                const role = roleOf(pin.roleId);
+                return (
+                  <PinChip
+                    key={pin.key}
+                    name={pin.name}
+                    role={role?.name ?? "unknown role"}
+                    custom={"custom" in pin.person}
+                    colour={role?.colour}
+                    onRemove={() =>
+                      change({
+                        pins: draft.pins.filter((p) => p.key !== pin.key),
+                      })
+                    }
+                  />
+                );
+              })}
+            </div>
+            <PinAdder
+              roles={roles}
+              volunteers={volunteers}
+              volunteersError={volunteersError}
+              onAdd={(pin) => change({ pins: withPin(draft.pins, pin) })}
+            />
+          </div>
+        </div>
+      </section>
+
+      {error && <p className="settings-error">{error}</p>}
     </article>
   );
 }
 
-// Where an Override stood in the list when a drag began, in the list's own
-// coordinates.
-interface Slot {
-  top: number;
-  height: number;
-}
-
-// A drag in flight: which Override, the order it would drop in, where every
-// Override stood when it began, and how far the pointer has come since.
-interface Drag {
-  id: string;
-  order: string[];
-  slots: Map<string, Slot>;
-  from: number;
-  dy: number;
-}
-
-// What is being edited: nothing, a new Override, or one that exists.
-type Editing = { id: string | null } | null;
-
 // OverridesCard is the Rota Defaults' Overrides: rules that pick out some of
-// the Shifts the pattern generates and change them as a rota is defined — a
-// whole Shape in place of the default, and Pins (ADR 0013). They are a list,
-// and a later one wins, so order is part of what an Organiser states.
+// the Shifts the pattern generates and change them as a rota is defined — the
+// start, the length, a whole Shape in place of the default, and Pins (ADR
+// 0013). They are a list, and a later one wins, so order is part of what an
+// Organiser states.
 //
-// Like RotaDefaultsCard it is read on the settings screen and under the define
-// form, and onSaved is for the define form to plan again.
+// Like RotaDefaultsCard it is read on Config and under the define form, and
+// onSaved is for the define form to plan again.
 export default function OverridesCard({
   onSaved,
 }: {
@@ -627,43 +597,28 @@ export default function OverridesCard({
 } = {}) {
   const { overrides, error, add, update, remove, reorder } = useOverrides();
   const { roles } = useRoles();
+  const { defaults } = useRotaDefaults();
   const { volunteers, error: volunteersError } = useVolunteers();
-  const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // A drag in flight. The list keeps its order while it lasts: the dragged
-  // Override follows the pointer, by dy, and the others slide out of its way
-  // to where the order it would drop in puts them. Only the drop writes, and
-  // only then does the list take the new order.
-  const [drag, setDrag] = useState<Drag | null>(null);
-  // The list captures the pointer rather than the handle, so a drag survives
-  // whatever happens to the handle's own item under it.
-  const list = useRef<HTMLOListElement>(null);
-  const items = useRef(new Map<string, HTMLLIElement>());
-  // Where the dropped Override was on screen as it was let go, so it can
-  // glide into its slot rather than leap there.
-  const settling = useRef<{ id: string; top: number } | null>(null);
+  // The id of an Override just added, known only from the list that comes
+  // back, as the one that was not there before.
+  const [freshId, setFreshId] = useState<string | null>(null);
+  const before = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!before.current || !overrides) return;
+    const added = overrides.find((o) => !before.current?.has(o.id));
+    before.current = null;
+    if (added) setFreshId(added.id);
+  }, [overrides]);
 
-  // After a drop has been drawn: start the dropped Override where the pointer
-  // left it and slide it home. Run in a layout effect so it never shows a
-  // frame in its slot first.
-  useLayoutEffect(() => {
-    const dropped = settling.current;
-    if (!dropped || drag) return;
-    settling.current = null;
-    const el = items.current.get(dropped.id);
-    if (!el || typeof el.animate !== "function") return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const dy = dropped.top - el.getBoundingClientRect().top;
-    if (Math.abs(dy) < 1) return;
-    el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], {
-      duration: 150,
-      easing: "ease",
-    });
-  }, [drag, overrides]);
+  const ids = overrides?.map((o) => o.id) ?? null;
+  const drag = useDragReorder(ids, (order) => {
+    void act(() => reorder(order), "Failed to move the override");
+  });
 
   // Nothing to pin anybody into, or ask for, until Roles exist.
-  const canAdd = roles !== null && roles.length > 0;
+  const canAdd = roles !== null && roles.length > 0 && overrides !== null;
   const count = overrides?.length ?? 0;
 
   async function act(write: () => Promise<void>, fallback: string) {
@@ -679,114 +634,32 @@ export default function OverridesCard({
     }
   }
 
-  function writeOrder(order: string[]) {
-    void act(() => reorder(order), "Failed to move the override");
+  function addOne() {
+    before.current = new Set(ids ?? []);
+    void act(
+      () => add({ ...NEW_OVERRIDE, startFrom: today() }),
+      "Failed to add an override",
+    );
   }
 
-  function moveBy(id: string, by: -1 | 1) {
-    if (!overrides) return;
-    const order = overrides.map((o) => o.id);
-    const from = order.indexOf(id);
-    const to = from + by;
-    if (from < 0 || to < 0 || to >= order.length) return;
-    [order[from], order[to]] = [order[to], order[from]];
-    writeOrder(order);
-  }
-
-  // The list's own coordinates, which the items' slides do not move.
-  function pointerY(e: PointerEvent) {
-    return e.clientY - (list.current?.getBoundingClientRect().top ?? 0);
-  }
-
-  function grab(id: string, e: PointerEvent<HTMLButtonElement>) {
-    if (e.button !== 0 || !overrides || !list.current) return;
-    // Otherwise a drag on a phone scrolls the page, and on a desk selects text.
-    e.preventDefault();
-    list.current.setPointerCapture(e.pointerId);
-    const top = list.current.getBoundingClientRect().top;
-    const slots = new Map<string, Slot>();
-    for (const o of overrides) {
-      const box = items.current.get(o.id)?.getBoundingClientRect();
-      if (box) slots.set(o.id, { top: box.top - top, height: box.height });
-    }
-    const order = overrides.map((o) => o.id);
-    setDrag({ id, order, slots, from: pointerY(e), dy: 0 });
-  }
-
-  // Where the dragged Override would land: after every other one whose middle
-  // its own middle has passed. Both middles are where things stood when the
-  // drag began, so the line it crosses going down is the line it crosses
-  // coming back, and the slides cannot move it.
-  function dragOver(e: PointerEvent<HTMLOListElement>) {
-    if (!drag) return;
-    const dy = pointerY(e) - drag.from;
-    const held = drag.slots.get(drag.id);
-    const middle = (held ? held.top + held.height / 2 : 0) + dy;
-    const others = drag.order.filter((id) => id !== drag.id);
-    const passed = others.filter((id) => {
-      const slot = drag.slots.get(id);
-      return slot !== undefined && slot.top + slot.height / 2 < middle;
-    }).length;
-    const order = [
-      ...others.slice(0, passed),
-      drag.id,
-      ...others.slice(passed),
-    ];
-    setDrag({ ...drag, order, dy });
-  }
-
-  function drop() {
-    if (!drag || !overrides) return;
-    const held = items.current.get(drag.id);
-    if (held) {
-      settling.current = { id: drag.id, top: held.getBoundingClientRect().top };
-    }
-    setDrag(null);
-    if (drag.order.some((id, i) => id !== overrides[i]?.id)) {
-      writeOrder(drag.order);
-    }
-  }
-
-  // Where each Override is drawn while a drag lasts: the held one wherever the
-  // pointer has taken it, and the rest in the slots the order would give them,
-  // stacked from the top with the gaps between them as they were.
-  const slides = new Map<string, number>();
-  if (drag && overrides) {
-    const first = drag.slots.get(overrides[0]?.id ?? "");
-    const second = drag.slots.get(overrides[1]?.id ?? "");
-    const gap = first && second ? second.top - (first.top + first.height) : 0;
-    let y = first?.top ?? 0;
-    for (const id of drag.order) {
-      const slot = drag.slots.get(id);
-      if (!slot) continue;
-      slides.set(id, id === drag.id ? drag.dy : y - slot.top);
-      y += slot.height + gap;
-    }
-  }
-
-  // Numbered as the drag would leave them, so the number on each is the one
-  // the define preview would call it by.
-  const shown =
-    overrides && drag
-      ? overrides.map((o) => ({ ...o, number: drag.order.indexOf(o.id) + 1 }))
-      : overrides;
-
-  async function save(id: string | null, draft: OverrideDraft) {
-    await (id ? update(id, draft) : add(draft));
-    setEditing(null);
+  async function save(id: string, draft: OverrideDraft) {
+    await update(id, draft);
     onSaved?.();
   }
 
   return (
     <SettingsSection
       title="Overrides"
-      blurb="Rules that change some of the shifts your pattern makes, each time a rota is defined. When two change the same shift, the later one wins."
+      blurb="Rules that change some of the shifts your pattern makes, each time a rota is defined. Each matches some shifts, then sets what is different about them. When two change the same shift, the later one wins."
       action={
-        canAdd &&
-        editing === null && (
-          <Button size="small" onClick={() => setEditing({ id: null })}>
-            New override
-          </Button>
+        canAdd && (
+          <IconButton
+            icon="plus"
+            variant="filled"
+            aria-label="New override"
+            disabled={busy}
+            onClick={addOne}
+          />
         )
       }
     >
@@ -799,78 +672,40 @@ export default function OverridesCard({
         <p className="settings-empty">Loading…</p>
       )}
 
-      {overrides !== null && count === 0 && editing === null && (
+      {overrides !== null && count === 0 && (
         <p className="settings-empty">
           Nothing is overridden: every shift takes the default shape, and nobody
           is pinned until you pin them on the rota.
         </p>
       )}
 
-      {overrides !== null && roles !== null && (count > 0 || editing) && (
-        <ol
-          ref={list}
-          className={`overrides${drag ? " overrides--dragging" : ""}`}
-          onPointerMove={dragOver}
-          onPointerUp={drop}
-          onPointerCancel={() => setDrag(null)}
-        >
-          {(shown ?? []).map((override) => (
-            <li
-              key={override.id}
-              ref={(el) => {
-                if (el) items.current.set(override.id, el);
-                else items.current.delete(override.id);
-              }}
-              className={drag?.id === override.id ? "override-held" : undefined}
-              style={
-                slides.has(override.id)
-                  ? { transform: `translateY(${slides.get(override.id)}px)` }
-                  : undefined
-              }
-            >
-              {editing?.id === override.id ? (
-                <OverrideEditor
-                  number={override.number}
+      {overrides !== null && roles !== null && count > 0 && (
+        <ol {...drag.listProps}>
+          {overrides.map((override) => {
+            const place = drag.placeOf(override.id);
+            return (
+              <li key={override.id} {...drag.itemProps(override.id)}>
+                <OverrideCard
                   override={override}
-                  roles={roles}
-                  volunteers={volunteers}
-                  volunteersError={volunteersError}
-                  onSave={(draft) => save(override.id, draft)}
-                  onCancel={() => setEditing(null)}
-                />
-              ) : (
-                <OverrideView
-                  override={override}
+                  // Numbered as a drag would leave them, so the number on
+                  // each is the one the define preview would call it by.
+                  number={place + 1}
                   count={count}
                   roles={roles}
-                  busy={busy || editing !== null}
-                  dragging={drag?.id === override.id}
-                  onEdit={() => setEditing({ id: override.id })}
-                  onGrab={(e) => grab(override.id, e)}
-                  onMove={(by) => moveBy(override.id, by)}
-                  onRemove={() =>
-                    void act(
-                      () => remove(override.id),
-                      "Failed to remove the override",
-                    )
-                  }
+                  defaultShape={defaults?.defaultShape ?? []}
+                  volunteers={volunteers}
+                  volunteersError={volunteersError}
+                  fresh={override.id === freshId}
+                  busy={busy}
+                  held={drag.held === override.id}
+                  onSave={(draft) => save(override.id, draft)}
+                  onRemove={() => remove(override.id).then(() => onSaved?.())}
+                  onGrab={(e) => drag.grab(override.id, e)}
+                  onMove={(by) => drag.moveBy(override.id, by)}
                 />
-              )}
-            </li>
-          ))}
-          {editing?.id === null && (
-            <li>
-              <OverrideEditor
-                number={count + 1}
-                override={null}
-                roles={roles}
-                volunteers={volunteers}
-                volunteersError={volunteersError}
-                onSave={(draft) => save(null, draft)}
-                onCancel={() => setEditing(null)}
-              />
-            </li>
-          )}
+              </li>
+            );
+          })}
         </ol>
       )}
 

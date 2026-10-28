@@ -430,6 +430,18 @@
   border-color: var(--accent);
 }
 
+/* The pencil and plus in a row are a size down from a section's, so they sit
+   level with the chips beside them. */
+.shift-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.shift-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
 .shift-move-here {
   align-self: center;
 }

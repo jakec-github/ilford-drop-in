@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Assignee, PersonRef, Pin, Role, RotaShift } from "../types";
 import type { RoleColourOf } from "../hooks/useRoles";
 import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
 import {
   formatShiftDate,
   formatShiftLong,
@@ -759,27 +760,23 @@ function ShiftRow({
             there is nobody on it to move around. */}
         {edit && !pending && (
           <div className="shift-actions">
-            <button
-              type="button"
-              className="shift-add shift-pin"
+            <IconButton
+              icon="plus"
+              className="shift-icon shift-pin"
               aria-label={`Pin someone to ${formatShiftLong(shift)}`}
               onClick={edit.onPin}
-            >
-              + Pin
-            </button>
+            />
             {/* Only on these rows: the branch this sits in is exactly the open,
                 unallocated shifts, which is where a Shape can still change. An
                 allocated rota was solved against its Shapes, and a closed shift
                 is not asking anybody for anything. */}
             {edit.canEditShape && (
-              <button
-                type="button"
-                className="shift-add shift-shape-edit"
+              <IconButton
+                icon="pencil"
+                className="shift-icon shift-shape-edit"
                 aria-label={`Change what ${formatShiftLong(shift)} asks for`}
                 onClick={edit.onEditShape}
-              >
-                Shape
-              </button>
+              />
             )}
             {closureButton}
           </div>
@@ -872,14 +869,12 @@ function ShiftRow({
         )}
 
         {editable && !pending && (
-          <button
-            type="button"
-            className="shift-add"
+          <IconButton
+            icon="plus"
+            className="shift-icon"
             aria-label={`Add someone to ${formatShiftLong(shift)}`}
             onClick={placement.onAdd}
-          >
-            + Add
-          </button>
+          />
         )}
 
         {/* The tap and keyboard equivalent of dropping on empty space. Only

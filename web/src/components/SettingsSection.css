@@ -19,9 +19,31 @@
   margin: 0;
 }
 
+/* A section setup needs, left empty: the one place in Config drawn as wrong,
+   because until it is put right the rest of the app has nothing to work on. */
+.settings-section--incomplete {
+  border-color: var(--role-rose);
+  box-shadow:
+    inset 4px 0 0 var(--role-rose),
+    var(--card-shadow);
+}
+
+.settings-needed {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+  color: var(--role-rose);
+  background: color-mix(in srgb, var(--role-rose) 14%, transparent);
+  border-radius: 999px;
+}
+
 /* The action keeps its words on one line: "New role" broken over two reads as
    two buttons at a glance, and the blurb beside it is what should give way. */
-.settings-section-head > .button {
+.settings-section-head > .button,
+.settings-section-head > .icon-button {
   flex: none;
   white-space: nowrap;
 }
@@ -134,7 +156,11 @@
 }
 
 .settings-pattern-lines code {
-  font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    0.8125rem ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
   word-break: break-all;
 }
 

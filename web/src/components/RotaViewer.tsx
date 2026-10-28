@@ -16,6 +16,7 @@ import { useOrganisation } from "../hooks/useOrganisation";
 import { useRoles } from "../hooks/useRoles";
 import { useVolunteers } from "../hooks/useVolunteers";
 import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
 import { ChipSelectionProvider } from "../ui/ChipSelection";
 import type { AssigneeChange } from "./RotaEditDialogs";
 import {
@@ -775,15 +776,20 @@ export default function RotaViewer({
       <div className="rota-viewer">
         <div className="rota-heading">
           <h1>{organisation ? `${organisation.displayName} Rota` : "Rota"}</h1>
-          {signedIn && (
-            <Button
-              size="small"
-              aria-pressed={editing}
-              onClick={() => (editing ? stopEditing() : setEditRequested(true))}
-            >
-              {editing ? "Done" : "Edit rota"}
-            </Button>
-          )}
+          {/* A pencil to start, the word to stop: finishing is not an edit,
+              and "Done" says plainly how to get out. */}
+          {signedIn &&
+            (editing ? (
+              <Button size="small" onClick={stopEditing}>
+                Done
+              </Button>
+            ) : (
+              <IconButton
+                icon="pencil"
+                aria-label="Edit rota"
+                onClick={() => setEditRequested(true)}
+              />
+            ))}
         </div>
 
         <div className="rota-search-wrap" ref={containerRef}>

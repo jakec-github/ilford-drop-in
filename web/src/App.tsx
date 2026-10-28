@@ -8,6 +8,7 @@ import { useOrganisation } from "./hooks/useOrganisation";
 import { useRota } from "./hooks/useRota";
 import { useAuth } from "./auth-context";
 import Logo from "./components/Logo";
+import { NoShifts } from "./components/SetupNeeded";
 import Loading from "./components/Loading";
 import Button from "./ui/Button";
 import { BASE_PATH } from "./basePath";
@@ -84,6 +85,9 @@ function HomeView() {
   }
   if (shifts === null) {
     return <Loading>Loading rota…</Loading>;
+  }
+  if (shifts.length === 0) {
+    return <NoShifts level={level} />;
   }
   return (
     <RotaViewer

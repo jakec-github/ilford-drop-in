@@ -1,12 +1,8 @@
 /* The Overrides card, after the prototype in
    docs/design/issue-23/shift-patterns.html: each Override its own bordered
-   article, numbered, because the number is how the define preview names it. */
-
-.overrides {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
+   article, numbered, because the number is how the define preview names it.
+   Each is edited where it stands, in two panels — what it matches, and what
+   it sets — so the date it counts from reads as part of the match. */
 
 .override {
   margin: 0 0 0.75rem;
@@ -15,8 +11,24 @@
   border-radius: 12px;
 }
 
-.override--editing {
+.override:focus-within {
   border-color: var(--accent);
+}
+
+.override--fresh {
+  animation: override-arrive 0.6s ease-out;
+}
+
+@keyframes override-arrive {
+  from {
+    box-shadow: 0 0 0 4px var(--accent-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .override--fresh {
+    animation: none;
+  }
 }
 
 .override-head {
@@ -39,10 +51,93 @@
   border-radius: 50%;
 }
 
-.override-head .override-description {
+.override-title {
   flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.override-remove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.override-remove svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.override-remove:hover,
+.override-remove:focus-visible {
+  color: var(--warning);
+}
+
+.override-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-h);
+}
+
+.override-confirm-remove {
+  color: var(--bg);
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
+/* The two halves: what the Override matches, and what it sets on the shifts
+   it matches. Each a panel of its own, titled, tinted apart, so the eye reads
+   "which shifts" and then "what changes". */
+.override-part {
+  margin-top: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+}
+
+.override-part--match {
+  background: color-mix(in srgb, var(--role-blue) 7%, transparent);
+  border-left: 3px solid var(--role-blue);
+}
+
+.override-part--set {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-left: 3px solid var(--accent);
+}
+
+.override-part-title {
+  margin: 0 0 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.override-part--match .override-rule {
+  width: 100%;
+}
+
+.override-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-h);
 }
 
 .override-description {
@@ -75,77 +170,6 @@
 .override-rule:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-
-.override-actions {
-  display: flex;
-  flex: none;
-  gap: 0.25rem;
-}
-
-.override-handle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  color: var(--text);
-  background: none;
-  border: 0;
-  border-radius: 6px;
-  cursor: grab;
-  /* A finger on the handle drags the Override rather than scrolling the page. */
-  touch-action: none;
-}
-
-.override-handle svg {
-  fill: currentColor;
-}
-
-.override-handle:hover:not(:disabled, [aria-disabled="true"]) {
-  color: var(--text-h);
-  background: var(--accent-bg);
-}
-
-.override-handle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.override-handle:disabled,
-.override-handle[aria-disabled="true"] {
-  cursor: default;
-  opacity: 0.35;
-}
-
-/* While a drag lasts the pointer is the list's, so the grabbing cursor is set
-   there, and nothing under it is selected as it sweeps across. The others
-   slide to make room; the held one follows the pointer exactly, above them. */
-.overrides--dragging {
-  cursor: grabbing;
-  user-select: none;
-}
-
-.overrides--dragging .override-handle {
-  cursor: grabbing;
-}
-
-.overrides--dragging > li {
-  transition: transform 150ms ease;
-}
-
-.overrides--dragging > li.override-held {
-  position: relative;
-  z-index: 1;
-  transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .overrides--dragging > li {
-    transition: none;
-  }
 }
 
 .override--dragging {
@@ -181,30 +205,6 @@
   min-height: 1.75rem;
 }
 
-/* The facts of a saved one, label then value, as the Rota Defaults card reads. */
-.override-facts {
-  margin: 0.5rem 0 0;
-  font-size: 0.8125rem;
-}
-
-.override-facts > div {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  padding: 0.25rem 0;
-}
-
-.override-facts dt {
-  flex: none;
-  width: 5.5rem;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.override-facts dd {
-  margin: 0;
-}
-
 /* The editor's properties: a label column and what it sets. */
 .override-props {
   display: grid;
@@ -220,7 +220,7 @@
   color: var(--text-h);
 }
 
-.override-props input[type="date"],
+.override-from input,
 .override-props input[type="time"],
 .override-props select,
 .override-adder select,
@@ -268,27 +268,8 @@
   margin: 0;
 }
 
-/* On a phone the actions drop under the rule rather than squeezing it. */
+/* On a phone the label column goes over what it sets. */
 @media (max-width: 30rem) {
-  /* Number, rule and handle on the first line, the handle still at the
-     right; the actions take the line under them rather than squeezing the
-     rule. */
-  .override-head {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: start;
-  }
-
-  .override-handle {
-    grid-row: 1;
-    grid-column: 3;
-  }
-
-  .override-actions {
-    grid-column: 1 / -1;
-    justify-content: flex-end;
-  }
-
   .override-props {
     grid-template-columns: 1fr;
   }

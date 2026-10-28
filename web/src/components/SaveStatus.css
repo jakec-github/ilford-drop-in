@@ -1,0 +1,15 @@
+/* Saving says so quietly, by the title, then fades: a card that saves itself
+   has to show that it did, but it is not news. */
+.save-status {
+  font-size: 0.75rem;
+  color: var(--text);
+  transition: opacity 0.4s;
+}
+
+.save-status--saved {
+  color: var(--positive);
+}
+
+.save-status--idle {
+  opacity: 0;
+}
