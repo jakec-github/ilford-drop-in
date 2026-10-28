@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -35,8 +36,25 @@ type volunteerResponse struct {
 	Active   bool     `json:"active"`
 }
 
+// unknownRoleResponse is a Role name the roster sheet uses that no Role here
+// has, and how many volunteers carry it. It is a suggestion, not a fault: a Role
+// nobody has created yet looks exactly like one renamed here and not on the
+// sheet (ADR 0006), and the Organiser is the one who knows which.
+type unknownRoleResponse struct {
+	Name       string `json:"name"`
+	Volunteers int    `json:"volunteers"`
+}
+
 type listVolunteersResponse struct {
-	Volunteers []volunteerResponse `json:"volunteers"`
+	Volunteers   []volunteerResponse   `json:"volunteers"`
+	UnknownRoles []unknownRoleResponse `json:"unknownRoles"`
+}
+
+// unknownRoleSource is a roster that kept the Role names its sync could not
+// match. The server's cache is one; a client that does not keep them reports
+// none.
+type unknownRoleSource interface {
+	UnknownRoles() []model.UnknownRole
 }
 
 // heldRoles renders the Roles a volunteer holds, keeping [] rather than null
@@ -72,7 +90,15 @@ func (h *Handler) handleListVolunteers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := listVolunteersResponse{Volunteers: make([]volunteerResponse, 0, len(volunteers))}
+	resp := listVolunteersResponse{
+		Volunteers:   make([]volunteerResponse, 0, len(volunteers)),
+		UnknownRoles: []unknownRoleResponse{},
+	}
+	if source, ok := h.volunteers.(unknownRoleSource); ok {
+		for _, u := range source.UnknownRoles() {
+			resp.UnknownRoles = append(resp.UnknownRoles, unknownRoleResponse{Name: u.Name, Volunteers: u.Volunteers})
+		}
+	}
 	for _, v := range volunteers {
 		resp.Volunteers = append(resp.Volunteers, volunteerResponse{
 			ID: v.ID,

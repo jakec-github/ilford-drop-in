@@ -13,7 +13,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 )
 
-// LoadVolunteers reads a volunteer roster from a CSV export of the volunteer
+// LoadRoster reads a volunteer roster from a CSV export of the volunteer
 // sheet, standing in for the Sheets fetch the server normally does with its
 // service account. The file's header row and columns are the sheet's — the same
 // parser reads both, so a CSV that loads here is one the real sheet would
@@ -21,10 +21,10 @@ import (
 //
 // The Roles table arrives as a parameter rather than off a config, because this
 // package deliberately sees no config beyond the dev-mode block.
-func LoadVolunteers(path string, roles model.Roles) ([]model.Volunteer, error) {
+func LoadRoster(path string, roles model.Roles) (model.Roster, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open volunteer CSV: %w", err)
+		return model.Roster{}, fmt.Errorf("failed to open volunteer CSV: %w", err)
 	}
 	defer file.Close()
 
@@ -36,10 +36,10 @@ func LoadVolunteers(path string, roles model.Roles) ([]model.Volunteer, error) {
 
 	records, err := reader.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read volunteer CSV %s: %w", path, err)
+		return model.Roster{}, fmt.Errorf("failed to read volunteer CSV %s: %w", path, err)
 	}
 	if len(records) == 0 {
-		return nil, fmt.Errorf("volunteer CSV %s is empty", path)
+		return model.Roster{}, fmt.Errorf("volunteer CSV %s is empty", path)
 	}
 
 	// The parser takes the shape the Sheets API returns, so widen the rows.
@@ -52,11 +52,11 @@ func LoadVolunteers(path string, roles model.Roles) ([]model.Volunteer, error) {
 		raw[i] = row
 	}
 
-	volunteers, err := sheetsclient.ParseVolunteers(raw, roles)
+	roster, err := sheetsclient.ParseRoster(raw, roles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse volunteer CSV %s: %w", path, err)
+		return model.Roster{}, fmt.Errorf("failed to parse volunteer CSV %s: %w", path, err)
 	}
-	sheetsclient.ComputeDisplayNames(volunteers)
+	sheetsclient.ComputeDisplayNames(roster.Volunteers)
 
-	return volunteers, nil
+	return roster, nil
 }

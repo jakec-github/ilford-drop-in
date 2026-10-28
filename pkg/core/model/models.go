@@ -28,6 +28,23 @@ func (v Volunteer) Holds(role string) bool {
 	return false
 }
 
+// Roster is one read of the volunteer sheet: the volunteers on it, and the
+// Role names its Roles cells use that match no Role the app has.
+type Roster struct {
+	Volunteers []Volunteer
+	// UnknownRoles is in the order the names first appear on the sheet. A name
+	// here is either a Role nobody has created yet or one renamed in the app
+	// but not on the sheet (ADR 0006) — the app cannot tell which.
+	UnknownRoles []UnknownRole
+}
+
+// UnknownRole is a name the sheet gives a Role the app does not have, and how
+// many volunteers' Roles cells carry it.
+type UnknownRole struct {
+	Name       string
+	Volunteers int
+}
+
 // Rotation represents a rota rotation
 type Rotation struct {
 	ID         string

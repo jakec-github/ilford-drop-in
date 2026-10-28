@@ -23,8 +23,9 @@ func twoRoles() model.Roles {
 	})
 }
 
-func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
-	volunteers, err := LoadVolunteers(repoCSV, twoRoles())
+func TestLoadRoster_RepoSampleRoster(t *testing.T) {
+	roster, err := LoadRoster(repoCSV, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.NotEmpty(t, volunteers)
 
@@ -59,24 +60,24 @@ func TestLoadVolunteers_RepoSampleRoster(t *testing.T) {
 	assert.Empty(t, byID["GHI"].GroupKey)
 }
 
-func TestLoadVolunteers_MissingFile(t *testing.T) {
-	_, err := LoadVolunteers(filepath.Join(t.TempDir(), "nope.csv"), twoRoles())
+func TestLoadRoster_MissingFile(t *testing.T) {
+	_, err := LoadRoster(filepath.Join(t.TempDir(), "nope.csv"), twoRoles())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nope.csv")
 }
 
-func TestLoadVolunteers_MissingColumn(t *testing.T) {
+func TestLoadRoster_MissingColumn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "roster.csv")
 	require.NoError(t, os.WriteFile(path, []byte(
 		"Unique ID,First name,Last name,Roles,Status,Sex/Gender,Email\nABC,Michael,Smith,Service volunteer,Active,Male,m@example.com\n",
 	), 0644))
 
-	_, err := LoadVolunteers(path, twoRoles())
+	_, err := LoadRoster(path, twoRoles())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Group key")
 }
 
-func TestLoadVolunteers_RaggedRows(t *testing.T) {
+func TestLoadRoster_RaggedRows(t *testing.T) {
 	// A hand-edited CSV routinely has short rows where trailing cells are
 	// blank; the sheet path tolerates them, so this one must too.
 	path := filepath.Join(t.TempDir(), "roster.csv")
@@ -84,17 +85,18 @@ func TestLoadVolunteers_RaggedRows(t *testing.T) {
 		"Unique ID,First name,Last name,Roles,Status,Sex/Gender,Email,Group key\nABC,Michael,Smith,Service volunteer,Active\n",
 	), 0644))
 
-	volunteers, err := LoadVolunteers(path, twoRoles())
+	roster, err := LoadRoster(path, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.Len(t, volunteers, 1)
 	assert.Equal(t, "Michael", volunteers[0].DisplayName)
 	assert.Empty(t, volunteers[0].Email)
 }
 
-func TestLoadVolunteers_EmptyFile(t *testing.T) {
+func TestLoadRoster_EmptyFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "roster.csv")
 	require.NoError(t, os.WriteFile(path, nil, 0644))
 
-	_, err := LoadVolunteers(path, twoRoles())
+	_, err := LoadRoster(path, twoRoles())
 	require.Error(t, err)
 }

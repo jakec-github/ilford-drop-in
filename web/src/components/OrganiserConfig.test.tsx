@@ -1,6 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { NewRoleCard, RoleCard, type RoleLook } from "./OrganiserConfig";
+import {
+  NewRoleCard,
+  RoleCard,
+  UnknownRoleSuggestions,
+  type RoleLook,
+} from "./OrganiserConfig";
 import type { ConfiguredRole } from "../types";
 
 // A Role named unlike any real Organisation's: the card draws whatever it is
@@ -94,5 +99,48 @@ describe("NewRoleCard", () => {
     });
     await saveWait();
     expect(onAdd.mock.calls[0]).toEqual([{ name: "Greeter", colour: "teal" }]);
+  });
+});
+
+describe("UnknownRoleSuggestions", () => {
+  test("offers each name the roster uses, saying how many carry it", () => {
+    const onCreate = mock<(name: string) => Promise<void>>(() =>
+      Promise.resolve(),
+    );
+    render(
+      <UnknownRoleSuggestions
+        unknown={[
+          { name: "Washer-up", volunteers: 3 },
+          { name: "Driver", volunteers: 1 },
+        ]}
+        onCreate={onCreate}
+      />,
+    );
+    expect(screen.getByText(/3 volunteers/)).toBeInTheDocument();
+    expect(screen.getByText(/1 volunteer\b/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create Driver" }));
+    expect(onCreate.mock.calls[0]).toEqual(["Driver"]);
+  });
+
+  // A Role renamed here and not on the sheet looks exactly like this, and
+  // creating it would make a duplicate.
+  test("warns that a renamed Role is fixed on the sheet, not here", () => {
+    render(
+      <UnknownRoleSuggestions
+        unknown={[{ name: "Washer-up", volunteers: 3 }]}
+        onCreate={() => Promise.resolve()}
+      />,
+    );
+    expect(screen.getByText(/a Role you renamed here/)).toBeInTheDocument();
+  });
+
+  test("says nothing when the roster names no unknown Role", () => {
+    const { container } = render(
+      <UnknownRoleSuggestions
+        unknown={[]}
+        onCreate={() => Promise.resolve()}
+      />,
+    );
+    expect(container.textContent).toBe("");
   });
 });

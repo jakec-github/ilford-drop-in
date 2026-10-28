@@ -34,6 +34,8 @@ import type {
   OverrideRuleReading,
   Volunteer,
   VolunteerHistory,
+  Roster,
+  UnknownRole,
 } from "./types";
 import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "./types";
 import { BASE_PATH } from "./basePath";
@@ -77,6 +79,7 @@ interface ApiVolunteer {
 
 interface ListVolunteersResponse {
   volunteers: ApiVolunteer[];
+  unknownRoles: UnknownRole[];
 }
 
 interface DefineRotaResponse {
@@ -575,14 +578,18 @@ export async function readOverrideRule(
 }
 
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,
-// already sorted by name server-side. Behind a session.
-export async function fetchVolunteers(): Promise<Volunteer[]> {
+// already sorted by name server-side, and the Role names it uses that no Role
+// here has. Behind a session.
+export async function fetchVolunteers(): Promise<Roster> {
   const res = await fetch(`${BASE_PATH}/api/volunteers`);
   if (!res.ok) {
     throw new Error(`Failed to load volunteers (${res.status})`);
   }
   const data = (await res.json()) as ListVolunteersResponse;
-  return data.volunteers.map(toVolunteer);
+  return {
+    volunteers: data.volunteers.map(toVolunteer),
+    unknownRoles: data.unknownRoles,
+  };
 }
 
 // fetchRotaPlan reads the rota defining one of this many shifts now would

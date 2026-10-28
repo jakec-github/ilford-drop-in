@@ -31,14 +31,15 @@ func row(cells ...string) []any {
 	return widened
 }
 
-func TestParseVolunteers_RolesFromOneColumn(t *testing.T) {
+func TestParseRoster_RolesFromOneColumn(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "Group A", "Team lead, Service volunteer"),
 		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "", "Service volunteer"),
 	}
 
-	volunteers, err := ParseVolunteers(raw, twoRoles())
+	roster, err := ParseRoster(raw, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.Len(t, volunteers, 2)
 
@@ -55,7 +56,7 @@ func TestParseVolunteers_RolesFromOneColumn(t *testing.T) {
 // What a multi-select cell holds is a spreadsheet's idea of a list, not a
 // parser's: the separator is whatever the UI wrote, the spacing is not
 // guaranteed, and a hand-edited cell can hold anything a person typed.
-func TestParseVolunteers_RolesCellShapes(t *testing.T) {
+func TestParseRoster_RolesCellShapes(t *testing.T) {
 	tests := []struct {
 		name  string
 		cell  string
@@ -82,7 +83,8 @@ func TestParseVolunteers_RolesCellShapes(t *testing.T) {
 				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", tc.cell),
 			}
 
-			volunteers, err := ParseVolunteers(raw, twoRoles())
+			roster, err := ParseRoster(raw, twoRoles())
+			volunteers := roster.Volunteers
 			require.NoError(t, err)
 			require.Len(t, volunteers, 1)
 			assert.Equal(t, tc.roles, volunteers[0].Roles)
@@ -94,7 +96,7 @@ func TestParseVolunteers_RolesCellShapes(t *testing.T) {
 // holding a comma or a quotation mark, and doubles the quotation marks inside
 // one. So the cell is a CSV record of exactly one row, and reading it as
 // anything less loses names that are perfectly legal to configure.
-func TestParseVolunteers_RolesCellQuoting(t *testing.T) {
+func TestParseRoster_RolesCellQuoting(t *testing.T) {
 	// Two Roles whose names need the escaping, either side of one that does not.
 	roles := model.NewRoles([]model.Role{
 		{Name: `Kitchen, hot food`, Priority: 1},
@@ -148,7 +150,8 @@ func TestParseVolunteers_RolesCellQuoting(t *testing.T) {
 				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", tc.cell),
 			}
 
-			volunteers, err := ParseVolunteers(raw, roles)
+			roster, err := ParseRoster(raw, roles)
+			volunteers := roster.Volunteers
 			require.NoError(t, err)
 			require.Len(t, volunteers, 1)
 			assert.Equal(t, tc.roles, volunteers[0].Roles)
@@ -159,7 +162,7 @@ func TestParseVolunteers_RolesCellQuoting(t *testing.T) {
 // A cell nobody picked through the dropdown can hold anything a person typed,
 // including quoting the dropdown would never have written. Read what can be
 // read rather than failing the roster over it.
-func TestParseVolunteers_RolesCellMalformedQuoting(t *testing.T) {
+func TestParseRoster_RolesCellMalformedQuoting(t *testing.T) {
 	tests := []struct {
 		name  string
 		cell  string
@@ -177,7 +180,8 @@ func TestParseVolunteers_RolesCellMalformedQuoting(t *testing.T) {
 				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", tc.cell),
 			}
 
-			volunteers, err := ParseVolunteers(raw, twoRoles())
+			roster, err := ParseRoster(raw, twoRoles())
+			volunteers := roster.Volunteers
 			require.NoError(t, err)
 			require.Len(t, volunteers, 1)
 			assert.Equal(t, tc.roles, volunteers[0].Roles)
@@ -188,28 +192,60 @@ func TestParseVolunteers_RolesCellMalformedQuoting(t *testing.T) {
 // A value the app does not name is a sheet the app has not caught up with — or
 // a typo in a hand-edited cell. Skip it rather than failing the roster, and
 // keep the rest of the cell.
-func TestParseVolunteers_UnknownRoleValueIsSkipped(t *testing.T) {
+func TestParseRoster_UnknownRoleValueIsSkipped(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "Food collector, Service volunteer"),
 	}
 
-	volunteers, err := ParseVolunteers(raw, twoRoles())
+	roster, err := ParseRoster(raw, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.Len(t, volunteers, 1)
 	assert.Equal(t, []string{"Service volunteer"}, volunteers[0].Roles)
 }
 
+// What is skipped is kept as a suggestion: each name nothing matches, once, with
+// how many volunteers carry it, in the order the sheet first uses them. A name
+// repeated in one cell counts that volunteer once.
+func TestParseRoster_CollectsUnknownRoleNames(t *testing.T) {
+	raw := [][]any{
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("A", "Emma", "Welder", "Active", "", "", "", "Kitchen, Service volunteer, Kitchen"),
+		row("B", "Sam", "Hill", "Left", "", "", "", "Driver, Kitchen"),
+		row("C", "Ola", "Bello", "Active", "", "", "", "Team lead"),
+	}
+
+	roster, err := ParseRoster(raw, twoRoles())
+	require.NoError(t, err)
+	assert.Equal(t, []model.UnknownRole{
+		{Name: "Kitchen", Volunteers: 2},
+		{Name: "Driver", Volunteers: 1},
+	}, roster.UnknownRoles)
+}
+
+func TestParseRoster_NoUnknownRoleNames(t *testing.T) {
+	raw := [][]any{
+		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
+		row("C", "Ola", "Bello", "Active", "", "", "", "Team lead"),
+	}
+
+	roster, err := ParseRoster(raw, twoRoles())
+	require.NoError(t, err)
+	assert.Empty(t, roster.UnknownRoles)
+}
+
 // The columns Roles used to live in. Neither the pre-S1 `Role` dropdown nor the
 // S1 `<name> - Role` ticks are read any more; leaving them on the sheet must
 // change nothing.
-func TestParseVolunteers_RetiredRoleColumnsAreIgnored(t *testing.T) {
+func TestParseRoster_RetiredRoleColumnsAreIgnored(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Role", "Status", "Sex/Gender", "Email", "Group key", "Roles", "Team lead - Role", "Service volunteer - Role"),
 		row("XYZ", "Emma", "Welder", "Team lead", "Active", "Female", "emma@example.com", "", "Service volunteer", "TRUE", "TRUE"),
 	}
 
-	volunteers, err := ParseVolunteers(raw, twoRoles())
+	roster, err := ParseRoster(raw, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.Len(t, volunteers, 1)
 	assert.Equal(t, []string{"Service volunteer"}, volunteers[0].Roles)
@@ -218,13 +254,13 @@ func TestParseVolunteers_RetiredRoleColumnsAreIgnored(t *testing.T) {
 // Roles is a required column like any other: a roster without it would load
 // with nobody holding anything and allocate nothing, which is worse than
 // failing.
-func TestParseVolunteers_MissingRolesColumn(t *testing.T) {
+func TestParseRoster_MissingRolesColumn(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key"),
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", ""),
 	}
 
-	_, err := ParseVolunteers(raw, twoRoles())
+	_, err := ParseRoster(raw, twoRoles())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Roles")
 }
@@ -233,7 +269,7 @@ func TestParseVolunteers_MissingRolesColumn(t *testing.T) {
 // what someone picks when a volunteer leaves a group, and it means exactly what
 // a blank cell means. The boundary is the only place that knows that, so the
 // placeholder never reaches the domain.
-func TestParseVolunteers_NoneGroupKeyIsNormalised(t *testing.T) {
+func TestParseRoster_NoneGroupKeyIsNormalised(t *testing.T) {
 	tests := []struct {
 		cell     string
 		groupKey string
@@ -255,7 +291,8 @@ func TestParseVolunteers_NoneGroupKeyIsNormalised(t *testing.T) {
 				row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", tc.cell, "Service volunteer"),
 			}
 
-			volunteers, err := ParseVolunteers(raw, twoRoles())
+			roster, err := ParseRoster(raw, twoRoles())
+			volunteers := roster.Volunteers
 			require.NoError(t, err)
 			require.Len(t, volunteers, 1)
 			assert.Equal(t, tc.groupKey, volunteers[0].GroupKey)
@@ -265,40 +302,42 @@ func TestParseVolunteers_NoneGroupKeyIsNormalised(t *testing.T) {
 
 // Two volunteers who both left their groups are two groups of one, not one
 // group of two — the bug normalising at the boundary fixes.
-func TestParseVolunteers_NoneIsNotAGroup(t *testing.T) {
+func TestParseRoster_NoneIsNotAGroup(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "None", "Service volunteer"),
 		row("ABC", "Michael", "Smith", "Active", "Male", "michael@example.com", "None", "Service volunteer"),
 	}
 
-	volunteers, err := ParseVolunteers(raw, twoRoles())
+	roster, err := ParseRoster(raw, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.Len(t, volunteers, 2)
 	assert.Empty(t, volunteers[0].GroupKey)
 	assert.Empty(t, volunteers[1].GroupKey)
 }
 
-func TestParseVolunteers_MissingRequiredColumn(t *testing.T) {
+func TestParseRoster_MissingRequiredColumn(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Roles"),
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "Service volunteer"),
 	}
 
-	_, err := ParseVolunteers(raw, twoRoles())
+	_, err := ParseRoster(raw, twoRoles())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Group key")
 }
 
 // Short rows are routine in hand-edited exports; a row that stops before the
 // Roles column holds no Roles.
-func TestParseVolunteers_RaggedRows(t *testing.T) {
+func TestParseRoster_RaggedRows(t *testing.T) {
 	raw := [][]any{
 		row("Unique ID", "First name", "Last name", "Status", "Sex/Gender", "Email", "Group key", "Roles"),
 		row("XYZ", "Emma", "Welder", "Active"),
 	}
 
-	volunteers, err := ParseVolunteers(raw, twoRoles())
+	roster, err := ParseRoster(raw, twoRoles())
+	volunteers := roster.Volunteers
 	require.NoError(t, err)
 	require.Len(t, volunteers, 1)
 	assert.Empty(t, volunteers[0].Roles)
@@ -309,7 +348,7 @@ func TestParseVolunteers_RaggedRows(t *testing.T) {
 // renamed in one and not the other leaves nobody holding it. Nothing else
 // notices — the roster loads, allocation just finds no eligible volunteer — so
 // the warning is the whole check (ADR 0006).
-func TestParseVolunteers_WarnsAboutARoleNobodyHolds(t *testing.T) {
+func TestParseRoster_WarnsAboutARoleNobodyHolds(t *testing.T) {
 	logged := captureRosterWarnings(t)
 
 	raw := [][]any{
@@ -317,7 +356,7 @@ func TestParseVolunteers_WarnsAboutARoleNobodyHolds(t *testing.T) {
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "Service volunteer"),
 	}
 
-	_, err := ParseVolunteers(raw, twoRoles())
+	_, err := ParseRoster(raw, twoRoles())
 	require.NoError(t, err)
 
 	assert.Contains(t, logged.String(), "Team lead")
@@ -327,7 +366,7 @@ func TestParseVolunteers_WarnsAboutARoleNobodyHolds(t *testing.T) {
 
 // A roster where every Role has a holder is the ordinary case, and a warning
 // that fires every sync is a warning nobody reads.
-func TestParseVolunteers_NoWarningWhenEveryRoleIsHeld(t *testing.T) {
+func TestParseRoster_NoWarningWhenEveryRoleIsHeld(t *testing.T) {
 	logged := captureRosterWarnings(t)
 
 	raw := [][]any{
@@ -335,7 +374,7 @@ func TestParseVolunteers_NoWarningWhenEveryRoleIsHeld(t *testing.T) {
 		row("XYZ", "Emma", "Welder", "Active", "Female", "emma@example.com", "", "Team lead, Service volunteer"),
 	}
 
-	_, err := ParseVolunteers(raw, twoRoles())
+	_, err := ParseRoster(raw, twoRoles())
 	require.NoError(t, err)
 
 	assert.Empty(t, logged.String())

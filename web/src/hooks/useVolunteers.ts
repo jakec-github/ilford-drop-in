@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchVolunteers, syncVolunteers } from "../api";
-import type { Volunteer } from "../types";
+import type { UnknownRole, Volunteer } from "../types";
 
 export type SyncState = "idle" | "syncing" | "ok" | "error";
 
@@ -8,6 +8,8 @@ interface UseVolunteers {
   // null while the first load is still in flight; [] is a genuinely empty
   // roster, which the caller renders differently from "not loaded yet".
   volunteers: Volunteer[] | null;
+  // The Role names the roster uses that no Role here has; [] until loaded.
+  unknownRoles: UnknownRole[];
   error: string | null;
   syncState: SyncState;
   sync: () => Promise<void>;
@@ -28,6 +30,7 @@ export function useVolunteers({
   enabled = true,
 }: UseVolunteersOptions = {}): UseVolunteers {
   const [volunteers, setVolunteers] = useState<Volunteer[] | null>(null);
+  const [unknownRoles, setUnknownRoles] = useState<UnknownRole[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<SyncState>("idle");
 
@@ -39,7 +42,8 @@ export function useVolunteers({
     () =>
       fetchVolunteers()
         .then((loaded) => {
-          setVolunteers(loaded);
+          setVolunteers(loaded.volunteers);
+          setUnknownRoles(loaded.unknownRoles);
           setError(null);
         })
         .catch((err: unknown) => {
@@ -67,5 +71,5 @@ export function useVolunteers({
     }
   }, [load]);
 
-  return { volunteers, error, syncState, sync };
+  return { volunteers, unknownRoles, error, syncState, sync };
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
@@ -37,30 +38,30 @@ const roleSeparator = ','
 // since a dropdown's label is not guaranteed to keep its capitalisation.
 const noGroupValue = "none"
 
-// ListVolunteers retrieves and parses volunteers from the configured
-// spreadsheet, keeping only the Roles named in the Roles table the caller read
-// from the database.
-func (c *Client) ListVolunteers(organisation *config.Organisation, roles model.Roles) ([]model.Volunteer, error) {
+// ReadRoster retrieves and parses volunteers from the configured spreadsheet,
+// keeping only the Roles named in the Roles table the caller read from the
+// database, and reporting the names it could not match.
+func (c *Client) ReadRoster(organisation *config.Organisation, roles model.Roles) (model.Roster, error) {
 	// Get raw data from spreadsheet
 	values, err := c.GetValues(organisation.VolunteerSheetID, organisation.ServiceVolunteersTab)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get volunteer data: %w", err)
+		return model.Roster{}, fmt.Errorf("failed to get volunteer data: %w", err)
 	}
 
 	if len(values) == 0 {
-		return nil, fmt.Errorf("spreadsheet is empty")
+		return model.Roster{}, fmt.Errorf("spreadsheet is empty")
 	}
 
 	// Parse volunteers
-	volunteers, err := ParseVolunteers(values, roles)
+	roster, err := ParseRoster(values, roles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse volunteers: %w", err)
+		return model.Roster{}, fmt.Errorf("failed to parse volunteers: %w", err)
 	}
 
 	// Compute display names for all volunteers (ensures uniqueness across entire list)
-	ComputeDisplayNames(volunteers)
+	ComputeDisplayNames(roster.Volunteers)
 
-	return volunteers, nil
+	return roster, nil
 }
 
 // ComputeDisplayNames calculates display names for a list of volunteers based on uniqueness:
@@ -107,25 +108,25 @@ func ComputeDisplayNames(volunteers []model.Volunteer) {
 	}
 }
 
-// ParseVolunteers converts raw spreadsheet data into Volunteer structs. It is
+// ParseRoster converts raw spreadsheet data into Volunteer structs. It is
 // exported because the same tabular shape arrives from more than one place: the
 // Sheets API here, and a CSV export in dev mode (internal/devmode). Both go
 // through this parser so the column contract is defined once.
 //
 // The Roles a volunteer holds come from one `Roles` cell, whose values are
 // matched against the Roles the app knows. The app stays authoritative: a value
-// naming a Role it does not have is warned about and skipped rather than
-// failing the roster, because it is usually a half-finished edit and the rest
-// of the cell is still good.
+// naming a Role it does not have is skipped rather than failing the roster,
+// because the rest of the cell is still good. It is kept in UnknownRoles, so the
+// Organiser can be offered the Role rather than the name only reaching a log.
 //
 // The sheet and the app own half the name contract each — the app owns which
 // Roles exist, the sheet owns who holds them — so the two warnings this raises
 // are the standing check on a rename (ADR 0006). Renaming a Role in the app and
 // not in the sheet shows up as both: the sheet names a Role nothing matches,
 // and the renamed Role is held by nobody.
-func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer, error) {
+func ParseRoster(raw [][]interface{}, roles model.Roles) (model.Roster, error) {
 	if len(raw) < 1 {
-		return nil, fmt.Errorf("no header row found")
+		return model.Roster{}, fmt.Errorf("no header row found")
 	}
 
 	// Build field index map from header row
@@ -141,7 +142,7 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 			}
 		}
 		if index == -1 {
-			return nil, fmt.Errorf("missing required field in header: %s", field)
+			return model.Roster{}, fmt.Errorf("missing required field in header: %s", field)
 		}
 		fieldIndexes[field] = index
 	}
@@ -163,6 +164,7 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 
 	// Parse data rows
 	volunteers := make([]model.Volunteer, 0, len(raw)-1)
+	unknown := unknownRoles{}
 	for i := 1; i < len(raw); i++ {
 		row := raw[i]
 
@@ -176,7 +178,7 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 			ID:        getField("Unique ID", row),
 			FirstName: firstName,
 			LastName:  getField("Last name", row),
-			Roles:     heldRoles(getField("Roles", row), roles),
+			Roles:     heldRoles(getField("Roles", row), roles, &unknown),
 			Status:    getField("Status", row),
 			Gender:    getField("Sex/Gender", row),
 			Email:     getField("Email", row),
@@ -188,7 +190,30 @@ func ParseVolunteers(raw [][]interface{}, roles model.Roles) ([]model.Volunteer,
 
 	warnUnheldRoles(volunteers, roles)
 
-	return volunteers, nil
+	return model.Roster{Volunteers: volunteers, UnknownRoles: unknown.names}, nil
+}
+
+// unknownRoles tallies the Role names a roster uses that the app does not have,
+// in the order the sheet first uses each.
+type unknownRoles struct {
+	names []model.UnknownRole
+}
+
+// add counts one volunteer for each name in the set given.
+func (u *unknownRoles) add(names []string) {
+	for _, name := range names {
+		found := false
+		for i := range u.names {
+			if u.names[i].Name == name {
+				u.names[i].Volunteers++
+				found = true
+				break
+			}
+		}
+		if !found {
+			u.names = append(u.names, model.UnknownRole{Name: name, Volunteers: 1})
+		}
+	}
 }
 
 // warnUnheldRoles reports a Role nobody on the roster holds. On its own that is
@@ -224,9 +249,11 @@ func groupKey(cell string) string {
 // heldRoles reads one volunteer's Roles cell, returning the Roles they hold in
 // priority order — so the first is the one a caller showing a single Role
 // wants, whatever order the chips were picked in. Duplicates collapse for the
-// same reason: the answer is a set.
-func heldRoles(cell string, roles model.Roles) []string {
+// same reason: the answer is a set. A value no Role matches goes to unknown,
+// once per volunteer however often the cell repeats it.
+func heldRoles(cell string, roles model.Roles, unknown *unknownRoles) []string {
 	picked := make(map[string]bool)
+	var unmatched []string
 
 	for _, value := range splitRoleCell(cell) {
 		// The dropdown writes no padding, but a hand-typed cell has whatever
@@ -239,10 +266,15 @@ func heldRoles(cell string, roles model.Roles) []string {
 		if _, known := roles.ByName(value); !known {
 			slog.Warn("volunteer sheet names a Role the app does not know; ignoring it",
 				"role", value)
+			if !slices.Contains(unmatched, value) {
+				unmatched = append(unmatched, value)
+			}
 			continue
 		}
 		picked[value] = true
 	}
+
+	unknown.add(unmatched)
 
 	var held []string
 	for _, role := range roles.ByPriority() {

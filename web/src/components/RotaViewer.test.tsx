@@ -5,6 +5,7 @@ import type {
   Pin,
   RotaChange,
   RotaShift,
+  Roster,
   Volunteer,
 } from "../types";
 import type { AccessLevel } from "../auth-context";
@@ -22,7 +23,7 @@ const GREETER = "Greeter";
 // hooks call stubbed out — there is no server to answer them here. Values
 // only matter where a test below reads them back.
 const fetchRoles = mock<() => Promise<ConfiguredRole[]>>();
-const fetchVolunteers = mock<() => Promise<Volunteer[]>>();
+const fetchVolunteers = mock<() => Promise<Roster>>();
 const fetchDraftRotaAllocation = mock(async () => null);
 const fetchPins = mock<() => Promise<Pin[]>>();
 
@@ -242,7 +243,10 @@ describe("RotaViewer placement", () => {
     fetchRoles.mockClear();
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockClear();
-    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchVolunteers.mockResolvedValue({
+      volunteers: VOLUNTEERS,
+      unknownRoles: [],
+    });
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
     fetchPins.mockClear();
@@ -472,7 +476,10 @@ describe("RotaViewer role pickers", () => {
     fetchRoles.mockClear();
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockClear();
-    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchVolunteers.mockResolvedValue({
+      volunteers: VOLUNTEERS,
+      unknownRoles: [],
+    });
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
     fetchPins.mockClear();
@@ -535,18 +542,21 @@ describe("RotaViewer role pickers", () => {
   // Being inactive stops the allocator choosing somebody, not a person
   // deciding to pin them (ADR 0010).
   test("pinning offers inactive volunteers, marked as such", async () => {
-    fetchVolunteers.mockResolvedValue([
-      ...VOLUNTEERS,
-      {
-        id: "dora",
-        name: "Dora",
-        fullName: "Dora",
-        roles: [GREETER],
-        group: null,
-        gender: null,
-        active: false,
-      },
-    ]);
+    fetchVolunteers.mockResolvedValue({
+      unknownRoles: [],
+      volunteers: [
+        ...VOLUNTEERS,
+        {
+          id: "dora",
+          name: "Dora",
+          fullName: "Dora",
+          roles: [GREETER],
+          group: null,
+          gender: null,
+          active: false,
+        },
+      ],
+    });
     await renderEditing("organiser", withUnallocated());
 
     fireEvent.click(
@@ -567,7 +577,10 @@ describe("RotaViewer access levels", () => {
     fetchRoles.mockClear();
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockClear();
-    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchVolunteers.mockResolvedValue({
+      volunteers: VOLUNTEERS,
+      unknownRoles: [],
+    });
     fetchPins.mockClear();
     fetchPins.mockResolvedValue([]);
   });
@@ -670,7 +683,10 @@ describe("RotaViewer expanded shift view", () => {
     fetchRoles.mockClear();
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockClear();
-    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchVolunteers.mockResolvedValue({
+      volunteers: VOLUNTEERS,
+      unknownRoles: [],
+    });
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
     fetchPins.mockClear();
@@ -899,7 +915,10 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     fetchRoles.mockClear();
     fetchRoles.mockResolvedValue(ROLES);
     fetchVolunteers.mockClear();
-    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchVolunteers.mockResolvedValue({
+      volunteers: VOLUNTEERS,
+      unknownRoles: [],
+    });
     fetchDraftRotaAllocation.mockClear();
     fetchDraftRotaAllocation.mockResolvedValue(null);
     fetchPins.mockClear();
@@ -1048,7 +1067,10 @@ function twoSams(): RotaShift[] {
 describe("RotaViewer chip selection", () => {
   beforeEach(() => {
     fetchRoles.mockResolvedValue(ROLES);
-    fetchVolunteers.mockResolvedValue(VOLUNTEERS);
+    fetchVolunteers.mockResolvedValue({
+      volunteers: VOLUNTEERS,
+      unknownRoles: [],
+    });
     fetchPins.mockResolvedValue([]);
   });
 
