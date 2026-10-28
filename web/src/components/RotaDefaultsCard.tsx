@@ -120,8 +120,12 @@ function ShapeHalf({
 // rota from these settings, and re-reads it when one of them changes.
 export default function RotaDefaultsCard({
   onSaved,
+  collapsible = false,
 }: {
   onSaved?: () => void;
+  // Closed until opened, as on Config; the define form shows it open. It
+  // stays open while the pattern or shape is unset.
+  collapsible?: boolean;
 } = {}) {
   const rotaDefaults = useRotaDefaults();
   const { defaults, error } = rotaDefaults;
@@ -130,6 +134,7 @@ export default function RotaDefaultsCard({
   return (
     <SettingsSection
       title="Rota"
+      collapsible={collapsible}
       blurb="What every rota is made from: when the organisation runs, and how many people each shift asks for."
       incomplete={
         defaults !== null && (!patternSet(defaults) || !shapeSet(defaults))

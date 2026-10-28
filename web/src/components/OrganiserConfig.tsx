@@ -15,6 +15,7 @@ import OverridesCard from "./OverridesCard";
 import RotaDefaultsCard from "./RotaDefaultsCard";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
+import { settingsSummary } from "./settingsSummary";
 import type { ConfiguredRole, RoleColour, RoleEdit, Volunteer } from "../types";
 import { DEFAULT_ROLE_COLOUR, ROLE_COLOURS } from "../types";
 import "./OrganiserConfig.css";
@@ -327,6 +328,8 @@ function RolesSettings({ incomplete }: { incomplete: boolean }) {
       title="Roles"
       blurb="The jobs volunteers do on a shift, in the order their places are filled. A volunteer can only be given a Role they hold on the roster."
       incomplete={incomplete}
+      collapsible
+      summary={settingsSummary(roles?.length, "role", "roles")}
       action={
         roles !== null &&
         !adding && (
@@ -394,10 +397,10 @@ export default function OrganiserConfig() {
   return (
     <>
       <RolesSettings incomplete={setup.roles === false} />
-      <RotaDefaultsCard />
+      <RotaDefaultsCard collapsible />
       {setup.done === true && (
         <>
-          <OverridesCard />
+          <OverridesCard collapsible />
           <AllocationRulesSettings />
         </>
       )}

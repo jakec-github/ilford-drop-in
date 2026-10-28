@@ -52,6 +52,11 @@ through it top to bottom the first time. Until the **Roles** and the **Rota**
 are set, both are outlined in red and marked **Needed**, the rest of the tab
 stays closed, and the rota page and the Allocation tab send you here.
 
+Once set up, each card starts folded to its title and how many it holds
+(**None** when it is empty); click the title to open it. The **+** stays on a
+folded card, and opens it as it adds the new one. A card marked **Needed**
+cannot be folded until it is filled in.
+
 Everything on Config is edited where it stands. There is no Save button: a
 change saves itself a moment after you stop typing, and the card says
 **Saving…** and then **Saved**. Pencil buttons across the app edit something;

@@ -12,6 +12,7 @@ import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
+import { settingsSummary } from "./settingsSummary";
 import ShapeSeats from "./ShapeSeats";
 import { formatLength, isDate, lengthChoices, today } from "./patternDates";
 import { seatCountsOf, seatsOf, type SeatCounts } from "./shape";
@@ -592,8 +593,11 @@ export function OverrideCard({
 // onSaved is for the define form to plan again.
 export default function OverridesCard({
   onSaved,
+  collapsible = false,
 }: {
   onSaved?: () => void;
+  // Closed until opened, as on Config; the define form shows it open.
+  collapsible?: boolean;
 } = {}) {
   const { overrides, error, add, update, remove, reorder } = useOverrides();
   const { roles } = useRoles();
@@ -650,6 +654,8 @@ export default function OverridesCard({
   return (
     <SettingsSection
       title="Overrides"
+      collapsible={collapsible}
+      summary={settingsSummary(overrides?.length, "override", "overrides")}
       blurb="Rules that change some of the shifts your pattern makes, each time a rota is defined. Each matches some shifts, then sets what is different about them. When two change the same shift, the later one wins."
       action={
         canAdd && (

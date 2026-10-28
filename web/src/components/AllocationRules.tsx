@@ -11,6 +11,7 @@ import { useVolunteers } from "../hooks/useVolunteers";
 import RuleValueInput from "./RuleValueInput";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
+import { settingsSummary } from "./settingsSummary";
 import type {
   AllocationRule,
   AllocationRuleDraft,
@@ -595,6 +596,12 @@ export default function AllocationRulesSettings() {
   return (
     <SettingsSection
       title="Allocation rules"
+      collapsible
+      summary={settingsSummary(
+        defaults?.allocationRules.length,
+        "rule",
+        "rules",
+      )}
       blurb="The rules the allocator keeps when it fills a rota. They bind the allocator only: a pin is never refused for breaking one."
       action={defaults && <AddRuleButton onClick={() => setBrowsing(true)} />}
     >
