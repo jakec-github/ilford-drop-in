@@ -14,6 +14,9 @@ interface UseShiftPatternPreview {
   // A range or request the server could not read. A pattern with problems is
   // not an error: its problems are in preview.lines.
   error: string | null;
+  // The preview is an answer to the pattern, Start from and timezone as they
+  // are now — not to an earlier keystroke. False while a reading is on its way.
+  current: boolean;
 }
 
 // useShiftPatternPreview reads a pattern that is still being written, between
@@ -31,6 +34,9 @@ export function useShiftPatternPreview(
   to: string,
 ): UseShiftPatternPreview {
   const [preview, setPreview] = useState<ShiftPatternPreview | null>(null);
+  // What the last answer, preview or error, was an answer to.
+  const [readFor, setReadFor] = useState("");
+  const key = JSON.stringify([shiftPattern, patternStartFrom, shiftTimezone]);
   const [error, setError] = useState<string | null>(null);
 
   // Nothing to read is answered without asking: no lines, no Shifts.
@@ -49,22 +55,28 @@ export function useShiftPatternPreview(
         .then((loaded) => {
           setPreview(loaded);
           setError(null);
+          setReadFor(key);
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           setError(
             err instanceof Error ? err.message : "Failed to read the pattern",
           );
+          setReadFor(key);
         });
     }, SETTLE_MS);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [blank, shiftPattern, patternStartFrom, shiftTimezone, from, to]);
+  }, [blank, key, shiftPattern, patternStartFrom, shiftTimezone, from, to]);
 
   if (blank) {
-    return { preview: { patternStartFrom, lines: [], starts: [] }, error: null };
+    return {
+      preview: { patternStartFrom, lines: [], starts: [] },
+      current: false,
+      error: null,
+    };
   }
-  return { preview, error };
+  return { preview, current: readFor === key && error === null, error };
 }

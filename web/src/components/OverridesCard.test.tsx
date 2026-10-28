@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import OverridesCard, { OverrideEditor } from "./OverridesCard";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import OverridesCard, { OverrideCard } from "./OverridesCard";
 import type {
   ConfiguredRole,
   Override,
@@ -58,20 +58,44 @@ afterEach(() => {
 // Long enough for the rule to settle and be read.
 const settle = () =>
   act(() => new Promise<void>((resolve) => setTimeout(resolve, 400)));
+// Long enough for a change to stop moving and be saved.
+const saveWait = () =>
+  act(() => new Promise<void>((resolve) => setTimeout(resolve, 1000)));
 
-function renderEditor(override: Override | null = null) {
+const STORED: Override = {
+  id: "o-1",
+  number: 1,
+  rrule: "FREQ=MONTHLY;BYDAY=1SU",
+  startFrom: "2026-11-01",
+  granularity: "date",
+  description: "On the first Sunday of every month",
+  problems: [],
+  startTime: null,
+  lengthMinutes: null,
+  shape: null,
+  pins: [],
+};
+
+function renderCard(override: Override = STORED) {
   const onSave = mock<(draft: OverrideDraft) => Promise<void>>(() =>
     Promise.resolve(),
   );
   render(
-    <OverrideEditor
-      number={1}
+    <OverrideCard
       override={override}
+      number={1}
+      count={1}
       roles={ROLES}
+      defaultShape={[{ roleId: "r-greet", role: "Greeter", count: 2 }]}
       volunteers={VOLUNTEERS}
       volunteersError={null}
+      fresh={false}
+      busy={false}
+      held={false}
       onSave={onSave}
-      onCancel={() => {}}
+      onRemove={() => Promise.resolve()}
+      onGrab={() => {}}
+      onMove={() => {}}
     />,
   );
   return onSave;
@@ -89,16 +113,43 @@ function pin(who: string, roleId?: string) {
   fireEvent.click(screen.getByRole("button", { name: "Pin" }));
 }
 
-describe("OverrideEditor", () => {
+describe("OverrideCard", () => {
+  beforeEach(() => {
+    reading = {
+      startFrom: "2026-11-01",
+      granularity: "date",
+      description: "On the first Sunday of every month",
+      problems: [],
+    };
+  });
+
   test("reads the rule back as the server describes it", async () => {
-    renderEditor();
+    renderCard();
     await settle();
     expect(screen.getByText("On the first Sunday of every month")).toBeTruthy();
     expect(screen.getByText("every shift that day")).toBeTruthy();
   });
 
-  test("leaves the default shape unless one is ticked, and sends the pins", async () => {
-    const onSave = renderEditor();
+  // The start date is part of what is matched, not of what is set.
+  test("the start date sits with the rule, apart from what is set", () => {
+    renderCard();
+    const matches = screen.getByRole("region", { name: "Override 1 matches" });
+    const sets = screen.getByRole("region", { name: "Override 1 sets" });
+    expect(
+      within(matches).getByLabelText("Override 1 start from"),
+    ).toBeTruthy();
+    expect(within(matches).getByLabelText("Override 1 rule")).toBeTruthy();
+    expect(within(sets).queryByLabelText("Override 1 start from")).toBeNull();
+  });
+
+  test("nothing is saved until something changes", async () => {
+    const onSave = renderCard();
+    await saveWait();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  test("a change saves itself, leaving the default shape alone", async () => {
+    const onSave = renderCard();
     await settle();
     pin("v-bo");
     pin("custom");
@@ -106,12 +157,12 @@ describe("OverrideEditor", () => {
       target: { value: "Youth group" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+    await saveWait();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add override" }));
-    await settle();
-
+    expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0][0];
     expect(draft.rrule).toBe("FREQ=MONTHLY;BYDAY=1SU");
+    expect(draft.startFrom).toBe("2026-11-01");
     expect(draft.shape).toBeNull();
     expect(draft.pins).toEqual([
       { roleId: "r-greet", person: { volunteerId: "v-bo" } },
@@ -122,44 +173,34 @@ describe("OverrideEditor", () => {
   // A person fills one Seat on a Shift, so pinning them again changes their
   // Role rather than pinning them twice.
   test("pinning somebody again replaces their pin", async () => {
-    const onSave = renderEditor();
+    const onSave = renderCard();
     await settle();
     pin("v-ann", "r-duty");
     pin("v-ann", "r-greet");
-    fireEvent.click(screen.getByRole("button", { name: "Add override" }));
-    await settle();
+    await saveWait();
 
-    expect(onSave.mock.calls[0][0].pins).toEqual([
+    expect(onSave.mock.calls.at(-1)![0].pins).toEqual([
       { roleId: "r-greet", person: { volunteerId: "v-ann" } },
     ]);
   });
 
-  test("a ticked shape is sent whole, and may ask for nobody", async () => {
-    const onSave = renderEditor();
+  test("ticking the shape starts it from the default", async () => {
+    const onSave = renderCard();
     await settle();
-    fireEvent.click(screen.getByLabelText("Replace the shape"));
-    fireEvent.click(screen.getByRole("button", { name: "Add override" }));
-    await settle();
-    expect(onSave.mock.calls[0][0].shape).toEqual([]);
+    fireEvent.click(screen.getByLabelText("Shape"));
+    await saveWait();
+    expect(onSave.mock.calls[0][0].shape).toEqual([
+      { roleId: "r-greet", count: 2 },
+    ]);
   });
 
-  test("leaves the pattern's start and length unless they are ticked", async () => {
-    const onSave = renderEditor();
-    await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Add override" }));
-    await settle();
-    expect(onSave.mock.calls[0][0].startTime).toBeNull();
-    expect(onSave.mock.calls[0][0].lengthMinutes).toBeNull();
-  });
-
-  test("a ticked start time and length are sent, the time once it is said", async () => {
-    const onSave = renderEditor();
+  test("a ticked start time is saved only once it is said", async () => {
+    const onSave = renderCard();
     await settle();
     fireEvent.click(screen.getByLabelText("Start time"));
-    const add = screen.getByRole("button", {
-      name: "Add override",
-    }) as HTMLButtonElement;
-    expect(add.disabled).toBe(true);
+    await saveWait();
+    expect(onSave).not.toHaveBeenCalled();
+
     fireEvent.change(screen.getByLabelText("Override 1 start time"), {
       target: { value: "19:00" },
     });
@@ -167,41 +208,46 @@ describe("OverrideEditor", () => {
     fireEvent.change(screen.getByLabelText("Override 1 length"), {
       target: { value: "150" },
     });
-    expect(add.disabled).toBe(false);
-    fireEvent.click(add);
-    await settle();
+    await saveWait();
+    expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0].startTime).toBe("19:00");
     expect(onSave.mock.calls[0][0].lengthMinutes).toBe(150);
   });
 
-  test("a rule the server cannot read cannot be saved", async () => {
+  test("a rule the server cannot read is not saved", async () => {
+    const onSave = renderCard();
+    await settle();
     reading = {
       startFrom: "2026-11-01",
       granularity: "",
       description: "",
       problems: ["FREQ=SOMETIMES is not a frequency"],
     };
-    renderEditor();
-    await settle();
+    fireEvent.change(screen.getByLabelText("Override 1 rule"), {
+      target: { value: "FREQ=SOMETIMES" },
+    });
+    await saveWait();
     expect(screen.getByText("FREQ=SOMETIMES is not a frequency")).toBeTruthy();
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Add override",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  test("removing asks first, on the card", () => {
+    renderCard();
+    fireEvent.click(screen.getByLabelText("Remove override 1"));
+    expect(screen.getByText("Remove this override?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+    expect(screen.queryByText("Remove this override?")).toBeNull();
   });
 });
 
 // The card as a whole, against a server that holds three Overrides and answers
 // a reorder with them in the order it was sent.
 describe("OverridesCard reordering", () => {
-  function saved(id: string, description: string): Override {
+  function saved(id: string, day: string, description: string): Override {
     return {
       id,
       number: 0,
-      rrule: "FREQ=WEEKLY;BYDAY=SU",
+      rrule: `FREQ=WEEKLY;BYDAY=${day}`,
       startFrom: "2026-11-01",
       granularity: "date",
       description,
@@ -212,14 +258,14 @@ describe("OverridesCard reordering", () => {
       pins: [],
     };
   }
-  const STORED = [
-    saved("o-a", "First"),
-    saved("o-b", "Second"),
-    saved("o-c", "Third"),
+  const LIST = [
+    saved("o-a", "SU", "First"),
+    saved("o-b", "MO", "Second"),
+    saved("o-c", "TU", "Third"),
   ];
   const numbered = (ids: string[]) =>
     ids.map((id, i) => ({
-      ...STORED.find((o) => o.id === id)!,
+      ...LIST.find((o) => o.id === id)!,
       number: i + 1,
     }));
 
@@ -231,12 +277,28 @@ describe("OverridesCard reordering", () => {
       return json({ roles: ROLES.map((r) => ({ ...r })) });
     }
     if (url.endsWith("/api/volunteers")) return json({ volunteers: [] });
+    if (url.endsWith("/overrides/reading")) {
+      const { rrule } = JSON.parse(String(init?.body)) as { rrule: string };
+      const o = LIST.find((x) => x.rrule === rrule)!;
+      return json({ ...o, problems: [] });
+    }
+    if (url.endsWith("/api/rota-defaults")) {
+      return json({
+        shiftPattern: "",
+        patternStartFrom: "",
+        shiftTimezone: "",
+        shiftLengthMinutes: 0,
+        defaultShape: [],
+        allocationRules: [],
+        ruleLibrary: [],
+      });
+    }
     if (url.endsWith("/overrides/order")) {
       const { ids } = JSON.parse(String(init?.body)) as { ids: string[] };
       sent.push(ids);
       return json({ overrides: numbered(ids) });
     }
-    return json({ overrides: numbered(STORED.map((o) => o.id)) });
+    return json({ overrides: numbered(LIST.map((o) => o.id)) });
   });
 
   beforeEach(() => {
@@ -266,7 +328,7 @@ describe("OverridesCard reordering", () => {
     // Each item 100px tall, stacked from the top of the list, in the order
     // they are drawn.
     const items = () =>
-      Array.from(document.querySelectorAll("ol.overrides > li"));
+      Array.from(document.querySelectorAll("ol.drag-list > li"));
     const realBox = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
       const i = items().indexOf(this as HTMLLIElement);
@@ -276,7 +338,7 @@ describe("OverridesCard reordering", () => {
     const capture = mock(() => {});
     HTMLElement.prototype.setPointerCapture = capture;
     try {
-      const list = document.querySelector("ol.overrides")!;
+      const list = document.querySelector("ol.drag-list")!;
       fireEvent.pointerDown(screen.getByLabelText("Reorder override 1"), {
         button: 0,
         pointerId: 1,

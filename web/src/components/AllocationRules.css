@@ -70,24 +70,7 @@
   font-size: 0.8125rem;
 }
 
-/* Saving says so quietly, by the title, then fades: a card that saves itself
-   has to show that it did, but it is not news. */
-.rule-card-saving {
-  font-size: 0.75rem;
-  color: var(--text);
-  transition: opacity 0.4s;
-}
-
-.rule-card-saving--saved {
-  color: var(--positive);
-}
-
-.rule-card-saving--idle {
-  opacity: 0;
-}
-
-.rule-card-remove,
-.rule-add {
+.rule-card-remove {
   display: inline-grid;
   flex: none;
   place-items: center;
@@ -97,9 +80,6 @@
   border: none;
   border-radius: 50%;
   cursor: pointer;
-}
-
-.rule-card-remove {
   width: 28px;
   height: 28px;
 }
@@ -117,29 +97,6 @@
 .rule-card-remove:focus-visible {
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
-}
-
-/* The library's door: round, filled, and turning a quarter as it is
-   reached for. */
-.rule-add {
-  width: 34px;
-  height: 34px;
-  color: var(--bg);
-  background: var(--accent);
-  transition: transform 0.2s;
-}
-
-.rule-add svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-}
-
-.rule-add:hover,
-.rule-add:focus-visible {
-  transform: rotate(90deg) scale(1.05);
 }
 
 /* Removing asks on the card itself: the card blurs under the question, so it
@@ -620,7 +577,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .rule-card,
-  .rule-add,
   .rule-library-kind,
   .percent-ring-fill,
   .percent-ring-knob,

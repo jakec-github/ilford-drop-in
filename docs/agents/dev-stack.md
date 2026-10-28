@@ -267,7 +267,7 @@ const app = "http://localhost:8080/org/dev-org";
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
 await page.goto(`${app}/auth/login`);
-await page.goto(`${app}/organiser/settings`);
+await page.goto(`${app}/organiser/config`);
 console.log(await page.locator("main").ariaSnapshot());
 await page.screenshot({ path: "logs/playwright/settings.png", fullPage: true });
 await browser.close();

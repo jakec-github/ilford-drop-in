@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
+import IconButton from "../ui/IconButton";
 import { personKey } from "./shifts";
 import Dialog from "../ui/Dialog";
+import { useAutosave } from "../hooks/useAutosave";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
 import RuleValueInput from "./RuleValueInput";
+import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
+import { settingsSummary } from "./settingsSummary";
 import type {
   AllocationRule,
   AllocationRuleDraft,
@@ -29,10 +33,6 @@ import "./AllocationRules.css";
 // beside the draft is editing it everywhere.
 
 const EMPTY_SCOPE: Scope = { include: [], exclude: [] };
-
-// How long a card waits after the last movement before it saves, so a drag
-// across the ring is one write rather than forty.
-const SAVE_AFTER_MS = 600;
 
 // The colours kinds are told apart by, given out in library order. Which
 // colour is which kind is not a fact about the kind, only a way to tell two
@@ -238,8 +238,6 @@ export function ScopeEditor({
   );
 }
 
-type SaveState = "idle" | "saving" | "saved";
-
 // RuleCard is one rule, edited where it stands. Changes save themselves once
 // the control stops moving; removing asks first, on the card itself.
 export function RuleCard({
@@ -264,50 +262,15 @@ export function RuleCard({
   onSave: (id: string, edit: AllocationRuleEdit) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<AllocationRuleEdit>(() => editOf(rule));
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const { draft, setDraft, saveState, error, setError } = useAutosave({
+    source: rule,
+    toDraft: editOf,
+    same: sameEdit,
+    save: (edit) => onSave(rule.id, { ...edit, note: edit.note.trim() }),
+  });
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
   const card = useRef<HTMLLIElement>(null);
-  const saved = useRef<AllocationRuleEdit>(editOf(rule));
-
-  // What the server holds moves under the card when it is saved here or on
-  // the other screen. Taken up unless the card is mid-edit, when what is being
-  // typed wins and saves over it.
-  useEffect(() => {
-    const stored = editOf(rule);
-    if (sameEdit(draft, saved.current)) setDraft(stored);
-    saved.current = stored;
-    // Only the stored rule moving should pull the card along.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rule]);
-
-  // Waits for the movement to stop, then saves what the card shows.
-  useEffect(() => {
-    if (sameEdit(draft, saved.current)) return;
-    const t = window.setTimeout(() => {
-      setSaveState("saving");
-      setError(null);
-      onSave(rule.id, { ...draft, note: draft.note.trim() })
-        .then(() => setSaveState("saved"))
-        .catch((err: unknown) => {
-          setSaveState("idle");
-          // The server's own message names what was wrong. The card keeps
-          // what was entered, so it can be put right rather than redone.
-          setError(
-            err instanceof Error ? err.message : "The rule was not saved",
-          );
-        });
-    }, SAVE_AFTER_MS);
-    return () => window.clearTimeout(t);
-  }, [draft, rule.id, onSave]);
-
-  useEffect(() => {
-    if (saveState !== "saved") return;
-    const t = window.setTimeout(() => setSaveState("idle"), 1600);
-    return () => window.clearTimeout(t);
-  }, [saveState]);
 
   useEffect(() => {
     if (fresh)
@@ -348,16 +311,7 @@ export function RuleCard({
     >
       <header className="rule-card-head">
         <h3 className="rule-card-name">{label}</h3>
-        <span
-          className={`rule-card-saving rule-card-saving--${saveState}`}
-          aria-live="polite"
-        >
-          {saveState === "saving"
-            ? "Saving…"
-            : saveState === "saved"
-              ? "Saved"
-              : ""}
-        </span>
+        <SaveStatus state={saveState} />
         <button
           type="button"
           className="rule-card-remove"
@@ -621,17 +575,13 @@ function useAllocationRules(onChanged?: () => void) {
 
 function AddRuleButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      className="rule-add"
+    <IconButton
+      icon="plus"
+      variant="filled"
       aria-label="Add a rule from the rule library"
       title="Rule library"
       onClick={onClick}
-    >
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M10 4v12M4 10h12" />
-      </svg>
-    </button>
+    />
   );
 }
 
@@ -646,6 +596,12 @@ export default function AllocationRulesSettings() {
   return (
     <SettingsSection
       title="Allocation rules"
+      collapsible
+      summary={settingsSummary(
+        defaults?.allocationRules.length,
+        "rule",
+        "rules",
+      )}
       blurb="The rules the allocator keeps when it fills a rota. They bind the allocator only: a pin is never refused for breaking one."
       action={defaults && <AddRuleButton onClick={() => setBrowsing(true)} />}
     >

@@ -203,7 +203,7 @@ export function ConfirmChangeDialog({
           <p className="rota-edit-note">
             {role.roles === null
               ? "Still loading the roles…"
-              : "There are no roles to choose from yet. An organiser makes them on Admin → Settings."}
+              : "There are no roles to choose from yet. An organiser makes them under Organiser → Config."}
           </p>
         )}
 
@@ -413,7 +413,7 @@ export function AssigneeDialog({
           <p className="rota-edit-note">
             {roles === null
               ? "Still loading the roles…"
-              : "There are no roles to put anyone in yet. An organiser makes them on Admin → Settings."}
+              : "There are no roles to put anyone in yet. An organiser makes them under Organiser → Config."}
           </p>
         )}
 
@@ -691,8 +691,8 @@ export function ClosureDialog({
             </>
           ) : (
             <>
-              The organisation runs on {dateLabel} again, and allocation will fill it
-              like any other shift.
+              The organisation runs on {dateLabel} again, and allocation will
+              fill it like any other shift.
             </>
           )}
         </p>

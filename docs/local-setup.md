@@ -151,7 +151,7 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?ssl
 # volunteers hold, the Rota Defaults (the Shift pattern, its length and
 # timezone, and the default Shape) and the Allocation Settings (which optional
 # allocator rules apply, and the share of a rota one volunteer may work) are
-# rows in the database (ADR 0006), set on the Settings screen rather than in
+# rows in the database (ADR 0006), set on the Config screen rather than in
 # this file. A `roles:`, `shiftStartTime:`, `shiftEndTime:`, `shiftTimezone:`,
 # `defaultShiftSize:`, `maxAllocationFrequency:`, `requiresMale:` or
 # `rotaOverrides:` key left over from an older config is ignored with a
@@ -179,7 +179,7 @@ run. The server says so at startup.
 
 The credential-free dev stack (`scripts/dev-stack.sh start`) seeds its own, so
 this only applies to a database you point a `test` or `prod` config at. Create
-them on **Organiser → Settings**, which needs nothing but an Organiser login. The pair
+them on **Organiser → Config**, which needs nothing but an Organiser login. The pair
 the app shipped with is:
 
 | Name | Most per shift | Priority | Colour |
@@ -214,7 +214,7 @@ half-finished rename looks like.
 
 ### Setting the shift pattern
 
-When the Organisation runs is set on the same screen, under **Rota Defaults**:
+When the Organisation runs is set on the same screen, under **Rota**:
 a Shift pattern, how long a shift lasts, and the timezone its times are read in
 (ADR 0013). The pattern is one RRULE per line — `RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30`
 is every Sunday at 19:30 — and each line is read back in plain English as it is
@@ -237,7 +237,7 @@ that shift on the rota, under **Edit rota** → the date.
 
 ### Setting the default Shape
 
-What a shift asks for is set on the same screen, under **Rota Defaults**: how
+What a shift asks for is set on the same screen, under **Rota**: how
 many Seats of each Role, stated Role by Role. It replaced `defaultShiftSize`,
 which could only ever describe a rota with one Role — every other Role got its
 ceiling whether that was wanted or not.
@@ -252,7 +252,7 @@ later ticket.
 
 ### Choosing the allocation rules
 
-**Organiser → Settings → Allocation rules** is which of the optional allocator
+**Organiser → Config → Allocation rules** is which of the optional allocator
 rules apply: a cap on how often one person works (a switch and a share of the
 rota), male cover, no back-to-back shifts, and at most one shift a month. Like
 the Roles and the shift pattern, nothing seeds them, and a rule nobody has
@@ -307,7 +307,7 @@ scripts/dev.sh test
 - API/server: <http://localhost:8080>
 
 The rota page reads shifts from the database, which starts empty. To fill it,
-log in as an Organiser, fill in the Rota Defaults on Organiser → Settings, and
+log in as an Organiser, fill in the Rota on Organiser → Config, and
 define the first rota on Organiser → Allocation. The roster is on Organiser →
 Volunteers.
 
@@ -372,7 +372,7 @@ building `pyallocator/.venv` first if it is not there yet.
 | `missing required field in header` | The volunteer sheet header row must contain the exact column names in [§3](#volunteer-sheet-format). |
 | `volunteer sheet names a Role no configured Role matches` (warning) | A value in a `Roles` cell isn't one of the roles in your config. The volunteer loads without it. |
 | Nobody gets allocated to a role | Check the `Roles` column actually names it — a role nobody holds has no one to fill its seats. |
-| Empty rota page | No rota has been defined yet — do it on Organiser → Allocation, after filling in Organiser → Settings. |
+| Empty rota page | No rota has been defined yet — do it on Organiser → Allocation, after filling in Organiser → Config. |
 | Empty roster / `failed to fetch volunteers` | Share the volunteer sheet with the service account email; check `volunteerSheetID` and `serviceVolunteersTab`. |
 | `redirect_uri_mismatch` on login | The web OAuth client needs `http://localhost:5173/auth/callback` registered ([§2](#2-google-cloud-project)) — the frontend's port, not the server's. |
 | Postgres unreachable | `scripts/test-db.sh start` (Docker must be running). |

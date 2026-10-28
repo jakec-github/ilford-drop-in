@@ -1,0 +1,16 @@
+/* The empty page's sentence: centred where the rota would have been. */
+.setup-needed {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  text-align: center;
+}
+
+.setup-needed h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.setup-needed p {
+  margin: 0.25rem 0;
+}

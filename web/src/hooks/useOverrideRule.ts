@@ -16,8 +16,18 @@ const SETTLE_MS = 300;
 export function useOverrideRule(
   rrule: string,
   startFrom: string,
-): { reading: OverrideRuleReading | null; error: string | null } {
-  const [reading, setReading] = useState<OverrideRuleReading | null>(null);
+): {
+  reading: OverrideRuleReading | null;
+  // Whether reading is of this rule and Start from, rather than of what was
+  // typed before — a card that saves itself waits until it is.
+  current: boolean;
+  error: string | null;
+} {
+  const [read, setRead] = useState<{
+    rrule: string;
+    startFrom: string;
+    reading: OverrideRuleReading;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const blank = rrule.trim() === "";
 
@@ -27,7 +37,7 @@ export function useOverrideRule(
     const timer = window.setTimeout(() => {
       readOverrideRule(rrule, startFrom, controller.signal)
         .then((loaded) => {
-          setReading(loaded);
+          setRead({ rrule, startFrom, reading: loaded });
           setError(null);
         })
         .catch((err: unknown) => {
@@ -43,6 +53,10 @@ export function useOverrideRule(
     };
   }, [blank, rrule, startFrom]);
 
-  if (blank) return { reading: null, error: null };
-  return { reading, error };
+  if (blank) return { reading: null, current: false, error: null };
+  return {
+    reading: read?.reading ?? null,
+    current: read?.rrule === rrule && read.startFrom === startFrom,
+    error,
+  };
 }

@@ -34,7 +34,7 @@ The sheet has one row per volunteer, with these columns:
 | --- | --- |
 | Unique ID | Anything that never changes and is never reused for someone else. |
 | First name, Last name | How they appear on the rota. |
-| Roles | The jobs they do, separated by commas. Each must match a Role's name in Settings exactly. |
+| Roles | The jobs they do, separated by commas. Each must match a Role's name on Config exactly. |
 | Status | `Active`, or anything else to leave them off new rotas. |
 | Sex/Gender | Used by the optional rule that puts a male on every shift. |
 | Email | Where their availability requests go. |
@@ -45,66 +45,81 @@ Other columns are ignored, so you can keep your own notes alongside.
 After a sync, check the tab: it shows how many active volunteers you have and
 how many hold each Role, then lists everybody on the sheet.
 
-## Settings
+## Config
 
-The **Settings** tab holds what every new rota is made from. Work through it
-top to bottom the first time.
+The **Config** tab, the last one, holds what every new rota is made from. Work
+through it top to bottom the first time. Until the **Roles** and the **Rota**
+are set, both are outlined in red and marked **Needed**, the rest of the tab
+stays closed, and the rota page and the Allocation tab send you here.
+
+Once set up, each card starts folded to its title and how many it holds
+(**None** when it is empty); click the title to open it. The **+** stays on a
+folded card, and opens it as it adds the new one. A card marked **Needed**
+cannot be folded until it is filled in.
+
+Everything on Config is edited where it stands. There is no Save button: a
+change saves itself a moment after you stop typing, and the card says
+**Saving…** and then **Saved**. Pencil buttons across the app edit something;
+plus buttons add something.
 
 ### Roles
 
-The jobs volunteers do on a shift. Press **New role** for each one. A Role's
-name must match the roster sheet's `Roles` column exactly.
+The jobs volunteers do on a shift. Press the **+** for each one and type its
+name. A Role's name must match the roster sheet's `Roles` column exactly. Each
+Role shows how many active volunteers hold it.
 
 Choose names carefully: a Role can be renamed but never deleted. If you rename
-one, change the sheet to match.
+one, change the sheet to match — until you do, nobody holds it.
 
-The priority decides which Roles the allocator fills first when there are not
-enough people to go round.
+The order of the list decides which Roles the allocator fills first when there
+are not enough people to go round. Drag a Role by the handle on its right to
+reorder them, or focus the handle and use the arrow keys.
 
-### Rota Defaults
+After you add, rename or reorder a Role, the roster is re-read so volunteers
+pick up the change.
 
-Press **Edit** to change both at once:
+### Rota
 
 - The **shift pattern** says when shifts happen, one rule per line — for
   example `RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30` for every Sunday
   at 19:30. Each line is read back in plain English as you type, and a
   calendar shows the shifts it makes. **Start from** (today, unless you change
   it) is where "every other week" counts from; **Shift length** is how long
-  each shift runs.
+  each shift runs. A pattern is saved only once every line of it reads.
 - The **shape** sets how many of each Role a shift asks for. These are the
-  most the allocator will place, not a minimum: a seat can be left empty.
+  most the allocator will place, not a minimum: a seat can be left empty. It
+  cannot be set until at least one Role exists.
 
-Changing a default only affects rotas you define afterwards. A rota you have
+Changing the Rota only affects rotas you define afterwards. A rota you have
 already defined keeps what it started with, and you change it on the rota
 itself.
-
-### Allocation rules
-
-The optional rules the allocator follows, under **Edit rules** — for example,
-capping how often one person works, or keeping anybody off back-to-back shifts.
-They only guide the allocator. You can always place someone by hand.
 
 ### Overrides
 
 An override changes some of the shifts your pattern makes, each time you define
 a rota — for example, pinning the person who leads on the first Sunday of the
 month, starting the last Saturday of the month two hours early, or asking for
-fewer people over Christmas. Press **New override** and
-write a rule, such as `FREQ=MONTHLY;BYDAY=1SU` for the first Sunday of every
-month. It is read back in plain English as you type.
+fewer people over Christmas. Press the **+** and a new override appears, ready
+to edit. Each has two parts.
 
-- A rule that names a time (`BYHOUR` and `BYMINUTE` together) changes only the
-  shift that starts then. One that names no time changes every shift on its
-  dates.
-- **Start from** (today, unless you change it) is where the rule counts from.
-  Nothing before it is changed.
-- Tick **Start time** to move those shifts to another time on the same day.
-  They still run for the pattern's length from there, unless you also tick
-  **Length**.
+**Matches** says which shifts it changes:
+
+- A rule, such as `FREQ=MONTHLY;BYDAY=1SU` for the first Sunday of every
+  month. It is read back in plain English as you type, and saved only once it
+  reads. A rule that names a time (`BYHOUR` and `BYMINUTE` together) matches
+  only the shift that starts then. One that names no time matches every shift
+  on its dates.
+- **Starting from** (today, unless you change it) is where the rule counts
+  from. Nothing before it is matched.
+
+**Sets** says what is different about those shifts:
+
+- Tick **Start time** to move them to another time on the same day. They still
+  run for the pattern's length from there, unless you also tick **Length**.
 - Tick **Length** to make them longer or shorter. A shift long enough runs on
   past midnight.
-- Tick **Replace the shape** to ask for a different number of each Role on
-  those shifts.
+- Tick **Shape** to ask for a different number of each Role. It starts from the
+  Rota's shape.
 - Add **Pins** for anyone who should always be placed on them.
 
 Overrides apply from the top of the list down, so when two change the same
@@ -115,6 +130,13 @@ have started, and warns you about an override that matches nothing. A moved or
 lengthened shift that would run into another is marked, and the rota cannot be
 defined until you change one of them. The next rota carries on from where your
 pattern got to, whatever an override moved. Everyone else you pin on the rota itself.
+
+### Allocation rules
+
+The optional rules the allocator follows — for example, capping how often one
+person works, or keeping anybody off back-to-back shifts. Press the **+** to
+pick one from the rule library. They only guide the allocator. You can always
+place someone by hand.
 
 ## Your first rota
 
@@ -128,7 +150,7 @@ the last rota stopped. Press **Define rota**.
 
 For a break, press **Leave a gap…** and pick a date no shift may start before.
 
-This creates the shifts from your Rota Defaults and gives every active volunteer
+This creates the shifts from your Rota and gives every active volunteer
 their own availability link. Nobody is emailed yet.
 
 There is only ever one rota being worked on — **the rota in flight**. If you
@@ -142,7 +164,7 @@ Each shift in the **Draft rota** has its own controls:
 - Press the date to change when that shift runs.
 - **Shape** changes how many people that one shift asks for.
 - **Close** marks a date the organisation is not running, such as a bank holiday.
-- **+ Pin** places someone on the shift before the allocator runs, whatever
+- **+** pins someone on the shift before the allocator runs, whatever
   the rules say.
 
 You can keep adjusting the shifts while answers come in.
@@ -153,7 +175,7 @@ In **Availability**, press **Send round** to email every volunteer their link.
 Each one opens a short form, with no sign-in, where they tick the dates they can
 do. They can come back and change their answer until the rota is allocated.
 
-Volunteers who forget can be nudged with **Send reminders**. Use **Top up round**
+Volunteers who forget can be nudged with **Send reminders**. Use **Regenerate volunteers**
 after adding new volunteers to the sheet, so they get a link too.
 
 The responses grid shows who has replied and, for each shift and Role, how many

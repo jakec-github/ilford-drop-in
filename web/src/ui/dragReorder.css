@@ -1,0 +1,70 @@
+.drag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.drag-handle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: grab;
+  /* A finger on the handle drags the item rather than scrolling the page. */
+  touch-action: none;
+}
+
+.drag-handle svg {
+  fill: currentColor;
+}
+
+.drag-handle:hover:not(:disabled, [aria-disabled="true"]) {
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.drag-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.drag-handle:disabled,
+.drag-handle[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* While a drag lasts the pointer is the list's, so the grabbing cursor is set
+   there, and nothing under it is selected as it sweeps across. The others
+   slide to make room; the held one follows the pointer exactly, above them. */
+.drag-list--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.drag-list--dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.drag-list--dragging > li {
+  transition: transform 150ms ease;
+}
+
+.drag-list--dragging > li.drag-held {
+  position: relative;
+  z-index: 1;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-list--dragging > li {
+    transition: none;
+  }
+}

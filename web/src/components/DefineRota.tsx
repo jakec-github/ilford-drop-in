@@ -38,7 +38,8 @@ function touchLabel(touch: OverrideTouch): string {
   if (touch.lengthMinutes > 0)
     did.push(`length ${formatLength(touch.lengthMinutes)}`);
   if (touch.shape) did.push("shape");
-  if (touch.pins > 0) did.push(`${touch.pins} ${touch.pins === 1 ? "pin" : "pins"}`);
+  if (touch.pins > 0)
+    did.push(`${touch.pins} ${touch.pins === 1 ? "pin" : "pins"}`);
   return `Override ${touch.number}: ${did.join(", ") || "nothing to change"}`;
 }
 
@@ -184,7 +185,11 @@ export default function DefineRota({
   const shifts = count !== null && plan ? plan.shifts : [];
   const refusal = count !== null && plan && !noPattern ? plan.refusal : "";
   const canDefine =
-    count !== null && plan !== null && !refusal && !noPattern && !defining &&
+    count !== null &&
+    plan !== null &&
+    !refusal &&
+    !noPattern &&
+    !defining &&
     shifts.length === count;
 
   return (
@@ -213,9 +218,11 @@ export default function DefineRota({
           onSubmit={(e) => {
             e.preventDefault();
             if (count === null) return;
-            const next = asked ? { shiftCount: count, notBefore: asked } : {
-              shiftCount: count,
-            };
+            const next = asked
+              ? { shiftCount: count, notBefore: asked }
+              : {
+                  shiftCount: count,
+                };
             // Reloading whatever the outcome: a define that succeeded put a
             // rota in flight, and one that was refused most likely means one
             // already was.
@@ -283,7 +290,7 @@ export default function DefineRota({
             {noPattern && (
               <p className="define-rota-warning">
                 There is no shift pattern yet, so there are no shifts to define.
-                Set one in the Rota Defaults below.
+                Set one in the Rota below.
               </p>
             )}
 

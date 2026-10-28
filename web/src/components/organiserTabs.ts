@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import OrganiserAllocation from "./OrganiserAllocation";
 import OrganiserHistory from "./OrganiserHistory";
-import OrganiserSettings from "./OrganiserSettings";
+import OrganiserConfig from "./OrganiserConfig";
 import OrganiserVolunteers from "./OrganiserVolunteers";
 
 // A tab is one Organiser route. Tabs without a Panel are stubs: the route and the
@@ -32,7 +32,6 @@ export const ORGANISER_TABS: OrganiserTab[] = [
     label: "Volunteers",
     Panel: OrganiserVolunteers,
   },
-  { path: "/organiser/settings", label: "Settings", Panel: OrganiserSettings },
   {
     path: "/organiser/allocation",
     label: "Allocation",
@@ -45,4 +44,7 @@ export const ORGANISER_TABS: OrganiserTab[] = [
     Panel: OrganiserHistory,
     wide: true,
   },
+  // Last: an Organiser sets it up once and visits it rarely after, while the
+  // tabs before it are the weekly work.
+  { path: "/organiser/config", label: "Config", Panel: OrganiserConfig },
 ];
