@@ -80,49 +80,51 @@ export interface RoleEdit {
   colour: RoleColour;
 }
 
-// ShiftPattern is when the Organisation runs (ADR 0013): one section of the
-// settings record, and the whole of what the Shift pattern section states.
+// ShiftPattern is when the Organisation runs (ADR 0014): VEVENT entries, each
+// with its own DTSTART, DURATION and RRULE, as an Organiser wrote them. Empty
+// means nobody has set it, which is where every deployment starts and is a
+// state the screen renders rather than an error.
 //
-// Its own type rather than a slice of RotaDefaults because the server takes it
-// whole and refuses fields it does not expect — sending the rest of the record
-// back at it would be rejected, not ignored.
-//
-// Empty fields mean an Organiser has not set the pattern, which is where every
-// deployment starts and is a state the screen renders rather than an error.
+// patternEntries is what the server makes of the saved pattern, entry by entry.
+// shiftTimezone is the IANA zone its times are read in, and empty when nobody
+// has chosen one — the config page saves the browser's then.
 export interface ShiftPattern {
-  // RRULE lines, one per line. Each says when Shifts start, wall-clock.
   shiftPattern: string;
-  // "2026-11-01": where "every other week" counts from, and what a line that
-  // leaves the weekday or the day of the month out fills it in from. Blank on
-  // a save means today.
-  patternStartFrom: string;
-  // How long every Shift runs, in minutes. 0 when nobody has said.
-  shiftLengthMinutes: number;
-  // An IANA zone name. Never empty on the way out of the server: it answers
-  // with the default when an Organiser has not chosen one, so there is one answer
-  // to what zone the Organisation runs in.
+  patternEntries: PatternEntry[];
   shiftTimezone: string;
 }
 
-// PatternLine is one non-blank line of a pattern being written: what it means
-// in plain English, or what is wrong with it. number counts blank lines too,
+// PatternEntry is one VEVENT of a pattern: what it means in plain English —
+// its first date and length included — or what is wrong with it, and what in
+// it was read past. line is where its BEGIN:VEVENT is, counting blank lines,
 // so it is the line an Organiser would count to.
-export interface PatternLine {
+export interface PatternEntry {
   number: number;
-  text: string;
+  line: number;
   description: string;
   problems: string[];
+  warnings: string[];
 }
 
-// ShiftPatternPreview is what a pattern says, line by line, and where its
+// PatternStart is one Shift a pattern generates: wall-clock
+// "2026-11-01T19:30:00", and how long the entry that made it runs.
+export interface PatternStart {
+  start: string;
+  lengthMinutes: number;
+}
+
+// ShiftPatternPreview is what a pattern says, entry by entry, and where its
 // Shifts start between two dates — worked out by the server, by the same
 // arithmetic that mints a rota, so what the calendar shows is what defining
-// does. starts are wall-clock "2026-11-01T19:30:00", and empty while any line
-// has a problem.
+// does. problems and warnings are about the text around the entries.
+// startsFrom is the earliest entry's date, where the first rota starts; it and
+// starts are empty while anything has a problem.
 export interface ShiftPatternPreview {
-  patternStartFrom: string;
-  lines: PatternLine[];
-  starts: string[];
+  entries: PatternEntry[];
+  problems: string[];
+  warnings: string[];
+  startsFrom: string;
+  starts: PatternStart[];
 }
 
 // ShapeSeat is one line of a Shape: this many places of one Role. roleId is what
@@ -695,12 +697,12 @@ export interface NewPin {
 // Shift on its dates. startTime ("19:00") moves the Shifts it matches within
 // their own day and lengthMinutes changes how long they run; each is null where
 // it leaves the pattern's. shape is null when it leaves the default Shape, and
-// an empty list when it asks for nobody.
+// an empty list when it asks for nobody. rrule carries the date it counts from
+// as its own DTSTART;VALUE=DATE line (ADR 0014).
 export interface Override {
   id: string;
   number: number;
   rrule: string;
-  startFrom: string;
   granularity: OverrideGranularity;
   description: string;
   problems: string[];
@@ -728,7 +730,6 @@ export interface OverridePin {
 // default Shape.
 export interface OverrideDraft {
   rrule: string;
-  startFrom: string;
   startTime: string | null;
   lengthMinutes: number | null;
   shape: { roleId: string; count: number }[] | null;
@@ -738,7 +739,6 @@ export interface OverrideDraft {
 // OverrideRuleReading is what a rule still being written says. granularity is
 // empty while it has problems.
 export interface OverrideRuleReading {
-  startFrom: string;
   granularity: OverrideGranularity | "";
   description: string;
   problems: string[];

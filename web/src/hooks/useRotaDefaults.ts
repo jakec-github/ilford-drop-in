@@ -6,12 +6,12 @@ import {
   removeAllocationRule,
   saveDefaultShape,
   saveShiftPattern as saveShiftPatternSection,
+  saveTimezone as saveTimezoneSection,
 } from "../api";
 import type {
   AllocationRuleDraft,
   AllocationRuleEdit,
   RotaDefaults,
-  ShiftPattern,
 } from "../types";
 
 interface UseRotaDefaults {
@@ -19,10 +19,12 @@ interface UseRotaDefaults {
   // pattern is a different thing entirely: it means an Organiser has not set one.
   defaults: RotaDefaults | null;
   error: string | null;
-  // Writes the Shift pattern section and holds what the server stored —
-  // including the Start from and zone it filled in for a blank field. Rejects
-  // with the server's own message, which names the line or field that was wrong.
-  saveShiftPattern: (pattern: ShiftPattern) => Promise<void>;
+  // Writes the Shift pattern and holds what the server stored. Rejects with
+  // the server's own message, which names the entry that was wrong.
+  saveShiftPattern: (pattern: string) => Promise<void>;
+  // Writes the zone the Organisation's times are read in. Rejects with the
+  // server's message when it cannot load the zone.
+  saveTimezone: (zone: string) => Promise<void>;
   // Writes the Shape whole: the Seats given here are the Seats a shift asks
   // for, and a Role left out is one it no longer asks for.
   saveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
@@ -108,7 +110,11 @@ export function useRotaDefaults({
   }, [enabled]);
 
   const saveShiftPattern = useCallback(
-    (next: ShiftPattern) => hold(saveShiftPatternSection(next)),
+    (next: string) => hold(saveShiftPatternSection(next)),
+    [],
+  );
+  const saveTimezone = useCallback(
+    (zone: string) => hold(saveTimezoneSection(zone)),
     [],
   );
   const saveShape = useCallback(
@@ -134,6 +140,7 @@ export function useRotaDefaults({
     defaults: enabled ? defaults : null,
     error: enabled ? error : null,
     saveShiftPattern,
+    saveTimezone,
     saveShape,
     addRule,
     editRule,
@@ -145,11 +152,7 @@ export function useRotaDefaults({
 // defined without. One definition, so the card's own "not set yet" and the gate
 // in front of the rest of the app cannot disagree.
 export function patternSet(defaults: RotaDefaults): boolean {
-  return (
-    defaults.shiftPattern !== "" &&
-    defaults.patternStartFrom !== "" &&
-    defaults.shiftLengthMinutes > 0
-  );
+  return defaults.shiftPattern !== "";
 }
 
 export function shapeSet(defaults: RotaDefaults): boolean {

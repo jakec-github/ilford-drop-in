@@ -214,13 +214,15 @@ half-finished rename looks like.
 
 ### Setting the shift pattern
 
-When the Organisation runs is set on the same screen, under **Rota**:
-a Shift pattern, how long a shift lasts, and the timezone its times are read in
-(ADR 0013). The pattern is one RRULE per line — `RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30`
-is every Sunday at 19:30 — and each line is read back in plain English as it is
-typed, with a calendar of the shifts it generates. **Start from** is the date
-"every other week" counts from, and nothing occurs before it. Like the Roles, no
-migration seeds the pattern: each deployment enters its own.
+When the Organisation runs is set on the same screen, under **Rota**, as a
+Shift pattern (ADR 0013, ADR 0014). The pattern is one VEVENT per kind of shift,
+each with a `DTSTART` (the first shift), a `DURATION` and an `RRULE` — so
+`DTSTART:20261101T193000`, `DURATION:PT3H`, `RRULE:FREQ=WEEKLY;BYDAY=SU` between
+`BEGIN:VEVENT` and `END:VEVENT` is every Sunday at 19:30 for three hours. Each
+entry is read back in plain English as it is typed, with a calendar of the
+shifts it generates. Its times are read in the **Time zone** at the top of the
+page, which is set to the browser's the first time Config opens. Like the
+Roles, no migration seeds the pattern: each deployment enters its own.
 
 Until there is a pattern, defining a rota refuses and says so. Nothing else is
 gated: everything that only reads still reads.

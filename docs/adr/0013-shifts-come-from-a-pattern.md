@@ -3,7 +3,10 @@
 Status: proposed, 2026-10-27. Supersedes the one-Shift-per-date rule in
 [ADR 0007](0007-shift-start-as-local-time.md), and the shift times and Standing
 Preallocations in [ADR 0006](0006-domain-settings-in-the-app.md); the rest of
-both stands. The work is split across #291–#297 under #23. The prototype is
+both stands. Partly superseded by
+[ADR 0014](0014-pattern-entries-carry-their-own-start-and-length.md): Start
+from beside the rule, one default length, and one line making one Shift. The
+work is split across #291–#297 under #23. The prototype is
 [`docs/design/issue-23/shift-patterns.html`](../design/issue-23/shift-patterns.html).
 
 ## In plain words

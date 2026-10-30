@@ -132,14 +132,6 @@
   width: 100%;
 }
 
-.override-from {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  color: var(--text-h);
-}
-
 .override-description {
   margin: 0.5rem 0 0.25rem;
   font-size: 0.875rem;
@@ -165,6 +157,7 @@
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
+  resize: vertical;
 }
 
 .override-rule:focus-visible {
@@ -220,7 +213,6 @@
   color: var(--text-h);
 }
 
-.override-from input,
 .override-props input[type="time"],
 .override-props select,
 .override-adder select,

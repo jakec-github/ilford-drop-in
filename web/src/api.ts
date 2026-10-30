@@ -27,7 +27,6 @@ import type {
   SendMode,
   SendOutcome,
   ShapeSeat,
-  ShiftPattern,
   ShiftPatternPreview,
   Override,
   OverrideDraft,
@@ -275,21 +274,19 @@ export async function fetchRotaDefaults(): Promise<RotaDefaults> {
   return (await res.json()) as RotaDefaults;
 }
 
-// saveShiftPattern writes the Shift pattern section: the pattern, Start from,
-// the length and the zone, at once, because they are one idea — a line means
-// nothing without the date it counts from.
+// saveShiftPattern writes the Shift pattern: VEVENT entries, each carrying its
+// own start and length, so the pattern is the whole section.
 //
 // Each section of the settings has its own endpoint, and each resolves with the
-// whole record rather than with nothing — partly because the server fills in a
-// Start from and a zone an Organiser left blank, and partly so a caller holds
-// one thing after saving any section.
+// whole record rather than with nothing, so a caller holds one thing after
+// saving any section.
 export async function saveShiftPattern(
-  pattern: ShiftPattern,
+  shiftPattern: string,
 ): Promise<RotaDefaults> {
   const res = await fetch(`${BASE_PATH}/api/rota-defaults/shift-pattern`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(pattern),
+    body: JSON.stringify({ shiftPattern }),
   });
   if (!res.ok) {
     throw new Error(
@@ -299,12 +296,29 @@ export async function saveShiftPattern(
   return (await res.json()) as RotaDefaults;
 }
 
-// previewShiftPattern reads a pattern that has not been saved: what each line
-// means, and where its Shifts start from `from` up to, but not including, `to`.
-// It writes nothing. A pattern with problems is answered with them rather than
-// refused — only a range the server cannot read is an error.
+// saveTimezone writes the zone the Organisation's times are read in, an IANA
+// name. The server refuses one it cannot load.
+export async function saveTimezone(
+  shiftTimezone: string,
+): Promise<RotaDefaults> {
+  const res = await fetch(`${BASE_PATH}/api/rota-defaults/timezone`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shiftTimezone }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, "Failed to save the time zone"));
+  }
+  return (await res.json()) as RotaDefaults;
+}
+
+// previewShiftPattern reads a pattern that has not been saved, in the zone
+// that has: what each entry means, and where its Shifts start from `from` up
+// to, but not including, `to`. It writes nothing. A pattern with problems is
+// answered with them rather than refused — only a range the server cannot
+// read is an error.
 export async function previewShiftPattern(
-  pattern: Omit<ShiftPattern, "shiftLengthMinutes">,
+  shiftPattern: string,
   from: string,
   to: string,
   signal?: AbortSignal,
@@ -314,13 +328,7 @@ export async function previewShiftPattern(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        shiftPattern: pattern.shiftPattern,
-        patternStartFrom: pattern.patternStartFrom,
-        shiftTimezone: pattern.shiftTimezone,
-        from,
-        to,
-      }),
+      body: JSON.stringify({ shiftPattern, from, to }),
       signal,
     },
   );
@@ -496,7 +504,6 @@ async function overridesFrom(res: Response, fallback: string) {
 function overrideBody(draft: OverrideDraft): string {
   return JSON.stringify({
     rrule: draft.rrule,
-    startFrom: draft.startFrom,
     startTime: draft.startTime,
     lengthMinutes: draft.lengthMinutes,
     shape: draft.shape,
@@ -562,13 +569,12 @@ export async function reorderOverrides(ids: string[]): Promise<Override[]> {
 // it matches, or what is wrong with it. It writes nothing.
 export async function readOverrideRule(
   rrule: string,
-  startFrom: string,
   signal?: AbortSignal,
 ): Promise<OverrideRuleReading> {
   const res = await fetch(`${BASE_PATH}/api/rota-defaults/overrides/reading`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rrule, startFrom }),
+    body: JSON.stringify({ rrule }),
     signal,
   });
   if (!res.ok) {

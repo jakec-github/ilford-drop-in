@@ -62,6 +62,12 @@ change saves itself a moment after you stop typing, and the card says
 **Saving…** and then **Saved**. Pencil buttons across the app edit something;
 plus buttons add something.
 
+### Time zone
+
+Where the organisation runs. Every time on Config is the time on the clock
+there, so 19:30 stays 19:30 when the clocks change. The first time Config opens
+it is set to your browser's zone; pick another from the list if that is wrong.
+
 ### Roles
 
 The jobs volunteers do on a shift. Press the **+** for each one and type its
@@ -80,12 +86,24 @@ pick up the change.
 
 ### Rota
 
-- The **shift pattern** says when shifts happen, one rule per line — for
-  example `RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30` for every Sunday
-  at 19:30. Each line is read back in plain English as you type, and a
-  calendar shows the shifts it makes. **Start from** (today, unless you change
-  it) is where "every other week" counts from; **Shift length** is how long
-  each shift runs. A pattern is saved only once every line of it reads.
+- The **shift pattern** says when shifts happen, as one entry per kind of
+  shift. Each entry gives the first shift (`DTSTART`), how long it runs
+  (`DURATION`) and how it repeats (`RRULE`) — for every Sunday at 19:30 for
+  three hours:
+
+  ```
+  BEGIN:VEVENT
+  DTSTART:20261101T193000
+  DURATION:PT3H
+  RRULE:FREQ=WEEKLY;BYDAY=SU
+  END:VEVENT
+  ```
+
+  An event copied out of a calendar works too; anything in it the app does not
+  need is pointed out and left alone. Each entry is read back in plain English
+  as you type, and a calendar shows the shifts it makes. "Every other week"
+  counts from each entry's own first shift. A pattern is saved only once every
+  entry of it reads.
 - The **shape** sets how many of each Role a shift asks for. These are the
   most the allocator will place, not a minimum: a seat can be left empty. It
   cannot be set until at least one Role exists.
@@ -104,13 +122,18 @@ to edit. Each has two parts.
 
 **Matches** says which shifts it changes:
 
-- A rule, such as `FREQ=MONTHLY;BYDAY=1SU` for the first Sunday of every
-  month. It is read back in plain English as you type, and saved only once it
-  reads. A rule that names a time (`BYHOUR` and `BYMINUTE` together) matches
-  only the shift that starts then. One that names no time matches every shift
-  on its dates.
-- **Starting from** (today, unless you change it) is where the rule counts
-  from. Nothing before it is matched.
+- A rule: the date it counts from, then which dates it picks, such as
+
+  ```
+  DTSTART;VALUE=DATE:20261101
+  RRULE:FREQ=MONTHLY;BYDAY=1SU
+  ```
+
+  for the first Sunday of every month from 1 November. A new Override starts
+  from today. Nothing before its date is matched. It is read back in plain
+  English as you type, and saved only once it reads. A rule that names a time
+  (`BYHOUR` and `BYMINUTE` together) matches only the shift that starts then.
+  One that names no time matches every shift on its dates.
 
 **Sets** says what is different about those shifts:
 

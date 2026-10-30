@@ -36,7 +36,6 @@ const VOLUNTEERS = [
 // The server's reading of whatever rule is typed. The editor asks it rather
 // than reading the rule itself.
 let reading: OverrideRuleReading = {
-  startFrom: "2026-11-01",
   granularity: "date",
   description: "On the first Sunday of every month",
   problems: [],
@@ -65,8 +64,7 @@ const saveWait = () =>
 const STORED: Override = {
   id: "o-1",
   number: 1,
-  rrule: "FREQ=MONTHLY;BYDAY=1SU",
-  startFrom: "2026-11-01",
+  rrule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
   granularity: "date",
   description: "On the first Sunday of every month",
   problems: [],
@@ -116,7 +114,6 @@ function pin(who: string, roleId?: string) {
 describe("OverrideCard", () => {
   beforeEach(() => {
     reading = {
-      startFrom: "2026-11-01",
       granularity: "date",
       description: "On the first Sunday of every month",
       problems: [],
@@ -130,16 +127,16 @@ describe("OverrideCard", () => {
     expect(screen.getByText("every shift that day")).toBeTruthy();
   });
 
-  // The start date is part of what is matched, not of what is set.
-  test("the start date sits with the rule, apart from what is set", () => {
+  // The date it counts from is part of the rule (ADR 0014), so there is no
+  // field for it of its own.
+  test("the rule carries its own start date", () => {
     renderCard();
     const matches = screen.getByRole("region", { name: "Override 1 matches" });
-    const sets = screen.getByRole("region", { name: "Override 1 sets" });
-    expect(
-      within(matches).getByLabelText("Override 1 start from"),
-    ).toBeTruthy();
-    expect(within(matches).getByLabelText("Override 1 rule")).toBeTruthy();
-    expect(within(sets).queryByLabelText("Override 1 start from")).toBeNull();
+    const rule = within(matches).getByLabelText(
+      "Override 1 rule",
+    ) as HTMLTextAreaElement;
+    expect(rule.value).toContain("DTSTART;VALUE=DATE:20261101");
+    expect(screen.queryByLabelText("Override 1 start from")).toBeNull();
   });
 
   test("nothing is saved until something changes", async () => {
@@ -161,8 +158,9 @@ describe("OverrideCard", () => {
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0][0];
-    expect(draft.rrule).toBe("FREQ=MONTHLY;BYDAY=1SU");
-    expect(draft.startFrom).toBe("2026-11-01");
+    expect(draft.rrule).toBe(
+      "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
+    );
     expect(draft.shape).toBeNull();
     expect(draft.pins).toEqual([
       { roleId: "r-greet", person: { volunteerId: "v-bo" } },
@@ -218,7 +216,6 @@ describe("OverrideCard", () => {
     const onSave = renderCard();
     await settle();
     reading = {
-      startFrom: "2026-11-01",
       granularity: "",
       description: "",
       problems: ["FREQ=SOMETIMES is not a frequency"],
@@ -247,8 +244,7 @@ describe("OverridesCard reordering", () => {
     return {
       id,
       number: 0,
-      rrule: `FREQ=WEEKLY;BYDAY=${day}`,
-      startFrom: "2026-11-01",
+      rrule: `DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=${day}`,
       granularity: "date",
       description,
       problems: [],
@@ -285,9 +281,8 @@ describe("OverridesCard reordering", () => {
     if (url.endsWith("/api/rota-defaults")) {
       return json({
         shiftPattern: "",
-        patternStartFrom: "",
+        patternEntries: [],
         shiftTimezone: "",
-        shiftLengthMinutes: 0,
         defaultShape: [],
         allocationRules: [],
         ruleLibrary: [],

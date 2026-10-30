@@ -17,6 +17,7 @@ import RotaDefaultsCard from "./RotaDefaultsCard";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import { settingsSummary } from "./settingsSummary";
+import TimezoneSetting from "./TimezoneSetting";
 import type {
   ConfiguredRole,
   RoleColour,
@@ -463,7 +464,8 @@ function RolesSettings({ incomplete }: { incomplete: boolean }) {
 // OrganiserConfig is everything an Organiser decides about how the Organisation
 // runs, as opposed to what an operator sets when deploying it (ADR 0006).
 //
-// Roles and the Rota card come first and are the whole of setup: a rota cannot
+// The time zone heads it, since every time below is read in it. Roles and
+// the Rota card come next and are the whole of setup: a rota cannot
 // be made without them, so the sections that refine one — the Overrides and
 // the Allocation Rules — stay closed until both are set.
 //
@@ -473,6 +475,7 @@ export default function OrganiserConfig() {
   const setup = useSetup();
   return (
     <>
+      <TimezoneSetting />
       <RolesSettings incomplete={setup.roles === false} />
       <RotaDefaultsCard collapsible />
       {setup.done === true && (

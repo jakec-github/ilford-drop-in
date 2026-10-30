@@ -16,41 +16,22 @@ import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import ShapeSeats from "./ShapeSeats";
 import { seatCountsOf, seatsKey, seatsOf, type SeatCounts } from "./shape";
-import {
-  formatLength,
-  isDate,
-  lengthChoices,
-  monthsFrom,
-  today as todayDate,
-} from "./patternDates";
-import type { ConfiguredRole, RotaDefaults, ShiftPattern } from "../types";
+import { monthsFrom, today as todayDate } from "./patternDates";
+import type { ConfiguredRole, PatternEntry, RotaDefaults } from "../types";
 import "./RotaDefaultsCard.css";
-
-// What the length starts at before one has been saved: the commonest session,
-// and a value rather than a blank so a first pattern can be saved without a
-// detour through the list.
-const DEFAULT_LENGTH = 60;
 
 // How many months the calendar shows at once.
 const MONTHS_SHOWN = 3;
 
-// The pattern half as the card holds it. Start from and the length are filled
-// in for a pattern never saved — today, and an hour — so that only the lines
-// are left to write; the server would take a blank Start from as today too.
-function patternOf(defaults: RotaDefaults): ShiftPattern {
-  return {
-    shiftPattern: defaults.shiftPattern,
-    patternStartFrom: defaults.patternStartFrom || todayDate(),
-    shiftTimezone: defaults.shiftTimezone,
-    shiftLengthMinutes: defaults.shiftLengthMinutes || DEFAULT_LENGTH,
-  };
-}
+// What the textarea offers before anything is written: one entry, the shape
+// a calendar event is pasted in.
+const PLACEHOLDER = `BEGIN:VEVENT
+DTSTART:20261101T193000
+DURATION:PT3H
+RRULE:FREQ=WEEKLY;BYDAY=SU
+END:VEVENT`;
 
-const samePattern = (a: ShiftPattern, b: ShiftPattern) =>
-  a.shiftPattern === b.shiftPattern &&
-  a.patternStartFrom === b.patternStartFrom &&
-  a.shiftTimezone.trim() === b.shiftTimezone.trim() &&
-  a.shiftLengthMinutes === b.shiftLengthMinutes;
+const samePattern = (a: string, b: string) => a === b;
 
 // Both halves save on their own; the card says the busier of the two.
 function either(a: SaveState, b: SaveState): SaveState {
@@ -105,10 +86,10 @@ function ShapeHalf({
 }
 
 // RotaDefaultsCard is the Rota: what every rota is made from — when the
-// Organisation runs (the Shift pattern, ADR 0013) and what a shift asks for
+// Organisation runs (the Shift pattern, ADR 0014) and what a shift asks for
 // (the default Shape) — edited where it stands. Each half saves itself once it
-// stops moving: the pattern only once the server has read every line of it
-// without a problem, so a half-typed line is never stored.
+// stops moving: the pattern only once the server has read every entry of it
+// without a problem, so a half-typed entry is never stored.
 //
 // It is the one settings card read on two screens. On Config it sits with the
 // rest; on the Allocation tab it sits under the define form, because those two
@@ -164,6 +145,30 @@ export default function RotaDefaultsCard({
   );
 }
 
+// EntryReading is what the server made of one entry: what it means, or what
+// is wrong with it, and anything in it that was read past.
+function EntryReading({ entry }: { entry: PatternEntry }) {
+  return (
+    <>
+      {entry.problems.length > 0 ? (
+        <li className="problem">
+          <span>
+            Entry {entry.number} (line {entry.line}):{" "}
+            {entry.problems.join("; ")}
+          </span>
+        </li>
+      ) : (
+        <li>{entry.description}</li>
+      )}
+      {entry.warnings.map((warning) => (
+        <li key={warning} className="warning">
+          Entry {entry.number}: {warning}
+        </li>
+      ))}
+    </>
+  );
+}
+
 function RotaDefaultsForm({
   defaults,
   roles,
@@ -172,133 +177,97 @@ function RotaDefaultsForm({
 }: {
   defaults: RotaDefaults;
   roles: ConfiguredRole[] | null;
-  onSavePattern: (pattern: ShiftPattern) => Promise<void>;
+  onSavePattern: (pattern: string) => Promise<void>;
   onSaveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
 }) {
   const today = todayDate();
   const { draft, setDraft, saved } = useDraft({
     source: defaults,
-    toDraft: patternOf,
+    toDraft: (d: RotaDefaults) => d.shiftPattern,
     same: samePattern,
   });
   const [offset, setOffset] = useState(0);
   const [shapeState, setShapeState] = useState<SaveState>("idle");
+  // Where the pattern starts, as the server last read it: the calendar opens
+  // on that month when it is still to come, and on this one otherwise.
+  const [startsFrom, setStartsFrom] = useState("");
 
-  // The calendar opens on the month the pattern starts from — or this month,
-  // while Start from is not a date.
-  const anchor = isDate(draft.patternStartFrom)
-    ? draft.patternStartFrom
-    : today;
+  const anchor = startsFrom > today ? startsFrom : today;
   const months = monthsFrom(anchor, offset, MONTHS_SHOWN);
   const {
     preview,
     current,
     error: previewError,
   } = useShiftPatternPreview(
-    draft.shiftPattern,
-    draft.patternStartFrom,
-    draft.shiftTimezone,
+    draft,
     months[0].first,
     months[months.length - 1].next,
   );
-  const blank = draft.shiftPattern.trim() === "";
-  const hasProblems = preview?.lines.some((l) => l.problems.length > 0);
+  // Kept through a pattern with problems, which answers with no date, so the
+  // calendar does not jump back to this month while an entry is being fixed.
+  const answered = preview?.startsFrom ?? "";
+  if (answered !== "" && answered !== startsFrom) setStartsFrom(answered);
+
+  const blank = draft.trim() === "";
+  const hasProblems =
+    (preview?.problems.length ?? 0) > 0 ||
+    (preview?.entries.some((e) => e.problems.length > 0) ?? false);
 
   const { saveState, error } = useSaveWhenSettled({
     draft,
     saved,
     same: samePattern,
-    save: (pattern) =>
-      onSavePattern({
-        ...pattern,
-        shiftTimezone: pattern.shiftTimezone.trim(),
-      }),
+    save: onSavePattern,
     ready: !blank && current && !hasProblems,
   });
-
-  const change = (part: Partial<ShiftPattern>) =>
-    setDraft((d) => ({ ...d, ...part }));
 
   return (
     <div className="rota-defaults-card">
       <div className="rota-defaults-status">
         <SaveStatus state={either(saveState, shapeState)} />
       </div>
+      <p className="settings-hint">
+        Times are wall-clock in {defaults.shiftTimezone || "the time zone"}, so
+        19:30 stays 19:30 when the clocks change.
+      </p>
       <label className="settings-field">
         Shift pattern
         <textarea
           className="shift-pattern-text"
-          value={draft.shiftPattern}
-          rows={Math.max(3, draft.shiftPattern.split("\n").length + 1)}
+          value={draft}
+          rows={Math.max(6, draft.split("\n").length + 1)}
           spellCheck={false}
-          placeholder="RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30"
-          onChange={(e) => change({ shiftPattern: e.target.value })}
+          placeholder={PLACEHOLDER}
+          onChange={(e) => setDraft(e.target.value)}
         />
       </label>
       <p className="settings-hint">
-        One RRULE per line. Each line says when shifts start, with BYHOUR and
-        BYMINUTE giving the time; two lines give two start times.
+        One VEVENT per kind of shift, each with a DTSTART (the first shift), a
+        DURATION (how long it runs) and an RRULE (how it repeats). An event
+        copied out of a calendar works too. Every other week counts from each
+        entry&rsquo;s own DTSTART, and nothing is minted before it.
       </p>
 
       <ul className="shift-pattern-lines" aria-live="polite">
-        {blank && <li className="problem">No lines yet.</li>}
+        {blank && <li className="problem">No entries yet.</li>}
         {!blank &&
-          preview?.lines.map((line) =>
-            line.problems.length > 0 ? (
-              <li key={line.number} className="problem">
-                <span>
-                  Line {line.number}: <code>{line.text}</code>
-                  <br />
-                  {line.problems.join("; ")}
-                </span>
-              </li>
-            ) : (
-              <li key={line.number}>{line.description}</li>
-            ),
-          )}
+          preview?.problems.map((problem) => (
+            <li key={problem} className="problem">
+              {problem}
+            </li>
+          ))}
+        {!blank &&
+          preview?.entries.map((entry) => (
+            <EntryReading key={entry.number} entry={entry} />
+          ))}
+        {!blank &&
+          preview?.warnings.map((warning) => (
+            <li key={warning} className="warning">
+              {warning}
+            </li>
+          ))}
       </ul>
       {previewError && <p className="settings-error">{previewError}</p>}
-
-      <div className="shift-pattern-fields">
-        <label className="settings-field">
-          Start from
-          <input
-            type="date"
-            value={draft.patternStartFrom}
-            onChange={(e) => change({ patternStartFrom: e.target.value })}
-          />
-        </label>
-        <label className="settings-field">
-          Timezone
-          <input
-            type="text"
-            value={draft.shiftTimezone}
-            onChange={(e) => change({ shiftTimezone: e.target.value })}
-            placeholder="Europe/London"
-          />
-        </label>
-        <label className="settings-field">
-          Shift length
-          <select
-            value={draft.shiftLengthMinutes}
-            onChange={(e) =>
-              change({ shiftLengthMinutes: Number(e.target.value) })
-            }
-          >
-            {lengthChoices(draft.shiftLengthMinutes).map((m) => (
-              <option key={m} value={m}>
-                {formatLength(m)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p className="settings-hint">
-        Start from is where “every other week” counts from, and it fills in what
-        a line leaves out: the weekday for a bare FREQ=WEEKLY, the day of the
-        month for a bare FREQ=MONTHLY. Nothing occurs before it. Times are
-        wall-clock in the timezone, so 19:30 stays 19:30 when the clocks change.
-      </p>
       {error && <p className="settings-error">{error}</p>}
 
       <h3 className="shift-pattern-heading">Calendar</h3>
@@ -308,8 +277,7 @@ function RotaDefaultsForm({
         <PatternCalendar
           months={months}
           starts={preview?.starts ?? []}
-          startFrom={preview?.patternStartFrom ?? anchor}
-          lengthMinutes={draft.shiftLengthMinutes}
+          startsFrom={preview?.startsFrom || startsFrom}
           today={today}
           moved={offset !== 0}
           onMove={(by) => setOffset((o) => o + by)}
