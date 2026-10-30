@@ -111,6 +111,7 @@ export default function RotaDefaultsCard({
   const rotaDefaults = useRotaDefaults();
   const { defaults, error } = rotaDefaults;
   const { roles } = useRoles();
+  const [saveState, setSaveState] = useState<SaveState>("idle");
 
   return (
     <SettingsSection
@@ -120,6 +121,7 @@ export default function RotaDefaultsCard({
       incomplete={
         defaults !== null && (!patternSet(defaults) || !shapeSet(defaults))
       }
+      status={<SaveStatus state={saveState} />}
     >
       {error && (
         <p className="settings-error">Could not load the settings: {error}</p>
@@ -131,6 +133,7 @@ export default function RotaDefaultsCard({
         <RotaDefaultsForm
           defaults={defaults}
           roles={roles}
+          onState={setSaveState}
           onSavePattern={async (pattern) => {
             await rotaDefaults.saveShiftPattern(pattern);
             onSaved?.();
@@ -174,9 +177,12 @@ function RotaDefaultsForm({
   roles,
   onSavePattern,
   onSaveShape,
+  onState,
 }: {
   defaults: RotaDefaults;
   roles: ConfiguredRole[] | null;
+  // The busier of the two halves' saves, said up to the card's title.
+  onState: (state: SaveState) => void;
   onSavePattern: (pattern: string) => Promise<void>;
   onSaveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
 }) {
@@ -220,12 +226,11 @@ function RotaDefaultsForm({
     save: onSavePattern,
     ready: !blank && current && !hasProblems,
   });
+  const state = either(saveState, shapeState);
+  useEffect(() => onState(state), [state, onState]);
 
   return (
     <div className="rota-defaults-card">
-      <div className="rota-defaults-status">
-        <SaveStatus state={either(saveState, shapeState)} />
-      </div>
       <p className="settings-hint">
         Times are wall-clock in {defaults.shiftTimezone || "the time zone"}, so
         19:30 stays 19:30 when the clocks change.
