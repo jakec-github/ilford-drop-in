@@ -7,9 +7,10 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
-// SeedPatternStartFrom is the date the seeded Shift pattern counts from, a
-// Thursday, so the first rota a test defines starts on Sunday 4 January 2026.
-const SeedPatternStartFrom = "2026-01-01"
+// SeedPattern is the Shift pattern a test database runs to: every Sunday at
+// 19:30 for two hours, the first on Sunday 4 January 2026, which is where the
+// first rota a test defines starts.
+const SeedPattern = "BEGIN:VEVENT\nDTSTART:20260104T193000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY;BYDAY=SU\nEND:VEVENT"
 
 // SeedRotaDefaults gives a test database the Shift pattern an Organisation
 // runs to: every Sunday at 19:30, for two hours.
@@ -22,13 +23,11 @@ const SeedPatternStartFrom = "2026-01-01"
 func SeedRotaDefaults(t *testing.T, database *db.DB) {
 	t.Helper()
 
-	err := database.SaveShiftPattern(context.Background(), db.RotaDefaults{
-		ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
-		PatternStartFrom:   SeedPatternStartFrom,
-		ShiftLengthMinutes: 120,
-		ShiftTimezone:      "Europe/London",
-	})
-	if err != nil {
+	ctx := context.Background()
+	if err := database.SaveTimezone(ctx, "Europe/London"); err != nil {
+		t.Fatalf("failed to seed the time zone: %v", err)
+	}
+	if err := database.SaveShiftPattern(ctx, SeedPattern); err != nil {
 		t.Fatalf("failed to seed rota defaults: %v", err)
 	}
 }

@@ -19,6 +19,13 @@
   margin: 0;
 }
 
+/* The title and the word saying the card saved itself, on one line. */
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 /* A section setup needs, left empty: the one place in Config drawn as wrong,
    because until it is put right the rest of the app has nothing to work on. */
 .settings-section--incomplete {

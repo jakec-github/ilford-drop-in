@@ -29,15 +29,10 @@ const ShiftTimestampLayout = "2006-01-02T15:04:05"
 // no rota can be defined, and that is all. Rotas already defined carry their
 // own times and still render, allocate and publish.
 type RotaDefaults struct {
-	// ShiftPattern is the RRULE lines Shifts are generated from, as an Organiser
-	// typed them. Empty means unset.
+	// ShiftPattern is the VEVENT entries Shifts are generated from, as an
+	// Organiser wrote them: each says when it first happens, how long it runs
+	// and how it repeats (ADR 0014). Empty means unset.
 	ShiftPattern string
-	// PatternStartFrom is the date the pattern counts from, "2006-01-02".
-	// Empty means unset.
-	PatternStartFrom string
-	// ShiftLengthMinutes is how long each generated Shift runs. Zero means
-	// unset.
-	ShiftLengthMinutes int
 	// ShiftTimezone is an IANA zone name. Empty means unset, and reads as
 	// DefaultShiftTimezone.
 	ShiftTimezone string
@@ -55,10 +50,11 @@ func (d RotaDefaults) Timezone() string {
 	return d.ShiftTimezone
 }
 
-// HasShiftPattern reports whether a rota could be minted from these settings:
-// a pattern, the date it counts from, and how long its Shifts run.
+// HasShiftPattern reports whether a rota could be minted from these settings.
+// Each entry of the pattern carries its own start and length, so the pattern
+// is all it takes.
 func (d RotaDefaults) HasShiftPattern() bool {
-	return d.ShiftPattern != "" && d.PatternStartFrom != "" && d.ShiftLengthMinutes > 0
+	return d.ShiftPattern != ""
 }
 
 // ShiftInstants reads a Shift's own start and end — the local wall-clock times

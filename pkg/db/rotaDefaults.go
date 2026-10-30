@@ -17,15 +17,9 @@ import (
 // (ADR 0006), so unset is the ordinary first state of a deployment rather than
 // a fault — the settings' emptiness blocks allocation and nothing else.
 type RotaDefaults struct {
-	// ShiftPattern is the Organiser's RRULE lines, as typed (ADR 0013). Empty
-	// means no pattern has been set, and no rota can be defined.
+	// ShiftPattern is the Organiser's VEVENT entries, as written (ADR 0014).
+	// Empty means no pattern has been set, and no rota can be defined.
 	ShiftPattern string
-	// PatternStartFrom is the date the pattern counts from, "2006-01-02".
-	// Empty means unset.
-	PatternStartFrom string
-	// ShiftLengthMinutes is how long each generated Shift runs. Zero means
-	// unset.
-	ShiftLengthMinutes int
 	// ShiftTimezone is an IANA zone name, e.g. "Europe/London". Empty means
 	// unset; the domain falls back rather than guessing at read time.
 	ShiftTimezone string
@@ -47,19 +41,14 @@ type RotaDefaults struct {
 // That matters because the table is deliberately unseeded: the first save
 // creates the row, and every read before it lands here.
 func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
-	// to_char keeps the date a date: scanned into a time.Time it would arrive
-	// as a midnight in some zone, which is not what Start from means.
-	var pattern, startFrom, timezone, allocation *string
-	var length *int
+	var pattern, timezone, allocation *string
 	err := d.pool.QueryRow(ctx, `
 		SELECT shift_pattern,
-		       to_char(pattern_start_from, 'YYYY-MM-DD'),
-		       shift_length_minutes,
 		       shift_timezone,
 		       allocation_settings::text
 		FROM rota_defaults
 		WHERE organisation_id = $1
-	`, d.org()).Scan(&pattern, &startFrom, &length, &timezone, &allocation)
+	`, d.org()).Scan(&pattern, &timezone, &allocation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RotaDefaults{}, nil
 	}
@@ -69,38 +58,49 @@ func (d *DB) GetRotaDefaults(ctx context.Context) (RotaDefaults, error) {
 
 	return RotaDefaults{
 		ShiftPattern:       deref(pattern),
-		PatternStartFrom:   deref(startFrom),
-		ShiftLengthMinutes: derefInt(length),
 		ShiftTimezone:      deref(timezone),
 		AllocationSettings: deref(allocation),
 	}, nil
 }
 
-// SaveShiftPattern writes the Shift pattern section — the pattern, its Start
-// from, the time zone and the length — creating the record if this is the
-// first time anyone has saved it.
+// SaveShiftPattern writes the Shift pattern, creating the record if this is
+// the first time anyone has saved it.
 //
-// It names the columns it sets rather than replacing the row, so a later
-// section of the settings — the default Shape, the Allocation Rules — cannot
-// be blanked by a save of this one.
-//
-// An empty field is written as NULL, so "not set" survives the round trip.
+// It names the column it sets rather than replacing the row, so a later
+// section of the settings — the time zone, the default Shape, the Allocation
+// Rules — cannot be blanked by a save of this one. An empty pattern is written
+// as NULL, so "not set" survives the round trip.
 //
 // The pattern is not an allocator input — it decides which Shifts the next
 // rota is minted with, and a rota already defined keeps the ones it has — so
 // saving it leaves the rota in flight's draft alone.
-func (d *DB) SaveShiftPattern(ctx context.Context, defaults RotaDefaults) error {
+func (d *DB) SaveShiftPattern(ctx context.Context, pattern string) error {
 	_, err := d.pool.Exec(ctx, `
-		INSERT INTO rota_defaults (organisation_id, shift_pattern, pattern_start_from, shift_length_minutes, shift_timezone)
-		VALUES ($5, NULLIF($1, ''), NULLIF($2, '')::date, NULLIF($3, 0), NULLIF($4, ''))
-		ON CONFLICT (organisation_id) DO UPDATE SET
-			shift_pattern = EXCLUDED.shift_pattern,
-			pattern_start_from = EXCLUDED.pattern_start_from,
-			shift_length_minutes = EXCLUDED.shift_length_minutes,
-			shift_timezone = EXCLUDED.shift_timezone
-	`, defaults.ShiftPattern, defaults.PatternStartFrom, defaults.ShiftLengthMinutes, defaults.ShiftTimezone, d.org())
+		INSERT INTO rota_defaults (organisation_id, shift_pattern)
+		VALUES ($2, NULLIF($1, ''))
+		ON CONFLICT (organisation_id) DO UPDATE SET shift_pattern = EXCLUDED.shift_pattern
+	`, pattern, d.org())
 	if err != nil {
 		return fmt.Errorf("failed to save the shift pattern: %w", err)
+	}
+	return nil
+}
+
+// SaveTimezone writes the zone the Organisation's wall-clock times are read
+// in, creating the record if this is the first time anyone has saved it. Its
+// own method for the reason SaveShiftPattern names its column: the zone is a
+// section of its own, at the top of the config page.
+//
+// Like the pattern it changes no Shift: each carries its own wall-clock times
+// (ADR 0007), and the zone only says where they are.
+func (d *DB) SaveTimezone(ctx context.Context, timezone string) error {
+	_, err := d.pool.Exec(ctx, `
+		INSERT INTO rota_defaults (organisation_id, shift_timezone)
+		VALUES ($2, NULLIF($1, ''))
+		ON CONFLICT (organisation_id) DO UPDATE SET shift_timezone = EXCLUDED.shift_timezone
+	`, timezone, d.org())
+	if err != nil {
+		return fmt.Errorf("failed to save the time zone: %w", err)
 	}
 	return nil
 }
@@ -166,14 +166,6 @@ func (d *DB) UpdateAllocationSettings(ctx context.Context, edit func(current str
 func deref(value *string) string {
 	if value == nil {
 		return ""
-	}
-	return *value
-}
-
-// derefInt reads a nullable integer column as zero, for the same reason.
-func derefInt(value *int) int {
-	if value == nil {
-		return 0
 	}
 	return *value
 }

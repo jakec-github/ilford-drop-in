@@ -29,8 +29,13 @@ type RotaDefaultsStore interface {
 //
 // One method per section, because the settings screen is sections and a save
 // of one must not blank another.
+//
+// It reads as well as writes: a pattern is read in the Organisation's time
+// zone, so saving one needs the zone it was written for.
 type RotaDefaultsWriteStore interface {
-	SaveShiftPattern(ctx context.Context, defaults db.RotaDefaults) error
+	RotaDefaultsStore
+	SaveShiftPattern(ctx context.Context, pattern string) error
+	SaveTimezone(ctx context.Context, timezone string) error
 	UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error
 }
 
@@ -51,8 +56,6 @@ func RotaDefaults(ctx context.Context, store RotaDefaultsStore) (model.RotaDefau
 
 	return model.RotaDefaults{
 		ShiftPattern:       row.ShiftPattern,
-		PatternStartFrom:   row.PatternStartFrom,
-		ShiftLengthMinutes: row.ShiftLengthMinutes,
 		ShiftTimezone:      row.ShiftTimezone,
 		AllocationSettings: parseAllocationSettings(row.AllocationSettings),
 	}, nil

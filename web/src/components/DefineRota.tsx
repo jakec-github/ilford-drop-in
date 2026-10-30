@@ -205,7 +205,7 @@ export default function DefineRota({
           <p className="define-rota-intro">
             {previous
               ? `The previous rota had ${previous.shiftCount} ${previous.shiftCount === 1 ? "shift" : "shifts"} and stopped after ${formatStart(previous.stoppedAfter)}. This one carries on from there.`
-              : "This is the first rota. It starts from the Shift pattern's Start from."}
+              : "This is the first rota. It starts from the Shift pattern's earliest entry."}
           </p>
         )}
 

@@ -198,6 +198,7 @@ func (h *Handler) Routes() http.Handler {
 	// endpoint that could.
 	api.Handle("GET /rota-defaults", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleGetRotaDefaults)))
 	api.Handle("PUT /rota-defaults/shift-pattern", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftPattern)))
+	api.Handle("PUT /rota-defaults/timezone", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveTimezone)))
 	api.Handle("POST /rota-defaults/shift-pattern/preview", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleShiftPatternPreview)))
 	api.Handle("PUT /rota-defaults/shape", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveDefaultShape)))
 	api.Handle("POST /rota-defaults/allocation-rules", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddAllocationRule)))

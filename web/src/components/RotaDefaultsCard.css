@@ -2,7 +2,7 @@
   margin-top: 0.25rem;
 }
 
-/* RRULE is read character by character, so it is set in a fixed width and
+/* A VEVENT is read character by character, so it is set in a fixed width and
    wraps nowhere it was not broken. */
 .shift-pattern-text {
   display: block;
@@ -27,8 +27,8 @@
   outline-offset: 1px;
 }
 
-/* The reading of each line: a tick and what it means, or a cross, the line
-   and what is wrong with it. */
+/* The reading of each entry: a tick and what it means, a cross and what is
+   wrong with it, or a mark for what was read past. */
 .shift-pattern-lines {
   margin: 0 0 1rem;
   padding: 0;
@@ -67,29 +67,14 @@
   word-break: break-all;
 }
 
-/* Start from, the zone and the length on one line on a desk, wrapping one at
-   a time as the card narrows. */
-.shift-pattern-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.75rem;
+/* Something in the pattern that was read past: kept, but said. */
+.shift-pattern-lines li.warning {
+  color: var(--text);
 }
 
-.shift-pattern-fields .settings-field {
-  flex: 1 1 10rem;
-}
-
-.shift-pattern-fields input[type="date"] {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.5rem;
-  font: 16px/1.4 var(--sans);
-  color: var(--text-h);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.shift-pattern-lines li.warning::before {
+  content: "!";
+  color: var(--text);
 }
 
 .shift-pattern-heading {

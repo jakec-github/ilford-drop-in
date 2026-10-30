@@ -103,7 +103,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Before Start from nothing can occur, so those days are there for their place
+/* Before the earliest entry nothing can occur, so those days are there for their place
    in the month and no more. */
 .pattern-calendar-day.before {
   opacity: 0.35;

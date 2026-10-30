@@ -30,7 +30,7 @@ func isDuplicateOverridePin(err error) bool {
 // one.
 func (d *DB) GetOverrides(ctx context.Context) ([]Override, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, position, rrule, to_char(start_from, 'YYYY-MM-DD'), granularity, sets_shape,
+		SELECT id, position, rrule, granularity, sets_shape,
 			COALESCE(to_char(start_time, 'HH24:MI'), ''), COALESCE(length_minutes, 0)
 		FROM override
 		WHERE organisation_id = $1
@@ -43,7 +43,7 @@ func (d *DB) GetOverrides(ctx context.Context) ([]Override, error) {
 	index := map[string]int{}
 	for rows.Next() {
 		var o Override
-		if err := rows.Scan(&o.ID, &o.Position, &o.RRule, &o.StartFrom, &o.Granularity, &o.SetsShape, &o.StartTime, &o.LengthMinutes); err != nil {
+		if err := rows.Scan(&o.ID, &o.Position, &o.RRule, &o.Granularity, &o.SetsShape, &o.StartTime, &o.LengthMinutes); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("failed to scan override: %w", err)
 		}
@@ -124,13 +124,13 @@ func (d *DB) GetOverrides(ctx context.Context) ([]Override, error) {
 func (d *DB) InsertOverride(ctx context.Context, o Override) error {
 	return d.inTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO override (id, organisation_id, position, rrule, start_from, granularity, sets_shape,
+			INSERT INTO override (id, organisation_id, position, rrule, granularity, sets_shape,
 				start_time, length_minutes)
-			SELECT $1, $2, COALESCE(MAX(position), 0) + 1, $3, $4::date, $5, $6,
-				NULLIF($7, '')::time, NULLIF($8, 0)
+			SELECT $1, $2, COALESCE(MAX(position), 0) + 1, $3, $4, $5,
+				NULLIF($6, '')::time, NULLIF($7, 0)
 			FROM override
 			WHERE organisation_id = $2
-		`, o.ID, d.org(), o.RRule, o.StartFrom, o.Granularity, o.SetsShape, o.StartTime, o.LengthMinutes)
+		`, o.ID, d.org(), o.RRule, o.Granularity, o.SetsShape, o.StartTime, o.LengthMinutes)
 		if err != nil {
 			return fmt.Errorf("failed to insert override: %w", err)
 		}
@@ -138,17 +138,16 @@ func (d *DB) InsertOverride(ctx context.Context, o Override) error {
 	})
 }
 
-// UpdateOverride rewrites an Override in place — its rule, Start from, start
-// time, length, Shape and Pins — keeping where it stands in the list. ErrOverrideNotFound when
+// UpdateOverride rewrites an Override in place — its rule, start time, length, Shape and Pins — keeping where it stands in the list. ErrOverrideNotFound when
 // there is no such Override.
 func (d *DB) UpdateOverride(ctx context.Context, o Override) error {
 	return d.inTx(ctx, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
 			UPDATE override
-			SET rrule = $3, start_from = $4::date, granularity = $5, sets_shape = $6,
-				start_time = NULLIF($7, '')::time, length_minutes = NULLIF($8, 0)
+			SET rrule = $3, granularity = $4, sets_shape = $5,
+				start_time = NULLIF($6, '')::time, length_minutes = NULLIF($7, 0)
 			WHERE id = $1 AND organisation_id = $2
-		`, o.ID, d.org(), o.RRule, o.StartFrom, o.Granularity, o.SetsShape, o.StartTime, o.LengthMinutes)
+		`, o.ID, d.org(), o.RRule, o.Granularity, o.SetsShape, o.StartTime, o.LengthMinutes)
 		if err != nil {
 			return fmt.Errorf("failed to update override: %w", err)
 		}

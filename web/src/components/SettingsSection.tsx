@@ -16,6 +16,7 @@ export default function SettingsSection({
   incomplete = false,
   collapsible = false,
   summary,
+  status,
   children,
 }: {
   title: string;
@@ -34,6 +35,9 @@ export default function SettingsSection({
   // What a closed section says about itself beside its title: how many there
   // are, or None.
   summary?: ReactNode;
+  // Whether the card saved itself, beside its title: a card edited where it
+  // stands says so there rather than somewhere in its body.
+  status?: ReactNode;
   children: ReactNode;
 }) {
   const [opened, setOpened] = useState(false);
@@ -49,39 +53,42 @@ export default function SettingsSection({
     >
       <header className="settings-section-head">
         <div>
-          <h2>
-            {canClose ? (
-              <button
-                type="button"
-                className="settings-toggle"
-                aria-expanded={open}
-                onClick={() => setOpened(!open)}
-              >
-                <svg
-                  viewBox="0 0 10 10"
-                  width="10"
-                  height="10"
-                  aria-hidden="true"
+          <div className="settings-section-title">
+            <h2>
+              {canClose ? (
+                <button
+                  type="button"
+                  className="settings-toggle"
+                  aria-expanded={open}
+                  onClick={() => setOpened(!open)}
                 >
-                  <path
-                    d="M3.5 1L7.5 5L3.5 9"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                {title}
-                {!open && summary !== undefined && (
-                  <span className="settings-summary">{summary}</span>
-                )}
-              </button>
-            ) : (
-              title
-            )}
-            {incomplete && <span className="settings-needed">Needed</span>}
-          </h2>
+                  <svg
+                    viewBox="0 0 10 10"
+                    width="10"
+                    height="10"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M3.5 1L7.5 5L3.5 9"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  {title}
+                  {!open && summary !== undefined && (
+                    <span className="settings-summary">{summary}</span>
+                  )}
+                </button>
+              ) : (
+                title
+              )}
+              {incomplete && <span className="settings-needed">Needed</span>}
+            </h2>
+            {status}
+          </div>
           {open && <p className="settings-blurb">{blurb}</p>}
         </div>
         {action && (

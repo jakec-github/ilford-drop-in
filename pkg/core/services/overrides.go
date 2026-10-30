@@ -47,15 +47,14 @@ type OverrideWriteStore interface {
 
 // OverrideParams is an Override as an Organiser states it, whole.
 type OverrideParams struct {
+	// RRule is the rule's DTSTART;VALUE=DATE line, the date it counts from,
+	// and its RRULE (ADR 0014).
 	RRule string
-	// StartFrom is the date the rule counts from, "2006-01-02". Empty means
-	// today in the Organisation's zone, as for the pattern.
-	StartFrom string
 	// StartTime moves every Shift the Override matches to this time of its
 	// own day, "15:04". Empty leaves the start the pattern generated.
 	StartTime string
 	// LengthMinutes is how long they run from wherever they start. Nil leaves
-	// the pattern's length.
+	// each the length of the pattern entry that made it.
 	LengthMinutes *int
 	// Shape replaces the default Shape on every Shift the Override matches.
 	// Nil leaves the default; an empty list asks for nobody.
@@ -76,9 +75,8 @@ type OverrideView struct {
 	ID string
 	// Number is its place in the list, counting from one: what the screen and
 	// the Define Rota preview call it by.
-	Number    int
-	RRule     string
-	StartFrom string
+	Number int
+	RRule  string
 	// Granularity is db.OverrideMatchesTime or db.OverrideMatchesDate.
 	Granularity string
 	// Description is the rule in plain English, from the one evaluator.
@@ -146,12 +144,11 @@ func ListOverrides(
 			ID:            row.ID,
 			Number:        i + 1,
 			RRule:         row.RRule,
-			StartFrom:     row.StartFrom,
 			Granularity:   row.Granularity,
 			StartTime:     row.StartTime,
 			LengthMinutes: row.LengthMinutes,
 		}
-		if line, _ := readOverrideRule(row.RRule, row.StartFrom); len(line.Problems) > 0 {
+		if line, _ := shiftpattern.ReadRule(row.RRule); len(line.Problems) > 0 {
 			view.Problems = line.Problems
 		} else {
 			view.Description = line.Description
@@ -307,26 +304,21 @@ func ReorderOverrides(ctx context.Context, store OverrideWriteStore, ids []strin
 // OverrideRuleReading is what an Override's rule says, for the screen it is
 // being written on.
 type OverrideRuleReading struct {
-	StartFrom   string
 	Granularity string
 	Description string
 	Problems    []string
 }
 
 // ReadOverrideRule reads a rule that has not been saved: what it says, what it
-// matches, or what is wrong with it. It refuses only a Start from that is not a
-// date. A blank one is today, as saving would make it.
-func ReadOverrideRule(ctx context.Context, store RotaDefaultsStore, rrule, startFrom string) (*OverrideRuleReading, error) {
-	startFrom, err := overrideStartFrom(ctx, store, startFrom)
-	if err != nil {
-		return nil, err
-	}
-	line, rule := readOverrideRule(rrule, startFrom)
-	reading := &OverrideRuleReading{StartFrom: startFrom, Description: line.Description, Problems: line.Problems}
+// matches, or what is wrong with it. It refuses nothing — a rule with problems
+// is answered with them.
+func ReadOverrideRule(rrule string) *OverrideRuleReading {
+	line, rule := shiftpattern.ReadRule(rrule)
+	reading := &OverrideRuleReading{Description: line.Description, Problems: line.Problems}
 	if rule != nil {
 		reading.Granularity = granularityOf(rule)
 	}
-	return reading, nil
+	return reading
 }
 
 // statedOverride turns an Organiser's Override into the row to write, or says
@@ -345,12 +337,8 @@ func statedOverride(
 	organisation *config.Organisation,
 	params OverrideParams,
 ) (db.Override, error) {
-	startFrom, err := overrideStartFrom(ctx, store, params.StartFrom)
-	if err != nil {
-		return db.Override{}, err
-	}
 	rrule := strings.TrimSpace(params.RRule)
-	line, rule := readOverrideRule(rrule, startFrom)
+	line, rule := shiftpattern.ReadRule(rrule)
 	if rule == nil {
 		return db.Override{}, wrapf(ErrInvalidInput, "the rule cannot be used - %s", strings.Join(line.Problems, "; "))
 	}
@@ -360,7 +348,7 @@ func statedOverride(
 		return db.Override{}, err
 	}
 
-	row := db.Override{RRule: rrule, StartFrom: startFrom, Granularity: granularityOf(rule)}
+	row := db.Override{RRule: rrule, Granularity: granularityOf(rule)}
 	if start := strings.TrimSpace(params.StartTime); start != "" {
 		at, err := time.Parse("15:04", start)
 		if err != nil {
@@ -430,37 +418,6 @@ func statedOverride(
 		}
 	}
 	return row, nil
-}
-
-// overrideStartFrom reads the date a rule counts from, a blank one being
-// today in the Organisation's zone.
-func overrideStartFrom(ctx context.Context, store RotaDefaultsStore, startFrom string) (string, error) {
-	startFrom = strings.TrimSpace(startFrom)
-	if startFrom == "" {
-		defaults, err := RotaDefaults(ctx, store)
-		if err != nil {
-			return "", err
-		}
-		loc, err := time.LoadLocation(defaults.Timezone())
-		if err != nil {
-			loc = time.UTC
-		}
-		return time.Now().In(loc).Format("2006-01-02"), nil
-	}
-	if _, err := time.Parse("2006-01-02", startFrom); err != nil {
-		return "", wrapf(ErrInvalidInput, "%q is not a date - write start from as 2026-08-02", startFrom)
-	}
-	return startFrom, nil
-}
-
-// readOverrideRule reads a stored or stated rule against a Start from that is
-// already known to be a date.
-func readOverrideRule(rrule, startFrom string) (shiftpattern.Line, *shiftpattern.Rule) {
-	anchor, err := time.Parse("2006-01-02", startFrom)
-	if err != nil {
-		return shiftpattern.Line{Text: rrule, Problems: []string{fmt.Sprintf("its start from %q is not a date", startFrom)}}, nil
-	}
-	return shiftpattern.ReadRule(rrule, anchor)
 }
 
 func granularityOf(rule *shiftpattern.Rule) string {

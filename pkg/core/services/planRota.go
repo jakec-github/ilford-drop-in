@@ -133,14 +133,14 @@ func PlanRota(ctx context.Context, store PlanRotaStore, params DefineRotaParams)
 		}
 	}
 
-	length := time.Duration(defaults.ShiftLengthMinutes) * time.Minute
+	// Each Shift runs as long as the entry that made it (ADR 0014).
 	for _, start := range pattern.Next(after, notBefore, params.ShiftCount) {
 		plan.Shifts = append(plan.Shifts, db.Shift{
-			Date:    start.Format("2006-01-02"),
-			StartAt: start.Format(model.ShiftTimestampLayout),
-			EndAt:   start.Add(length).Format(model.ShiftTimestampLayout),
+			Date:    start.At.Format("2006-01-02"),
+			StartAt: start.At.Format(model.ShiftTimestampLayout),
+			EndAt:   start.At.Add(start.Length).Format(model.ShiftTimestampLayout),
 		})
-		plan.Generated = append(plan.Generated, start.Format(model.ShiftTimestampLayout))
+		plan.Generated = append(plan.Generated, start.At.Format(model.ShiftTimestampLayout))
 	}
 
 	if len(plan.Shifts) < params.ShiftCount {
@@ -160,7 +160,7 @@ func PlanRota(ctx context.Context, store PlanRotaStore, params DefineRotaParams)
 	if err != nil {
 		return nil, err
 	}
-	if err := moveOverridden(plan, length); err != nil {
+	if err := moveOverridden(plan); err != nil {
 		return nil, err
 	}
 
@@ -175,8 +175,9 @@ func PlanRota(ctx context.Context, store PlanRotaStore, params DefineRotaParams)
 // as they say, then puts the Shifts back in the order they start, keeping
 // everything aligned with them. A Shift is moved within its own day — the
 // start time is a time of that date, in the pattern's wall-clock time — and
-// runs on from there, past midnight if it is long enough.
-func moveOverridden(plan *RotaPlan, defaultLength time.Duration) error {
+// runs on from there, past midnight if it is long enough. An Override that
+// sets no length leaves the Shift as long as its entry made it.
+func moveOverridden(plan *RotaPlan) error {
 	moved := false
 	for i := range plan.Shifts {
 		o := plan.Overridden[i]
@@ -188,6 +189,11 @@ func moveOverridden(plan *RotaPlan, defaultLength time.Duration) error {
 		if err != nil {
 			return fmt.Errorf("planned shift has an unreadable start %q: %w", s.StartAt, err)
 		}
+		end, err := time.Parse(model.ShiftTimestampLayout, s.EndAt)
+		if err != nil {
+			return fmt.Errorf("planned shift has an unreadable end %q: %w", s.EndAt, err)
+		}
+		length := end.Sub(start)
 		if o.StartTime != "" {
 			start, err = time.Parse("2006-01-02 15:04", s.Date+" "+o.StartTime)
 			if err != nil {
@@ -195,7 +201,6 @@ func moveOverridden(plan *RotaPlan, defaultLength time.Duration) error {
 			}
 			moved = true
 		}
-		length := defaultLength
 		if o.LengthMinutes != 0 {
 			length = time.Duration(o.LengthMinutes) * time.Minute
 		}
@@ -229,11 +234,7 @@ func moveOverridden(plan *RotaPlan, defaultLength time.Duration) error {
 // when it was saved, so a refusal here is a pattern written by an older build,
 // or by hand.
 func compileStoredPattern(defaults model.RotaDefaults) (*shiftpattern.Pattern, error) {
-	startFrom, err := time.Parse("2006-01-02", defaults.PatternStartFrom)
-	if err != nil {
-		return nil, fmt.Errorf("its start from %q is not a date", defaults.PatternStartFrom)
-	}
-	return shiftpattern.Compile(defaults.ShiftPattern, startFrom)
+	return shiftpattern.Compile(defaults.ShiftPattern, defaults.Timezone())
 }
 
 // previousRota finds the rota that stopped latest, which is the one the next

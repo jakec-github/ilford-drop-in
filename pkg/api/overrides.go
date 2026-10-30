@@ -6,8 +6,9 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
-// overrideRequest is an Override as an Organiser states it, whole: the rule,
-// the date it counts from, and what it changes on the Shifts it matches.
+// overrideRequest is an Override as an Organiser states it, whole: the rule —
+// a DTSTART;VALUE=DATE line, the date it counts from, and an RRULE (ADR 0014)
+// — and what it changes on the Shifts it matches.
 //
 // Shape is null to leave the default Shape, and a list — possibly empty, a
 // Shift that asks for nobody — to replace it whole. A Role it leaves out is a
@@ -15,10 +16,9 @@ import (
 //
 // StartTime, "15:04", moves the Shifts it matches within their own day, and is
 // null to leave the start the pattern generated. LengthMinutes is how long
-// they run, and null for the pattern's length.
+// they run, and null for the length of the entry that made each.
 type overrideRequest struct {
 	RRule         string               `json:"rrule"`
-	StartFrom     string               `json:"startFrom"`
 	StartTime     *string              `json:"startTime"`
 	LengthMinutes *int                 `json:"lengthMinutes"`
 	Shape         *[]seatRequest       `json:"shape"`
@@ -38,8 +38,7 @@ type overrideOrderRequest struct {
 }
 
 type overrideRuleRequest struct {
-	RRule     string `json:"rrule"`
-	StartFrom string `json:"startFrom"`
+	RRule string `json:"rrule"`
 }
 
 type listOverridesResponse struct {
@@ -58,7 +57,6 @@ type overrideResponse struct {
 	ID            string                `json:"id"`
 	Number        int                   `json:"number"`
 	RRule         string                `json:"rrule"`
-	StartFrom     string                `json:"startFrom"`
 	Granularity   string                `json:"granularity"`
 	Description   string                `json:"description"`
 	Problems      []string              `json:"problems"`
@@ -82,7 +80,6 @@ type overridePinResponse struct {
 // overrideRuleResponse is what a rule being written says, for the screen it is
 // written on. Granularity is empty while it has problems.
 type overrideRuleResponse struct {
-	StartFrom   string   `json:"startFrom"`
 	Granularity string   `json:"granularity"`
 	Description string   `json:"description"`
 	Problems    []string `json:"problems"`
@@ -160,13 +157,8 @@ func (h *Handler) handleReadOverrideRule(w http.ResponseWriter, r *http.Request)
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
-	reading, err := services.ReadOverrideRule(r.Context(), h.store, req.RRule, req.StartFrom)
-	if err != nil {
-		h.writeServiceError(w, err)
-		return
-	}
+	reading := services.ReadOverrideRule(req.RRule)
 	h.writeJSON(w, http.StatusOK, overrideRuleResponse{
-		StartFrom:   reading.StartFrom,
 		Granularity: reading.Granularity,
 		Description: reading.Description,
 		Problems:    emptyIfNil(reading.Problems),
@@ -186,7 +178,6 @@ func (h *Handler) writeOverrides(w http.ResponseWriter, r *http.Request, status 
 			ID:          v.ID,
 			Number:      v.Number,
 			RRule:       v.RRule,
-			StartFrom:   v.StartFrom,
 			Granularity: v.Granularity,
 			Description: v.Description,
 			Problems:    emptyIfNil(v.Problems),
@@ -220,7 +211,7 @@ func (h *Handler) writeOverrides(w http.ResponseWriter, r *http.Request, status 
 }
 
 func toOverrideParams(req overrideRequest) services.OverrideParams {
-	params := services.OverrideParams{RRule: req.RRule, StartFrom: req.StartFrom, LengthMinutes: req.LengthMinutes}
+	params := services.OverrideParams{RRule: req.RRule, LengthMinutes: req.LengthMinutes}
 	if req.StartTime != nil {
 		params.StartTime = *req.StartTime
 	}

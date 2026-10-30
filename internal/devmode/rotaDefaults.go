@@ -14,7 +14,8 @@ import (
 // needs.
 type RotaDefaultsSeedStore interface {
 	GetRotaDefaults(ctx context.Context) (db.RotaDefaults, error)
-	SaveShiftPattern(ctx context.Context, defaults db.RotaDefaults) error
+	SaveShiftPattern(ctx context.Context, pattern string) error
+	SaveTimezone(ctx context.Context, timezone string) error
 	UpdateAllocationSettings(ctx context.Context, edit func(current string) (string, error)) error
 }
 
@@ -26,11 +27,12 @@ func seedRotaDefaults(now time.Time) db.RotaDefaults {
 	if err != nil {
 		loc = time.UTC
 	}
+	today := now.In(loc)
+	sunday := today.AddDate(0, 0, (7-int(today.Weekday()))%7)
 	return db.RotaDefaults{
-		ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
-		PatternStartFrom:   now.In(loc).Format("2006-01-02"),
-		ShiftLengthMinutes: 120,
-		ShiftTimezone:      model.DefaultShiftTimezone,
+		ShiftPattern: "BEGIN:VEVENT\nDTSTART:" + sunday.Format("20060102") + "T193000\n" +
+			"DURATION:PT2H\nRRULE:FREQ=WEEKLY;BYDAY=SU\nEND:VEVENT",
+		ShiftTimezone: model.DefaultShiftTimezone,
 	}
 }
 
@@ -65,7 +67,11 @@ func SeedRotaDefaults(ctx context.Context, store RotaDefaultsSeedStore) (bool, e
 		return false, nil
 	}
 
-	if err := store.SaveShiftPattern(ctx, seedRotaDefaults(time.Now())); err != nil {
+	seed := seedRotaDefaults(time.Now())
+	if err := store.SaveTimezone(ctx, seed.ShiftTimezone); err != nil {
+		return false, fmt.Errorf("failed to seed the time zone: %w", err)
+	}
+	if err := store.SaveShiftPattern(ctx, seed.ShiftPattern); err != nil {
 		return false, fmt.Errorf("failed to seed rota defaults: %w", err)
 	}
 

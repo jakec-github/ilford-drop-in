@@ -183,9 +183,9 @@ type Pin struct {
 type Override struct {
 	ID       string // UUID
 	Position int
-	RRule    string
-	// StartFrom is the date the rule counts from, "2006-01-02".
-	StartFrom string
+	// RRule is the rule as written: a DTSTART;VALUE=DATE line, the date it
+	// counts from, and an RRULE (ADR 0014).
+	RRule string
 	// Granularity is OverrideMatchesTime or OverrideMatchesDate.
 	Granularity string
 	// SetsShape is whether Seats is a Shape at all: no Seats with SetsShape is
@@ -197,7 +197,7 @@ type Override struct {
 	// "15:04", and "" leaves the start the pattern generated.
 	StartTime string
 	// LengthMinutes is how long they run from wherever they start, and 0
-	// leaves the pattern's length.
+	// leaves each the length of the pattern entry that made it.
 	LengthMinutes int
 }
 

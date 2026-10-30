@@ -20,26 +20,13 @@ func TestShiftTimezone(t *testing.T) {
 	assert.Equal(t, "UTC", defaults.Timezone())
 }
 
-// A rota can be minted only from a pattern, the date it counts from and a
-// length; any one missing is no pattern at all.
+// Each entry of a pattern carries its own start and length (ADR 0014), so a
+// pattern is all a rota is minted from.
 func TestHasShiftPattern(t *testing.T) {
-	complete := model.RotaDefaults{
-		ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
-		PatternStartFrom:   "2026-11-01",
-		ShiftLengthMinutes: 120,
-	}
-	assert.True(t, complete.HasShiftPattern())
-
 	assert.False(t, model.RotaDefaults{}.HasShiftPattern())
-	for _, blank := range []func(*model.RotaDefaults){
-		func(d *model.RotaDefaults) { d.ShiftPattern = "" },
-		func(d *model.RotaDefaults) { d.PatternStartFrom = "" },
-		func(d *model.RotaDefaults) { d.ShiftLengthMinutes = 0 },
-	} {
-		partial := complete
-		blank(&partial)
-		assert.False(t, partial.HasShiftPattern())
-	}
+	assert.True(t, model.RotaDefaults{
+		ShiftPattern: "BEGIN:VEVENT\nDTSTART:20261101T193000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY\nEND:VEVENT",
+	}.HasShiftPattern())
 }
 
 // A Shift's own times are read in the Organisation's zone, so the same stored 19:30

@@ -12,46 +12,39 @@ interface UseShiftPatternPreview {
   // and the calendar do not blink out between keystrokes. null before the first.
   preview: ShiftPatternPreview | null;
   // A range or request the server could not read. A pattern with problems is
-  // not an error: its problems are in preview.lines.
+  // not an error: its problems are in preview.entries and preview.problems.
   error: string | null;
-  // The preview is an answer to the pattern, Start from and timezone as they
-  // are now — not to an earlier keystroke. False while a reading is on its way.
+  // The preview is an answer to the pattern as it is now — not to an earlier
+  // keystroke. False while a reading is on its way.
   current: boolean;
 }
 
 // useShiftPatternPreview reads a pattern that is still being written, between
-// two dates: what each line means, and where its Shifts start.
+// two dates: what each entry means, and where and for how long its Shifts run.
 //
-// The server does the reading, by the arithmetic that mints a rota (ADR 0013),
+// The server does the reading, by the arithmetic that mints a rota (ADR 0014),
 // rather than a second RRULE evaluator in the browser — two evaluators would be
 // two answers to "when is the next shift", and the calendar would be the one
 // that was wrong.
 export function useShiftPatternPreview(
   shiftPattern: string,
-  patternStartFrom: string,
-  shiftTimezone: string,
   from: string,
   to: string,
 ): UseShiftPatternPreview {
   const [preview, setPreview] = useState<ShiftPatternPreview | null>(null);
   // What the last answer, preview or error, was an answer to.
   const [readFor, setReadFor] = useState("");
-  const key = JSON.stringify([shiftPattern, patternStartFrom, shiftTimezone]);
+  const key = shiftPattern;
   const [error, setError] = useState<string | null>(null);
 
-  // Nothing to read is answered without asking: no lines, no Shifts.
+  // Nothing to read is answered without asking: no entries, no Shifts.
   const blank = shiftPattern.trim() === "";
 
   useEffect(() => {
     if (blank) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      previewShiftPattern(
-        { shiftPattern, patternStartFrom, shiftTimezone },
-        from,
-        to,
-        controller.signal,
-      )
+      previewShiftPattern(shiftPattern, from, to, controller.signal)
         .then((loaded) => {
           setPreview(loaded);
           setError(null);
@@ -69,11 +62,17 @@ export function useShiftPatternPreview(
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [blank, key, shiftPattern, patternStartFrom, shiftTimezone, from, to]);
+  }, [blank, key, shiftPattern, from, to]);
 
   if (blank) {
     return {
-      preview: { patternStartFrom, lines: [], starts: [] },
+      preview: {
+        entries: [],
+        problems: [],
+        warnings: [],
+        startsFrom: "",
+        starts: [],
+      },
       current: false,
       error: null,
     };

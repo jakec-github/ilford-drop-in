@@ -26,58 +26,57 @@ func TestGetRotaDefaultsUnset(t *testing.T) {
 	assert.Equal(t, db.RotaDefaults{}, defaults)
 }
 
-// The first save writes the row; a later one rewrites it. Start from comes
-// back as the date it was written, not as a midnight in some zone.
+// The first save writes the row; a later one rewrites it. The pattern comes
+// back exactly as written.
 func TestSaveShiftPattern(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
-	weekly := db.RotaDefaults{
-		ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
-		PatternStartFrom:   "2026-11-01",
-		ShiftLengthMinutes: 120,
-		ShiftTimezone:      "Europe/London",
-	}
+	weekly := "BEGIN:VEVENT\nDTSTART:20261101T193000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY;BYDAY=SU\nEND:VEVENT"
 	require.NoError(t, database.SaveShiftPattern(ctx, weekly))
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, weekly, defaults)
+	assert.Equal(t, db.RotaDefaults{ShiftPattern: weekly}, defaults)
 
-	daily := db.RotaDefaults{
-		ShiftPattern:       "RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=0\nRRULE:FREQ=DAILY;BYHOUR=19;BYMINUTE=30",
-		PatternStartFrom:   "2027-01-04",
-		ShiftLengthMinutes: 195,
-		ShiftTimezone:      "UTC",
-	}
+	daily := "BEGIN:VEVENT\r\nDTSTART:20270104T100000\r\nDURATION:PT3H15M\r\nRRULE:FREQ=DAILY\r\nEND:VEVENT"
 	require.NoError(t, database.SaveShiftPattern(ctx, daily))
 
 	defaults, err = database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, daily, defaults)
+	assert.Equal(t, daily, defaults.ShiftPattern)
 }
 
-// An empty field is stored as null and reads back empty, so "not set" survives
-// the round trip.
-func TestSaveShiftPatternClearsFields(t *testing.T) {
+// An empty pattern is stored as null and reads back empty, so "not set"
+// survives the round trip.
+func TestSaveShiftPatternClearsIt(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
 	dbtest.SeedRotaDefaults(t, database)
-	require.NoError(t, database.SaveShiftPattern(ctx, db.RotaDefaults{}))
+	require.NoError(t, database.SaveShiftPattern(ctx, ""))
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, db.RotaDefaults{}, defaults)
+	assert.Equal(t, db.RotaDefaults{ShiftTimezone: "Europe/London"}, defaults)
 }
 
-// The database is the backstop for a Shift that lasts no time at all. The
-// service refuses it first with a message an Organiser can act on.
-func TestSaveShiftPatternRefusesANegativeLength(t *testing.T) {
+// The time zone is a section of its own: saving it leaves the pattern alone,
+// and saving the pattern leaves it alone.
+func TestSaveTimezone(t *testing.T) {
 	database, _ := dbtest.New(t)
+	ctx := context.Background()
 
-	err := database.SaveShiftPattern(context.Background(), db.RotaDefaults{ShiftLengthMinutes: -30})
-	require.Error(t, err)
+	require.NoError(t, database.SaveTimezone(ctx, "America/New_York"))
+	defaults, err := database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, db.RotaDefaults{ShiftTimezone: "America/New_York"}, defaults)
+
+	require.NoError(t, database.SaveShiftPattern(ctx, dbtest.SeedPattern))
+	require.NoError(t, database.SaveTimezone(ctx, "Europe/London"))
+	defaults, err = database.GetRotaDefaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, db.RotaDefaults{ShiftPattern: dbtest.SeedPattern, ShiftTimezone: "Europe/London"}, defaults)
 }
 
 // The allocation settings are one section of the record, edited on their own.
@@ -168,7 +167,7 @@ func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 120, defaults.ShiftLengthMinutes)
+	assert.Equal(t, dbtest.SeedPattern, defaults.ShiftPattern)
 	assert.JSONEq(t, `{"rules":[{"id":"1"}]}`, defaults.AllocationSettings)
 
 	// And the other way round: editing the rules leaves the pattern alone.
@@ -176,7 +175,7 @@ func TestSettingsSectionsDoNotOverwriteEachOther(t *testing.T) {
 
 	defaults, err = database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, dbtest.SeedPatternStartFrom, defaults.PatternStartFrom)
+	assert.Equal(t, dbtest.SeedPattern, defaults.ShiftPattern)
 }
 
 // A deployment nobody has configured reads as no settings at all rather than

@@ -14,7 +14,7 @@ import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import { settingsSummary } from "./settingsSummary";
 import ShapeSeats from "./ShapeSeats";
-import { formatLength, isDate, lengthChoices, today } from "./patternDates";
+import { formatLength, lengthChoices, today } from "./patternDates";
 import { seatCountsOf, seatsOf, type SeatCounts } from "./shape";
 import type {
   ConfiguredRole,
@@ -29,17 +29,20 @@ import { CUSTOM_CHOICE } from "../types";
 import "./OverridesCard.css";
 
 // What a new Override starts as: the commonest thing an Organiser overrides,
-// a working example of the syntax to edit from, and nothing changed yet — so it
-// can be added at once, and the card it becomes is where it is stated.
-const NEW_OVERRIDE: OverrideDraft = {
-  rrule: "FREQ=MONTHLY;BYDAY=1SU",
-  // Today, filled in when it is added.
-  startFrom: "",
-  startTime: null,
-  lengthMinutes: null,
-  shape: null,
-  pins: [],
-};
+// counted from today, a working example of the syntax to edit from, and
+// nothing changed yet — so it can be added at once, and the card it becomes is
+// where it is stated.
+function newOverride(): OverrideDraft {
+  // An Override's rule counts from its own DTSTART, a date (ADR 0014).
+  const from = today().replaceAll("-", "");
+  return {
+    rrule: `DTSTART;VALUE=DATE:${from}\nRRULE:FREQ=MONTHLY;BYDAY=1SU`,
+    startTime: null,
+    lengthMinutes: null,
+    shape: null,
+    pins: [],
+  };
+}
 
 // How an Override matches, in the words the card uses for it.
 function GranularityBadge({
@@ -197,7 +200,6 @@ function PinAdder({
 // what the switches leave on is sent.
 interface OverrideEdit {
   rrule: string;
-  startFrom: string;
   startOn: boolean;
   startTime: string;
   lengthOn: boolean;
@@ -217,7 +219,6 @@ function editOf(
 ): OverrideEdit {
   return {
     rrule: override.rrule,
-    startFrom: override.startFrom,
     startOn: override.startTime !== null,
     startTime: override.startTime ?? "",
     lengthOn: override.lengthMinutes !== null,
@@ -240,7 +241,6 @@ function editOf(
 function draftOf(edit: OverrideEdit, roles: ConfiguredRole[]): OverrideDraft {
   return {
     rrule: edit.rrule.trim(),
-    startFrom: edit.startFrom,
     startTime: edit.startOn ? edit.startTime : null,
     lengthMinutes: edit.lengthOn ? edit.length : null,
     shape: edit.shapeOn ? seatsOf(roles, edit.counts) : null,
@@ -261,8 +261,8 @@ function withPin(pins: PinDraft[], pin: Omit<PinDraft, "key">): PinDraft[] {
 }
 
 // OverrideCard is one Override, edited where it stands, in two halves an
-// Organiser can tell apart at a glance: what it matches — the rule and the date
-// it counts from — and what it sets on the shifts it matches. Changes save
+// Organiser can tell apart at a glance: what it matches — the rule, which
+// carries the date it counts from — and what it sets on the shifts it matches. Changes save
 // themselves once they stop moving; removing asks first, on the card.
 export function OverrideCard({
   override,
@@ -307,12 +307,11 @@ export function OverrideCard({
 
   // The rule is read as it is typed, and the card saves only once the reading
   // is of what is in the box and found nothing wrong with it.
-  const anchor = isDate(draft.startFrom) ? draft.startFrom : today();
   const {
     reading,
     current,
     error: readingError,
-  } = useOverrideRule(draft.rrule, anchor);
+  } = useOverrideRule(draft.rrule);
   const problems = reading?.problems ?? [];
   const { saveState, error, setError } = useSaveWhenSettled({
     draft,
@@ -328,7 +327,7 @@ export function OverrideCard({
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
   const card = useRef<HTMLElement>(null);
-  const ruleBox = useRef<HTMLInputElement>(null);
+  const ruleBox = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!fresh) return;
@@ -414,10 +413,10 @@ export function OverrideCard({
         aria-label={`Override ${n} matches`}
       >
         <h3 className="override-part-title">Matches</h3>
-        <input
+        <textarea
           ref={ruleBox}
           className="override-rule"
-          type="text"
+          rows={Math.max(2, draft.rrule.split("\n").length)}
           aria-label={`Override ${n} rule`}
           spellCheck={false}
           value={draft.rrule}
@@ -446,20 +445,11 @@ export function OverrideCard({
           )}
         </div>
         <p className="settings-hint">
-          With BYHOUR and BYMINUTE it matches only the shift the pattern starts
-          at that time; without them, every shift on those days. Nothing before
-          the date below is matched.
+          A DTSTART;VALUE=DATE line says the date it counts from, and nothing
+          before it is matched; an RRULE line says which dates. With BYHOUR and
+          BYMINUTE it matches only the shift the pattern starts at that time;
+          without them, every shift on those days.
         </p>
-        <label className="override-from">
-          Starting from
-          <input
-            type="date"
-            aria-label={`Override ${n} start from`}
-            value={draft.startFrom}
-            disabled={!editable}
-            onChange={(e) => change({ startFrom: e.target.value })}
-          />
-        </label>
       </section>
 
       <section
@@ -640,10 +630,7 @@ export default function OverridesCard({
 
   function addOne() {
     before.current = new Set(ids ?? []);
-    void act(
-      () => add({ ...NEW_OVERRIDE, startFrom: today() }),
-      "Failed to add an override",
-    );
+    void act(() => add(newOverride()), "Failed to add an override");
   }
 
   async function save(id: string, draft: OverrideDraft) {

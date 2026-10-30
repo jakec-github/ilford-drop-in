@@ -78,28 +78,30 @@ starts from, never what an existing one holds.
 _Avoid_: config, template, preset
 
 **Shift pattern**:
-When the Organisation's Shifts start, as a set of RRULEs, one per line, each
-stating its start time — "every Sunday at 19:30", "the first Saturday of the
-month at 10:00" — with a Start from, a time zone and a default length. Generated
-in local wall-clock time; a Shift that runs past midnight belongs to the day it
-starts. Every Shift comes from it: there are no one-off Shifts (ADR 0013).
+When the Organisation's Shifts start, as a list of entries. Each entry is a
+VEVENT with its own DTSTART (the first Shift), DURATION (how long each runs)
+and RRULE (how it repeats) — "every Sunday at 19:30 for 3 hours, from 1 Nov
+2026". Read in local wall-clock time in the Organisation's time zone, a setting
+of its own; a Shift that runs past midnight belongs to the day it starts. Every
+Shift comes from it: there are no one-off Shifts (ADR 0013, ADR 0014).
 _Avoid_: schedule, cadence, recurrence (alone)
 
 **Start from**:
-The date a Shift pattern or an Override counts from — where "every other week"
-starts, and what fills in a rule that leaves out its weekday or day of the month.
-Nothing occurs before it. Always stored and shown; defaults to the day it is set.
-_Avoid_: anchor, DTSTART
+The date an entry of the Shift pattern or an Override counts from — its own
+DTSTART, where "every other week" starts. Nothing occurs before it. An entry's
+is a time as well as a date, and must be a start its RRULE generates; an
+Override's is a date (ADR 0014).
+_Avoid_: anchor
 
 **Override**:
-An RRULE in Rota Defaults that picks out some of the Shifts the pattern generates
-and changes them as a rota is defined: their start time within the day, their
-length, their Shape, and Pins. One that states a time matches the Shift generated
-at that time; one that does not matches every Shift starting on the date. It
-matches the generated start, never a moved one. Overrides are a list, and a later
-one wins. Like the rest of Rota Defaults it seeds and never reaches back, and
-like a Pin it is a person's decision, not held to the allocator's rules
-(ADR 0013).
+A rule in Rota Defaults — a `DTSTART;VALUE=DATE:` line and an RRULE — that
+picks out some of the Shifts the pattern generates and changes them as a rota
+is defined: their start time within the day, their length, their Shape, and
+Pins. One that states a time matches the Shift generated at that time; one that
+does not matches every Shift starting on the date. It matches the generated
+start, never a moved one. Overrides are a list, and a later one wins. Like the
+rest of Rota Defaults it seeds and never reaches back, and like a Pin it is a
+person's decision, not held to the allocator's rules (ADR 0013, ADR 0014).
 _Avoid_: standing preallocation (retired), exception, rule (alone)
 
 **Allocation Settings**:

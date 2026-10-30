@@ -12,13 +12,13 @@ import (
 )
 
 // twoShiftSundays generates a morning and an evening Shift every Sunday.
-const twoShiftSundays = "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30"
+var twoShiftSundays = patternEntry("20260802T100000", "PT2H", "FREQ=WEEKLY;BYDAY=SU") + "\n" + weeklySunday
 
 // firstSundayOverride matches every Shift on the first Sunday of a month,
 // counted from the rota defaults' own Start from (itself a first Sunday).
 func firstSundayOverride(pins ...db.OverridePin) db.Override {
 	return db.Override{
-		ID: "o-first-sunday", RRule: "FREQ=MONTHLY;BYDAY=1SU", StartFrom: "2026-08-02",
+		ID: "o-first-sunday", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
 		Granularity: db.OverrideMatchesDate, Pins: pins,
 	}
 }
@@ -62,8 +62,8 @@ func TestPlanRota_FirstSundayOverride(t *testing.T) {
 func TestPlanRota_ExactTimeAgainstDate(t *testing.T) {
 	mock := withPattern(definable(), twoShiftSundays)
 	mock.overrides = []db.Override{
-		{ID: "evening", RRule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesTime},
-		{ID: "whole-day", RRule: "FREQ=MONTHLY;BYDAY=1SU", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesDate},
+		{ID: "evening", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30", Granularity: db.OverrideMatchesTime},
+		{ID: "whole-day", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=MONTHLY;BYDAY=1SU", Granularity: db.OverrideMatchesDate},
 	}
 
 	plan, err := PlanRota(context.Background(), mock, statedRota(4))
@@ -85,7 +85,7 @@ func TestPlanRota_ExactTimeAgainstDate(t *testing.T) {
 // person replaces theirs. Reordering the same two changes the result.
 func TestPlanRota_LaterOverrideWins(t *testing.T) {
 	small := db.Override{
-		ID: "small", RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesDate,
+		ID: "small", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate,
 		SetsShape: true, Seats: []db.OverrideSeat{{RoleID: "role-service-volunteer", Seats: 2}},
 		Pins: []db.OverridePin{
 			{ID: "p-small-alice", RoleID: "role-service-volunteer", VolunteerID: "v1"},
@@ -93,7 +93,7 @@ func TestPlanRota_LaterOverrideWins(t *testing.T) {
 		},
 	}
 	large := db.Override{
-		ID: "large", RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesDate,
+		ID: "large", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate,
 		SetsShape: true, Seats: []db.OverrideSeat{{RoleID: "role-team-lead", Seats: 1}, {RoleID: "role-service-volunteer", Seats: 6}},
 		Pins: []db.OverridePin{
 			{ID: "p-large-alice", RoleID: "role-team-lead", VolunteerID: "v1"},
@@ -125,8 +125,8 @@ func TestPlanRota_LaterOverrideWins(t *testing.T) {
 func TestPlanRota_ReportsAnOverrideThatMatchesNothing(t *testing.T) {
 	mock := definable()
 	mock.overrides = []db.Override{
-		{ID: "old-time", RRule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=18;BYMINUTE=0", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesTime},
-		{ID: "saturdays", RRule: "FREQ=WEEKLY;BYDAY=SA", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesDate},
+		{ID: "old-time", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=18;BYMINUTE=0", Granularity: db.OverrideMatchesTime},
+		{ID: "saturdays", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SA", Granularity: db.OverrideMatchesDate},
 	}
 
 	plan, err := PlanRota(context.Background(), mock, statedRota(4))
@@ -138,11 +138,11 @@ func TestPlanRota_ReportsAnOverrideThatMatchesNothing(t *testing.T) {
 	assert.False(t, plan.Overrides[1].MissedByTime)
 }
 
-// Nothing before an Override's own Start from is touched.
-func TestPlanRota_OverrideCountsFromItsStartFrom(t *testing.T) {
+// Nothing before an Override's own DTSTART is touched.
+func TestPlanRota_OverrideCountsFromItsDTSTART(t *testing.T) {
 	mock := definable()
 	mock.overrides = []db.Override{
-		{ID: "later", RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-08-16", Granularity: db.OverrideMatchesDate},
+		{ID: "later", RRule: "DTSTART;VALUE=DATE:20260816\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate},
 	}
 
 	plan, err := PlanRota(context.Background(), mock, statedRota(4))
@@ -159,7 +159,7 @@ func TestPlanRota_RefusesAnUnreadableOverride(t *testing.T) {
 	mock := definable()
 	mock.overrides = []db.Override{
 		firstSundayOverride(),
-		{ID: "broken", RRule: "FREQ=SOMETIMES", StartFrom: "2026-08-02", Granularity: db.OverrideMatchesDate},
+		{ID: "broken", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=SOMETIMES", Granularity: db.OverrideMatchesDate},
 	}
 
 	plan, err := PlanRota(context.Background(), mock, statedRota(4))
