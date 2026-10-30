@@ -1,6 +1,7 @@
 package shiftpattern
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -8,11 +9,24 @@ import (
 )
 
 // An Override picks out some of the Shifts a pattern generates with a rule of
-// its own (ADR 0013). It is read by the same parser as a pattern line, and
-// described by the same words, so a rule means one thing wherever it is
-// written. What differs is that it need not state a time, and what that
-// decides: with BYHOUR and BYMINUTE it picks out the Shift generated at
-// exactly that time, and without either every Shift on the dates it names.
+// its own (ADR 0013): a DTSTART date it counts from and an RRULE, with no
+// VEVENT around them, so what an Override matches stays apart from what it
+// sets (ADR 0014). The RRULE is read by the same parser as a pattern entry's,
+// and described by the same words, so a rule means one thing wherever it is
+// written. What differs is what its time decides: with BYHOUR and BYMINUTE it
+// picks out the Shift generated at exactly that time, and without either every
+// Shift on the dates it names.
+
+// Line is an Override's rule, read: what it says in plain English, or what is
+// wrong with it.
+type Line struct {
+	Text string
+	// Description says what the rule picks out, e.g. "Every month on the
+	// first Sunday, from 1 Nov 2026". Empty when it has problems.
+	Description string
+	// Problems is everything wrong with it, each a lowercase sentence.
+	Problems []string
+}
 
 // Rule is an Override's rule that can be used.
 type Rule struct {
@@ -20,36 +34,91 @@ type Rule struct {
 	exact bool
 }
 
-// ReadRule reads an Override's rule counted from startFrom: what it says, or
-// what is wrong with it, and the Rule when it can be used. Only startFrom's
-// date is used, as for a pattern.
-func ReadRule(text string, startFrom time.Time) (Line, *Rule) {
-	trimmed := strings.TrimSpace(text)
-	line := Line{Number: 1, Text: trimmed}
-	switch {
-	case trimmed == "":
-		line.Problems = []string{"the rule is empty - write one RRULE, like FREQ=MONTHLY;BYDAY=1SU"}
-		return line, nil
-	case strings.Contains(trimmed, "\n"):
-		line.Problems = []string{"an Override is one rule, on one line"}
+// ReadRule reads an Override's rule: what it says, or what is wrong with it,
+// and the Rule when it can be used.
+func ReadRule(text string) (Line, *Rule) {
+	line := Line{Text: strings.TrimSpace(text)}
+	lines := contentLines(text)
+	if len(lines) == 0 {
+		line.Problems = []string{"the rule is empty - write a DTSTART and an RRULE, like DTSTART;VALUE=DATE:20261101 and RRULE:FREQ=MONTHLY;BYDAY=1SU"}
 		return line, nil
 	}
 
-	option, problems := parseLine(trimmed, false)
-	if len(problems) > 0 {
-		line.Problems = problems
+	var dtstart, rule *contentLine
+	for _, l := range lines {
+		l := l
+		switch {
+		case l.Name == "BEGIN" || l.Name == "END":
+			line.Problems = appendOnce(line.Problems, "an Override is a DTSTART and an RRULE, not a VEVENT - write the two lines on their own")
+		case l.Name == "DTSTART":
+			if dtstart != nil {
+				line.Problems = append(line.Problems, "DTSTART appears twice")
+				continue
+			}
+			dtstart = &l
+		case l.isRuleLine():
+			if rule != nil {
+				line.Problems = append(line.Problems, "RRULE appears twice - an Override is one rule")
+				continue
+			}
+			rule = &l
+		case refusedProperty(l.Name) != "":
+			line.Problems = append(line.Problems, refusedProperty(l.Name))
+		default:
+			line.Problems = append(line.Problems, fmt.Sprintf("%q is not part of an Override's rule - it is a DTSTART and an RRULE", l.Raw))
+		}
+	}
+
+	var anchor time.Time
+	if dtstart == nil {
+		line.Problems = append(line.Problems, "DTSTART is missing - write the date it counts from, like DTSTART;VALUE=DATE:20261101")
+	} else if at, problem := ruleStart(*dtstart); problem != "" {
+		line.Problems = append(line.Problems, problem)
+	} else {
+		anchor = at
+	}
+
+	var option rrule.ROption
+	if rule == nil {
+		line.Problems = append(line.Problems, "RRULE is missing - write which shifts it matches, like RRULE:FREQ=MONTHLY;BYDAY=1SU")
+	} else {
+		var problems []string
+		option, problems = parseRule(rule.Value)
+		line.Problems = append(line.Problems, problems...)
+		if (len(option.Byhour) > 0) != (len(option.Byminute) > 0) {
+			line.Problems = append(line.Problems, "give BYHOUR and BYMINUTE together for shifts starting at that time, or neither for every shift on those days")
+		}
+	}
+	if len(line.Problems) > 0 {
 		return line, nil
 	}
 
-	anchor := Day(startFrom)
 	option.Dtstart = anchor
-	rule, err := rrule.NewRRule(option)
+	compiled, err := rrule.NewRRule(option)
 	if err != nil {
 		line.Problems = []string{err.Error()}
 		return line, nil
 	}
-	line.Description = describe(option, anchor)
-	return line, &Rule{rule: rule, exact: len(option.Byhour) > 0}
+	line.Description = describe(option, anchor, 0, false)
+	return line, &Rule{rule: compiled, exact: len(option.Byhour) > 0}
+}
+
+// ruleStart reads an Override's DTSTART, which is a date: the midnight it
+// counts from. A time belongs in BYHOUR and BYMINUTE, where it decides what
+// the Override matches.
+func ruleStart(l contentLine) (time.Time, string) {
+	value := l.Value
+	if len(value) != 8 || strings.ContainsAny(value, "Tt") {
+		if strings.ContainsAny(value, "Tt") {
+			return time.Time{}, "an Override's DTSTART is a date, like DTSTART;VALUE=DATE:20261101 - give a time with BYHOUR and BYMINUTE"
+		}
+		return time.Time{}, fmt.Sprintf("DTSTART %q is not a date like 20261101", value)
+	}
+	day, err := time.Parse("20060102", value)
+	if err != nil {
+		return time.Time{}, fmt.Sprintf("DTSTART %q is not a date like 20261101", value)
+	}
+	return day, ""
 }
 
 // Exact is whether the rule names a time, and so matches only the Shift

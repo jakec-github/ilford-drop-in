@@ -105,17 +105,14 @@ var testShape = []db.DefaultShapeSeat{
 func definable() *mockDB {
 	return &mockDB{
 		defaults: db.RotaDefaults{
-			ShiftPattern:       weeklySunday,
-			PatternStartFrom:   "2026-08-02",
-			ShiftLengthMinutes: 120,
-			ShiftTimezone:      "Europe/London",
+			ShiftPattern:  weeklySunday,
+			ShiftTimezone: "Europe/London",
 		},
 		shape: testShape,
 	}
 }
 
-// withPattern points a deployment at another Shift pattern, counted from the
-// same Start from.
+// withPattern points a deployment at another Shift pattern.
 func withPattern(m *mockDB, pattern string) *mockDB {
 	m.defaults.ShiftPattern = pattern
 	return m
@@ -219,8 +216,7 @@ func TestDefineRota_MintsTheNextShiftsThePatternGenerates(t *testing.T) {
 // the day after it: on a day with two Shifts, a rota that stopped after the
 // morning one is followed by the evening one that same day.
 func TestDefineRota_CarriesOnFromTheShiftTheLastRotaStoppedAfter(t *testing.T) {
-	mock := withPattern(definable(),
-		"RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30")
+	mock := withPattern(definable(), twoShiftSundays)
 	pastRota(mock, "previous",
 		existing("a", "2026-08-02T10:00:00"),
 		existing("b", "2026-08-02T19:30:00"),
@@ -245,11 +241,11 @@ func TestDefineRota_LeavesAGapWithNotBefore(t *testing.T) {
 	assert.Equal(t, []string{"2026-09-06T19:30:00", "2026-09-13T19:30:00"}, starts(result.Shifts))
 }
 
-// "Every other week" counts from Start from rather than from where the last
-// rota stopped, so a rota that stopped on the wrong week does not move the
-// fortnight.
-func TestDefineRota_EveryOtherWeekCountsFromStartFrom(t *testing.T) {
-	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;BYHOUR=19;BYMINUTE=30")
+// "Every other week" counts from the entry's DTSTART rather than from where
+// the last rota stopped, so a rota that stopped on the wrong week does not move
+// the fortnight.
+func TestDefineRota_EveryOtherWeekCountsFromDTSTART(t *testing.T) {
+	mock := withPattern(definable(), patternEntry("20260802T193000", "PT2H", "FREQ=WEEKLY;INTERVAL=2;BYDAY=SU"))
 	// Stopped after the 9th, which is not one of the pattern's weeks.
 	pastRota(mock, "previous", existing("a", "2026-08-09T19:30:00"))
 
@@ -347,10 +343,9 @@ func TestDefineRota_AnOverridesShapeReplacesTheDefault(t *testing.T) {
 // the next rota carries on from 21:00, where the pattern put it: the move is
 // what an Organiser asked of that one evening, not where the pattern is up to.
 func TestDefineRota_AnOverrideMovesAShiftAndTheNextRotaCarriesOn(t *testing.T) {
-	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;BYDAY=SA;BYHOUR=21;BYMINUTE=0")
-	mock.defaults.PatternStartFrom = "2026-08-01"
+	mock := withPattern(definable(), patternEntry("20260801T210000", "PT2H", "FREQ=WEEKLY;BYDAY=SA"))
 	mock.overrides = []db.Override{{
-		ID: "early", RRule: "FREQ=MONTHLY;BYDAY=-1SA;BYHOUR=21;BYMINUTE=0", StartFrom: "2026-08-01",
+		ID: "early", RRule: "DTSTART;VALUE=DATE:20260801\nRRULE:FREQ=MONTHLY;BYDAY=-1SA;BYHOUR=21;BYMINUTE=0",
 		Granularity: db.OverrideMatchesTime, StartTime: "19:00",
 	}}
 
@@ -379,9 +374,9 @@ func TestDefineRota_AnOverrideMovesAShiftAndTheNextRotaCarriesOn(t *testing.T) {
 func TestPlanRota_AnOverrideMovesAndLengthensAShift(t *testing.T) {
 	mock := withPattern(definable(), twoShiftSundays)
 	mock.overrides = []db.Override{
-		{ID: "late", RRule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30", StartFrom: "2026-08-02",
+		{ID: "late", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
 			Granularity: db.OverrideMatchesTime, LengthMinutes: 300},
-		{ID: "early", RRule: "FREQ=MONTHLY;BYDAY=1SU;BYHOUR=19;BYMINUTE=30", StartFrom: "2026-08-02",
+		{ID: "early", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=MONTHLY;BYDAY=1SU;BYHOUR=19;BYMINUTE=30",
 			Granularity: db.OverrideMatchesTime, StartTime: "04:00"},
 	}
 
@@ -406,7 +401,7 @@ func TestPlanRota_AnOverrideMovesAndLengthensAShift(t *testing.T) {
 func TestDefineRota_RefusesAnOverrideLengtheningIntoTheNextShift(t *testing.T) {
 	mock := withPattern(definable(), twoShiftSundays)
 	mock.overrides = []db.Override{{
-		ID: "long", RRule: "FREQ=MONTHLY;BYDAY=1SU;BYHOUR=10;BYMINUTE=0", StartFrom: "2026-08-02",
+		ID: "long", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=MONTHLY;BYDAY=1SU;BYHOUR=10;BYMINUTE=0",
 		Granularity: db.OverrideMatchesTime, LengthMinutes: 600,
 	}}
 
@@ -480,7 +475,7 @@ func TestDefineRota_RefusesWithoutAShiftPattern(t *testing.T) {
 // A pattern that has run out — a COUNT or an UNTIL spent — cannot fill the
 // rota, and the refusal says how many it could.
 func TestDefineRota_RefusesWhenThePatternRunsOut(t *testing.T) {
-	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30;COUNT=3")
+	mock := withPattern(definable(), patternEntry("20260802T193000", "PT2H", "FREQ=WEEKLY;BYDAY=SU;COUNT=3"))
 
 	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	assert.Nil(t, result)
@@ -507,7 +502,7 @@ func TestDefineRota_RefusesAShiftThatOverlapsOneAlreadyDefined(t *testing.T) {
 // A length longer than the gap between two generated starts makes a rota
 // overlap itself, which is refused for the same reason.
 func TestDefineRota_RefusesShiftsThatOverlapEachOther(t *testing.T) {
-	mock := withPattern(definable(), "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10,11;BYMINUTE=0")
+	mock := withPattern(definable(), patternEntry("20260802T100000", "PT2H", "FREQ=WEEKLY;BYDAY=SU;BYHOUR=10,11;BYMINUTE=0"))
 
 	result, err := DefineRota(context.Background(), mock, definableRoster(), nil, zap.NewNop(), statedRota(4))
 	assert.Nil(t, result)
@@ -680,4 +675,85 @@ func TestFindLatestRotation(t *testing.T) {
 func TestFindLatestRotation_Empty(t *testing.T) {
 	latest := utils.FindLatestRotation([]db.Rotation{})
 	assert.Nil(t, latest)
+}
+
+// Each Shift runs as long as the entry that made it (ADR 0014): a Sunday
+// evening of three hours and a Tuesday evening of four.
+func TestPlanRota_EachShiftTakesItsEntrysLength(t *testing.T) {
+	mock := withPattern(definable(),
+		patternEntry("20260802T193000", "PT3H", "FREQ=WEEKLY;BYDAY=SU")+"\n"+
+			patternEntry("20260804T190000", "PT4H", "FREQ=WEEKLY;BYDAY=TU"))
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(4))
+	require.NoError(t, err)
+	require.NoError(t, plan.Refusal)
+	assert.Equal(t, []string{
+		"2026-08-02T19:30:00", "2026-08-04T19:00:00", "2026-08-09T19:30:00", "2026-08-11T19:00:00",
+	}, starts(plan.Shifts))
+	var ends []string
+	for _, s := range plan.Shifts {
+		ends = append(ends, s.EndAt)
+	}
+	assert.Equal(t, []string{
+		"2026-08-02T22:30:00", "2026-08-04T23:00:00", "2026-08-09T22:30:00", "2026-08-11T23:00:00",
+	}, ends)
+}
+
+// Two entries each count "every other week" from their own DTSTART, so a
+// Sunday fortnight and a Wednesday fortnight a week apart interleave.
+func TestPlanRota_EachEntryCountsItsIntervalFromItsOwnDTSTART(t *testing.T) {
+	mock := withPattern(definable(),
+		patternEntry("20260802T193000", "PT2H", "FREQ=WEEKLY;INTERVAL=2;BYDAY=SU")+"\n"+
+			patternEntry("20260812T190000", "PT2H", "FREQ=WEEKLY;INTERVAL=2;BYDAY=WE"))
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(4))
+	require.NoError(t, err)
+	require.NoError(t, plan.Refusal)
+	assert.Equal(t, []string{
+		"2026-08-02T19:30:00", "2026-08-12T19:00:00", "2026-08-16T19:30:00", "2026-08-26T19:00:00",
+	}, starts(plan.Shifts))
+}
+
+// BYSETPOS is allowed: the last weekday of every month.
+func TestPlanRota_TheLastWeekdayOfTheMonth(t *testing.T) {
+	mock := withPattern(definable(), patternEntry("20260831T100000", "PT2H", "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"))
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(4))
+	require.NoError(t, err)
+	require.NoError(t, plan.Refusal)
+	assert.Equal(t, []string{
+		"2026-08-31T10:00:00", "2026-09-30T10:00:00", "2026-10-30T10:00:00", "2026-11-30T10:00:00",
+	}, starts(plan.Shifts))
+}
+
+// An Override that moves a Shift but sets no length leaves it as long as its
+// own entry made it, not some length of the pattern's as a whole.
+func TestPlanRota_AnOverrideWithNoLengthKeepsTheEntrysLength(t *testing.T) {
+	mock := withPattern(definable(),
+		patternEntry("20260802T100000", "PT1H", "FREQ=WEEKLY;BYDAY=SU")+"\n"+
+			patternEntry("20260802T193000", "PT3H", "FREQ=WEEKLY;BYDAY=SU"))
+	mock.overrides = []db.Override{{
+		ID: "earlier", RRule: "DTSTART;VALUE=DATE:20260802\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
+		Granularity: db.OverrideMatchesTime, StartTime: "18:00",
+	}}
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(2))
+	require.NoError(t, err)
+	require.NoError(t, plan.Refusal)
+	assert.Equal(t, "2026-08-02T11:00:00", plan.Shifts[0].EndAt)
+	assert.Equal(t, "2026-08-02T18:00:00", plan.Shifts[1].StartAt)
+	assert.Equal(t, "2026-08-02T21:00:00", plan.Shifts[1].EndAt, "moved, it still runs its entry's three hours")
+}
+
+// A stored pattern the Organisation's zone no longer reads — a TZID for the
+// zone it was in before a change — refuses the rota and says why.
+func TestPlanRota_RefusesAPatternTheZoneNoLongerReads(t *testing.T) {
+	mock := withPattern(definable(),
+		"BEGIN:VEVENT\nDTSTART;TZID=Europe/London:20260802T193000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY\nEND:VEVENT")
+	mock.defaults.ShiftTimezone = "America/New_York"
+
+	plan, err := PlanRota(context.Background(), mock, statedRota(2))
+	require.NoError(t, err)
+	require.ErrorIs(t, plan.Refusal, ErrInvalidInput)
+	assert.Contains(t, plan.Refusal.Error(), "the shift pattern in the rota defaults cannot be used")
 }

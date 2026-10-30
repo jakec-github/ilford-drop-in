@@ -3,12 +3,13 @@ package devmode_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/jakechorley/ilford-drop-in/internal/devmode"
-	"github.com/jakechorley/ilford-drop-in/pkg/db"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 	"github.com/jakechorley/ilford-drop-in/pkg/db/dbtest"
 )
 
@@ -25,9 +26,12 @@ func TestSeedRotaDefaults(t *testing.T) {
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30", defaults.ShiftPattern)
-	assert.NotEmpty(t, defaults.PatternStartFrom)
-	assert.Equal(t, 120, defaults.ShiftLengthMinutes)
+	// Every Sunday at 19:30 for two hours, from the coming Sunday — and a
+	// pattern the app itself would save, not merely a string.
+	assert.Contains(t, defaults.ShiftPattern, "T193000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY;BYDAY=SU\n")
+	pattern, err := shiftpattern.Compile(defaults.ShiftPattern, defaults.ShiftTimezone)
+	require.NoError(t, err)
+	assert.Equal(t, time.Sunday, pattern.First().Weekday())
 	assert.Equal(t, "Europe/London", defaults.ShiftTimezone)
 
 	// And the allocator rules, for the same reason: a dev stack that could not
@@ -47,12 +51,8 @@ func TestSeedRotaDefaultsLeavesSettingsAlone(t *testing.T) {
 	database, _ := dbtest.New(t)
 	ctx := context.Background()
 
-	require.NoError(t, database.SaveShiftPattern(ctx, db.RotaDefaults{
-		ShiftPattern:       "RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
-		PatternStartFrom:   "2026-11-01",
-		ShiftLengthMinutes: 195,
-		ShiftTimezone:      "UTC",
-	}))
+	daily := "BEGIN:VEVENT\nDTSTART:20261101T090000\nDURATION:PT3H15M\nRRULE:FREQ=DAILY\nEND:VEVENT"
+	require.NoError(t, database.SaveShiftPattern(ctx, daily))
 
 	seeded, err := devmode.SeedRotaDefaults(ctx, database)
 	require.NoError(t, err)
@@ -60,5 +60,5 @@ func TestSeedRotaDefaultsLeavesSettingsAlone(t *testing.T) {
 
 	defaults, err := database.GetRotaDefaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0", defaults.ShiftPattern)
+	assert.Equal(t, daily, defaults.ShiftPattern)
 }

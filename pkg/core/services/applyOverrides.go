@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 )
 
@@ -82,7 +83,7 @@ func applyOverrides(rows []db.Override, shifts []db.Shift) ([]OverriddenShift, [
 	reach := make([]OverrideReach, 0, len(rows))
 	for n, row := range rows {
 		number := n + 1
-		line, rule := readOverrideRule(row.RRule, row.StartFrom)
+		line, rule := shiftpattern.ReadRule(row.RRule)
 		if rule == nil {
 			return nil, nil, wrapf(ErrInvalidInput,
 				"override %d cannot be used - %s; correct it in the rota defaults",

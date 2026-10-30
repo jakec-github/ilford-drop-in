@@ -34,7 +34,7 @@ func TestOverrideEndpoints(t *testing.T) {
 	handler := newTestHandler(store, testVolunteers())
 
 	rec := doRequest(t, handler, http.MethodPost, "/api/rota-defaults/overrides",
-		`{"rrule":"FREQ=MONTHLY;BYDAY=1SU","startFrom":"2026-11-01","pins":[
+		`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=MONTHLY;BYDAY=1SU","pins":[
 			{"roleId":"role-service-volunteer","custom":"St John's team"},
 			{"roleId":"role-team-lead","volunteerId":"alice"}]}`, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
@@ -42,7 +42,7 @@ func TestOverrideEndpoints(t *testing.T) {
 	require.Len(t, overrides, 1)
 	first := overrides[0]
 	assert.Equal(t, 1, first.Number)
-	assert.Equal(t, "2026-11-01", first.StartFrom)
+	assert.Contains(t, first.Description, "from 1 Nov 2026")
 	assert.Equal(t, "date", first.Granularity)
 	assert.NotEmpty(t, first.Description)
 	assert.Empty(t, first.Problems)
@@ -53,7 +53,7 @@ func TestOverrideEndpoints(t *testing.T) {
 	assert.Equal(t, "St John's team", first.Pins[1].Name)
 
 	rec = doRequest(t, handler, http.MethodPost, "/api/rota-defaults/overrides",
-		`{"rrule":"FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30","startFrom":"2026-11-01","shape":[]}`, organiserCookie())
+		`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30","shape":[]}`, organiserCookie())
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	overrides = overridesOf(t, rec)
 	require.Len(t, overrides, 2)
@@ -64,12 +64,12 @@ func TestOverrideEndpoints(t *testing.T) {
 	assert.Empty(t, *second.Shape, "an empty Shape asks for nobody")
 
 	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/overrides/"+first.ID,
-		`{"rrule":"FREQ=MONTHLY;BYDAY=1SU","startFrom":"2026-12-06","shape":[{"roleId":"role-service-volunteer","count":2}],"pins":[]}`,
+		`{"rrule":"DTSTART;VALUE=DATE:20261206\nRRULE:FREQ=MONTHLY;BYDAY=1SU","shape":[{"roleId":"role-service-volunteer","count":2}],"pins":[]}`,
 		organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	overrides = overridesOf(t, rec)
 	assert.Equal(t, []string{first.ID, second.ID}, overrideIDsOf(overrides), "an edit keeps its place")
-	assert.Equal(t, "2026-12-06", overrides[0].StartFrom)
+	assert.Equal(t, "DTSTART;VALUE=DATE:20261206\nRRULE:FREQ=MONTHLY;BYDAY=1SU", overrides[0].RRule)
 	require.NotNil(t, overrides[0].Shape)
 	assert.Equal(t, []seatResponse{{RoleID: "role-service-volunteer", Role: "Service volunteer", Count: 2}}, *overrides[0].Shape)
 	assert.Empty(t, overrides[0].Pins)
@@ -77,7 +77,7 @@ func TestOverrideEndpoints(t *testing.T) {
 	assert.Nil(t, overrides[0].LengthMinutes, "and its length")
 
 	rec = doRequest(t, handler, http.MethodPut, "/api/rota-defaults/overrides/"+first.ID,
-		`{"rrule":"FREQ=MONTHLY;BYDAY=1SU","startFrom":"2026-12-06","startTime":"18:00","lengthMinutes":150}`,
+		`{"rrule":"DTSTART;VALUE=DATE:20261206\nRRULE:FREQ=MONTHLY;BYDAY=1SU","startTime":"18:00","lengthMinutes":150}`,
 		organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	overrides = overridesOf(t, rec)
@@ -102,13 +102,17 @@ func TestOverrideEndpoints(t *testing.T) {
 	assert.Len(t, overridesOf(t, rec), 1)
 }
 
-// A blank Start from is today, as for the pattern.
-func TestAddOverrideStartsTodayByDefault(t *testing.T) {
-	store := &mockStore{}
-	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rota-defaults/overrides",
-		`{"rrule":"FREQ=WEEKLY;BYDAY=SU"}`, organiserCookie())
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-	assert.Regexp(t, `^\d{4}-\d{2}-\d{2}$`, overridesOf(t, rec)[0].StartFrom)
+// The date a rule counts from is its DTSTART line now (ADR 0014): a rule
+// without one is refused, and so is the Start from field it replaced.
+func TestAddOverrideNeedsADTSTART(t *testing.T) {
+	for _, body := range []string{
+		`{"rrule":"FREQ=WEEKLY;BYDAY=SU"}`,
+		`{"rrule":"FREQ=WEEKLY;BYDAY=SU","startFrom":"2026-11-01"}`,
+	} {
+		store := &mockStore{}
+		rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rota-defaults/overrides", body, organiserCookie())
+		assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
 }
 
 // An Override is refused only for what cannot be represented or read. Pinning
@@ -118,25 +122,25 @@ func TestAddOverrideRejectsBadInput(t *testing.T) {
 		body   string
 		status int
 	}{
-		"an unreadable rule":       {`{"rrule":"FREQ=SOMETIMES","startFrom":"2026-11-01"}`, http.StatusBadRequest},
-		"an empty rule":            {`{"rrule":"  ","startFrom":"2026-11-01"}`, http.StatusBadRequest},
-		"an hour without a minute": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU;BYHOUR=10","startFrom":"2026-11-01"}`, http.StatusBadRequest},
-		"a start from not a date":  {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","startFrom":"1 November"}`, http.StatusBadRequest},
-		"an unknown role":          {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"nope","custom":"x"}]}`, http.StatusBadRequest},
-		"a pin naming nobody":      {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead"}]}`, http.StatusBadRequest},
-		"a pin naming two": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"alice","custom":"x"}]}`,
+		"an unreadable rule":       {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=SOMETIMES"}`, http.StatusBadRequest},
+		"an empty rule":            {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:  "}`, http.StatusBadRequest},
+		"an hour without a minute": {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10"}`, http.StatusBadRequest},
+		"a start from not a date":  {`{"rrule":"DTSTART;VALUE=DATE:1 November\nRRULE:FREQ=WEEKLY;BYDAY=SU"}`, http.StatusBadRequest},
+		"an unknown role":          {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"nope","custom":"x"}]}`, http.StatusBadRequest},
+		"a pin naming nobody":      {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead"}]}`, http.StatusBadRequest},
+		"a pin naming two": {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"alice","custom":"x"}]}`,
 			http.StatusBadRequest},
-		"one person pinned twice": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[
+		"one person pinned twice": {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","pins":[
 			{"roleId":"role-team-lead","volunteerId":"alice"},{"roleId":"role-service-volunteer","volunteerId":"alice"}]}`,
 			http.StatusBadRequest},
-		"a seat count of zero": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","shape":[{"roleId":"role-team-lead","count":0}]}`,
+		"a seat count of zero": {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","shape":[{"roleId":"role-team-lead","count":0}]}`,
 			http.StatusBadRequest},
-		"a volunteer not on the roster": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"zed"}]}`,
+		"a volunteer not on the roster": {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"zed"}]}`,
 			http.StatusNotFound},
-		"an unknown field": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","colour":"blue"}`, http.StatusBadRequest},
-		"a start time not a time": {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","startTime":"25:00"}`, http.StatusBadRequest},
-		"a length of nothing":     {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","lengthMinutes":0}`, http.StatusBadRequest},
-		"a length past a day":     {`{"rrule":"FREQ=WEEKLY;BYDAY=SU","lengthMinutes":1441}`, http.StatusBadRequest},
+		"an unknown field":        {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","colour":"blue"}`, http.StatusBadRequest},
+		"a start time not a time": {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","startTime":"25:00"}`, http.StatusBadRequest},
+		"a length of nothing":     {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","lengthMinutes":0}`, http.StatusBadRequest},
+		"a length past a day":     {`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","lengthMinutes":1441}`, http.StatusBadRequest},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -151,7 +155,7 @@ func TestAddOverrideRejectsBadInput(t *testing.T) {
 	// Bob is not a Team lead, and that is no reason to refuse.
 	store := &mockStore{}
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodPost, "/api/rota-defaults/overrides",
-		`{"rrule":"FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"bob"}]}`, organiserCookie())
+		`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU","pins":[{"roleId":"role-team-lead","volunteerId":"bob"}]}`, organiserCookie())
 	assert.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }
 
@@ -159,7 +163,7 @@ func TestEditingAMissingOverrideIsNotFound(t *testing.T) {
 	handler := newTestHandler(&mockStore{}, testVolunteers())
 
 	rec := doRequest(t, handler, http.MethodPut, "/api/rota-defaults/overrides/nope",
-		`{"rrule":"FREQ=WEEKLY;BYDAY=SU","startFrom":"2026-11-01"}`, organiserCookie())
+		`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"}`, organiserCookie())
 	assert.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 
 	rec = doRequest(t, handler, http.MethodDelete, "/api/rota-defaults/overrides/nope", "", organiserCookie())
@@ -170,8 +174,8 @@ func TestEditingAMissingOverrideIsNotFound(t *testing.T) {
 // added, or naming one since removed — is a conflict, and moves nothing.
 func TestReorderOverridesRefusesAStaleList(t *testing.T) {
 	store := &mockStore{overrides: []db.Override{
-		{ID: "a", RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-11-01", Granularity: db.OverrideMatchesDate},
-		{ID: "b", RRule: "FREQ=WEEKLY;BYDAY=SA", StartFrom: "2026-11-01", Granularity: db.OverrideMatchesDate},
+		{ID: "a", RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate},
+		{ID: "b", RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SA", Granularity: db.OverrideMatchesDate},
 	}}
 	handler := newTestHandler(store, testVolunteers())
 
@@ -190,7 +194,7 @@ func TestReadOverrideRuleEndpoint(t *testing.T) {
 
 	var reading overrideRuleResponse
 	rec := doRequest(t, handler, http.MethodPost, "/api/rota-defaults/overrides/reading",
-		`{"rrule":"FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0","startFrom":"2026-11-01"}`, organiserCookie())
+		`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &reading))
 	assert.Equal(t, "time", reading.Granularity)
@@ -198,7 +202,7 @@ func TestReadOverrideRuleEndpoint(t *testing.T) {
 	assert.Empty(t, reading.Problems)
 
 	rec = doRequest(t, handler, http.MethodPost, "/api/rota-defaults/overrides/reading",
-		`{"rrule":"FREQ=WEEKLY;BYDAY=SU;BYMINUTE=0","startFrom":"2026-11-01"}`, organiserCookie())
+		`{"rrule":"DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYMINUTE=0"}`, organiserCookie())
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	reading = overrideRuleResponse{}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &reading))
@@ -223,9 +227,9 @@ type overriddenPlanBody struct {
 // far each Override reached, so the screen can warn about one matching nothing.
 func TestRotaPlanEndpointCarriesTheOverrides(t *testing.T) {
 	store := &mockStore{overrides: []db.Override{
-		{ID: "first-sunday", RRule: "FREQ=MONTHLY;BYDAY=1SU", StartFrom: "2026-01-04", Granularity: db.OverrideMatchesDate,
+		{ID: "first-sunday", RRule: "DTSTART;VALUE=DATE:20260104\nRRULE:FREQ=MONTHLY;BYDAY=1SU", Granularity: db.OverrideMatchesDate,
 			Pins: []db.OverridePin{{ID: "p", RoleID: "role-team-lead", VolunteerID: "alice"}}},
-		{ID: "old-time", RRule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=18;BYMINUTE=0", StartFrom: "2026-01-04", Granularity: db.OverrideMatchesTime,
+		{ID: "old-time", RRule: "DTSTART;VALUE=DATE:20260104\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=18;BYMINUTE=0", Granularity: db.OverrideMatchesTime,
 			SetsShape: true},
 	}}
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/next?shiftCount=2", "", organiserCookie())
@@ -249,7 +253,7 @@ func TestRotaPlanEndpointCarriesTheOverrides(t *testing.T) {
 // run into another is marked, beside the refusal that names it.
 func TestRotaPlanEndpointSaysWhatMovedAndWhatClashes(t *testing.T) {
 	store := &mockStore{overrides: []db.Override{
-		{ID: "early", RRule: "FREQ=MONTHLY;BYDAY=1SU", StartFrom: "2026-01-04", Granularity: db.OverrideMatchesDate,
+		{ID: "early", RRule: "DTSTART;VALUE=DATE:20260104\nRRULE:FREQ=MONTHLY;BYDAY=1SU", Granularity: db.OverrideMatchesDate,
 			StartTime: "17:00", LengthMinutes: 24 * 60},
 	}}
 	rec := doRequest(t, newTestHandler(store, testVolunteers()), http.MethodGet, "/api/rotations/next?shiftCount=2", "", organiserCookie())

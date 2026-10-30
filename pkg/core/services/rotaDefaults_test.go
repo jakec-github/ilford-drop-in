@@ -19,7 +19,8 @@ type stubRotaDefaultsStore struct {
 	defaults        db.RotaDefaults
 	readErr         error
 	writeErr        error
-	saved           []db.RotaDefaults
+	saved           []string
+	savedZones      []string
 	savedAllocation []string
 }
 
@@ -43,12 +44,21 @@ func (s *stubRotaDefaultsStore) GetRotaDefaults(context.Context) (db.RotaDefault
 	return s.defaults, nil
 }
 
-func (s *stubRotaDefaultsStore) SaveShiftPattern(_ context.Context, defaults db.RotaDefaults) error {
+func (s *stubRotaDefaultsStore) SaveShiftPattern(_ context.Context, pattern string) error {
 	if s.writeErr != nil {
 		return s.writeErr
 	}
-	s.saved = append(s.saved, defaults)
-	s.defaults = defaults
+	s.saved = append(s.saved, pattern)
+	s.defaults.ShiftPattern = pattern
+	return nil
+}
+
+func (s *stubRotaDefaultsStore) SaveTimezone(_ context.Context, timezone string) error {
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	s.savedZones = append(s.savedZones, timezone)
+	s.defaults.ShiftTimezone = timezone
 	return nil
 }
 
@@ -66,13 +76,13 @@ func TestRotaDefaultsUnset(t *testing.T) {
 
 func TestRotaDefaultsReadsTheRecord(t *testing.T) {
 	store := &stubRotaDefaultsStore{defaults: db.RotaDefaults{
-		ShiftPattern: weeklySunday, PatternStartFrom: "2026-11-01", ShiftLengthMinutes: 120, ShiftTimezone: "Europe/London",
+		ShiftPattern: weeklySunday, ShiftTimezone: "Europe/London",
 	}}
 
 	defaults, err := RotaDefaults(context.Background(), store)
 	require.NoError(t, err)
 	assert.Equal(t, model.RotaDefaults{
-		ShiftPattern: weeklySunday, PatternStartFrom: "2026-11-01", ShiftLengthMinutes: 120, ShiftTimezone: "Europe/London",
+		ShiftPattern: weeklySunday, ShiftTimezone: "Europe/London",
 	}, defaults)
 }
 

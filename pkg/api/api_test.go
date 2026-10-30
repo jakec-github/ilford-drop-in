@@ -72,7 +72,8 @@ type mockStore struct {
 	// where every deployment starts. rotaDefaultsErr makes the read fail.
 	rotaDefaults            *db.RotaDefaults
 	rotaDefaultsErr         error
-	savedRotaDefaults       []db.RotaDefaults
+	savedPatterns           []string
+	savedZones              []string
 	savedAllocationSettings []string
 	rotaDefaultsWriteErr    error
 
@@ -787,18 +788,33 @@ func (m *mockStore) GetRotaDefaults(context.Context) (db.RotaDefaults, error) {
 	return apiTestRotaDefaults, nil
 }
 
-func (m *mockStore) SaveShiftPattern(_ context.Context, defaults db.RotaDefaults) error {
+// SaveShiftPattern and SaveTimezone each write their own column only, as the
+// real writes do.
+func (m *mockStore) SaveShiftPattern(_ context.Context, pattern string) error {
 	if m.rotaDefaultsWriteErr != nil {
 		return m.rotaDefaultsWriteErr
 	}
-	m.savedRotaDefaults = append(m.savedRotaDefaults, defaults)
-	// The shift pattern section only, as the real write: the Allocation Settings are
-	// UpdateAllocationSettings' to change.
-	if m.rotaDefaults != nil {
-		defaults.AllocationSettings = m.rotaDefaults.AllocationSettings
-	}
-	m.rotaDefaults = &defaults
+	m.savedPatterns = append(m.savedPatterns, pattern)
+	m.editRotaDefaults(func(d *db.RotaDefaults) { d.ShiftPattern = pattern })
 	return nil
+}
+
+func (m *mockStore) SaveTimezone(_ context.Context, timezone string) error {
+	if m.rotaDefaultsWriteErr != nil {
+		return m.rotaDefaultsWriteErr
+	}
+	m.savedZones = append(m.savedZones, timezone)
+	m.editRotaDefaults(func(d *db.RotaDefaults) { d.ShiftTimezone = timezone })
+	return nil
+}
+
+func (m *mockStore) editRotaDefaults(edit func(*db.RotaDefaults)) {
+	defaults := apiTestRotaDefaults
+	if m.rotaDefaults != nil {
+		defaults = *m.rotaDefaults
+	}
+	edit(&defaults)
+	m.rotaDefaults = &defaults
 }
 
 func (m *mockStore) GetDefaultShape(context.Context) ([]db.DefaultShapeSeat, error) {
@@ -851,10 +867,8 @@ func intPtr(i int) *int { return &i }
 // session the real one runs. Every endpoint that renders a time reads these, so
 // they are the fixture rather than a per-test setup.
 var apiTestRotaDefaults = db.RotaDefaults{
-	ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30",
-	PatternStartFrom:   "2026-01-04",
-	ShiftLengthMinutes: 120,
-	ShiftTimezone:      "Europe/London",
+	ShiftPattern:  weeklySunday,
+	ShiftTimezone: "Europe/London",
 }
 
 // apiTestDefaultShape is what a configured Organisation's Shifts ask for, against the

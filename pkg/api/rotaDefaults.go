@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/model"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 )
 
 // rotaDefaultsResponse is the settings record: what an Organiser has decided about
@@ -16,17 +18,16 @@ import (
 // deployment rather than an error — so the client has a state to render, not
 // only a value.
 //
-// Timezone is the one an Organiser chose, or the default when they have not chosen.
-// The fallback is resolved here rather than in the client so there is one answer
-// to what zone the Organisation runs in.
+// ShiftTimezone is the zone an Organiser chose, and empty when nobody has: the
+// config page saves the browser's zone on opening when it sees none, so it has
+// to be able to tell. Everything that renders a time reads the zone through
+// the server's own fallback, never this field.
 type rotaDefaultsResponse struct {
-	// ShiftPattern is the RRULE lines as an Organiser wrote them, and
-	// PatternStartFrom the date they count from, "2006-01-02" (ADR 0013).
-	ShiftPattern     string `json:"shiftPattern"`
-	PatternStartFrom string `json:"patternStartFrom"`
-	// ShiftLengthMinutes is how long each Shift runs; zero is unset.
-	ShiftLengthMinutes int    `json:"shiftLengthMinutes"`
-	ShiftTimezone      string `json:"shiftTimezone"`
+	// ShiftPattern is the VEVENT entries as an Organiser wrote them (ADR
+	// 0014), and PatternEntries what each says, read in the zone.
+	ShiftPattern   string                 `json:"shiftPattern"`
+	PatternEntries []patternEntryResponse `json:"patternEntries"`
+	ShiftTimezone  string                 `json:"shiftTimezone"`
 	// DefaultShape is what every Shift asks for, in the order its Seats are
 	// filled. Never null: a Shape nobody has stated is an empty list, which is a
 	// state to render rather than an absence to guard against.
@@ -110,44 +111,56 @@ type seatResponse struct {
 	Count  int    `json:"count"`
 }
 
-// shiftPatternRequest is the Shift pattern section of the settings screen,
-// stated whole. A blank patternStartFrom means today, and a blank
-// shiftTimezone the default.
+// shiftPatternRequest is the Shift pattern, stated whole: VEVENT entries, each
+// with its own DTSTART, DURATION and RRULE.
 type shiftPatternRequest struct {
-	ShiftPattern       string `json:"shiftPattern"`
-	PatternStartFrom   string `json:"patternStartFrom"`
-	ShiftTimezone      string `json:"shiftTimezone"`
-	ShiftLengthMinutes int    `json:"shiftLengthMinutes"`
+	ShiftPattern string `json:"shiftPattern"`
+}
+
+// timezoneRequest is the zone the Organisation's wall-clock times are read in,
+// an IANA name.
+type timezoneRequest struct {
+	ShiftTimezone string `json:"shiftTimezone"`
 }
 
 // shiftPatternPreviewRequest is a pattern being written, and the dates to
 // show its Shifts between: from inclusive, to exclusive, both "2006-01-02".
+// The zone it is read in is the one saved.
 type shiftPatternPreviewRequest struct {
-	ShiftPattern     string `json:"shiftPattern"`
-	PatternStartFrom string `json:"patternStartFrom"`
-	ShiftTimezone    string `json:"shiftTimezone"`
-	From             string `json:"from"`
-	To               string `json:"to"`
+	ShiftPattern string `json:"shiftPattern"`
+	From         string `json:"from"`
+	To           string `json:"to"`
 }
 
 // shiftPatternPreviewResponse is what a pattern says and where its Shifts
-// start. PatternStartFrom is the date it was read from, filled in when the
-// request left it blank. Starts are wall-clock, "2006-01-02T15:04:05", and
-// empty while any line has problems.
+// start. Problems and Warnings are about the text around the entries rather
+// than any one of them. StartsFrom is the earliest entry's date, where the
+// first rota starts, and empty, like Starts, while anything has a problem.
 type shiftPatternPreviewResponse struct {
-	PatternStartFrom string                `json:"patternStartFrom"`
-	Lines            []patternLineResponse `json:"lines"`
-	Starts           []string              `json:"starts"`
+	Entries    []patternEntryResponse `json:"entries"`
+	Problems   []string               `json:"problems"`
+	Warnings   []string               `json:"warnings"`
+	StartsFrom string                 `json:"startsFrom"`
+	Starts     []patternStartResponse `json:"starts"`
 }
 
-// patternLineResponse is one non-blank line of a pattern: its plain-English
-// description, or its problems. Number counts blank lines too, so it is the
-// line an Organiser would count to.
-type patternLineResponse struct {
+// patternEntryResponse is one VEVENT of a pattern: its plain-English
+// description, or its problems, and what in it was read past. Line is where
+// its BEGIN:VEVENT is, counting blank lines, so it is the line an Organiser
+// would count to.
+type patternEntryResponse struct {
 	Number      int      `json:"number"`
-	Text        string   `json:"text"`
+	Line        int      `json:"line"`
 	Description string   `json:"description"`
 	Problems    []string `json:"problems"`
+	Warnings    []string `json:"warnings"`
+}
+
+// patternStartResponse is one Shift the pattern generates: when it starts,
+// wall-clock "2006-01-02T15:04:05", and how long its entry runs.
+type patternStartResponse struct {
+	Start         string `json:"start"`
+	LengthMinutes int    `json:"lengthMinutes"`
 }
 
 // defaultShapeRequest is the Shape section of the settings screen, stated
@@ -189,13 +202,9 @@ func (h *Handler) handleGetRotaDefaults(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusOK, toRotaDefaultsResponse(defaults, shape))
 }
 
-// handleSaveShiftPattern writes the Shift pattern section — the pattern, its
-// Start from, the time zone and the length — and answers with the settings as
-// they now stand, including the Start from and zone filled in for an Organiser
-// who left them blank.
-//
-// PUT rather than PATCH: the four are one section, stated whole. A pattern
-// means something only against the date it counts from.
+// handleSaveShiftPattern writes the Shift pattern and answers with the
+// settings as they now stand. Each entry carries its own start and length
+// (ADR 0014), so the pattern is the whole section.
 func (h *Handler) handleSaveShiftPattern(w http.ResponseWriter, r *http.Request) {
 	var req shiftPatternRequest
 	if err := decodeStrict(r, &req); err != nil {
@@ -203,12 +212,7 @@ func (h *Handler) handleSaveShiftPattern(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err := services.SaveShiftPattern(r.Context(), h.store, services.ShiftPatternParams{
-		Pattern:       req.ShiftPattern,
-		StartFrom:     req.PatternStartFrom,
-		Timezone:      req.ShiftTimezone,
-		LengthMinutes: req.ShiftLengthMinutes,
-	}, h.logger)
+	_, err := services.SaveShiftPattern(r.Context(), h.store, req.ShiftPattern, h.logger)
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
@@ -219,9 +223,27 @@ func (h *Handler) handleSaveShiftPattern(w http.ResponseWriter, r *http.Request)
 	h.writeCurrentSettings(w, r)
 }
 
+// handleSaveTimezone writes the zone the Organisation's times are read in and
+// answers with the settings as they now stand. A zone the server cannot load
+// is refused.
+func (h *Handler) handleSaveTimezone(w http.ResponseWriter, r *http.Request) {
+	var req timezoneRequest
+	if err := decodeStrict(r, &req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	defaults, err := services.SaveTimezone(r.Context(), h.store, req.ShiftTimezone, h.logger)
+	if err != nil {
+		h.writeServiceError(w, err)
+		return
+	}
+	h.writeSettings(w, r, defaults)
+}
+
 // handleShiftPatternPreview reads a pattern that is still being written: what
-// each line means, or what is wrong with it, and where its Shifts start between
-// two dates. POST because it carries a pattern the server has never seen; it
+// each entry means, or what is wrong with it, and where its Shifts start
+// between two dates. POST because it carries a pattern the server has never seen; it
 // writes nothing.
 //
 // It is how the screen describes a pattern and draws its calendar without an
@@ -234,32 +256,44 @@ func (h *Handler) handleShiftPatternPreview(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	preview, err := services.PreviewShiftPattern(services.ShiftPatternPreviewParams{
-		Pattern:   req.ShiftPattern,
-		StartFrom: req.PatternStartFrom,
-		Timezone:  req.ShiftTimezone,
-		From:      req.From,
-		To:        req.To,
+	preview, err := services.PreviewShiftPattern(r.Context(), h.store, services.ShiftPatternPreviewParams{
+		Pattern: req.ShiftPattern,
+		From:    req.From,
+		To:      req.To,
 	})
 	if err != nil {
 		h.writeServiceError(w, err)
 		return
 	}
 
-	lines := make([]patternLineResponse, 0, len(preview.Lines))
-	for _, line := range preview.Lines {
-		lines = append(lines, patternLineResponse{
-			Number:      line.Number,
-			Text:        line.Text,
-			Description: line.Description,
-			Problems:    emptyIfNil(line.Problems),
+	starts := make([]patternStartResponse, 0, len(preview.Starts))
+	for _, start := range preview.Starts {
+		starts = append(starts, patternStartResponse{
+			Start:         start.At.Format(model.ShiftTimestampLayout),
+			LengthMinutes: int(start.Length / time.Minute),
 		})
 	}
 	h.writeJSON(w, http.StatusOK, shiftPatternPreviewResponse{
-		PatternStartFrom: preview.StartFrom,
-		Lines:            lines,
-		Starts:           preview.Starts,
+		Entries:    toPatternEntryResponses(preview.Reading.Entries),
+		Problems:   emptyIfNil(preview.Reading.Problems),
+		Warnings:   emptyIfNil(preview.Reading.Warnings),
+		StartsFrom: preview.StartsFrom,
+		Starts:     starts,
 	})
+}
+
+func toPatternEntryResponses(entries []shiftpattern.Entry) []patternEntryResponse {
+	out := make([]patternEntryResponse, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, patternEntryResponse{
+			Number:      e.Number,
+			Line:        e.Line,
+			Description: e.Description,
+			Problems:    emptyIfNil(e.Problems),
+			Warnings:    emptyIfNil(e.Warnings),
+		})
+	}
+	return out
 }
 
 // handleSaveDefaultShape writes the Shape every Shift starts from and answers
@@ -345,14 +379,21 @@ func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rota
 		})
 	}
 
+	// Read as a rota would be minted from it, so what the screen says about a
+	// saved pattern is what Define Rota will make of it.
+	var entries []shiftpattern.Entry
+	if defaults.ShiftPattern != "" {
+		reading, _ := shiftpattern.Read(defaults.ShiftPattern, defaults.Timezone())
+		entries = reading.Entries
+	}
+
 	return rotaDefaultsResponse{
-		ShiftPattern:       defaults.ShiftPattern,
-		PatternStartFrom:   defaults.PatternStartFrom,
-		ShiftLengthMinutes: defaults.ShiftLengthMinutes,
-		ShiftTimezone:      defaults.Timezone(),
-		DefaultShape:       toSeatResponses(shape),
-		AllocationRules:    rules,
-		RuleLibrary:        library,
+		ShiftPattern:    defaults.ShiftPattern,
+		PatternEntries:  toPatternEntryResponses(entries),
+		ShiftTimezone:   defaults.ShiftTimezone,
+		DefaultShape:    toSeatResponses(shape),
+		AllocationRules: rules,
+		RuleLibrary:     library,
 	}
 }
 

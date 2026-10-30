@@ -38,7 +38,7 @@ func TestOverrideInsertReadUpdateDelete(t *testing.T) {
 	service := seedRole(t, database, "Service volunteer", 2)
 
 	first := db.Override{
-		ID: uuid.New().String(), RRule: "FREQ=MONTHLY;BYDAY=1SU", StartFrom: "2026-11-01",
+		ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=MONTHLY;BYDAY=1SU",
 		Granularity: db.OverrideMatchesDate,
 		Pins: []db.OverridePin{
 			{ID: uuid.New().String(), RoleID: lead, VolunteerID: "alice"},
@@ -47,7 +47,7 @@ func TestOverrideInsertReadUpdateDelete(t *testing.T) {
 	}
 	// A Shape that asks for nobody: set, with no Seats.
 	second := db.Override{
-		ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0", StartFrom: "2026-11-08",
+		ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261108\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=0",
 		Granularity: db.OverrideMatchesTime, SetsShape: true,
 	}
 	require.NoError(t, database.InsertOverride(ctx, first))
@@ -58,8 +58,7 @@ func TestOverrideInsertReadUpdateDelete(t *testing.T) {
 	require.Equal(t, []string{first.ID, second.ID}, overrideIDs(overrides), "a new Override goes last")
 
 	got := overrides[0]
-	assert.Equal(t, "FREQ=MONTHLY;BYDAY=1SU", got.RRule)
-	assert.Equal(t, "2026-11-01", got.StartFrom)
+	assert.Equal(t, "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=MONTHLY;BYDAY=1SU", got.RRule)
 	assert.Equal(t, db.OverrideMatchesDate, got.Granularity)
 	assert.False(t, got.SetsShape)
 	assert.Empty(t, got.Seats)
@@ -116,7 +115,7 @@ func TestOverrideRefusesOneVolunteerPinnedTwice(t *testing.T) {
 	service := seedRole(t, database, "Service volunteer", 2)
 
 	err := database.InsertOverride(ctx, db.Override{
-		ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-11-01",
+		ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU",
 		Granularity: db.OverrideMatchesDate,
 		Pins: []db.OverridePin{
 			{ID: uuid.New().String(), RoleID: lead, VolunteerID: "alice"},
@@ -131,7 +130,7 @@ func TestOverrideRefusesOneVolunteerPinnedTwice(t *testing.T) {
 
 	// A custom entry may repeat, as it may on a Shift.
 	require.NoError(t, database.InsertOverride(ctx, db.Override{
-		ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-11-01",
+		ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU",
 		Granularity: db.OverrideMatchesDate,
 		Pins: []db.OverridePin{
 			{ID: uuid.New().String(), RoleID: service, CustomValue: "Youth group"},
@@ -146,7 +145,7 @@ func TestOverrideReorder(t *testing.T) {
 
 	var ids []string
 	for range 3 {
-		o := db.Override{ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-11-01", Granularity: db.OverrideMatchesDate}
+		o := db.Override{ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate}
 		require.NoError(t, database.InsertOverride(ctx, o))
 		ids = append(ids, o.ID)
 	}
@@ -167,7 +166,7 @@ func TestOverrideReorder(t *testing.T) {
 	// A new one still goes last after a reorder, and after a delete.
 	_, err = database.DeleteOverride(ctx, ids[1])
 	require.NoError(t, err)
-	last := db.Override{ID: uuid.New().String(), RRule: "FREQ=DAILY", StartFrom: "2026-11-01", Granularity: db.OverrideMatchesDate}
+	last := db.Override{ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=DAILY", Granularity: db.OverrideMatchesDate}
 	require.NoError(t, database.InsertOverride(ctx, last))
 	overrides, err = database.GetOverrides(ctx)
 	require.NoError(t, err)
@@ -180,7 +179,7 @@ func TestOverridesBelongToTheirOrganisation(t *testing.T) {
 	other := database.ForOrganisation(dbtest.OtherOrganisation)
 	otherRole := seedRole(t, other, "Elsewhere", 1)
 
-	o := db.Override{ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-11-01", Granularity: db.OverrideMatchesDate}
+	o := db.Override{ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate}
 	require.NoError(t, database.InsertOverride(ctx, o))
 
 	overrides, err := other.GetOverrides(ctx)
@@ -192,7 +191,7 @@ func TestOverridesBelongToTheirOrganisation(t *testing.T) {
 
 	// Another Organisation's Role cannot be pinned or asked for.
 	err = database.InsertOverride(ctx, db.Override{
-		ID: uuid.New().String(), RRule: "FREQ=WEEKLY;BYDAY=SU", StartFrom: "2026-11-01", Granularity: db.OverrideMatchesDate,
+		ID: uuid.New().String(), RRule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU", Granularity: db.OverrideMatchesDate,
 		Pins: []db.OverridePin{{ID: uuid.New().String(), RoleID: otherRole, VolunteerID: "alice"}},
 	})
 	assert.Error(t, err)

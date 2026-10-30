@@ -70,10 +70,8 @@ func TestDefineRotaEndpoint(t *testing.T) {
 func TestDefineRotaEndpoint_MintsFromTheRotaDefaults(t *testing.T) {
 	store := &mockStore{
 		rotaDefaults: &db.RotaDefaults{
-			ShiftPattern:       "RRULE:FREQ=WEEKLY;BYDAY=SA;BYHOUR=18;BYMINUTE=0",
-			PatternStartFrom:   "2026-08-01",
-			ShiftLengthMinutes: 120,
-			ShiftTimezone:      "Europe/London",
+			ShiftPattern:  "BEGIN:VEVENT\nDTSTART:20260801T180000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY;BYDAY=SA\nEND:VEVENT",
+			ShiftTimezone: "Europe/London",
 		},
 		defaultShape: []db.DefaultShapeSeat{{RoleID: "role-service-volunteer", Seats: 2}},
 	}
@@ -95,7 +93,7 @@ func TestDefineRotaEndpoint_MintsFromTheRotaDefaults(t *testing.T) {
 			"the shift asks for the default shape and nothing else")
 	}
 
-	assert.Empty(t, store.savedRotaDefaults, "defining spends the settings; it does not write them")
+	assert.Empty(t, store.savedPatterns, "defining spends the settings; it does not write them")
 	assert.Empty(t, store.savedShapes, "nor the shape")
 }
 
