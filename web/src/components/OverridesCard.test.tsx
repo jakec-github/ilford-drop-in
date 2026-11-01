@@ -3,9 +3,11 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import OverridesCard, { OverrideCard } from "./OverridesCard";
 import type {
   ConfiguredRole,
+  NaturalEditor,
   Override,
   OverrideDraft,
   OverrideRuleReading,
+  OverrideRuleTranslation,
   Volunteer,
 } from "../types";
 
@@ -74,7 +76,21 @@ const STORED: Override = {
   pins: [],
 };
 
-function renderCard(override: Override = STORED) {
+type TranslateRule = (text: string) => Promise<OverrideRuleTranslation>;
+
+// Most tests are of the raw rule, so the card is given no natural editor
+// unless a test asks for one.
+const NO_NATURAL: NaturalEditor = {
+  available: false,
+  reason: "Not turned on here",
+};
+
+function renderCard(
+  override: Override = STORED,
+  natural: NaturalEditor = NO_NATURAL,
+  translate: TranslateRule = () =>
+    Promise.reject(new Error("not asked to translate")),
+) {
   const onSave = mock<(draft: OverrideDraft) => Promise<void>>(() =>
     Promise.resolve(),
   );
@@ -90,6 +106,8 @@ function renderCard(override: Override = STORED) {
       fresh={false}
       busy={false}
       held={false}
+      natural={natural}
+      translateRule={translate}
       onSave={onSave}
       onRemove={() => Promise.resolve()}
       onGrab={() => {}}
@@ -368,5 +386,171 @@ describe("OverridesCard reordering", () => {
       expect.stringContaining("Third"),
       expect.stringContaining("First"),
     ]);
+  });
+});
+
+describe("OverrideCard matches in plain English", () => {
+  const LAST_SUNDAY_EVENING =
+    "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=MONTHLY;BYDAY=-1SU;BYHOUR=19;BYMINUTE=30";
+
+  beforeEach(() => {
+    reading = {
+      granularity: "date",
+      description: "On the first Sunday of every month",
+      problems: [],
+    };
+  });
+
+  const option = (name: string) =>
+    screen.getByRole("button", { name }) as HTMLButtonElement;
+  const switchGroup = () =>
+    screen.getByRole("group", { name: "How override 1 matches" });
+  const describeBox = () =>
+    screen.queryByPlaceholderText(
+      "Describe which shifts it matches in plain English",
+    ) as HTMLTextAreaElement | null;
+  const raw = () =>
+    screen.queryByLabelText("Override 1 rule") as HTMLTextAreaElement | null;
+
+  test("opens on the rule's description where it is available", () => {
+    renderCard(STORED, { available: true });
+    expect(option("Natural").getAttribute("aria-pressed")).toBe("true");
+    expect(raw()).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: /On the first Sunday of every month/,
+      }),
+    ).toBeTruthy();
+    // What it sets is the same form either way.
+    expect(screen.getByLabelText("Who to pin")).toBeTruthy();
+  });
+
+  test("opens raw with the switch locked where it is not, saying why", () => {
+    renderCard(STORED, {
+      available: false,
+      reason: "Set the shift pattern first",
+    });
+    expect(raw()).toBeTruthy();
+    expect(option("Natural").disabled).toBe(true);
+    expect(switchGroup().getAttribute("title")).toBe(
+      "Set the shift pattern first",
+    );
+  });
+
+  test("a generated rule is saved like a typed one, and what it sets is kept", async () => {
+    const translate = mock<TranslateRule>(() =>
+      Promise.resolve({
+        status: "ok",
+        rrule: LAST_SUNDAY_EVENING,
+        granularity: "time",
+        description: "Every month on the last Sunday at 19:30",
+      }),
+    );
+    const onSave = renderCard(
+      { ...STORED, lengthMinutes: 90 },
+      { available: true },
+      translate,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /On the first Sunday of every month/,
+      }),
+    );
+    expect(describeBox()!.value).toBe("On the first Sunday of every month");
+
+    reading = {
+      granularity: "time",
+      description: "Every month on the last Sunday at 19:30",
+      problems: [],
+    };
+    fireEvent.change(describeBox()!, {
+      target: { value: "The last Sunday evening shift" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await settle();
+    await saveWait();
+    await saveWait();
+
+    expect(translate.mock.calls).toEqual([["The last Sunday evening shift"]]);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0]).toEqual({
+      rrule: LAST_SUNDAY_EVENING,
+      startTime: null,
+      lengthMinutes: 90,
+      shape: null,
+      pins: [],
+    });
+    expect(
+      screen.getByRole("button", {
+        name: /Every month on the last Sunday at 19:30/,
+      }),
+    ).toBeTruthy();
+  });
+
+  test("reopened and cancelled, it is the description again and nothing saves", async () => {
+    const onSave = renderCard(STORED, { available: true });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /On the first Sunday of every month/,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(describeBox()).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: /On the first Sunday of every month/,
+      }),
+    ).toBeTruthy();
+    await saveWait();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  test("a raw edit with problems locks the switch until it is undone", async () => {
+    renderCard(STORED, { available: true });
+    fireEvent.click(option("Raw"));
+    reading = {
+      granularity: "",
+      description: "",
+      problems: ["RRULE is missing"],
+    };
+    fireEvent.change(raw()!, {
+      target: { value: "DTSTART;VALUE=DATE:20261101" },
+    });
+    await settle();
+    expect(option("Natural").disabled).toBe(true);
+    expect(switchGroup().getAttribute("title")).toBe(
+      "Fix or undo the raw edit first",
+    );
+
+    reading = {
+      granularity: "date",
+      description: "On the first Sunday of every month",
+      problems: [],
+    };
+    fireEvent.change(raw()!, { target: { value: STORED.rrule } });
+    await settle();
+    expect(option("Natural").disabled).toBe(false);
+  });
+
+  test("when it cannot be translated just now, the way out is the raw rule", async () => {
+    renderCard(STORED, { available: true }, () =>
+      Promise.reject(new Error("Couldn't translate just now")),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /On the first Sunday of every month/,
+      }),
+    );
+    fireEvent.change(describeBox()!, {
+      target: { value: "The last Sunday" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await settle();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Write the rule yourself" }),
+    );
+    expect(raw()).toBeTruthy();
+    expect(option("Raw").getAttribute("aria-pressed")).toBe("true");
   });
 });

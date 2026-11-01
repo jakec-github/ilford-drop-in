@@ -4,9 +4,14 @@ import {
   fetchOverrides,
   removeOverride,
   reorderOverrides,
+  translateOverrideRule,
   updateOverride,
 } from "../api";
-import type { Override, OverrideDraft } from "../types";
+import type {
+  Override,
+  OverrideDraft,
+  OverrideRuleTranslation,
+} from "../types";
 
 interface UseOverrides {
   // null while the first load is still in flight; [] is "nothing overridden",
@@ -22,6 +27,8 @@ interface UseOverrides {
   // at once, numbered afresh, so a dropped Override stays where it was dropped
   // while the server catches up.
   reorder: (ids: string[]) => Promise<void>;
+  // Saves nothing: what comes back is saved, if at all, through update.
+  translateRule: (text: string) => Promise<OverrideRuleTranslation>;
 }
 
 // useOverrides owns the Rota Defaults' Overrides. The settings screen and the
@@ -87,5 +94,13 @@ export function useOverrides(): UseOverrides {
     [hold, overrides],
   );
 
-  return { overrides, error, add, update, remove, reorder };
+  return {
+    overrides,
+    error,
+    add,
+    update,
+    remove,
+    reorder,
+    translateRule: translateOverrideRule,
+  };
 }

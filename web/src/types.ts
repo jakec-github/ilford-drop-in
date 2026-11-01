@@ -217,6 +217,9 @@ export interface RotaDefaults extends ShiftPattern {
   // when it cannot: the server has no translator, or the Organisation has not
   // turned it on (ADR 0015).
   naturalEditor: NaturalEditor;
+  // The same for what an Override matches, which also waits for a saved
+  // pattern: the Shifts there are to match.
+  overrideNaturalEditor: NaturalEditor;
 }
 
 export interface NaturalEditor {
@@ -224,9 +227,9 @@ export interface NaturalEditor {
   reason?: string;
 }
 
-// TranslationIssue is one thing that stopped a description becoming a pattern:
-// something it leaves out, something it could mean two ways (examples are
-// readings to pick from), or something no pattern can say.
+// TranslationIssue is one thing that stopped a description becoming a pattern
+// or a rule: something it leaves out, something it could mean two ways
+// (examples are readings to pick from), or something neither can say.
 export interface TranslationIssue {
   kind: "missing" | "ambiguous" | "unsupported";
   message: string;
@@ -237,6 +240,18 @@ export interface TranslationIssue {
 // and what each entry says, or every issue at once. Translating saves nothing.
 export type ShiftPatternTranslation =
   | { status: "ok"; pattern: string; entries: PatternEntry[] }
+  | { status: "issues"; issues: TranslationIssue[] };
+
+// OverrideRuleTranslation is what a description of an Override's matches came
+// to: its rule and what the rule says, or every issue at once. Translating
+// saves nothing.
+export type OverrideRuleTranslation =
+  | {
+      status: "ok";
+      rrule: string;
+      granularity: OverrideGranularity;
+      description: string;
+    }
   | { status: "issues"; issues: TranslationIssue[] };
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)

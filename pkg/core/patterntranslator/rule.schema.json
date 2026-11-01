@@ -1,0 +1,34 @@
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "const": "ok" },
+        "rule": { "type": "string" }
+      },
+      "required": ["status", "rule"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "const": "issues" },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["missing", "ambiguous", "unsupported"] },
+              "message": { "type": "string" },
+              "examples": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["kind", "message", "examples"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["status", "issues"],
+      "additionalProperties": false
+    }
+  ]
+}

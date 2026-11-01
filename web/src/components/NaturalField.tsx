@@ -1,35 +1,43 @@
 import { useState } from "react";
 import Button from "../ui/Button";
-import {
-  MAX_DESCRIPTION,
-  type PatternEntry,
-  type ShiftPatternTranslation,
-  type TranslationIssue,
-} from "../types";
+import { MAX_DESCRIPTION, type TranslationIssue } from "../types";
+import "./NaturalField.css";
 
 // How close to the limit a description gets before the counter shows.
 const COUNTER_FROM = MAX_DESCRIPTION - 100;
 
-const PLACEHOLDER = "Describe the shift pattern in plain English";
+// What a Generate comes to when it does not translate.
+interface Issues {
+  status: "issues";
+  issues: TranslationIssue[];
+}
 
-// NaturalPattern is the Shift pattern written in plain English (ADR 0015): one
-// field, translated whole by Generate into either the pattern or every issue
-// that stops one. It saves nothing itself — a pattern goes up through
-// onPattern to the card's own save, as one typed raw would.
+// NaturalField is something written in plain English and translated (ADR
+// 0015) — the Shift pattern, or what an Override matches: one field,
+// translated whole by Generate into either the thing itself or every issue
+// that stops it. It saves nothing itself — what comes back goes up through
+// onTranslated to the card's own save, as if it had been typed raw.
 //
-// descriptions are what the pattern's entries say; with none, there is no
-// pattern yet and the field is open. Otherwise they stand in for it, and
-// clicking them reopens the field filled with them, one per line.
-export default function NaturalPattern({
+// descriptions are what is saved, said in words; with none, there is nothing
+// yet and the field is open. Otherwise they stand in for it, and clicking them
+// reopens the field filled with them, one per line.
+export default function NaturalField<T extends { status: "ok" }>({
   descriptions,
+  label,
+  placeholder,
   translate,
-  onPattern,
+  onTranslated,
+  rawLabel,
   onUseRaw,
 }: {
   descriptions: string[];
-  translate: (text: string) => Promise<ShiftPatternTranslation>;
-  onPattern: (pattern: string, entries: PatternEntry[]) => void;
-  // The way out when the model cannot be asked: the raw editor.
+  label: string;
+  placeholder: string;
+  translate: (text: string) => Promise<T | Issues>;
+  onTranslated: (result: T) => void;
+  // The way out when the model cannot be asked: the raw editor, and what its
+  // button says.
+  rawLabel: string;
   onUseRaw: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -73,12 +81,12 @@ export default function NaturalPattern({
     setFailure(null);
     try {
       const result = await translate(text);
-      if (result.status === "ok") {
+      if (result.status === "issues") {
+        setIssues((result as Issues).issues);
+      } else {
         setEditing(false);
         setTried(null);
-        onPattern(result.pattern, result.entries);
-      } else {
-        setIssues(result.issues);
+        onTranslated(result as T);
       }
     } catch (err) {
       setFailure(
@@ -93,7 +101,7 @@ export default function NaturalPattern({
     return (
       <button
         type="button"
-        className="natural-pattern-description"
+        className="natural-field-description"
         title="Describe it again"
         onClick={reopen}
       >
@@ -105,17 +113,17 @@ export default function NaturalPattern({
   }
 
   return (
-    <div className="natural-pattern">
+    <div className="natural-field">
       <textarea
-        className="natural-pattern-text"
-        aria-label="Shift pattern description"
+        className="natural-field-text"
+        aria-label={label}
         value={text}
         rows={Math.max(3, text.split("\n").length + 1)}
-        placeholder={PLACEHOLDER}
+        placeholder={placeholder}
         readOnly={generating}
         onChange={(e) => setText(e.target.value)}
       />
-      <div className="natural-pattern-actions">
+      <div className="natural-field-actions">
         <Button size="small" disabled={!canGenerate} onClick={() => void run()}>
           {generating ? "Generating…" : "Generate"}
         </Button>
@@ -128,8 +136,8 @@ export default function NaturalPattern({
           <span
             className={
               length > MAX_DESCRIPTION
-                ? "natural-pattern-count over"
-                : "natural-pattern-count"
+                ? "natural-field-count over"
+                : "natural-field-count"
             }
           >
             {length} / {MAX_DESCRIPTION}
@@ -144,7 +152,7 @@ export default function NaturalPattern({
               <span>
                 {issue.message}
                 {issue.examples.length > 0 && (
-                  <span className="natural-pattern-examples">
+                  <span className="natural-field-examples">
                     {issue.examples.map((example) => (
                       <code key={example}>{example}</code>
                     ))}
@@ -160,10 +168,10 @@ export default function NaturalPattern({
           {failure}.{" "}
           <button
             type="button"
-            className="natural-pattern-raw"
+            className="natural-field-raw"
             onClick={onUseRaw}
           >
-            Write the entries yourself
+            {rawLabel}
           </button>
         </p>
       )}

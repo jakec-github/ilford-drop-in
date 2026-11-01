@@ -217,6 +217,7 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("GET /rota-defaults/overrides", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleListOverrides)))
 	api.Handle("POST /rota-defaults/overrides", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddOverride)))
 	api.Handle("POST /rota-defaults/overrides/reading", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleReadOverrideRule)))
+	api.Handle("POST /rota-defaults/overrides/rule/translate", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleTranslateOverrideRule)))
 	api.Handle("PUT /rota-defaults/overrides/order", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleReorderOverrides)))
 	api.Handle("PUT /rota-defaults/overrides/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleUpdateOverride)))
 	api.Handle("DELETE /rota-defaults/overrides/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleRemoveOverride)))
