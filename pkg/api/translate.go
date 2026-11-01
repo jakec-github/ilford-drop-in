@@ -16,9 +16,6 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 )
 
-// translateTimeout is the ceiling on one Generate, retries and all (ADR 0015).
-const translateTimeout = 30 * time.Second
-
 // Why the natural editor is unavailable, as the switch says on hover.
 const (
 	noTranslatorReason = "Plain-English patterns are not set up on this server"
@@ -116,7 +113,7 @@ func (h *Handler) handleTranslateShiftPattern(w http.ResponseWriter, r *http.Req
 	}
 	zone := defaults.Timezone()
 
-	ctx, cancel := context.WithTimeout(r.Context(), translateTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), patterntranslator.Timeout)
 	defer cancel()
 	result, err := h.translator.Translate(ctx, patterntranslator.Request{
 		Text: text,
@@ -163,7 +160,7 @@ func (h *Handler) handleTranslateOverrideRule(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), translateTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), patterntranslator.Timeout)
 	defer cancel()
 	result, err := h.translator.TranslateRule(ctx, patterntranslator.RuleRequest{
 		Text:    text,

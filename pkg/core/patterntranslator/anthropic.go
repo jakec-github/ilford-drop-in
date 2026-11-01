@@ -31,7 +31,7 @@ func NewAnthropic(apiKey, model, effort string) *Anthropic {
 	}
 }
 
-func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, error) {
+func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, Usage, error) {
 	messages := make([]anthropic.MessageParam, 0, len(turns))
 	for _, t := range turns {
 		block := anthropic.NewTextBlock(t.Text)
@@ -53,13 +53,19 @@ func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (st
 		},
 	})
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
+	}
+	usage := Usage{
+		InputTokens:      resp.Usage.InputTokens,
+		OutputTokens:     resp.Usage.OutputTokens,
+		CacheReadTokens:  resp.Usage.CacheReadInputTokens,
+		CacheWriteTokens: resp.Usage.CacheCreationInputTokens,
 	}
 
 	// Neither stop leaves a reply that is sure to match the schema.
 	switch resp.StopReason {
 	case anthropic.StopReasonRefusal, anthropic.StopReasonMaxTokens:
-		return "", fmt.Errorf("%w: stopped for %s", ErrUnusableReply, resp.StopReason)
+		return "", usage, fmt.Errorf("%w: stopped for %s", ErrUnusableReply, resp.StopReason)
 	}
 
 	var text strings.Builder
@@ -68,5 +74,5 @@ func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (st
 			text.WriteString(b.Text)
 		}
 	}
-	return text.String(), nil
+	return text.String(), usage, nil
 }

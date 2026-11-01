@@ -32,14 +32,14 @@ type scripted struct {
 	err  error
 }
 
-func (m *scriptedModel) Reply(_ context.Context, prompt *Prompt, turns []Turn) (string, error) {
+func (m *scriptedModel) Reply(_ context.Context, prompt *Prompt, turns []Turn) (string, Usage, error) {
 	m.prompts = append(m.prompts, prompt)
 	m.calls = append(m.calls, append([]Turn(nil), turns...))
 	if len(m.calls) > len(m.replies) {
-		return "", errors.New("scriptedModel: called more times than scripted")
+		return "", Usage{}, errors.New("scriptedModel: called more times than scripted")
 	}
 	r := m.replies[len(m.calls)-1]
-	return r.text, r.err
+	return r.text, Usage{}, r.err
 }
 
 func ok(pattern string) scripted {
@@ -250,10 +250,10 @@ type cancellingModel struct {
 	calls  int
 }
 
-func (m *cancellingModel) Reply(context.Context, *Prompt, []Turn) (string, error) {
+func (m *cancellingModel) Reply(context.Context, *Prompt, []Turn) (string, Usage, error) {
 	m.calls++
 	m.cancel()
-	return `{"status":"ok","pattern":` + quote(tuesdayStartingSunday) + `}`, nil
+	return `{"status":"ok","pattern":` + quote(tuesdayStartingSunday) + `}`, Usage{}, nil
 }
 
 func TestTranslate_AnOverlongDescriptionIsRefusedWithoutAsking(t *testing.T) {
