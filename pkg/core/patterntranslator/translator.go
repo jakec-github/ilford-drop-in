@@ -1,12 +1,14 @@
 // Package patterntranslator turns a Shift pattern described in plain English
-// into the pattern's VEVENT entries, or into everything that stops it, the way
-// a password field lists every rule a password breaks (ADR 0015).
+// into the pattern's VEVENT entries, and what an Override matches into its
+// rule, or either into everything that stops it, the way a password field
+// lists every rule a password breaks (ADR 0015).
 //
-// Each translation is stateless: the description is the whole pattern, and
-// nothing of an earlier attempt is remembered. A language model writes the
-// pattern, and the server's own parser checks it — the model's reply is never
-// trusted to read. When the parser refuses a reply, its problems go back to the
-// model in the same exchange, up to MaxCalls calls in all.
+// Each translation is stateless: the description is the whole pattern or rule,
+// and nothing of an earlier attempt is remembered. A language model writes it,
+// and the server's own parser checks it — the model's reply is never trusted
+// to read. When the parser refuses a reply, its problems go back to the model
+// in the same exchange, up to MaxCalls calls in all. Both translations share
+// that loop; what differs is the prompt, the parser, and what the model is told.
 package patterntranslator
 
 import (
@@ -34,6 +36,9 @@ const MaxCalls = 3
 // parser would accept. The parser's own messages follow it as further issues,
 // in case they help.
 const GaveUp = "Unable to generate a pattern from that description. Please try an alternative"
+
+// RuleGaveUp is GaveUp for what an Override matches.
+const RuleGaveUp = "Unable to generate a rule from that description. Please try an alternative"
 
 // Kind is what sort of thing stops a description translating.
 type Kind string
@@ -74,13 +79,35 @@ type Request struct {
 	Now  time.Time
 }
 
-// Translator turns a description into a pattern.
+// RuleResult is what an Override matches, translated: the rule — a
+// DTSTART;VALUE=DATE line and an RRULE — or the issues that stop there being
+// one. Exactly one of the two is set.
+type RuleResult struct {
+	Rule   string
+	Issues []Issue
+}
+
+// RuleRequest is one description of what an Override matches, and what it is
+// read against.
+type RuleRequest struct {
+	Text string
+	// Pattern is what the saved Shift pattern's entries say, one each: the
+	// Shifts there are to match, so the model can tell whether a day has one
+	// Shift or several.
+	Pattern []string
+	Zone    string
+	Now     time.Time
+}
+
+// Translator turns a description into a pattern, or into what an Override
+// matches.
 //
 // An error is never about the description — that is what issues are for. It
 // is ErrTooLong, or ErrUnavailable when the translation could not be made just
 // now.
 type Translator interface {
 	Translate(ctx context.Context, req Request) (Result, error)
+	TranslateRule(ctx context.Context, req RuleRequest) (RuleResult, error)
 }
 
 var (
@@ -111,15 +138,15 @@ type Turn struct {
 	Text string
 }
 
-// Model is a language model behind the system prompt and reply schema: given
-// the exchange so far, its next reply, as the JSON text it wrote. An error
-// other than ErrUnusableReply means it could not be asked.
+// Model is a language model: given a Prompt and the exchange so far, its next
+// reply, as the JSON text it wrote. An error other than ErrUnusableReply means
+// it could not be asked.
 type Model interface {
-	Reply(ctx context.Context, turns []Turn) (string, error)
+	Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, error)
 }
 
-// New is the Translator that asks model and checks every pattern it writes
-// with the server's parser.
+// New is the Translator that asks model and checks everything it writes with
+// the server's parsers.
 func New(model Model) Translator {
 	return checked{model: model}
 }
@@ -128,71 +155,125 @@ type checked struct {
 	model Model
 }
 
-// reply is either reply shape, as the model writes it.
+// reply is either reply shape, as the model writes it. Answer is the pattern
+// or the rule, whichever the prompt asks for.
 type reply struct {
 	Status  string  `json:"status"`
 	Pattern string  `json:"pattern"`
+	Rule    string  `json:"rule"`
 	Issues  []Issue `json:"issues"`
+}
+
+// task is what one kind of translation brings to the loop.
+type task struct {
+	prompt *Prompt
+	// noun is what the model writes, as the retry turn names it.
+	noun   string
+	gaveUp string
+	// answer is the reply's pattern or rule.
+	answer func(reply) string
+	// check is everything the server's parser finds wrong with an answer.
+	check func(answer string) []string
 }
 
 func (c checked) Translate(ctx context.Context, req Request) (Result, error) {
 	if utf8.RuneCountInString(req.Text) > MaxText {
 		return Result{}, ErrTooLong
 	}
-	loc, err := time.LoadLocation(req.Zone)
+	today, err := todayIn(req.Zone, req.Now)
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: the organisation's time zone %q cannot be loaded", ErrUnavailable, req.Zone)
+		return Result{}, err
 	}
+	pattern, issues, err := c.run(ctx, task{
+		prompt: patternPrompt,
+		noun:   "pattern",
+		gaveUp: GaveUp,
+		answer: func(r reply) string { return r.Pattern },
+		check:  func(p string) []string { return check(p, req.Zone) },
+	}, firstTurn(req.Text, today))
+	return Result{Pattern: pattern, Issues: issues}, err
+}
 
-	turns := []Turn{{Role: User, Text: firstTurn(req.Text, req.Now.In(loc))}}
+func (c checked) TranslateRule(ctx context.Context, req RuleRequest) (RuleResult, error) {
+	if utf8.RuneCountInString(req.Text) > MaxText {
+		return RuleResult{}, ErrTooLong
+	}
+	today, err := todayIn(req.Zone, req.Now)
+	if err != nil {
+		return RuleResult{}, err
+	}
+	rule, issues, err := c.run(ctx, task{
+		prompt: rulePrompt,
+		noun:   "rule",
+		gaveUp: RuleGaveUp,
+		answer: func(r reply) string { return r.Rule },
+		check:  checkRule,
+	}, firstRuleTurn(req.Text, req.Pattern, today))
+	return RuleResult{Rule: rule, Issues: issues}, err
+}
+
+// run is the loop both translations share: ask, check what comes back, and
+// send the parser's problems back until it reads, the model says what stops
+// it, or MaxCalls calls have been made.
+func (c checked) run(ctx context.Context, t task, first string) (string, []Issue, error) {
+	turns := []Turn{{Role: User, Text: first}}
 	var problems []string
 	for range MaxCalls {
 		if err := ctx.Err(); err != nil {
-			return Result{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
-		text, err := c.model.Reply(ctx, turns)
+		text, err := c.model.Reply(ctx, t.prompt, turns)
 		if errors.Is(err, ErrUnusableReply) {
 			continue
 		}
 		if err != nil {
-			return Result{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
 
-		r, ok := read(text)
+		r, ok := read(text, t.answer)
 		if !ok {
 			continue
 		}
 		if r.Status == "issues" {
-			return Result{Issues: r.Issues}, nil
+			return "", r.Issues, nil
 		}
 
-		pattern := strings.TrimSpace(r.Pattern)
-		problems = check(pattern, req.Zone)
+		answer := strings.TrimSpace(t.answer(r))
+		problems = t.check(answer)
 		if len(problems) == 0 {
-			return Result{Pattern: pattern}, nil
+			return answer, nil, nil
 		}
 		turns = append(turns,
 			Turn{Role: Assistant, Text: text},
-			Turn{Role: User, Text: retryTurn(problems)})
+			Turn{Role: User, Text: retryTurn(t.noun, problems)})
 	}
 
-	issues := []Issue{{Kind: Unsupported, Message: GaveUp, Examples: []string{}}}
+	issues := []Issue{{Kind: Unsupported, Message: t.gaveUp, Examples: []string{}}}
 	for _, p := range problems {
 		issues = append(issues, Issue{Kind: Unsupported, Message: p, Examples: []string{}})
 	}
-	return Result{Issues: issues}, nil
+	return "", issues, nil
+}
+
+// todayIn is now in the Organisation's zone, whose date is today.
+func todayIn(zone string, now time.Time) (time.Time, error) {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: the organisation's time zone %q cannot be loaded", ErrUnavailable, zone)
+	}
+	return now.In(loc), nil
 }
 
 // read is a reply as one of its two shapes, or false. The schema makes
 // anything else unlikely, not impossible.
-func read(text string) (reply, bool) {
+func read(text string, answer func(reply) string) (reply, bool) {
 	var r reply
 	if err := json.Unmarshal([]byte(text), &r); err != nil {
 		return reply{}, false
 	}
 	switch r.Status {
 	case "ok":
-		return r, strings.TrimSpace(r.Pattern) != ""
+		return r, strings.TrimSpace(answer(r)) != ""
 	case "issues":
 		if len(r.Issues) == 0 {
 			return reply{}, false
@@ -223,19 +304,40 @@ func check(pattern, zone string) []string {
 	return problems
 }
 
+// checkRule is everything the rule parser finds wrong with an Override's rule.
+// A rule that matches no Shift is not one of them: it is saved like a typed
+// one.
+func checkRule(rule string) []string {
+	line, _ := shiftpattern.ReadRule(rule)
+	return line.Problems
+}
+
 func firstTurn(text string, today time.Time) string {
 	return fmt.Sprintf("<context>\nToday: %s\nOrganisation time zone: %s\n</context>\n\n<description>\n%s\n</description>",
 		today.Format("2006-01-02 (Monday)"), today.Location(), text)
 }
 
-func retryTurn(problems []string) string {
+func firstRuleTurn(text string, pattern []string, today time.Time) string {
 	var b strings.Builder
-	b.WriteString("The app cannot use that pattern:\n")
+	fmt.Fprintf(&b, "<context>\nToday: %s\nOrganisation time zone: %s\n</context>\n\n<pattern>\n",
+		today.Format("2006-01-02 (Monday)"), today.Location())
+	for _, entry := range pattern {
+		b.WriteString("- ")
+		b.WriteString(entry)
+		b.WriteString("\n")
+	}
+	fmt.Fprintf(&b, "</pattern>\n\n<description>\n%s\n</description>", text)
+	return b.String()
+}
+
+func retryTurn(noun string, problems []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "The app cannot use that %s:\n", noun)
 	for _, p := range problems {
 		b.WriteString("- ")
 		b.WriteString(p)
 		b.WriteString("\n")
 	}
-	b.WriteString("\nReply again for the same description: the whole pattern, corrected, or the issues if it cannot be written.")
+	fmt.Fprintf(&b, "\nReply again for the same description: the whole %s, corrected, or the issues if it cannot be written.", noun)
 	return b.String()
 }

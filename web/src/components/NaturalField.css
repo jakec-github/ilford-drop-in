@@ -1,0 +1,87 @@
+/* A description is read as prose, so it is set as prose — unlike a VEVENT. */
+.natural-field-text {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  /* 16px keeps iOS Safari from zooming the page on focus. */
+  font: 16px/1.4 var(--sans);
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.natural-field-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.natural-field-text:read-only {
+  color: var(--text);
+}
+
+.natural-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.natural-field-count {
+  margin-left: auto;
+  color: var(--text);
+}
+
+.natural-field-count.over {
+  color: var(--role-rose);
+  font-weight: 600;
+}
+
+.natural-field-examples {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-left: 0.5rem;
+}
+
+/* What is saved, said in words: one line each, and pressing it opens
+   the description again. */
+.natural-field-description {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0.25rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 1rem;
+  text-align: left;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: text;
+}
+
+.natural-field-description:hover {
+  border-color: var(--accent);
+}
+
+.natural-field-description:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.natural-field-raw {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}

@@ -2,8 +2,6 @@ package patterntranslator
 
 import (
 	"context"
-	_ "embed"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,28 +9,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-// systemPrompt is the same on every call; everything that varies goes in the
-// user turn. The playground version in docs/design/llm/ is for trying it by
-// hand — this is the one that runs.
-//
-//go:embed system.md
-var systemPrompt string
-
-// replySchema is the two reply shapes, enforced by the API's structured
-// outputs: a reply always parses, and cannot be both ok and issues.
-//
-//go:embed reply.schema.json
-var replySchemaJSON []byte
-
-var replySchema = func() map[string]any {
-	var schema map[string]any
-	if err := json.Unmarshal(replySchemaJSON, &schema); err != nil {
-		panic("patterntranslator: reply.schema.json: " + err.Error())
-	}
-	return schema
-}()
-
-// maxTokens bounds one reply. A ten-entry pattern is well under it.
+// maxTokens bounds one reply. A ten-entry pattern is well under it, and a
+// rule is one line.
 const maxTokens = 2000
 
 // Anthropic is a Model on the Claude API.
@@ -53,7 +31,7 @@ func NewAnthropic(apiKey, model, effort string) *Anthropic {
 	}
 }
 
-func (a *Anthropic) Reply(ctx context.Context, turns []Turn) (string, error) {
+func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, error) {
 	messages := make([]anthropic.MessageParam, 0, len(turns))
 	for _, t := range turns {
 		block := anthropic.NewTextBlock(t.Text)
@@ -67,11 +45,11 @@ func (a *Anthropic) Reply(ctx context.Context, turns []Turn) (string, error) {
 	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(a.model),
 		MaxTokens: maxTokens,
-		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
+		System:    []anthropic.TextBlockParam{{Text: prompt.System}},
 		Messages:  messages,
 		OutputConfig: anthropic.OutputConfigParam{
 			Effort: a.effort,
-			Format: anthropic.JSONOutputFormatParam{Schema: replySchema},
+			Format: anthropic.JSONOutputFormatParam{Schema: prompt.Schema},
 		},
 	})
 	if err != nil {

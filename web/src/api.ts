@@ -33,7 +33,9 @@ import type {
   TranslationIssue,
   Override,
   OverrideDraft,
+  OverrideGranularity,
   OverrideRuleReading,
+  OverrideRuleTranslation,
   Volunteer,
   VolunteerHistory,
   Roster,
@@ -621,6 +623,43 @@ export async function readOverrideRule(
     throw new Error(await errorMessage(res, "Failed to read the rule"));
   }
   return (await res.json()) as OverrideRuleReading;
+}
+
+// translateOverrideRule asks the server's model for the rule a description of
+// an Override's matches comes to. Like translateShiftPattern, issues are an
+// answer and a rejection means the model could not be asked.
+export async function translateOverrideRule(
+  text: string,
+): Promise<OverrideRuleTranslation> {
+  const res = await fetch(
+    `${BASE_PATH}/api/rota-defaults/overrides/rule/translate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(res, "Failed to translate the description"),
+    );
+  }
+  const body = (await res.json()) as {
+    status: string;
+    rrule?: string;
+    granularity?: OverrideGranularity;
+    description?: string;
+    issues?: TranslationIssue[];
+  };
+  if (body.status === "ok") {
+    return {
+      status: "ok",
+      rrule: body.rrule ?? "",
+      granularity: body.granularity ?? "date",
+      description: body.description ?? "",
+    };
+  }
+  return { status: "issues", issues: body.issues ?? [] };
 }
 
 // fetchVolunteers returns the whole synced roster, inactive volunteers included,

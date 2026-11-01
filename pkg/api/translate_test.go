@@ -20,16 +20,24 @@ import (
 // fakeTranslator answers every translation with result and err, and keeps the
 // requests it was handed.
 type fakeTranslator struct {
-	result   patterntranslator.Result
-	err      error
-	requests []patterntranslator.Request
-	deadline bool
+	result       patterntranslator.Result
+	ruleResult   patterntranslator.RuleResult
+	err          error
+	requests     []patterntranslator.Request
+	ruleRequests []patterntranslator.RuleRequest
+	deadline     bool
 }
 
 func (f *fakeTranslator) Translate(ctx context.Context, req patterntranslator.Request) (patterntranslator.Result, error) {
 	f.requests = append(f.requests, req)
 	_, f.deadline = ctx.Deadline()
 	return f.result, f.err
+}
+
+func (f *fakeTranslator) TranslateRule(ctx context.Context, req patterntranslator.RuleRequest) (patterntranslator.RuleResult, error) {
+	f.ruleRequests = append(f.ruleRequests, req)
+	_, f.deadline = ctx.Deadline()
+	return f.ruleResult, f.err
 }
 
 // naturalOrg is the test Organisation, opted in to the natural editor.
@@ -141,22 +149,109 @@ func TestTranslateShiftPatternIsOrganiserOnly(t *testing.T) {
 
 func TestGetRotaDefaultsSaysWhetherTheNaturalEditorIsAvailable(t *testing.T) {
 	for name, tc := range map[string]struct {
-		org        *config.Organisation
-		translator patterntranslator.Translator
-		want       naturalEditorResponse
+		org          *config.Organisation
+		translator   patterntranslator.Translator
+		pattern      string
+		want         naturalEditorResponse
+		wantOverride naturalEditorResponse
 	}{
-		"available":     {naturalOrg, &fakeTranslator{}, naturalEditorResponse{Available: true}},
-		"no translator": {naturalOrg, nil, naturalEditorResponse{Reason: noTranslatorReason}},
-		"not opted in":  {apiTestCfg, &fakeTranslator{}, naturalEditorResponse{Reason: notOptedInReason}},
+		"available": {naturalOrg, &fakeTranslator{}, weeklySunday,
+			naturalEditorResponse{Available: true}, naturalEditorResponse{Available: true}},
+		"no pattern yet": {naturalOrg, &fakeTranslator{}, "",
+			naturalEditorResponse{Available: true}, naturalEditorResponse{Reason: noPatternReason}},
+		"no translator": {naturalOrg, nil, weeklySunday,
+			naturalEditorResponse{Reason: noTranslatorReason}, naturalEditorResponse{Reason: noTranslatorReason}},
+		"not opted in": {apiTestCfg, &fakeTranslator{}, weeklySunday,
+			naturalEditorResponse{Reason: notOptedInReason}, naturalEditorResponse{Reason: notOptedInReason}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			rec := doRequest(t, newTranslatingHandler(&mockStore{}, tc.org, tc.translator), http.MethodGet,
+			store := &mockStore{rotaDefaults: &db.RotaDefaults{ShiftPattern: tc.pattern}}
+			rec := doRequest(t, newTranslatingHandler(store, tc.org, tc.translator), http.MethodGet,
 				"/api/rota-defaults", "", organiserCookie())
 			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 			var body rotaDefaultsResponse
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 			assert.Equal(t, tc.want, body.NaturalEditor)
+			assert.Equal(t, tc.wantOverride, body.OverrideNaturalEditor)
+		})
+	}
+}
+
+// twoSundays has two Shifts on a Sunday, at 10:00 and 19:30.
+const twoSundays = "BEGIN:VEVENT\nDTSTART:20260104T100000\nDURATION:PT2H\nRRULE:FREQ=WEEKLY;BYDAY=SU\nEND:VEVENT\n\n" + weeklySunday
+
+const sundayEveningRule = "DTSTART;VALUE=DATE:20260104\nRRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30"
+
+func TestTranslateOverrideRuleAnswersWithTheRuleAndWhatItSays(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{ShiftPattern: twoSundays, ShiftTimezone: "America/New_York"}}
+	translator := &fakeTranslator{ruleResult: patterntranslator.RuleResult{Rule: sundayEveningRule}}
+
+	rec := doRequest(t, newTranslatingHandler(store, naturalOrg, translator), http.MethodPost,
+		"/api/rota-defaults/overrides/rule/translate", translateBody("the Sunday evening shift"), organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body translateOverrideRuleResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, translateOverrideRuleResponse{
+		Status:      "ok",
+		RRule:       sundayEveningRule,
+		Granularity: "time",
+		Description: "Every Sunday at 19:30, from 4 Jan 2026",
+	}, body)
+
+	require.Len(t, translator.ruleRequests, 1)
+	req := translator.ruleRequests[0]
+	assert.Equal(t, "the Sunday evening shift", req.Text)
+	assert.Equal(t, "America/New_York", req.Zone)
+	assert.Equal(t, []string{
+		"Every Sunday at 10:00 for 2 hours, from 4 Jan 2026",
+		"Every Sunday at 19:30 for 2 hours, from 4 Jan 2026",
+	}, req.Pattern, "told what the saved pattern's entries say")
+	assert.True(t, translator.deadline, "a translation has a ceiling")
+	assert.Empty(t, store.overrides, "translating never saves")
+}
+
+func TestTranslateOverrideRuleAnswersWithIssues(t *testing.T) {
+	store := &mockStore{rotaDefaults: &db.RotaDefaults{ShiftPattern: twoSundays}}
+	translator := &fakeTranslator{ruleResult: patterntranslator.RuleResult{Issues: []patterntranslator.Issue{
+		{Kind: patterntranslator.Ambiguous, Message: "Which Sunday shift?", Examples: []string{"10:00", "19:30"}},
+	}}}
+
+	rec := doRequest(t, newTranslatingHandler(store, naturalOrg, translator), http.MethodPost,
+		"/api/rota-defaults/overrides/rule/translate", translateBody("Sundays"), organiserCookie())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body translateOverrideRuleResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "issues", body.Status)
+	assert.Equal(t, []translateIssueResponse{
+		{Kind: "ambiguous", Message: "Which Sunday shift?", Examples: []string{"10:00", "19:30"}},
+	}, body.Issues)
+}
+
+func TestTranslateOverrideRuleWhenItCannotBeAsked(t *testing.T) {
+	withPattern := func() *mockStore { return &mockStore{rotaDefaults: &db.RotaDefaults{ShiftPattern: twoSundays}} }
+	for name, tc := range map[string]struct {
+		store      *mockStore
+		org        *config.Organisation
+		translator *fakeTranslator
+		text       string
+		status     int
+	}{
+		"no pattern yet": {&mockStore{rotaDefaults: &db.RotaDefaults{}}, naturalOrg, &fakeTranslator{}, "Sundays", http.StatusForbidden},
+		"not opted in":   {withPattern(), apiTestCfg, &fakeTranslator{}, "Sundays", http.StatusForbidden},
+		"too long":       {withPattern(), naturalOrg, &fakeTranslator{}, strings.Repeat("a", patterntranslator.MaxText+1), http.StatusBadRequest},
+		"unavailable": {withPattern(), naturalOrg, &fakeTranslator{err: fmt.Errorf("%w: 529", patterntranslator.ErrUnavailable)},
+			"Sundays", http.StatusServiceUnavailable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := doRequest(t, newTranslatingHandler(tc.store, tc.org, tc.translator), http.MethodPost,
+				"/api/rota-defaults/overrides/rule/translate", translateBody(tc.text), organiserCookie())
+			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
+			if tc.status != http.StatusServiceUnavailable {
+				assert.Empty(t, tc.translator.ruleRequests, "refused without asking")
+			}
 		})
 	}
 }

@@ -1,0 +1,33 @@
+/* Which of two editors is showing: described in plain English, or raw. */
+.mode-switch {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mode-switch-option {
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.625rem;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.mode-switch-option + .mode-switch-option {
+  border-left: 1px solid var(--border);
+}
+
+.mode-switch-option[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-bg);
+  font-weight: 600;
+}
+
+.mode-switch-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

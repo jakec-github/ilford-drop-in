@@ -143,7 +143,7 @@ organisations:
     volunteerSheetID: 'your-volunteer-sheet-id'
     serviceVolunteersTab: 'volunteers'       # the tab name in the volunteer sheet
     rotaSheetID: 'your-rota-sheet-id'
-    naturalEditor: true                      # optional: describe the shift pattern in plain English (needs translator below)
+    naturalEditor: true                      # optional: describe the shift pattern, and what an Override matches, in plain English (needs translator below)
 
 # Local Postgres (matches scripts/test-db.sh)
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'

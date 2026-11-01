@@ -10,6 +10,8 @@ import { useOverrides } from "../hooks/useOverrides";
 import { useRoles } from "../hooks/useRoles";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
+import ModeSwitch, { type EditorMode } from "./ModeSwitch";
+import NaturalField from "./NaturalField";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import { settingsSummary } from "./settingsSummary";
@@ -18,9 +20,11 @@ import { formatLength, lengthChoices, today } from "./patternDates";
 import { seatCountsOf, seatsOf, type SeatCounts } from "./shape";
 import type {
   ConfiguredRole,
+  NaturalEditor,
   Override,
   OverrideDraft,
   OverrideGranularity,
+  OverrideRuleTranslation,
   PersonRef,
   ShapeSeat,
   Volunteer,
@@ -275,6 +279,8 @@ export function OverrideCard({
   fresh,
   busy,
   held,
+  natural,
+  translateRule,
   onSave,
   onRemove,
   onGrab,
@@ -292,6 +298,9 @@ export function OverrideCard({
   // Something else is being written: the handle waits for it.
   busy: boolean;
   held: boolean;
+  // Whether what it matches can be described in plain English, and why not.
+  natural: NaturalEditor;
+  translateRule: (text: string) => Promise<OverrideRuleTranslation>;
   onSave: (draft: OverrideDraft) => Promise<void>;
   onRemove: () => Promise<void>;
   onGrab: (e: PointerEvent<HTMLButtonElement>) => void;
@@ -323,6 +332,32 @@ export function OverrideCard({
       problems.length === 0 &&
       (!draft.startOn || draft.startTime !== ""),
   });
+
+  // Natural wherever it is available, unless the Organiser picks raw; not
+  // remembered. Availability can arrive after the card does, with the Rota
+  // Defaults, so it is not frozen into the first render.
+  const [chosen, setChosen] = useState<EditorMode | null>(null);
+  const mode: EditorMode = natural.available ? (chosen ?? "natural") : "raw";
+  // What a Generate said its rule means, shown until the reading of the rule
+  // catches up, so the description does not blink.
+  const [generated, setGenerated] = useState<string | null>(null);
+  // A raw edit the server cannot read would be lost behind the saved rule's
+  // description, so it has to be fixed or undone first.
+  const rawStuck =
+    mode === "raw" &&
+    draft.rrule.trim() !== override.rrule.trim() &&
+    problems.length > 0;
+  const locked = !natural.available
+    ? (natural.reason ?? "The natural editor is not available")
+    : rawStuck
+      ? "Fix or undo the raw edit first"
+      : null;
+  const description =
+    draft.rrule.trim() === ""
+      ? ""
+      : current && reading
+        ? reading.description
+        : (generated ?? override.description);
 
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -412,44 +447,74 @@ export function OverrideCard({
         className="override-part override-part--match"
         aria-label={`Override ${n} matches`}
       >
-        <h3 className="override-part-title">Matches</h3>
-        <textarea
-          ref={ruleBox}
-          className="override-rule"
-          rows={Math.max(2, draft.rrule.split("\n").length)}
-          aria-label={`Override ${n} rule`}
-          spellCheck={false}
-          value={draft.rrule}
-          disabled={!editable}
-          onChange={(e) => change({ rrule: e.target.value })}
-        />
-        <div className="override-reading" aria-live="polite">
-          {readingError && <p className="settings-error">{readingError}</p>}
-          {draft.rrule.trim() === "" ? (
-            <p className="override-problems">Write a rule to match shifts.</p>
-          ) : problems.length > 0 ? (
-            <ul className="override-problems">
-              {problems.map((problem) => (
-                <li key={problem}>{problem}</li>
-              ))}
-            </ul>
-          ) : (
-            reading && (
-              <p className="override-description">
-                {reading.description}{" "}
-                {reading.granularity && (
-                  <GranularityBadge granularity={reading.granularity} />
-                )}
-              </p>
-            )
-          )}
+        <div className="override-part-head">
+          <h3 className="override-part-title">Matches</h3>
+          <ModeSwitch
+            label={`How override ${n} matches`}
+            mode={mode}
+            locked={locked}
+            onMode={(next) => {
+              setGenerated(null);
+              setChosen(next);
+            }}
+          />
         </div>
-        <p className="settings-hint">
-          A DTSTART;VALUE=DATE line says the date it counts from, and nothing
-          before it is matched; an RRULE line says which dates. With BYHOUR and
-          BYMINUTE it matches only the shift the pattern starts at that time;
-          without them, every shift on those days.
-        </p>
+        {mode === "natural" ? (
+          <NaturalField
+            descriptions={description ? [description] : []}
+            label={`Override ${n} description`}
+            placeholder="Describe which shifts it matches in plain English"
+            translate={translateRule}
+            onTranslated={({ rrule, description: said }) => {
+              setGenerated(said);
+              change({ rrule });
+            }}
+            rawLabel="Write the rule yourself"
+            onUseRaw={() => setChosen("raw")}
+          />
+        ) : (
+          <>
+            <textarea
+              ref={ruleBox}
+              className="override-rule"
+              rows={Math.max(2, draft.rrule.split("\n").length)}
+              aria-label={`Override ${n} rule`}
+              spellCheck={false}
+              value={draft.rrule}
+              disabled={!editable}
+              onChange={(e) => change({ rrule: e.target.value })}
+            />
+            <div className="override-reading" aria-live="polite">
+              {readingError && <p className="settings-error">{readingError}</p>}
+              {draft.rrule.trim() === "" ? (
+                <p className="override-problems">
+                  Write a rule to match shifts.
+                </p>
+              ) : problems.length > 0 ? (
+                <ul className="override-problems">
+                  {problems.map((problem) => (
+                    <li key={problem}>{problem}</li>
+                  ))}
+                </ul>
+              ) : (
+                reading && (
+                  <p className="override-description">
+                    {reading.description}{" "}
+                    {reading.granularity && (
+                      <GranularityBadge granularity={reading.granularity} />
+                    )}
+                  </p>
+                )
+              )}
+            </div>
+            <p className="settings-hint">
+              A DTSTART;VALUE=DATE line says the date it counts from, and
+              nothing before it is matched; an RRULE line says which dates. With
+              BYHOUR and BYMINUTE it matches only the shift the pattern starts
+              at that time; without them, every shift on those days.
+            </p>
+          </>
+        )}
       </section>
 
       <section
@@ -589,10 +654,17 @@ export default function OverridesCard({
   // Closed until opened, as on Config; the define form shows it open.
   collapsible?: boolean;
 } = {}) {
-  const { overrides, error, add, update, remove, reorder } = useOverrides();
+  const { overrides, error, add, update, remove, reorder, translateRule } =
+    useOverrides();
   const { roles } = useRoles();
   const { defaults } = useRotaDefaults();
   const { volunteers, error: volunteersError } = useVolunteers();
+  // Until the Rota Defaults load there is no knowing; raw is the safe guess,
+  // and the cards move to natural once they say so.
+  const natural = defaults?.overrideNaturalEditor ?? {
+    available: false,
+    reason: "Loading…",
+  };
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // The id of an Override just added, known only from the list that comes
@@ -691,6 +763,8 @@ export default function OverridesCard({
                   fresh={override.id === freshId}
                   busy={busy}
                   held={drag.held === override.id}
+                  natural={natural}
+                  translateRule={translateRule}
                   onSave={(draft) => save(override.id, draft)}
                   onRemove={() => remove(override.id).then(() => onSaved?.())}
                   onGrab={(e) => drag.grab(override.id, e)}

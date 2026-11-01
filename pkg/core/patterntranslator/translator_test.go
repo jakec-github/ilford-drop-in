@@ -24,6 +24,7 @@ const tuesdayStartingSunday = "BEGIN:VEVENT\nDTSTART:20261101T190000\nDURATION:P
 type scriptedModel struct {
 	replies []scripted
 	calls   [][]Turn
+	prompts []*Prompt
 }
 
 type scripted struct {
@@ -31,7 +32,8 @@ type scripted struct {
 	err  error
 }
 
-func (m *scriptedModel) Reply(_ context.Context, turns []Turn) (string, error) {
+func (m *scriptedModel) Reply(_ context.Context, prompt *Prompt, turns []Turn) (string, error) {
+	m.prompts = append(m.prompts, prompt)
 	m.calls = append(m.calls, append([]Turn(nil), turns...))
 	if len(m.calls) > len(m.replies) {
 		return "", errors.New("scriptedModel: called more times than scripted")
@@ -65,6 +67,9 @@ func TestTranslate_AFirstReplyThatReadsIsThePattern(t *testing.T) {
 	}
 	if len(model.calls) != 1 {
 		t.Fatalf("made %d calls, want 1", len(model.calls))
+	}
+	if model.prompts[0] != patternPrompt {
+		t.Errorf("asked with the %q prompt, want the pattern's", model.prompts[0].Name)
 	}
 }
 
@@ -245,7 +250,7 @@ type cancellingModel struct {
 	calls  int
 }
 
-func (m *cancellingModel) Reply(context.Context, []Turn) (string, error) {
+func (m *cancellingModel) Reply(context.Context, *Prompt, []Turn) (string, error) {
 	m.calls++
 	m.cancel()
 	return `{"status":"ok","pattern":` + quote(tuesdayStartingSunday) + `}`, nil

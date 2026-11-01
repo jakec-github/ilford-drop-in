@@ -70,6 +70,7 @@ function defaultsWith(
     allocationRules: [],
     ruleLibrary: [],
     naturalEditor,
+    overrideNaturalEditor: naturalEditor,
   };
 }
 

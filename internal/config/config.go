@@ -53,7 +53,8 @@ type Organisation struct {
 	ServiceVolunteersTab string   `yaml:"serviceVolunteersTab" validate:"required"`
 	RotaSheetID          string   `yaml:"rotaSheetID" validate:"required"`
 	// NaturalEditor lets this Organisation's Organisers describe its Shift
-	// pattern in plain English (ADR 0015). Off unless set, so a deployment calls
+	// pattern, and what each Override matches, in plain English (ADR 0015).
+	// Off unless set, so a deployment calls
 	// no paid API until someone chooses it; it needs the server's translator
 	// too.
 	NaturalEditor bool `yaml:"naturalEditor,omitempty"`

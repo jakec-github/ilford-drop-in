@@ -266,3 +266,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* The part's title on the left, the natural/raw switch on the right. */
+.override-part-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}

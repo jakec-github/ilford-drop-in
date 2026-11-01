@@ -41,6 +41,8 @@ type rotaDefaultsResponse struct {
 	// NaturalEditor says whether the pattern can be described in plain English
 	// here, and why not when it cannot.
 	NaturalEditor naturalEditorResponse `json:"naturalEditor"`
+	// OverrideNaturalEditor is the same for what an Override matches.
+	OverrideNaturalEditor naturalEditorResponse `json:"overrideNaturalEditor"`
 }
 
 // ruleKindResponse is one Rule Kind as the screen offers it.
@@ -398,6 +400,9 @@ func (h *Handler) toRotaDefaultsResponse(defaults model.RotaDefaults, shape mode
 		AllocationRules: rules,
 		RuleLibrary:     library,
 		NaturalEditor:   h.naturalEditor(),
+		// Here rather than on the Overrides' list because it turns on the
+		// saved pattern, which this answer is fresh with after each save.
+		OverrideNaturalEditor: h.overrideNaturalEditor(defaults),
 	}
 }
 

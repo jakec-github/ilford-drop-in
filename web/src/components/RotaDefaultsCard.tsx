@@ -11,7 +11,8 @@ import {
   useRotaDefaults,
 } from "../hooks/useRotaDefaults";
 import { useShiftPatternPreview } from "../hooks/useShiftPatternPreview";
-import NaturalPattern from "./NaturalPattern";
+import ModeSwitch, { type EditorMode } from "./ModeSwitch";
+import NaturalField from "./NaturalField";
 import PatternCalendar from "./PatternCalendar";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
@@ -179,50 +180,6 @@ function EntryReading({ entry }: { entry: PatternEntry }) {
   );
 }
 
-// How the pattern is written: described in plain English and translated
-// (ADR 0015), or as the VEVENT entries themselves.
-type PatternMode = "natural" | "raw";
-
-// ModeSwitch says which of the two editors is showing. When it cannot be
-// moved, the reason is on hover — on the group, because a disabled button
-// shows no title in every browser.
-function ModeSwitch({
-  mode,
-  onMode,
-  locked,
-}: {
-  mode: PatternMode;
-  onMode: (mode: PatternMode) => void;
-  // Why the switch cannot be moved, or null when it can.
-  locked: string | null;
-}) {
-  const options: [PatternMode, string][] = [
-    ["natural", "Natural"],
-    ["raw", "Raw"],
-  ];
-  return (
-    <div
-      className="pattern-mode"
-      role="group"
-      aria-label="How the pattern is written"
-      title={locked ?? undefined}
-    >
-      {options.map(([value, label]) => (
-        <button
-          key={value}
-          type="button"
-          className="pattern-mode-option"
-          aria-pressed={mode === value}
-          disabled={locked !== null}
-          onClick={() => onMode(value)}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function RotaDefaultsForm({
   defaults,
   roles,
@@ -241,7 +198,7 @@ export function RotaDefaultsForm({
 }) {
   const natural = defaults.naturalEditor;
   // Opens in plain English wherever it can, and is not remembered.
-  const [mode, setMode] = useState<PatternMode>(
+  const [mode, setMode] = useState<EditorMode>(
     natural.available ? "natural" : "raw",
   );
   // What a Generate said its entries mean, shown until the preview of the
@@ -314,6 +271,7 @@ export function RotaDefaultsForm({
           so 19:30 stays 19:30 when the clocks change.
         </p>
         <ModeSwitch
+          label="How the pattern is written"
           mode={mode}
           locked={locked}
           onMode={(next) => {
@@ -325,13 +283,16 @@ export function RotaDefaultsForm({
       {mode === "natural" ? (
         <div className="settings-field">
           Shift pattern
-          <NaturalPattern
+          <NaturalField
             descriptions={described.map((e) => e.description)}
+            label="Shift pattern description"
+            placeholder="Describe the shift pattern in plain English"
             translate={translate}
-            onPattern={(pattern, entries) => {
+            onTranslated={({ pattern, entries }) => {
               setGenerated(entries);
               setDraft(pattern);
             }}
+            rawLabel="Write the entries yourself"
             onUseRaw={() => setMode("raw")}
           />
         </div>
