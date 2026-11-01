@@ -48,9 +48,11 @@ attempt.
   - `missing` — something a Shift needs is not there: a start time, a length,
     which days.
   - `ambiguous` — it has more than one reading that would give different Shifts.
-  - `unsupported` — it asks for something the pattern cannot hold. Say what to do
-    instead: for single dates, closures and bank holidays, "close or add those
-    Shifts by hand in the draft rota".
+  - `unsupported` — it asks for something the pattern cannot hold. For a date
+    to skip (a closure, a bank holiday), say what to do instead: "leave it out,
+    then close that Shift in the draft rota". For an extra date (a one-off
+    Shift), there is no way yet: say the extra Shift is not supported yet, and
+    never tell them to add it anywhere.
 - `message`: under 12 words, plain English, no format jargon (never "RRULE",
   "BYSETPOS", "DTSTART"). Say what to add or change, not what is wrong with them.
   When the description has several parts, say which part the issue is about
