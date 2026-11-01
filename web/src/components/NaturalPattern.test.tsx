@@ -41,7 +41,7 @@ function renderPattern({
 
 const input = () =>
   screen.getByPlaceholderText(
-    "Describe the shift pattern in natural language",
+    "Describe the shift pattern in plain English",
   ) as HTMLTextAreaElement;
 const generate = () =>
   screen.getByRole("button", { name: /Generat/ }) as HTMLButtonElement;
@@ -155,7 +155,7 @@ describe("NaturalPattern", () => {
     });
     expect(
       screen.queryByPlaceholderText(
-        "Describe the shift pattern in natural language",
+        "Describe the shift pattern in plain English",
       ),
     ).toBeNull();
 
@@ -169,7 +169,7 @@ describe("NaturalPattern", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(
       screen.queryByPlaceholderText(
-        "Describe the shift pattern in natural language",
+        "Describe the shift pattern in plain English",
       ),
     ).toBeNull();
     expect(
@@ -199,7 +199,7 @@ describe("NaturalPattern", () => {
     ).toBeTruthy();
     expect(
       screen.queryByPlaceholderText(
-        "Describe the shift pattern in natural language",
+        "Describe the shift pattern in plain English",
       ),
     ).toBeNull();
   });

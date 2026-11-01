@@ -101,7 +101,7 @@ const switchGroup = () =>
   screen.getByRole("group", { name: "How the pattern is written" });
 const description = () =>
   screen.queryByPlaceholderText(
-    "Describe the shift pattern in natural language",
+    "Describe the shift pattern in plain English",
   ) as HTMLTextAreaElement | null;
 const raw = () =>
   screen.queryByPlaceholderText(/BEGIN:VEVENT/) as HTMLTextAreaElement | null;
@@ -109,7 +109,7 @@ const raw = () =>
 describe("RotaDefaultsForm", () => {
   test("opens in plain English where it is available", () => {
     renderForm(defaultsWith({ available: true }));
-    expect(option("Plain English").getAttribute("aria-pressed")).toBe("true");
+    expect(option("Natural").getAttribute("aria-pressed")).toBe("true");
     expect(description()).toBeTruthy();
     expect(raw()).toBeNull();
   });
@@ -120,7 +120,7 @@ describe("RotaDefaultsForm", () => {
     );
     expect(raw()).toBeTruthy();
     expect(description()).toBeNull();
-    expect(option("Plain English").disabled).toBe(true);
+    expect(option("Natural").disabled).toBe(true);
     expect(option("Raw").disabled).toBe(true);
     expect(switchGroup().getAttribute("title")).toBe("Not turned on here");
   });
@@ -130,14 +130,14 @@ describe("RotaDefaultsForm", () => {
     fireEvent.click(option("Raw"));
     fireEvent.change(raw()!, { target: { value: "BEGIN:VEVENT" } });
     await settle();
-    expect(option("Plain English").disabled).toBe(true);
+    expect(option("Natural").disabled).toBe(true);
     expect(switchGroup().getAttribute("title")).toBe(
       "Fix or undo the raw edit first",
     );
 
     fireEvent.change(raw()!, { target: { value: SUNDAYS } });
     await settle();
-    expect(option("Plain English").disabled).toBe(false);
+    expect(option("Natural").disabled).toBe(false);
     expect(switchGroup().getAttribute("title")).toBeNull();
   });
 

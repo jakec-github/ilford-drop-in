@@ -197,7 +197,7 @@ function ModeSwitch({
   locked: string | null;
 }) {
   const options: [PatternMode, string][] = [
-    ["natural", "Plain English"],
+    ["natural", "Natural"],
     ["raw", "Raw"],
   ];
   return (
@@ -295,7 +295,7 @@ export function RotaDefaultsForm({
   const rawStuck =
     mode === "raw" && draft !== defaults.shiftPattern && hasProblems;
   const locked = !natural.available
-    ? (natural.reason ?? "Plain English is not available")
+    ? (natural.reason ?? "The natural editor is not available")
     : rawStuck
       ? "Fix or undo the raw edit first"
       : null;

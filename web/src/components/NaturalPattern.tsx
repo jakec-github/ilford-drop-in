@@ -10,7 +10,7 @@ import {
 // How close to the limit a description gets before the counter shows.
 const COUNTER_FROM = MAX_DESCRIPTION - 100;
 
-const PLACEHOLDER = "Describe the shift pattern in natural language";
+const PLACEHOLDER = "Describe the shift pattern in plain English";
 
 // NaturalPattern is the Shift pattern written in plain English (ADR 0015): one
 // field, translated whole by Generate into either the pattern or every issue
