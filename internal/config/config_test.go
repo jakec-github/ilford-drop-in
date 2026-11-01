@@ -617,3 +617,45 @@ func TestLoadFromPath_ShiftSizeKeyIsIgnoredNotRejected(t *testing.T) {
 	assert.Equal(t, "sheet123", cfg.Organisations[0].VolunteerSheetID)
 	assert.Contains(t, logged.String(), "defaultShiftSize")
 }
+
+func TestLoadFromPath_TranslatorAndNaturalEditor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	yaml := strings.Replace(minimalConfigYAML, `    rotaSheetID: "rota456"`, "    rotaSheetID: \"rota456\"\n    naturalEditor: true", 1) + `
+translator:
+  apiKey: "sk-ant-placeholder"
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	cfg, err := LoadFromPath(path)
+	require.NoError(t, err)
+	assert.True(t, cfg.Organisations[0].NaturalEditor)
+	require.NotNil(t, cfg.Translator)
+	assert.Equal(t, "sk-ant-placeholder", cfg.Translator.APIKey)
+	// Empty model and effort mean the defaults, applied where the model is built.
+	assert.Empty(t, cfg.Translator.Model)
+}
+
+func TestValidate_Translator(t *testing.T) {
+	cases := map[string]struct {
+		translator *TranslatorConfig
+		wantErr    bool
+	}{
+		"absent":            {nil, false},
+		"a key alone":       {&TranslatorConfig{APIKey: "k"}, false},
+		"model and effort":  {&TranslatorConfig{APIKey: "k", Model: "claude-haiku-5-5", Effort: "medium"}, false},
+		"no key":            {&TranslatorConfig{Model: "claude-sonnet-5-5"}, true},
+		"an unknown effort": {&TranslatorConfig{APIKey: "k", Effort: "lots"}, true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := baseConfig()
+			cfg.Translator = tc.translator
+			err := Validate(cfg)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

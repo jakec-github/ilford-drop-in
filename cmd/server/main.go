@@ -18,6 +18,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/api"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
 	"github.com/jakechorley/ilford-drop-in/pkg/utils/logging"
@@ -123,6 +124,7 @@ func run(env string, portOverride int) error {
 			return fmt.Errorf("failed to create stub authenticator: %w", err)
 		}
 		shared.newMailer = api.NewStubMailer(logger)
+		shared.translator = patterntranslator.Stub{}
 	} else {
 		webOAuthCfg, err := config.LoadOAuthClientWebWithEnv(env)
 		if err != nil {
@@ -149,6 +151,19 @@ func run(env string, portOverride int) error {
 		// is constructed inside the send and discarded with it.
 		shared.newMailer = func(ctx context.Context, token *oauth2.Token) (services.GmailClient, error) {
 			return gmailclient.NewClientFromToken(ctx, token)
+		}
+
+		// Plain-English patterns need a key; without one the natural editor
+		// says it is not set up, and everything else is unchanged (ADR 0015).
+		if t := cfg.Translator; t != nil {
+			model, effort := t.Model, t.Effort
+			if model == "" {
+				model = config.DefaultTranslatorModel
+			}
+			if effort == "" {
+				effort = config.DefaultTranslatorEffort
+			}
+			shared.translator = patterntranslator.New(patterntranslator.NewAnthropic(t.APIKey, model, effort))
 		}
 	}
 
@@ -196,6 +211,8 @@ type sharedDeps struct {
 	// serviceAccountJSON is empty in dev mode, where nothing reaches Google.
 	serviceAccountJSON []byte
 	newMailer          api.MailerFunc
+	// translator is nil when the server has no key for one.
+	translator patterntranslator.Translator
 }
 
 // newOrganisation builds one Organisation's handler: its own bound store, its
@@ -327,5 +344,9 @@ func newOrganisation(
 		logger.Warn("No roles exist — the roster will match none and allocation will refuse to run; create them on the Organiser settings screen")
 	}
 
-	return api.NewHandler(store, volunteers, org, authenticator, web.Dist(), shared.newMailer, publisher, syncVolunteers, baseLogger), nil
+	handler := api.NewHandler(store, volunteers, org, authenticator, web.Dist(), shared.newMailer, publisher, syncVolunteers, baseLogger)
+	if shared.translator != nil {
+		handler.SetTranslator(shared.translator)
+	}
+	return handler, nil
 }

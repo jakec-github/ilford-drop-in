@@ -27,7 +27,10 @@ import type {
   SendMode,
   SendOutcome,
   ShapeSeat,
+  PatternEntry,
   ShiftPatternPreview,
+  ShiftPatternTranslation,
+  TranslationIssue,
   Override,
   OverrideDraft,
   OverrideRuleReading,
@@ -336,6 +339,43 @@ export async function previewShiftPattern(
     throw new Error(await errorMessage(res, "Failed to read the pattern"));
   }
   return (await res.json()) as ShiftPatternPreview;
+}
+
+// translateShiftPattern turns a plain-English description into a Shift
+// pattern. It writes nothing: the pattern it answers with is saved as one
+// typed would be. A description the model cannot turn into one is answered
+// with its issues, not refused; a rejection means the model could not be
+// asked, and carries the server's message for it.
+export async function translateShiftPattern(
+  text: string,
+): Promise<ShiftPatternTranslation> {
+  const res = await fetch(
+    `${BASE_PATH}/api/rota-defaults/shift-pattern/translate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await errorMessage(res, "Failed to translate the description"),
+    );
+  }
+  const body = (await res.json()) as {
+    status: string;
+    pattern?: string;
+    entries?: PatternEntry[];
+    issues?: TranslationIssue[];
+  };
+  if (body.status === "ok") {
+    return {
+      status: "ok",
+      pattern: body.pattern ?? "",
+      entries: body.entries ?? [],
+    };
+  }
+  return { status: "issues", issues: body.issues ?? [] };
 }
 
 // saveDefaultShape writes what every shift asks for, stated whole: a Role

@@ -11,13 +11,19 @@ import {
   useRotaDefaults,
 } from "../hooks/useRotaDefaults";
 import { useShiftPatternPreview } from "../hooks/useShiftPatternPreview";
+import NaturalPattern from "./NaturalPattern";
 import PatternCalendar from "./PatternCalendar";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import ShapeSeats from "./ShapeSeats";
 import { seatCountsOf, seatsKey, seatsOf, type SeatCounts } from "./shape";
 import { monthsFrom, today as todayDate } from "./patternDates";
-import type { ConfiguredRole, PatternEntry, RotaDefaults } from "../types";
+import type {
+  ConfiguredRole,
+  PatternEntry,
+  RotaDefaults,
+  ShiftPatternTranslation,
+} from "../types";
 import "./RotaDefaultsCard.css";
 
 // How many months the calendar shows at once.
@@ -134,6 +140,7 @@ export default function RotaDefaultsCard({
           defaults={defaults}
           roles={roles}
           onState={setSaveState}
+          translate={rotaDefaults.translateShiftPattern}
           onSavePattern={async (pattern) => {
             await rotaDefaults.saveShiftPattern(pattern);
             onSaved?.();
@@ -172,12 +179,57 @@ function EntryReading({ entry }: { entry: PatternEntry }) {
   );
 }
 
-function RotaDefaultsForm({
+// How the pattern is written: described in plain English and translated
+// (ADR 0015), or as the VEVENT entries themselves.
+type PatternMode = "natural" | "raw";
+
+// ModeSwitch says which of the two editors is showing. When it cannot be
+// moved, the reason is on hover — on the group, because a disabled button
+// shows no title in every browser.
+function ModeSwitch({
+  mode,
+  onMode,
+  locked,
+}: {
+  mode: PatternMode;
+  onMode: (mode: PatternMode) => void;
+  // Why the switch cannot be moved, or null when it can.
+  locked: string | null;
+}) {
+  const options: [PatternMode, string][] = [
+    ["natural", "Natural"],
+    ["raw", "Raw"],
+  ];
+  return (
+    <div
+      className="pattern-mode"
+      role="group"
+      aria-label="How the pattern is written"
+      title={locked ?? undefined}
+    >
+      {options.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          className="pattern-mode-option"
+          aria-pressed={mode === value}
+          disabled={locked !== null}
+          onClick={() => onMode(value)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function RotaDefaultsForm({
   defaults,
   roles,
   onSavePattern,
   onSaveShape,
   onState,
+  translate,
 }: {
   defaults: RotaDefaults;
   roles: ConfiguredRole[] | null;
@@ -185,7 +237,16 @@ function RotaDefaultsForm({
   onState: (state: SaveState) => void;
   onSavePattern: (pattern: string) => Promise<void>;
   onSaveShape: (seats: { roleId: string; count: number }[]) => Promise<void>;
+  translate: (text: string) => Promise<ShiftPatternTranslation>;
 }) {
+  const natural = defaults.naturalEditor;
+  // Opens in plain English wherever it can, and is not remembered.
+  const [mode, setMode] = useState<PatternMode>(
+    natural.available ? "natural" : "raw",
+  );
+  // What a Generate said its entries mean, shown until the preview of the
+  // pattern it made catches up, so the description does not blink.
+  const [generated, setGenerated] = useState<PatternEntry[] | null>(null);
   const today = todayDate();
   const { draft, setDraft, saved } = useDraft({
     source: defaults,
@@ -229,49 +290,93 @@ function RotaDefaultsForm({
   const state = either(saveState, shapeState);
   useEffect(() => onState(state), [state, onState]);
 
+  // A raw edit the server cannot read would be lost behind a description of
+  // the saved pattern, so it has to be fixed or undone first.
+  const rawStuck =
+    mode === "raw" && draft !== defaults.shiftPattern && hasProblems;
+  const locked = !natural.available
+    ? (natural.reason ?? "The natural editor is not available")
+    : rawStuck
+      ? "Fix or undo the raw edit first"
+      : null;
+
+  const described = blank
+    ? []
+    : current && preview
+      ? preview.entries
+      : (generated ?? defaults.patternEntries);
+
   return (
     <div className="rota-defaults-card">
-      <p className="settings-hint">
-        Times are wall-clock in {defaults.shiftTimezone || "the time zone"}, so
-        19:30 stays 19:30 when the clocks change.
-      </p>
-      <label className="settings-field">
-        Shift pattern
-        <textarea
-          className="shift-pattern-text"
-          value={draft}
-          rows={Math.max(6, draft.split("\n").length + 1)}
-          spellCheck={false}
-          placeholder={PLACEHOLDER}
-          onChange={(e) => setDraft(e.target.value)}
+      <div className="shift-pattern-head">
+        <p className="settings-hint">
+          Times are wall-clock in {defaults.shiftTimezone || "the time zone"},
+          so 19:30 stays 19:30 when the clocks change.
+        </p>
+        <ModeSwitch
+          mode={mode}
+          locked={locked}
+          onMode={(next) => {
+            setGenerated(null);
+            setMode(next);
+          }}
         />
-      </label>
-      <p className="settings-hint">
-        One VEVENT per kind of shift, each with a DTSTART (the first shift), a
-        DURATION (how long it runs) and an RRULE (how it repeats). An event
-        copied out of a calendar works too. Every other week counts from each
-        entry&rsquo;s own DTSTART, and nothing is minted before it.
-      </p>
+      </div>
+      {mode === "natural" ? (
+        <div className="settings-field">
+          Shift pattern
+          <NaturalPattern
+            descriptions={described.map((e) => e.description)}
+            translate={translate}
+            onPattern={(pattern, entries) => {
+              setGenerated(entries);
+              setDraft(pattern);
+            }}
+            onUseRaw={() => setMode("raw")}
+          />
+        </div>
+      ) : (
+        <>
+          <label className="settings-field">
+            Shift pattern
+            <textarea
+              className="shift-pattern-text"
+              value={draft}
+              rows={Math.max(6, draft.split("\n").length + 1)}
+              spellCheck={false}
+              placeholder={PLACEHOLDER}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+          </label>
+          <p className="settings-hint">
+            One VEVENT per kind of shift, each with a DTSTART (the first shift),
+            a DURATION (how long it runs) and an RRULE (how it repeats). An
+            event copied out of a calendar works too. Every other week counts
+            from each entry&rsquo;s own DTSTART, and nothing is minted before
+            it.
+          </p>
 
-      <ul className="shift-pattern-lines" aria-live="polite">
-        {blank && <li className="problem">No entries yet.</li>}
-        {!blank &&
-          preview?.problems.map((problem) => (
-            <li key={problem} className="problem">
-              {problem}
-            </li>
-          ))}
-        {!blank &&
-          preview?.entries.map((entry) => (
-            <EntryReading key={entry.number} entry={entry} />
-          ))}
-        {!blank &&
-          preview?.warnings.map((warning) => (
-            <li key={warning} className="warning">
-              {warning}
-            </li>
-          ))}
-      </ul>
+          <ul className="shift-pattern-lines" aria-live="polite">
+            {blank && <li className="problem">No entries yet.</li>}
+            {!blank &&
+              preview?.problems.map((problem) => (
+                <li key={problem} className="problem">
+                  {problem}
+                </li>
+              ))}
+            {!blank &&
+              preview?.entries.map((entry) => (
+                <EntryReading key={entry.number} entry={entry} />
+              ))}
+            {!blank &&
+              preview?.warnings.map((warning) => (
+                <li key={warning} className="warning">
+                  {warning}
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
       {previewError && <p className="settings-error">{previewError}</p>}
       {error && <p className="settings-error">{error}</p>}
 

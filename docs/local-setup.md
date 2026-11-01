@@ -143,6 +143,7 @@ organisations:
     volunteerSheetID: 'your-volunteer-sheet-id'
     serviceVolunteersTab: 'volunteers'       # the tab name in the volunteer sheet
     rotaSheetID: 'your-rota-sheet-id'
+    naturalEditor: true                      # optional: describe the shift pattern in plain English (needs translator below)
 
 # Local Postgres (matches scripts/test-db.sh)
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
@@ -161,6 +162,14 @@ databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?ssl
 server:
   port: 8080
   sessionSecret: 'change-me-min-16-chars'     # signs session cookies; ≥16 chars
+
+# Optional: the model behind plain-English shift patterns (ADR 0015). Without
+# it the pattern card offers raw entry only. Spend is capped by the Anthropic
+# workspace's limit, not here.
+translator:
+  apiKey: 'sk-ant-your-key'
+  model: 'claude-sonnet-5-5'                 # optional; this is the default
+  effort: 'low'                              # optional; low, medium, high, xhigh or max
 ```
 
 The app is then at `http://localhost:5173/org/my-organisation/`; `/` is a splash

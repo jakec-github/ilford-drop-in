@@ -106,6 +106,10 @@ export interface PatternEntry {
   warnings: string[];
 }
 
+// The most a description may run to, in characters; the server refuses more
+// before asking the model.
+export const MAX_DESCRIPTION = 1000;
+
 // PatternStart is one Shift a pattern generates: wall-clock
 // "2026-11-01T19:30:00", and how long the entry that made it runs.
 export interface PatternStart {
@@ -209,7 +213,31 @@ export interface RotaDefaults extends ShiftPattern {
   defaultShape: ShapeSeat[];
   allocationRules: AllocationRule[];
   ruleLibrary: RuleKind[];
+  // Whether the pattern can be described in plain English here, and why not
+  // when it cannot: the server has no translator, or the Organisation has not
+  // turned it on (ADR 0015).
+  naturalEditor: NaturalEditor;
 }
+
+export interface NaturalEditor {
+  available: boolean;
+  reason?: string;
+}
+
+// TranslationIssue is one thing that stopped a description becoming a pattern:
+// something it leaves out, something it could mean two ways (examples are
+// readings to pick from), or something no pattern can say.
+export interface TranslationIssue {
+  kind: "missing" | "ambiguous" | "unsupported";
+  message: string;
+  examples: string[];
+}
+
+// ShiftPatternTranslation is what a description came to: the whole pattern
+// and what each entry says, or every issue at once. Translating saves nothing.
+export type ShiftPatternTranslation =
+  | { status: "ok"; pattern: string; entries: PatternEntry[] }
+  | { status: "issues"; issues: TranslationIssue[] };
 
 // Assignee is one person on a shift: a real volunteer or a custom (manual)
 // entry. roleId is the Role of the Seat they are in on this shift, not the

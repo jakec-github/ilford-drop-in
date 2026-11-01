@@ -52,7 +52,35 @@ type Organisation struct {
 	VolunteerSheetID     string   `yaml:"volunteerSheetID" validate:"required"`
 	ServiceVolunteersTab string   `yaml:"serviceVolunteersTab" validate:"required"`
 	RotaSheetID          string   `yaml:"rotaSheetID" validate:"required"`
+	// NaturalEditor lets this Organisation's Organisers describe its Shift
+	// pattern in plain English (ADR 0015). Off unless set, so a deployment calls
+	// no paid API until someone chooses it; it needs the server's translator
+	// too.
+	NaturalEditor bool `yaml:"naturalEditor,omitempty"`
 }
+
+// TranslatorConfig is the language model the natural editor translates with
+// (ADR 0015). One for the whole server; each Organisation opts in with
+// naturalEditor. Without it no Organisation has the natural editor, except in
+// dev mode, which stands a free stub in for it.
+type TranslatorConfig struct {
+	// APIKey is a Claude API key. Give the app an Anthropic workspace of its
+	// own with a monthly spend limit: reaching the limit is the app's only
+	// spending cap.
+	APIKey string `yaml:"apiKey" validate:"required"`
+	// Model is the model asked, claude-sonnet-5-5 when empty.
+	Model string `yaml:"model,omitempty"`
+	// Effort is how hard it thinks — low, medium, high, xhigh or max — and low
+	// when empty.
+	Effort string `yaml:"effort,omitempty" validate:"omitempty,oneof=low medium high xhigh max"`
+}
+
+// DefaultTranslatorModel and DefaultTranslatorEffort are what an empty Model
+// and Effort mean.
+const (
+	DefaultTranslatorModel  = "claude-sonnet-5-5"
+	DefaultTranslatorEffort = "low"
+)
 
 // organisationID is what an Organisation id may be: the same rule the
 // organisation table's CHECK holds it to, so a bad id fails here, at load,
@@ -165,6 +193,9 @@ type Config struct {
 	DatabaseURL   string         `yaml:"databaseURL" validate:"required"`
 	Server        *ServerConfig  `yaml:"server,omitempty"`
 	DevMode       *DevModeConfig `yaml:"devMode,omitempty"`
+	// Translator is the language model behind the natural editor; absent
+	// means nobody has one.
+	Translator *TranslatorConfig `yaml:"translator,omitempty"`
 	// gmailUserID and gmailSender are gone too (#256). Nothing had read them
 	// since mail began to be sent as the signed-in Organiser, through the
 	// gmail.send grant they give when they send a round.

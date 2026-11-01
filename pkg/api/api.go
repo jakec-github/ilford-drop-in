@@ -12,6 +12,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/jakechorley/ilford-drop-in/internal/config"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 )
 
@@ -79,6 +80,10 @@ type Handler struct {
 	// syncVolunteers repopulates the roster from the Organisation's sheet; nil
 	// disables the sync endpoint.
 	syncVolunteers VolunteerSyncFunc
+	// translator turns a plain-English description into a Shift pattern; nil
+	// when the server has none, which leaves the natural editor unavailable
+	// (ADR 0015).
+	translator patterntranslator.Translator
 }
 
 // RotaPublisher is told whenever something that could show on the rota sheet has
@@ -200,6 +205,7 @@ func (h *Handler) Routes() http.Handler {
 	api.Handle("PUT /rota-defaults/shift-pattern", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveShiftPattern)))
 	api.Handle("PUT /rota-defaults/timezone", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveTimezone)))
 	api.Handle("POST /rota-defaults/shift-pattern/preview", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleShiftPatternPreview)))
+	api.Handle("POST /rota-defaults/shift-pattern/translate", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleTranslateShiftPattern)))
 	api.Handle("PUT /rota-defaults/shape", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleSaveDefaultShape)))
 	api.Handle("POST /rota-defaults/allocation-rules", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleAddAllocationRule)))
 	api.Handle("PUT /rota-defaults/allocation-rules/{id}", h.requireLevel(LevelOrganiser, http.HandlerFunc(h.handleEditAllocationRule)))
