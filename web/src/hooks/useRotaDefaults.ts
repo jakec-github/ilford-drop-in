@@ -7,11 +7,13 @@ import {
   saveDefaultShape,
   saveShiftPattern as saveShiftPatternSection,
   saveTimezone as saveTimezoneSection,
+  translateShiftPattern,
 } from "../api";
 import type {
   AllocationRuleDraft,
   AllocationRuleEdit,
   RotaDefaults,
+  ShiftPatternTranslation,
 } from "../types";
 
 interface UseRotaDefaults {
@@ -22,6 +24,10 @@ interface UseRotaDefaults {
   // Writes the Shift pattern and holds what the server stored. Rejects with
   // the server's own message, which names the entry that was wrong.
   saveShiftPattern: (pattern: string) => Promise<void>;
+  // Turns a plain-English description into a pattern, holding nothing: the
+  // pattern is saved through saveShiftPattern like one typed. Rejects with
+  // the server's message when the model could not be asked.
+  translateShiftPattern: (text: string) => Promise<ShiftPatternTranslation>;
   // Writes the zone the Organisation's times are read in. Rejects with the
   // server's message when it cannot load the zone.
   saveTimezone: (zone: string) => Promise<void>;
@@ -140,6 +146,7 @@ export function useRotaDefaults({
     defaults: enabled ? defaults : null,
     error: enabled ? error : null,
     saveShiftPattern,
+    translateShiftPattern,
     saveTimezone,
     saveShape,
     addRule,

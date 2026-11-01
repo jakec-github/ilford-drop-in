@@ -38,6 +38,9 @@ type rotaDefaultsResponse struct {
 	// is the only one (ADR 0012).
 	AllocationRules []allocationRuleResponse `json:"allocationRules"`
 	RuleLibrary     []ruleKindResponse       `json:"ruleLibrary"`
+	// NaturalEditor says whether the pattern can be described in plain English
+	// here, and why not when it cannot.
+	NaturalEditor naturalEditorResponse `json:"naturalEditor"`
 }
 
 // ruleKindResponse is one Rule Kind as the screen offers it.
@@ -199,7 +202,7 @@ func (h *Handler) handleGetRotaDefaults(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, toRotaDefaultsResponse(defaults, shape))
+	h.writeJSON(w, http.StatusOK, h.toRotaDefaultsResponse(defaults, shape))
 }
 
 // handleSaveShiftPattern writes the Shift pattern and answers with the
@@ -342,10 +345,10 @@ func (h *Handler) writeSettings(w http.ResponseWriter, r *http.Request, defaults
 		h.writeServiceError(w, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, toRotaDefaultsResponse(defaults, shape))
+	h.writeJSON(w, http.StatusOK, h.toRotaDefaultsResponse(defaults, shape))
 }
 
-func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rotaDefaultsResponse {
+func (h *Handler) toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rotaDefaultsResponse {
 	library := make([]ruleKindResponse, 0, len(model.RuleLibrary))
 	for _, k := range model.RuleLibrary {
 		library = append(library, ruleKindResponse{
@@ -394,6 +397,7 @@ func toRotaDefaultsResponse(defaults model.RotaDefaults, shape model.Shape) rota
 		DefaultShape:    toSeatResponses(shape),
 		AllocationRules: rules,
 		RuleLibrary:     library,
+		NaturalEditor:   h.naturalEditor(),
 	}
 }
 

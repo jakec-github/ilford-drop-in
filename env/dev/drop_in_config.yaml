@@ -24,6 +24,10 @@ organisations:
     volunteerSheetID: 'dev-no-sheet'
     serviceVolunteersTab: 'volunteers'
     rotaSheetID: 'dev-no-sheet'
+    # The shift pattern can be described in plain English. Dev mode answers
+    # with a stub translator, so no key is needed: text naming "issue" gets
+    # issues, "fail" fails, and anything else is Sunday evenings.
+    naturalEditor: true
 
 # A database of its own, deliberately not ilford_dropin_test: that one is the
 # golden template git worktrees clone from, and Postgres refuses to clone a
