@@ -83,10 +83,12 @@ type RunReport struct {
 }
 
 // Reply is one call's reply: its text, or why there was none to use, such as
-// a refusal or a reply cut off at its token limit.
+// a refusal or a reply cut off at its token limit, and the summary of the
+// thinking behind it, where the model gave one.
 type Reply struct {
-	Text  string `json:"text,omitempty"`
-	Error string `json:"error,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
 }
 
 // Latency is how long the translation took.
@@ -233,18 +235,19 @@ type recorder struct {
 	usage   patterntranslator.Usage
 }
 
-func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
-	text, u, err := r.model.Reply(ctx, prompt, turns)
-	reply := Reply{Text: text}
+func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+	resp, err := r.model.Reply(ctx, prompt, turns)
+	reply := Reply{Text: resp.Text, Thinking: resp.Thinking}
 	if err != nil {
 		reply.Error = err.Error()
 	}
 	r.replies = append(r.replies, reply)
+	u := resp.Usage
 	r.usage.InputTokens += u.InputTokens
 	r.usage.OutputTokens += u.OutputTokens
 	r.usage.CacheReadTokens += u.CacheReadTokens
 	r.usage.CacheWriteTokens += u.CacheWriteTokens
-	return text, u, err
+	return resp, err
 }
 
 // planter is a Model whose first call is a planted reply, made without
@@ -254,9 +257,9 @@ type planter struct {
 	reply string
 }
 
-func (p planter) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
+func (p planter) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
 	if len(turns) == 1 {
-		return p.reply, patterntranslator.Usage{}, nil
+		return patterntranslator.Response{Text: p.reply}, nil
 	}
 	return p.model.Reply(ctx, prompt, turns)
 }

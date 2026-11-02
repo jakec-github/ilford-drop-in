@@ -143,10 +143,19 @@ type Turn struct {
 }
 
 // Model is a language model: given a Prompt and the exchange so far, its next
-// reply, as the JSON text it wrote, and what the call used. An error other than
-// ErrUnusableReply means it could not be asked.
+// reply. An error other than ErrUnusableReply means it could not be asked; with
+// ErrUnusableReply the Response still says what the call used and thought.
 type Model interface {
-	Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, Usage, error)
+	Reply(ctx context.Context, prompt *Prompt, turns []Turn) (Response, error)
+}
+
+// Response is one call's reply: the JSON text the model wrote, the summary of
+// its thinking where it was asked for one, and what the call used. The
+// translator reads only the text; the rest is for whatever measures the calls.
+type Response struct {
+	Text     string
+	Thinking string
+	Usage    Usage
 }
 
 // Usage is the tokens one call used, as the API counts them. The translator
@@ -235,7 +244,7 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 		if err := ctx.Err(); err != nil {
 			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
-		text, _, err := c.model.Reply(ctx, t.prompt, turns)
+		resp, err := c.model.Reply(ctx, t.prompt, turns)
 		if errors.Is(err, ErrUnusableReply) {
 			continue
 		}
@@ -243,7 +252,7 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
 
-		r, ok := read(text, t.answer)
+		r, ok := read(resp.Text, t.answer)
 		if !ok {
 			continue
 		}
@@ -257,7 +266,7 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 			return answer, nil, nil
 		}
 		turns = append(turns,
-			Turn{Role: Assistant, Text: text},
+			Turn{Role: Assistant, Text: resp.Text},
 			Turn{Role: User, Text: retryTurn(t.noun, problems)})
 	}
 

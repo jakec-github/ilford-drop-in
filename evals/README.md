@@ -142,8 +142,11 @@ For each case it gives:
 Below that, every failed run is listed with what went wrong. A run that gave
 up shows each call's raw reply, since a reply the loop cannot read, such as
 issues with none in them, never reaches the parser and leaves no message of
-its own. Every message that lost wording points is listed after that.
+its own. Under each reply is a summary of the model's thinking behind it: the
+eval asks for one, where the server does not. The `.json` keeps it for every
+call, not only the ones shown. Every message that lost wording points is
+listed after that.
 
 Commit only the reports worth keeping, such as the run that chose a model or
 the runs before and after a prompt change. They hold only our own cases and
-the model's replies.
+the model's replies and thinking.
