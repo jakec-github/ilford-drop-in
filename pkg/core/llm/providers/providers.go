@@ -7,10 +7,11 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/llm/anthropic"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm/mistral"
 )
 
 // All is every provider, in the order they are listed to someone choosing.
-var All = []llm.Provider{anthropic.Provider}
+var All = []llm.Provider{anthropic.Provider, mistral.Provider}
 
 // Named is the provider called name.
 func Named(name string) (llm.Provider, error) {

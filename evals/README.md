@@ -18,9 +18,14 @@ ANTHROPIC_API_KEY=… go run ./cmd/translator-eval
 ```
 
 A model is named `<provider>-<tier>` (ADR 0016): `anthropic-small`,
-`anthropic-medium` or `anthropic-large`. Each provider's key comes from its own
-environment variable, `ANTHROPIC_API_KEY` for Anthropic, and a run whose model
-and judge are from different providers needs both.
+`anthropic-medium`, `anthropic-large`, `mistral-small`, `mistral-medium` or
+`mistral-large`. Each provider's key comes from its own environment variable,
+`ANTHROPIC_API_KEY` or `MISTRAL_API_KEY`, and a run whose model and judge are
+from different providers needs both:
+
+```bash
+ANTHROPIC_API_KEY=… MISTRAL_API_KEY=… go run ./cmd/translator-eval -model mistral-medium
+```
 
 Before the first call it prints how many calls the run will make and roughly
 what they cost, the judge's apart, then waits for a yes.
