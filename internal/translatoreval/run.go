@@ -20,6 +20,10 @@ type Subject struct {
 	// Base asks the model. Nil runs the dev-mode stub instead, which costs
 	// nothing and makes no calls.
 	Base patterntranslator.Model
+	// Judge pairs the issues each run raises with the ones its case wants,
+	// asking JudgeModel. Nil judges nothing.
+	Judge      patterntranslator.Model
+	JudgeModel string
 }
 
 // Options are how a run goes.
@@ -45,8 +49,12 @@ type Report struct {
 	Prompts map[string]string `json:"prompts"`
 	// Priced is whether the model is in the price table, and so whether the
 	// costs mean anything.
-	Priced bool         `json:"priced"`
-	Cases  []CaseReport `json:"cases"`
+	Priced bool `json:"priced"`
+	// Judge is the model that judged the issues raised, and JudgePrompt a
+	// hash of what it was asked under; both are empty when nothing was.
+	Judge       string       `json:"judge,omitempty"`
+	JudgePrompt string       `json:"judgePrompt,omitempty"`
+	Cases       []CaseReport `json:"cases"`
 }
 
 // CaseReport is one case's runs.
@@ -58,8 +66,11 @@ type CaseReport struct {
 	// Planted is, for a repair case, the refused reply it starts from.
 	Planted string `json:"planted,omitempty"`
 	// Translates is whether the case wants a translation rather than issues.
-	Translates bool        `json:"translates"`
-	Runs       []RunReport `json:"runs"`
+	Translates bool `json:"translates"`
+	// Expected is the issues the case wants, for the judge's pairings to be
+	// read against.
+	Expected []ExpectedIssue `json:"expected,omitempty"`
+	Runs     []RunReport     `json:"runs"`
 }
 
 // RunReport is one translation of a case: what came back, its grade, and what
@@ -80,6 +91,9 @@ type RunReport struct {
 	LatencyMS int64   `json:"latencyMs"`
 	// TimedOut is a translation that ran out of patterntranslator.Timeout.
 	TimedOut bool `json:"timedOut,omitempty"`
+	// Judgement is, for issues where issues were wanted, the judge's pairing
+	// of them with the case's.
+	Judgement *Judgement `json:"judgement,omitempty"`
 }
 
 // Reply is one call's reply: its text, or why there was none to use, such as
@@ -129,10 +143,14 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 		Priced:  priced && s.Base != nil,
 		Cases:   make([]CaseReport, len(cases)),
 	}
+	if s.Judge != nil {
+		report.Judge, report.JudgePrompt = s.JudgeModel, judgeHash()
+	}
 	for i, c := range cases {
 		report.Cases[i] = CaseReport{
 			Name: c.Name, Kind: c.Kind, Group: c.Group, Text: c.Text, Planted: c.Planted, Translates: c.Translates(),
-			Runs: make([]RunReport, o.Repeats),
+			Expected: c.Expect.Issues,
+			Runs:     make([]RunReport, o.Repeats),
 		}
 	}
 
@@ -146,7 +164,11 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 		go func() {
 			defer wg.Done()
 			for j := range jobs {
-				run := translateOnce(ctx, s, cases[j.c])
+				c := cases[j.c]
+				run := translateOnce(ctx, s, c)
+				if s.Judge != nil && run.Outcome == Raised && !c.Translates() {
+					run.Judgement = judge(ctx, s.Judge, s.JudgeModel, c, run.Issues)
+				}
 				mu.Lock()
 				report.Cases[j.c].Runs[j.r] = run
 				done++
