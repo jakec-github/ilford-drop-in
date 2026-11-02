@@ -89,7 +89,24 @@ type Reply struct {
 	Text     string `json:"text,omitempty"`
 	Error    string `json:"error,omitempty"`
 	Thinking string `json:"thinking,omitempty"`
+	// Retry is why the model was asked again after this reply, if it was.
+	Retry Retry `json:"retry,omitempty"`
+	// SentBack is, for a reply the parser refused, the message that took its
+	// problems back to the model.
+	SentBack string `json:"sentBack,omitempty"`
 }
+
+// Retry is why the translator went back to the model: its reply did not
+// stand.
+type Retry string
+
+const (
+	// Refused is a reply the parser refused; its problems went back.
+	Refused Retry = "refused"
+	// Unusable is a reply the translator could not use at all, such as issues
+	// with none in them, so it asked again the same way.
+	Unusable Retry = "unusable"
+)
 
 // Latency is how long the translation took.
 func (r RunReport) Latency() time.Duration {
@@ -233,9 +250,23 @@ type recorder struct {
 	model   patterntranslator.Model
 	replies []Reply
 	usage   patterntranslator.Usage
+	// turns is how many turns the last call was asked with.
+	turns int
 }
 
 func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+	// A call after another says why the last reply did not stand: a refused
+	// one goes back with the parser's problems, so the turns grow; an unusable
+	// one is asked again with the same turns.
+	if n := len(r.replies); n > 0 {
+		last := &r.replies[n-1]
+		if len(turns) > r.turns {
+			last.Retry, last.SentBack = Refused, turns[len(turns)-1].Text
+		} else {
+			last.Retry = Unusable
+		}
+	}
+	r.turns = len(turns)
 	resp, err := r.model.Reply(ctx, prompt, turns)
 	reply := Reply{Text: resp.Text, Thinking: resp.Thinking}
 	if err != nil {

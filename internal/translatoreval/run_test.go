@@ -224,3 +224,40 @@ func TestRun_ARepairCasesFirstCallIsThePlantedReply(t *testing.T) {
 		t.Errorf("usage %+v, cost %v: the planted call is not free", r.Usage, r.Cost)
 	}
 }
+
+// sequenceModel replies with each of its replies in turn, whatever it is
+// asked.
+type sequenceModel struct {
+	replies []patterntranslator.Response
+	calls   int
+}
+
+func (m *sequenceModel) Reply(context.Context, *patterntranslator.Prompt, []patterntranslator.Turn) (patterntranslator.Response, error) {
+	m.calls++
+	return m.replies[m.calls-1], nil
+}
+
+// Going back to the model means its reply did not stand, so each reply that
+// was followed by another call says why: the parser refused it, and what went
+// back, or it could not be used at all.
+func TestRun_EachReplyFollowedByAnotherSaysWhy(t *testing.T) {
+	model := &sequenceModel{replies: []patterntranslator.Response{
+		{Text: `{"status":"issues","issues":[]}`},
+		{Text: okPattern(noDuration)},
+		{Text: okPattern(sundays)},
+	}}
+	r := Run(context.Background(), Subject{Model: "m", Base: model}, []Case{sundaysCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
+
+	if !r.Pass || len(r.Replies) != 3 {
+		t.Fatalf("run: %+v", r)
+	}
+	if r.Replies[0].Retry != Unusable || r.Replies[0].SentBack != "" {
+		t.Errorf("an unusable reply: %+v", r.Replies[0])
+	}
+	if r.Replies[1].Retry != Refused || !strings.Contains(r.Replies[1].SentBack, problemsOf(noDuration, "Europe/London")[0]) {
+		t.Errorf("a refused reply: %+v", r.Replies[1])
+	}
+	if r.Replies[2].Retry != "" {
+		t.Errorf("the last reply: %+v", r.Replies[2])
+	}
+}

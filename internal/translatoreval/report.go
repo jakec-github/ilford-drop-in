@@ -3,6 +3,7 @@ package translatoreval
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -12,9 +13,11 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 )
 
-// Tally is how many runs passed of how many.
+// Tally is how many runs passed of how many, and how many of those passed on
+// their first call. A pass that needed another call still passes, but the
+// model's first reply did not stand.
 type Tally struct {
-	Passed, Runs int
+	Passed, First, Runs int
 }
 
 func (t Tally) String() string {
@@ -24,11 +27,72 @@ func (t Tally) String() string {
 	return fmt.Sprintf("%d/%d (%.0f%%)", t.Passed, t.Runs, 100*float64(t.Passed)/float64(t.Runs))
 }
 
+// FirstCall is how many runs passed on their first call, of how many.
+func (t Tally) FirstCall() Tally {
+	return Tally{Passed: t.First, First: t.First, Runs: t.Runs}
+}
+
 func (t *Tally) add(r RunReport) {
 	t.Runs++
 	if r.Pass {
 		t.Passed++
+		if r.Calls <= 1 { // the stub makes no calls at all
+			t.First++
+		}
 	}
+}
+
+// Retries is every call after a run's first, by why it was made: the parser
+// refused the reply before, or the reply could not be used at all.
+type Retries struct {
+	Refused int
+	// Unusable counts unusable replies by what made them so.
+	Unusable map[string]int
+}
+
+// add counts the calls a run made again, after its first skip replies.
+func (rt *Retries) add(kind string, run RunReport, skip int) {
+	for _, reply := range run.Replies[min(skip, len(run.Replies)):] {
+		switch reply.Retry {
+		case Refused:
+			rt.Refused++
+		case Unusable:
+			if rt.Unusable == nil {
+				rt.Unusable = map[string]int{}
+			}
+			rt.Unusable[whyUnusable(kind, reply)]++
+		}
+	}
+}
+
+// whyUnusable is what made a reply one the translator could not use.
+func whyUnusable(kind string, r Reply) string {
+	if r.Error != "" {
+		return strings.TrimPrefix(r.Error, patterntranslator.ErrUnusableReply.Error()+": ")
+	}
+	if strings.TrimSpace(r.Text) == "" {
+		return "an empty reply"
+	}
+	var reply struct {
+		Status  string            `json:"status"`
+		Issues  []json.RawMessage `json:"issues"`
+		Pattern string            `json:"pattern"`
+		Rule    string            `json:"rule"`
+	}
+	if err := json.Unmarshal([]byte(r.Text), &reply); err != nil {
+		return "JSON that does not read"
+	}
+	answer := reply.Pattern
+	if kind == Rules {
+		answer = reply.Rule
+	}
+	switch {
+	case reply.Status == "issues" && len(reply.Issues) == 0:
+		return "issues with none in them"
+	case reply.Status == "ok" && strings.TrimSpace(answer) == "":
+		return "an empty answer"
+	}
+	return "a reply of neither shape"
 }
 
 // Score is a mean score from 0 to 1 over the runs that have one.
@@ -93,9 +157,9 @@ func (c *Calls) add(r RunReport) {
 // something else; not fixed, every call was refused.
 type Repairs struct {
 	Fixed, Changed, NotFixed, Unavailable int
-	// ModelCalls is the calls the fixed runs asked the model for, after the
-	// planted one.
-	ModelCalls int
+	// FirstFix is the fixes made on the model's first call, the one after
+	// the planted reply.
+	FirstFix int
 }
 
 func (r *Repairs) add(run RunReport) {
@@ -106,30 +170,18 @@ func (r *Repairs) add(run RunReport) {
 		r.NotFixed++
 	case run.Pass:
 		r.Fixed++
-		r.ModelCalls += max(run.Calls-1, 0) // the stub makes no calls at all
+		if run.Calls <= 2 { // the stub makes no calls at all
+			r.FirstFix++
+		}
 	default:
 		r.Changed++
 	}
 }
 
-// Rate is how many runs were fixed of how many.
+// Rate is how many runs were fixed of how many; its first call is the
+// model's, after the planted one.
 func (r Repairs) Rate() Tally {
-	return Tally{Passed: r.Fixed, Runs: r.Fixed + r.Changed + r.NotFixed + r.Unavailable}
-}
-
-// CallsPerFix is the mean calls to the model a fix took, or 0 with none.
-func (r Repairs) CallsPerFix() float64 {
-	if r.Fixed == 0 {
-		return 0
-	}
-	return float64(r.ModelCalls) / float64(r.Fixed)
-}
-
-func (r Repairs) callsPerFix() string {
-	if r.Fixed == 0 {
-		return "—"
-	}
-	return fmt.Sprintf("%.1f", r.CallsPerFix())
+	return Tally{Passed: r.Fixed, First: r.FirstFix, Runs: r.Fixed + r.Changed + r.NotFixed + r.Unavailable}
 }
 
 // RepairGroup is the repair cases of one group in one file, taken together.
@@ -156,6 +208,9 @@ type Summary struct {
 	// attempt. Cost and latency count every run.
 	Repairs      Repairs
 	RepairGroups []RepairGroup
+	// Retries is the calls made again on first attempts; RepairRetries is
+	// those on repairs, the planted reply's refusal aside.
+	Retries, RepairRetries Retries
 }
 
 // PerRun is the mean cost of one translation, repairs included.
@@ -184,6 +239,7 @@ func Summarise(cases []CaseReport) Summary {
 			for _, r := range c.Runs {
 				s.Repairs.add(r)
 				repairs[label].add(r)
+				s.RepairRetries.add(c.Kind, r, 1)
 				s.Cost += r.Cost
 				latencies = append(latencies, r.Latency())
 				if r.TimedOut {
@@ -203,6 +259,7 @@ func Summarise(cases []CaseReport) Summary {
 			g.Tally.add(r)
 			g.Wording.add(r)
 			s.Calls.add(r)
+			s.Retries.add(c.Kind, r, 0)
 			s.Cost += r.Cost
 			latencies = append(latencies, r.Latency())
 			if r.TimedOut {
@@ -261,30 +318,34 @@ func Render(r *Report, earlier *Report) string {
 
 	s := Summarise(r.Cases)
 	b.WriteString("## Summary\n\nWording scores the messages of issues the model raised, from 0 to 1. It never fails a run.\n\n")
-	b.WriteString("| | Passed | Wording |\n|---|---|---|\n")
-	fmt.Fprintf(&b, "| All | %s | %s |\n", s.All, s.Wording)
+	b.WriteString("First call is the runs right on the model's first reply; in the end, those right on any. ")
+	b.WriteString("Every call after the first means a reply did not stand.\n\n")
+	b.WriteString("| | First call | In the end | Wording |\n|---|---|---|---|\n")
+	fmt.Fprintf(&b, "| All | %s | %s | %s |\n", s.All.FirstCall(), s.All, s.Wording)
 	for _, g := range s.Groups {
-		fmt.Fprintf(&b, "| %s | %s | %s |\n", g.Label, g.Tally, g.Wording)
+		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", g.Label, g.FirstCall(), g.Tally, g.Wording)
 	}
 	b.WriteString("\n| Calls | Runs |\n|---|---|\n")
 	fmt.Fprintf(&b, "| First call | %d |\n| Second call | %d |\n| Third call | %d |\n| Gave up | %d |\n| Unavailable | %d |\n\n",
 		s.Calls.First, s.Calls.Second, s.Calls.Third, s.Calls.GaveUp, s.Calls.Unavailable)
+	writeRetries(&b, s.Retries)
 	fmt.Fprintf(&b, "Cost %s in all, %s a translation · latency %s typical, %s slow (p95) · %d over the %s limit\n\n",
 		money(s.Cost), money(s.PerRun()), seconds(s.Typical), seconds(s.Slow), s.TimedOut, patterntranslator.Timeout)
 
 	if len(s.RepairGroups) > 0 {
 		b.WriteString("## Repairs\n\nEach repair case's first call is a planted reply the parser refuses, made without asking the model; ")
 		b.WriteString("what is graded is the model's replies after the parser's messages go back. ")
-		b.WriteString("They are left out of the pass rate and calls above. Calls a fix counts the model's calls only.\n\n")
-		b.WriteString("| | Fixed | Parsed but changed | Not fixed | Unavailable | Calls a fix |\n|---|---|---|---|---|---|\n")
+		b.WriteString("They are left out of the rates and calls above.\n\n")
+		b.WriteString("| | Fixed | On the first model call | Parsed but changed | Not fixed | Unavailable |\n|---|---|---|---|---|---|\n")
 		row := func(label string, r Repairs) {
-			fmt.Fprintf(&b, "| %s | %s | %d | %d | %d | %s |\n", label, r.Rate(), r.Changed, r.NotFixed, r.Unavailable, r.callsPerFix())
+			fmt.Fprintf(&b, "| %s | %s | %s | %d | %d | %d |\n", label, r.Rate(), r.Rate().FirstCall(), r.Changed, r.NotFixed, r.Unavailable)
 		}
 		row("All", s.Repairs)
 		for _, g := range s.RepairGroups {
 			row(g.Label, g.Repairs)
 		}
 		b.WriteString("\n")
+		writeRetries(&b, s.RepairRetries)
 	}
 
 	b.WriteString("## Cases\n\nCalls are first / second / third / none that worked (gave up or unavailable).\n")
@@ -293,7 +354,7 @@ func Render(r *Report, earlier *Report) string {
 		if l := groupLabel(c); l != label {
 			label = l
 			fmt.Fprintf(&b, "\n### %s\n\n", label)
-			b.WriteString("| Case | Wants | Passed | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|\n")
+			b.WriteString("| Case | Wants | First call | In the end | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|\n")
 		}
 		cs := Summarise([]CaseReport{c})
 		wants := "issues"
@@ -310,8 +371,8 @@ func Render(r *Report, earlier *Report) string {
 				calls.add(run)
 			}
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d/%d | %s | %d / %d / %d / %d | %s | %s | %s |\n",
-			c.Name, wants, passed.Passed, passed.Runs, cs.Wording,
+		fmt.Fprintf(&b, "| %s | %s | %d/%d | %d/%d | %s | %d / %d / %d / %d | %s | %s | %s |\n",
+			c.Name, wants, passed.First, passed.Runs, passed.Passed, passed.Runs, cs.Wording,
 			calls.First, calls.Second, calls.Third, calls.GaveUp+calls.Unavailable,
 			money(cs.PerRun()), seconds(cs.Typical), seconds(cs.Slow))
 	}
@@ -328,6 +389,7 @@ func Render(r *Report, earlier *Report) string {
 			writeFailures(&b, c)
 		}
 	}
+	writeSecondGoes(&b, r.Cases)
 
 	writeWording(&b, r.Cases)
 
@@ -379,14 +441,6 @@ func writeFailures(b *strings.Builder, c CaseReport) {
 				fmt.Fprintf(b, "  - Raised %s: %s\n", issue.Kind, issue.Message)
 			}
 		}
-		if run.Outcome == GaveUp {
-			for n, reply := range run.Replies {
-				fmt.Fprintf(b, "  - Call %d: %s\n", n+1, replyLine(reply))
-				if thought := strings.Join(strings.Fields(reply.Thinking), " "); thought != "" {
-					fmt.Fprintf(b, "    - Thought: %s\n", thought)
-				}
-			}
-		}
 		if d := run.Shifts; d != nil {
 			if d.MissingCount > 0 {
 				fmt.Fprintf(b, "  - Missing: %s%s\n", strings.Join(d.Missing, ", "), more(d.MissingCount, len(d.Missing)))
@@ -395,7 +449,105 @@ func writeFailures(b *strings.Builder, c CaseReport) {
 				fmt.Fprintf(b, "  - Extra: %s%s\n", strings.Join(d.Extra, ", "), more(d.ExtraCount, len(d.Extra)))
 			}
 		}
+		// A run that gave up says why only in its replies; one that took
+		// another call says how it got to its answer.
+		if run.Outcome == GaveUp || run.Calls > firstCall(c) {
+			writeCalls(b, c, run)
+		}
 	}
+}
+
+// firstCall is the call a case's first reply of the model's own comes back
+// on: a repair case's first is planted.
+func firstCall(c CaseReport) int {
+	if c.Planted != "" {
+		return 2
+	}
+	return 1
+}
+
+// writeSecondGoes lists every run that passed, but not on the model's first
+// reply.
+func writeSecondGoes(b *strings.Builder, cases []CaseReport) {
+	wrote := false
+	for _, c := range cases {
+		var runs []int
+		for i, run := range c.Runs {
+			if run.Pass && run.Calls > firstCall(c) {
+				runs = append(runs, i)
+			}
+		}
+		if len(runs) == 0 {
+			continue
+		}
+		if !wrote {
+			b.WriteString("\n## Second goes\n\nRuns that passed, but not on the model's first reply.\n")
+			wrote = true
+		}
+		fmt.Fprintf(b, "\n### %s\n\n> %s\n\n", c.Name, strings.ReplaceAll(c.Text, "\n", "\n> "))
+		for _, i := range runs {
+			fmt.Fprintf(b, "- Run %d: passed on call %d\n", i+1, c.Runs[i].Calls)
+			writeCalls(b, c, c.Runs[i])
+		}
+	}
+}
+
+// writeCalls is each of a run's calls: the reply, the thinking behind it, and
+// why the model was asked again after it.
+func writeCalls(b *strings.Builder, c CaseReport, run RunReport) {
+	for n, reply := range run.Replies {
+		planted := ""
+		if c.Planted != "" && n == 0 {
+			planted = " (planted)"
+		}
+		fmt.Fprintf(b, "  - Call %d%s: %s\n", n+1, planted, replyLine(reply))
+		if thought := strings.Join(strings.Fields(reply.Thinking), " "); thought != "" {
+			fmt.Fprintf(b, "    - Thought: %s\n", thought)
+		}
+		switch reply.Retry {
+		case Refused:
+			fmt.Fprintf(b, "    - Asked again: the parser refused it: %s\n", sentBackProblems(reply.SentBack))
+		case Unusable:
+			fmt.Fprintf(b, "    - Asked again: unusable, %s\n", whyUnusable(c.Kind, reply))
+		}
+	}
+}
+
+// sentBackProblems is the parser's problems a message took back to the model,
+// on one line.
+func sentBackProblems(text string) string {
+	var problems []string
+	for _, line := range strings.Split(text, "\n") {
+		if p, ok := strings.CutPrefix(line, "- "); ok {
+			problems = append(problems, p)
+		}
+	}
+	if len(problems) == 0 {
+		return strings.Join(strings.Fields(text), " ")
+	}
+	return strings.Join(problems, "; ")
+}
+
+// writeRetries is every call made again, by why, most often first.
+func writeRetries(b *strings.Builder, rt Retries) {
+	if rt.Refused == 0 && len(rt.Unusable) == 0 {
+		return
+	}
+	b.WriteString("| Why the model was asked again | Calls |\n|---|---|\n")
+	if rt.Refused > 0 {
+		fmt.Fprintf(b, "| Refused by the parser | %d |\n", rt.Refused)
+	}
+	whys := slices.Collect(maps.Keys(rt.Unusable))
+	sort.Slice(whys, func(i, j int) bool {
+		if rt.Unusable[whys[i]] != rt.Unusable[whys[j]] {
+			return rt.Unusable[whys[i]] > rt.Unusable[whys[j]]
+		}
+		return whys[i] < whys[j]
+	})
+	for _, why := range whys {
+		fmt.Fprintf(b, "| Unusable: %s | %d |\n", why, rt.Unusable[why])
+	}
+	b.WriteString("\n")
 }
 
 // replyLine is a reply on one line: its text as code, or why it had none.
@@ -456,19 +608,21 @@ func writeComparison(b *strings.Builder, r, earlier *Report) {
 		sharedBefore = append(sharedBefore, before[c.Name])
 	}
 	sb, sn := Summarise(sharedBefore), Summarise(shared)
-	fmt.Fprintf(b, "On the cases both ran: passed %s → %s, wording %s → %s, %s a translation → %s, typical %s → %s, slow %s → %s\n\n",
-		sb.All, sn.All, sb.Wording, sn.Wording, dollars(earlier.Priced, sb.PerRun()), dollars(r.Priced, sn.PerRun()),
+	fmt.Fprintf(b, "On the cases both ran: first call %s → %s, in the end %s → %s, wording %s → %s, %s a translation → %s, typical %s → %s, slow %s → %s\n\n",
+		sb.All.FirstCall(), sn.All.FirstCall(), sb.All, sn.All, sb.Wording, sn.Wording, dollars(earlier.Priced, sb.PerRun()), dollars(r.Priced, sn.PerRun()),
 		seconds(sb.Typical), seconds(sn.Typical), seconds(sb.Slow), seconds(sn.Slow))
 
 	if sb.Repairs.Rate().Runs > 0 && sn.Repairs.Rate().Runs > 0 {
-		fmt.Fprintf(b, "Repairs on the cases both ran: fixed %s → %s, calls a fix %s → %s\n\n",
-			sb.Repairs.Rate(), sn.Repairs.Rate(), sb.Repairs.callsPerFix(), sn.Repairs.callsPerFix())
+		fmt.Fprintf(b, "Repairs on the cases both ran: fixed %s → %s, on the first model call %s → %s\n\n",
+			sb.Repairs.Rate(), sn.Repairs.Rate(), sb.Repairs.Rate().FirstCall(), sn.Repairs.Rate().FirstCall())
 	}
 
-	b.WriteString("| Case | Before | Now | Change |\n|---|---|---|---|\n")
+	b.WriteString("| Case | First call | Change | In the end | Change |\n|---|---|---|---|---|\n")
 	for _, c := range shared {
 		was, is := caseRate(before[c.Name]), caseRate(c)
-		fmt.Fprintf(b, "| %s | %d/%d | %d/%d | %s |\n", c.Name, was.Passed, was.Runs, is.Passed, is.Runs, change(was, is))
+		fmt.Fprintf(b, "| %s | %d/%d → %d/%d | %s | %d/%d → %d/%d | %s |\n", c.Name,
+			was.First, was.Runs, is.First, is.Runs, change(was.FirstCall(), is.FirstCall()),
+			was.Passed, was.Runs, is.Passed, is.Runs, change(was, is))
 	}
 	if len(onlyNow) > 0 {
 		sort.Strings(onlyNow)
