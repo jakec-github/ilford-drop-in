@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 )
 
@@ -23,16 +24,8 @@ var (
 	//go:embed judge.schema.json
 	judgeSchema []byte
 
-	judgePrompt = newJudgePrompt()
+	judgePrompt = llm.NewPrompt("judge", judgeSystem, judgeSchema)
 )
-
-func newJudgePrompt() *patterntranslator.Prompt {
-	var schema map[string]any
-	if err := json.Unmarshal(judgeSchema, &schema); err != nil {
-		panic("translatoreval: judge.schema.json: " + err.Error())
-	}
-	return &patterntranslator.Prompt{Name: "judge", System: judgeSystem, Schema: schema}
-}
 
 // judgeTimeout is the ceiling on one judgement.
 const judgeTimeout = time.Minute
@@ -44,8 +37,8 @@ type Judgement struct {
 	// Raised is a verdict on each issue raised, in order.
 	Raised []Verdict `json:"raised,omitempty"`
 	// Missed is each expected issue nothing raised was paired with.
-	Missed []Miss                  `json:"missed,omitempty"`
-	Usage  patterntranslator.Usage `json:"usage"`
+	Missed []Miss    `json:"missed,omitempty"`
+	Usage  llm.Usage `json:"usage"`
 	// Cost is the judge's, apart from the run's own.
 	Cost float64 `json:"cost"`
 	// Error is why there is no pairing: the judge could not be asked, or its
@@ -80,10 +73,10 @@ func (j Judgement) MadeUp() int {
 }
 
 // judge asks the judge model to pair the issues raised with the case's.
-func judge(ctx context.Context, model patterntranslator.Model, name string, c Case, raised []patterntranslator.Issue) *Judgement {
+func judge(ctx context.Context, model llm.Model, name string, c Case, raised []patterntranslator.Issue) *Judgement {
 	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
 	defer cancel()
-	resp, err := model.Reply(ctx, judgePrompt, []patterntranslator.Turn{{Role: patterntranslator.User, Text: judgeTurn(c, raised)}})
+	resp, err := model.Reply(ctx, judgePrompt, []llm.Turn{{Role: llm.User, Text: judgeTurn(c, raised)}})
 	j := &Judgement{Usage: resp.Usage, Cost: cost(name, resp.Usage)}
 	if err == nil {
 		j.Raised, j.Missed, err = readJudgement(resp.Text, len(raised), len(c.Expect.Issues))

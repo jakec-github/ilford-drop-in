@@ -1,6 +1,6 @@
 package translatoreval
 
-import "github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
+import "github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 
 // price is what a model charges, in US dollars per million tokens.
 type price struct {
@@ -19,7 +19,7 @@ var prices = map[string]price{
 }
 
 // cost is what usage costs on model, or nothing for a model with no price.
-func cost(model string, u patterntranslator.Usage) float64 {
+func cost(model string, u llm.Usage) float64 {
 	p, ok := prices[model]
 	if !ok {
 		return 0

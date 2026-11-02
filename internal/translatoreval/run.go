@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 )
@@ -19,10 +20,10 @@ type Subject struct {
 	Effort string
 	// Base asks the model. Nil runs the dev-mode stub instead, which costs
 	// nothing and makes no calls.
-	Base patterntranslator.Model
+	Base llm.Model
 	// Judge pairs the issues each run raises with the ones its case wants,
 	// asking JudgeModel. Nil judges nothing.
-	Judge      patterntranslator.Model
+	Judge      llm.Model
 	JudgeModel string
 }
 
@@ -84,8 +85,8 @@ type RunReport struct {
 	Calls        int      `json:"calls"`
 	// Replies is what each call came back with, as the model wrote it, so a
 	// run that gave up says why when no reply reached the parser.
-	Replies []Reply                 `json:"replies,omitempty"`
-	Usage   patterntranslator.Usage `json:"usage"`
+	Replies []Reply   `json:"replies,omitempty"`
+	Usage   llm.Usage `json:"usage"`
 	// Cost is in US dollars, priced when it ran.
 	Cost      float64 `json:"cost"`
 	LatencyMS int64   `json:"latencyMs"`
@@ -191,7 +192,7 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 
 // translateOnce is one Generate of a case, as the server would make it.
 func translateOnce(ctx context.Context, s Subject, c Case) RunReport {
-	var model patterntranslator.Model = s.Base
+	var model llm.Model = s.Base
 	if c.Repairs() {
 		model = planter{model: s.Base, reply: plantedReply(c)}
 	}
@@ -270,16 +271,16 @@ func describe(c Case, a Answer) []string {
 // recorder is a Model that keeps each reply one translation's calls get, and
 // sums what they use. Each translation has its own.
 type recorder struct {
-	model patterntranslator.Model
+	model llm.Model
 	// kind is the case's, so a reply is read for the answer it was asked for.
 	kind    string
 	replies []Reply
-	usage   patterntranslator.Usage
+	usage   llm.Usage
 	// turns is how many turns the last call was asked with.
 	turns int
 }
 
-func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+func (r *recorder) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	// A call after another says why the last reply did not stand: it was an
 	// answer the parser refused, or it could not be used at all. Either may
 	// have gone back with a message, which the turns grew by.
@@ -311,13 +312,13 @@ func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, 
 // planter is a Model whose first call is a planted reply, made without
 // asking, at no cost. Every later call asks the model it wraps.
 type planter struct {
-	model patterntranslator.Model
+	model llm.Model
 	reply string
 }
 
-func (p planter) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+func (p planter) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	if len(turns) == 1 {
-		return patterntranslator.Response{Text: p.reply}, nil
+		return llm.Response{Text: p.reply}, nil
 	}
 	return p.model.Reply(ctx, prompt, turns)
 }

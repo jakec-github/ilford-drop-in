@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 )
 
@@ -69,7 +70,7 @@ func (rt *Retries) add(kind string, run RunReport, skip int) {
 // nothing for a reply it could: an answer, or issues.
 func whyUnusable(kind string, r Reply) string {
 	if r.Error != "" {
-		return strings.TrimPrefix(r.Error, patterntranslator.ErrUnusableReply.Error()+": ")
+		return strings.TrimPrefix(r.Error, llm.ErrUnusableReply.Error()+": ")
 	}
 	if strings.TrimSpace(r.Text) == "" {
 		return "an empty reply"
@@ -899,7 +900,7 @@ func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
 			chars = system["rule"] + len(c.Text) + 200 + extra + len(strings.Join(c.Descriptions(), "\n"))
 		}
 		// About four characters a token.
-		u := patterntranslator.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
+		u := llm.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
 		e.Cost += cost(model, u) * float64(repeats)
 
 		if judge != "" && !c.Translates() {
@@ -909,7 +910,7 @@ func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
 			for _, issue := range c.Expect.Issues {
 				chars += 2 * (len(issue.About) + 40)
 			}
-			u := patterntranslator.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
+			u := llm.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
 			e.JudgeCalls += repeats
 			e.JudgeCost += cost(judge, u) * float64(repeats)
 		}

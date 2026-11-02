@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 )
 
@@ -22,21 +23,21 @@ type fakeModel struct {
 	turns []string
 }
 
-var callUsage = patterntranslator.Usage{InputTokens: 1000, OutputTokens: 200}
+var callUsage = llm.Usage{InputTokens: 1000, OutputTokens: 200}
 
-func (m *fakeModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+func (m *fakeModel) Reply(_ context.Context, _ *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	m.mu.Lock()
 	m.turns = append(m.turns, turns[0].Text)
 	m.mu.Unlock()
 	if m.err != nil {
-		return patterntranslator.Response{}, m.err
+		return llm.Response{}, m.err
 	}
 	for text, replies := range m.replies {
 		if strings.Contains(turns[0].Text, "<description>\n"+text+"\n</description>") {
-			return patterntranslator.Response{Text: replies[min(len(turns)/2, len(replies)-1)], Usage: callUsage}, nil
+			return llm.Response{Text: replies[min(len(turns)/2, len(replies)-1)], Usage: callUsage}, nil
 		}
 	}
-	return patterntranslator.Response{Usage: callUsage}, errors.New("fakeModel: no reply for this description")
+	return llm.Response{Usage: callUsage}, errors.New("fakeModel: no reply for this description")
 }
 
 func okPattern(p string) string {
@@ -169,12 +170,12 @@ func TestRun_TheStubCostsNothing(t *testing.T) {
 type turnsModel struct {
 	reply    string
 	thinking string
-	calls    [][]patterntranslator.Turn
+	calls    [][]llm.Turn
 }
 
-func (m *turnsModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+func (m *turnsModel) Reply(_ context.Context, _ *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	m.calls = append(m.calls, slices.Clone(turns))
-	return patterntranslator.Response{Text: m.reply, Thinking: m.thinking, Usage: callUsage}, nil
+	return llm.Response{Text: m.reply, Thinking: m.thinking, Usage: callUsage}, nil
 }
 
 func TestRun_EachReplyKeepsTheThinkingBehindIt(t *testing.T) {
@@ -203,7 +204,7 @@ func TestRun_ARepairCasesFirstCallIsThePlantedReply(t *testing.T) {
 		t.Fatalf("the model was asked %d times, want once", len(model.calls))
 	}
 	turns := model.calls[0]
-	if len(turns) != 3 || turns[1].Role != patterntranslator.Assistant || turns[1].Text != okPattern(noDuration) {
+	if len(turns) != 3 || turns[1].Role != llm.Assistant || turns[1].Text != okPattern(noDuration) {
 		t.Fatalf("turns: %+v, want the first, the planted reply, and the parser's messages", turns)
 	}
 	problems := problemsOf(noDuration, "Europe/London")
@@ -228,11 +229,11 @@ func TestRun_ARepairCasesFirstCallIsThePlantedReply(t *testing.T) {
 // sequenceModel replies with each of its replies in turn, whatever it is
 // asked.
 type sequenceModel struct {
-	replies []patterntranslator.Response
+	replies []llm.Response
 	calls   int
 }
 
-func (m *sequenceModel) Reply(context.Context, *patterntranslator.Prompt, []patterntranslator.Turn) (patterntranslator.Response, error) {
+func (m *sequenceModel) Reply(context.Context, *llm.Prompt, []llm.Turn) (llm.Response, error) {
 	m.calls++
 	return m.replies[m.calls-1], nil
 }
@@ -241,7 +242,7 @@ func (m *sequenceModel) Reply(context.Context, *patterntranslator.Prompt, []patt
 // was followed by another call says why, the parser refused it or it could not
 // be used at all, and what went back.
 func TestRun_EachReplyFollowedByAnotherSaysWhy(t *testing.T) {
-	model := &sequenceModel{replies: []patterntranslator.Response{
+	model := &sequenceModel{replies: []llm.Response{
 		{Text: `{"status":"issues","issues":[]}`},
 		{Text: okPattern(noDuration)},
 		{Text: okPattern(sundays)},

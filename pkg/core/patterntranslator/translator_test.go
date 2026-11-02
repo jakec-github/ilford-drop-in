@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 )
 
 const zone = "Europe/London"
@@ -23,8 +25,8 @@ const tuesdayStartingSunday = "BEGIN:VEVENT\nDTSTART:20261101T190000\nDURATION:P
 // keeps every conversation it was handed.
 type scriptedModel struct {
 	replies []scripted
-	calls   [][]Turn
-	prompts []*Prompt
+	calls   [][]llm.Turn
+	prompts []*llm.Prompt
 }
 
 type scripted struct {
@@ -32,14 +34,14 @@ type scripted struct {
 	err  error
 }
 
-func (m *scriptedModel) Reply(_ context.Context, prompt *Prompt, turns []Turn) (Response, error) {
+func (m *scriptedModel) Reply(_ context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	m.prompts = append(m.prompts, prompt)
-	m.calls = append(m.calls, append([]Turn(nil), turns...))
+	m.calls = append(m.calls, append([]llm.Turn(nil), turns...))
 	if len(m.calls) > len(m.replies) {
-		return Response{}, errors.New("scriptedModel: called more times than scripted")
+		return llm.Response{}, errors.New("scriptedModel: called more times than scripted")
 	}
 	r := m.replies[len(m.calls)-1]
-	return Response{Text: r.text}, r.err
+	return llm.Response{Text: r.text}, r.err
 }
 
 func ok(pattern string) scripted {
@@ -82,7 +84,7 @@ func TestTranslate_TheModelIsToldTodayInTheOrganisationsZoneAndTheDescription(t 
 	}
 
 	first := model.calls[0]
-	if len(first) != 1 || first[0].Role != User {
+	if len(first) != 1 || first[0].Role != llm.User {
 		t.Fatalf("first call was %+v, want one user turn", first)
 	}
 	for _, want := range []string{
@@ -156,7 +158,7 @@ func TestTranslate_AReplyTheParserRefusesIsSentBackWithItsProblems(t *testing.T)
 		t.Fatalf("made %d calls, want 2", len(model.calls))
 	}
 	second := model.calls[1]
-	if len(second) != 3 || second[1].Role != Assistant || second[2].Role != User {
+	if len(second) != 3 || second[1].Role != llm.Assistant || second[2].Role != llm.User {
 		t.Fatalf("second call was %+v, want the first turn, the reply and a user turn", second)
 	}
 	if !strings.Contains(second[1].Text, "20261101T190000") {
@@ -205,7 +207,7 @@ func TestTranslate_WarningsDoNotStopAPattern(t *testing.T) {
 
 func TestTranslate_AnUnusableReplyIsAFailedCall(t *testing.T) {
 	for name, bad := range map[string]scripted{
-		"refusal or max_tokens": {err: ErrUnusableReply},
+		"refusal or max_tokens": {err: llm.ErrUnusableReply},
 		"not JSON":              {text: "Sure! Here is your pattern"},
 		"neither shape":         {text: `{"status":"maybe"}`},
 	} {
@@ -249,8 +251,8 @@ func TestTranslate_AReplyThatSaysNothingIsSentBackSayingWhatWasMissing(t *testin
 				t.Fatalf("got %+v after %d calls, want the second call's pattern", got, len(model.calls))
 			}
 			turns := model.calls[1]
-			if len(turns) != 3 || turns[1].Role != Assistant || turns[1].Text != tc.reply.text ||
-				turns[2].Role != User || !strings.Contains(turns[2].Text, tc.want) {
+			if len(turns) != 3 || turns[1].Role != llm.Assistant || turns[1].Text != tc.reply.text ||
+				turns[2].Role != llm.User || !strings.Contains(turns[2].Text, tc.want) {
 				t.Errorf("second call was %+v, want the reply and a turn saying %q", turns, tc.want)
 			}
 		})
@@ -272,7 +274,7 @@ func TestTranslate_ThreeRepliesThatSayNothingGiveUp(t *testing.T) {
 
 func TestTranslate_ThreeUnusableRepliesGiveUpWithNothingElseToSay(t *testing.T) {
 	model := &scriptedModel{replies: []scripted{
-		{err: ErrUnusableReply}, {err: ErrUnusableReply}, {err: ErrUnusableReply},
+		{err: llm.ErrUnusableReply}, {err: llm.ErrUnusableReply}, {err: llm.ErrUnusableReply},
 	}}
 
 	got, err := translate(t, model, "Sundays 7:30 to 10:30pm")
@@ -316,10 +318,10 @@ type cancellingModel struct {
 	calls  int
 }
 
-func (m *cancellingModel) Reply(context.Context, *Prompt, []Turn) (Response, error) {
+func (m *cancellingModel) Reply(context.Context, *llm.Prompt, []llm.Turn) (llm.Response, error) {
 	m.calls++
 	m.cancel()
-	return Response{Text: `{"status":"ok","pattern":` + quote(tuesdayStartingSunday) + `}`}, nil
+	return llm.Response{Text: `{"status":"ok","pattern":` + quote(tuesdayStartingSunday) + `}`}, nil
 }
 
 func TestTranslate_AnOverlongDescriptionIsRefusedWithoutAsking(t *testing.T) {

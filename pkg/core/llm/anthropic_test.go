@@ -1,4 +1,4 @@
-package patterntranslator
+package llm
 
 import (
 	"context"
@@ -10,6 +10,9 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
+
+// testPrompt is any prompt: the fake API does not read it.
+var testPrompt = NewPrompt("test", "Reply in JSON.", []byte(`{"type":"object"}`))
 
 // fakeAPI answers every Messages request with a thinking block and a text
 // block, and keeps the last request's body.
@@ -40,7 +43,7 @@ func TestAnthropic_LeavesThinkingAsTheModelDefaultsUnlessShown(t *testing.T) {
 	server, last := fakeAPI(t)
 	model := newAnthropic("claude-haiku-5-5", "low", option.WithBaseURL(server.URL), option.WithAPIKey("test"))
 
-	got, err := model.Reply(context.Background(), patternPrompt, []Turn{{Role: User, Text: "Sundays"}})
+	got, err := model.Reply(context.Background(), testPrompt, []Turn{{Role: User, Text: "Sundays"}})
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
@@ -57,7 +60,7 @@ func TestAnthropic_ShowingThinkingAsksForItsSummaryAndReturnsIt(t *testing.T) {
 	model := newAnthropic("claude-haiku-5-5", "low", option.WithBaseURL(server.URL), option.WithAPIKey("test"))
 	model.ShowThinking = true
 
-	got, err := model.Reply(context.Background(), patternPrompt, []Turn{{Role: User, Text: "Sundays"}})
+	got, err := model.Reply(context.Background(), testPrompt, []Turn{{Role: User, Text: "Sundays"}})
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
