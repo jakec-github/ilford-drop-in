@@ -11,6 +11,7 @@ import { useVolunteers } from "../hooks/useVolunteers";
 import RuleValueInput from "./RuleValueInput";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
+import VolunteerPicker from "./VolunteerPicker";
 import { settingsSummary } from "./settingsSummary";
 import type {
   AllocationRule,
@@ -193,24 +194,24 @@ export function ScopeEditor({
             />
           );
         })}
-        <select
-          className="scope-add"
-          aria-label={active === "include" ? "Only" : "Everyone except"}
-          value=""
-          disabled={disabled || volunteers === null}
-          onChange={(e) => add(e.target.value)}
-        >
-          <option value="">
-            {volunteers === null ? "Loading…" : "+ person"}
-          </option>
-          {volunteers
-            ?.filter((v) => !named.includes(v.id))
-            .map((v) => (
-              <option key={v.id} value={v.id}>
-                {nameOf(v.id, volunteers)}
-              </option>
-            ))}
-        </select>
+        {/* Only somebody on the roster: a Scope names volunteers by id, and
+            somebody typed in has none. */}
+        {!disabled && (
+          <VolunteerPicker
+            className="scope-add"
+            label={active === "include" ? "Only" : "Everyone except"}
+            placeholder={volunteers === null ? "Loading…" : "+ person"}
+            volunteers={
+              volunteers?.filter((v) => !named.includes(v.id)) ?? null
+            }
+            volunteersError={null}
+            allowCustom={false}
+            value={null}
+            onChange={(person) => {
+              if (person && "volunteerId" in person) add(person.volunteerId);
+            }}
+          />
+        )}
       </div>
       {widening && (
         <div className="rule-inline-confirm" role="alert">

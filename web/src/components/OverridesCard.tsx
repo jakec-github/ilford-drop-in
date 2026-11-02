@@ -18,12 +18,14 @@ import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
 import type { EditorMode } from "./ModeSwitch";
 import NaturalField from "./NaturalField";
+import RoleSelector from "./RoleSelector";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
 import { settingsSummary } from "./settingsSummary";
 import ShapeSeats from "./ShapeSeats";
 import { formatLength, lengthChoices, today } from "./patternDates";
 import { seatCountsOf, seatsOf, type SeatCounts } from "./shape";
+import VolunteerPicker from "./VolunteerPicker";
 import type {
   ConfiguredRole,
   NaturalEditor,
@@ -35,7 +37,6 @@ import type {
   ShapeSeat,
   Volunteer,
 } from "../types";
-import { CUSTOM_CHOICE } from "../types";
 import "./OverridesCard.css";
 
 // What a new Override starts as: the commonest thing an Organiser overrides,
@@ -70,7 +71,9 @@ function GranularityBadge({
 }
 
 // One Pin as a chip in its Role's colour: a pill for a volunteer, a tag for a
-// custom entry, as on the rota.
+// custom entry, as on the rota. The colour is how it says the Role, so the
+// name stands alone on it; the Role is still spoken to a screen reader, and
+// shown on hover.
 function PinChip({
   name,
   role,
@@ -85,9 +88,15 @@ function PinChip({
   onRemove?: () => void;
 }) {
   return (
-    <span className="override-pin" data-role-colour={colour}>
+    <span
+      className="override-pin"
+      data-role-colour={colour}
+      role="group"
+      aria-label={`${name}, ${role}`}
+      title={role}
+    >
       <Chip
-        label={`${name} · ${role}`}
+        label={name}
         shape={custom ? "tag" : "pill"}
         removeLabel={`Unpin ${name}`}
         onRemove={onRemove}
@@ -125,73 +134,57 @@ function PinAdder({
   volunteersError: string | null;
   onAdd: (pin: Omit<PinDraft, "key">) => void;
 }) {
-  const [choice, setChoice] = useState("");
-  const [customName, setCustomName] = useState("");
+  const [person, setPerson] = useState<PersonRef | null>(null);
   const [roleId, setRoleId] = useState("");
 
-  const isCustom = choice === CUSTOM_CHOICE;
-  const chosen = volunteers?.find((v) => v.id === choice) ?? null;
+  const chosen =
+    person && "volunteerId" in person
+      ? (volunteers?.find((v) => v.id === person.volunteerId) ?? null)
+      : null;
   // The Role they mostly do, until somebody picks one.
   const role =
     roles.find((r) => r.id === roleId) ??
     roles.find((r) => chosen?.roles.includes(r.name)) ??
     roles[0] ??
     null;
-  const name = isCustom ? customName.trim() : (chosen?.name ?? "");
-  const ready = role !== null && name !== "";
-  const loading = volunteers === null && volunteersError === null;
+  const name =
+    person === null
+      ? ""
+      : "custom" in person
+        ? person.custom
+        : (chosen?.name ?? "");
+  const ready = role !== null && person !== null && name !== "";
 
   function add() {
     if (!ready) return;
-    onAdd({
-      roleId: role.id,
-      person: isCustom ? { custom: name } : { volunteerId: choice },
-      name,
-    });
-    setChoice("");
-    setCustomName("");
+    onAdd({ roleId: role.id, person, name });
+    setPerson(null);
     setRoleId("");
   }
 
   return (
     <div className="override-adder">
-      <select
-        aria-label="Who to pin"
-        value={choice}
-        disabled={loading}
-        onChange={(e) => setChoice(e.target.value)}
-      >
-        <option value="">
-          {loading ? "Loading the roster…" : "Pin somebody…"}
-        </option>
-        {volunteers?.map((v) => (
-          <option key={v.id} value={v.id}>
-            {v.fullName}
-            {v.active ? "" : " (not active)"}
-          </option>
-        ))}
-        <option value={CUSTOM_CHOICE}>Someone not on the roster…</option>
-      </select>
-      {isCustom && (
-        <input
-          type="text"
-          aria-label="Name"
-          value={customName}
-          placeholder="e.g. Redbridge youth group"
-          onChange={(e) => setCustomName(e.target.value)}
+      <VolunteerPicker
+        label="Who to pin"
+        volunteers={volunteers}
+        volunteersError={volunteersError}
+        value={person}
+        onChange={setPerson}
+      />
+      {person !== null && role !== null && (
+        <RoleSelector
+          label="Role"
+          showLabel={false}
+          options={roles.map((r) => r.name)}
+          value={role.name}
+          onChange={(name) =>
+            setRoleId(roles.find((r) => r.name === name)?.id ?? "")
+          }
+          colourOf={(name) =>
+            roles.find((r) => r.name === name)?.colour ?? null
+          }
         />
       )}
-      <select
-        aria-label="Role"
-        value={role?.id ?? ""}
-        onChange={(e) => setRoleId(e.target.value)}
-      >
-        {roles.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name}
-          </option>
-        ))}
-      </select>
       <Button size="small" disabled={!ready} onClick={add}>
         Pin
       </Button>

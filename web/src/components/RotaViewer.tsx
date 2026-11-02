@@ -315,6 +315,11 @@ export default function RotaViewer({
     () => roles?.map((role) => role.name) ?? null,
     [roles],
   );
+  // What a picker draws each of them in, by the name it holds.
+  const roleColour = useCallback(
+    (name: Role) => roles?.find((role) => role.name === name)?.colour ?? null,
+    [roles],
+  );
 
   const pinsByShiftID = useMemo(() => {
     const byShift = new Map<string, Pin[]>();
@@ -983,6 +988,7 @@ export default function RotaViewer({
               }
             }
             reasonRequired={dialog.reasonRequired}
+            colourOf={roleColour}
             busy={saving}
             onCancel={() => {
               setDialog(null);
@@ -1001,6 +1007,7 @@ export default function RotaViewer({
             volunteers={addableTo(dialog.shift.id)}
             volunteersError={volunteersError}
             roles={roleNames}
+            colourOf={roleColour}
             busy={saving}
             onCancel={() => setDialog(null)}
             onConfirm={(person, reason, role) =>
@@ -1036,6 +1043,7 @@ export default function RotaViewer({
             pinnedNames={(pinsByShiftID.get(dialog.shift.id) ?? []).map(
               (p) => p.name,
             )}
+            colourOf={roleColour}
             busy={saving}
             onCancel={() => setDialog(null)}
             onConfirm={(person, role) =>

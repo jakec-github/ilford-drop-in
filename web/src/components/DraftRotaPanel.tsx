@@ -559,6 +559,9 @@ export default function DraftRotaPanel({
           pinnedNames={(pinsByShiftID.get(dialog.shift.id) ?? []).map(
             (p) => p.name,
           )}
+          colourOf={(name) =>
+            roles?.find((role) => role.name === name)?.colour ?? null
+          }
           busy={saving}
           onCancel={() => setDialog(null)}
           onConfirm={(person, role) =>

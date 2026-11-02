@@ -125,18 +125,30 @@ function begin(name: string) {
   fireEvent.click(screen.getByRole("button", { name }));
 }
 
-function pin(who: string, roleId?: string) {
+// Pins somebody by searching the roster for them, or, given custom, by typing
+// a name it does not have.
+function pin(who: string, { role, custom = false }: PinAs = {}) {
   // The adder stays open after a Pin, for pinning somebody else.
   if (!screen.queryByLabelText("Who to pin")) begin("Pin somebody");
-  fireEvent.change(screen.getByLabelText("Who to pin"), {
-    target: { value: who },
-  });
-  if (roleId) {
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: roleId },
-    });
+  const field = screen.getByLabelText("Who to pin");
+  fireEvent.focus(field);
+  fireEvent.change(field, { target: { value: who } });
+  fireEvent.click(
+    screen.getByRole("option", {
+      name: custom ? `Use “${who}” — not on the roster` : who,
+    }),
+  );
+  if (role) {
+    fireEvent.click(
+      within(screen.getByLabelText("Role")).getByRole("radio", { name: role }),
+    );
   }
   fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+}
+
+interface PinAs {
+  role?: string;
+  custom?: boolean;
 }
 
 describe("OverrideCard", () => {
@@ -175,12 +187,8 @@ describe("OverrideCard", () => {
   test("a change saves itself, leaving the default shape alone", async () => {
     const onSave = renderCard();
     await settle();
-    pin("v-bo");
-    pin("custom");
-    fireEvent.change(screen.getByLabelText("Name"), {
-      target: { value: "Youth group" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+    pin("Bo");
+    pin("Youth group", { custom: true });
     await saveWait();
 
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -200,13 +208,36 @@ describe("OverrideCard", () => {
   test("pinning somebody again replaces their pin", async () => {
     const onSave = renderCard();
     await settle();
-    pin("v-ann", "r-duty");
-    pin("v-ann", "r-greet");
+    pin("Ann", { role: "Duty lead" });
+    pin("Ann", { role: "Greeter" });
     await saveWait();
 
     expect(onSave.mock.calls.at(-1)![0].pins).toEqual([
       { roleId: "r-greet", person: { volunteerId: "v-ann" } },
     ]);
+  });
+
+  // Holding a Role is a rule, and rules bind the allocator (ADR 0010).
+  test("anybody may be pinned into any role", async () => {
+    const onSave = renderCard();
+    await settle();
+    pin("Bo", { role: "Duty lead" });
+    await saveWait();
+
+    expect(onSave.mock.calls.at(-1)![0].pins).toEqual([
+      { roleId: "r-duty", person: { volunteerId: "v-bo" } },
+    ]);
+  });
+
+  // The chip's colour is its Role, so the name stands alone on it.
+  test("a pin's chip names the person, and its role only to a screen reader", async () => {
+    renderCard();
+    await settle();
+    pin("Bo");
+
+    const chip = screen.getByRole("group", { name: "Bo, Greeter" });
+    expect(chip.textContent).not.toContain("Greeter");
+    expect(chip.getAttribute("data-role-colour")).toBe("teal");
   });
 
   test("only what it changes is drawn", async () => {

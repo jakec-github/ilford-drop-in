@@ -240,9 +240,7 @@
 }
 
 .override-popover input[type="time"],
-.override-popover > select,
-.override-adder select,
-.override-adder input {
+.override-popover > select {
   padding: 0.25rem 0.375rem;
   font: 0.875rem/1.4 var(--sans);
   color: var(--text-h);
@@ -262,6 +260,20 @@
   gap: 0.375rem;
   align-items: center;
   margin-top: 0.5rem;
+}
+
+/* Who on a line of its own, since the list opens under it; then the Role and
+   the button that pins. */
+.override-adder .volunteer-picker {
+  flex: 1 1 100%;
+}
+
+.override-adder .role-selector {
+  margin-top: 0;
+}
+
+.override-adder .role-selector-wrap {
+  flex: 1 1 auto;
 }
 
 .override-adder .settings-hint {
@@ -436,4 +448,15 @@
 .override-menu-item:focus-visible {
   background: var(--accent-bg);
   outline: none;
+}
+
+/* Pinning somebody wants room for the roster's names and the Role chips, more
+   than one input's width. */
+.override-popover:has(> .override-adder) {
+  width: min(22rem, 85vw);
+}
+
+.override-popover > .override-adder {
+  align-self: stretch;
+  margin-top: 0;
 }

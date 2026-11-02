@@ -23,10 +23,45 @@ const LITTER = "Litter picker";
 // As the API lists them: highest priority first.
 const ROLES: Role[] = [DUTY_LEAD, HOT_FOOD, GREETER];
 
+// What a Role picker offers, in order: a radio group's chips, or a select's
+// options.
 function optionsOf(field: HTMLElement): string[] {
+  const chips = within(field).queryAllByRole("radio");
+  if (chips.length > 0) {
+    return chips.map((r) => r.closest("label")?.textContent ?? "");
+  }
   return within(field)
     .getAllByRole("option")
     .map((o) => o.textContent);
+}
+
+function roleValue(): string {
+  const checked = within(screen.getByLabelText("Role"))
+    .getAllByRole("radio")
+    .find((r) => (r as HTMLInputElement).checked);
+  return (checked as HTMLInputElement | undefined)?.value ?? "";
+}
+
+function chooseRole(role: Role) {
+  fireEvent.click(
+    within(screen.getByLabelText("Role")).getByRole("radio", { name: role }),
+  );
+}
+
+// Types into the roster search, opening its list.
+function typeWho(text: string) {
+  const who = screen.getByLabelText("Who");
+  fireEvent.focus(who);
+  fireEvent.change(who, { target: { value: text } });
+}
+
+function pickOption(name: string | RegExp) {
+  fireEvent.click(screen.getByRole("option", { name }));
+}
+
+function pickWho(fullName: string) {
+  typeWho(fullName);
+  pickOption(new RegExp(`^${fullName}`));
 }
 
 // A move: somebody leaves one shift and lands on another, so nothing is lost
@@ -85,8 +120,7 @@ describe("ConfirmChangeDialog", () => {
       />,
     );
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
-    expect(roleField.value).toBe(DUTY_LEAD);
+    expect(roleValue()).toBe(DUTY_LEAD);
   });
 
   // The Shape and the roster bind the allocator, not somebody recording what
@@ -117,9 +151,7 @@ describe("ConfirmChangeDialog", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: HOT_FOOD },
-    });
+    chooseRole(HOT_FOOD);
     fireEvent.change(screen.getByPlaceholderText("e.g. away that week"), {
       target: { value: "covering, not leading" },
     });
@@ -140,9 +172,9 @@ describe("ConfirmChangeDialog", () => {
       />,
     );
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    const roleField = screen.getByLabelText("Role");
     expect(optionsOf(roleField)).toEqual(["Tea urn", ...ROLES]);
-    expect(roleField.value).toBe("Tea urn");
+    expect(roleValue()).toBe("Tea urn");
 
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     expect(onConfirm).toHaveBeenCalledWith("", "Tea urn");
@@ -161,11 +193,11 @@ describe("ConfirmChangeDialog", () => {
       />,
     );
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
-    expect(roleField.value).toBe("");
+    const roleField = screen.getByLabelText("Role");
+    expect(roleValue()).toBe("");
     expect(optionsOf(roleField)).toEqual(["No role", ...ROLES]);
 
-    fireEvent.change(roleField, { target: { value: HOT_FOOD } });
+    chooseRole(HOT_FOOD);
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     expect(onConfirm).toHaveBeenCalledWith("", HOT_FOOD);
   });
@@ -218,11 +250,11 @@ describe("ConfirmChangeDialog", () => {
       />,
     );
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
-    expect(roleField.value).toBe(GREETER);
+    const roleField = screen.getByLabelText("Role");
+    expect(roleValue()).toBe(GREETER);
     expect(optionsOf(roleField)).toEqual(ROLES);
 
-    fireEvent.change(roleField, { target: { value: DUTY_LEAD } });
+    chooseRole(DUTY_LEAD);
     fireEvent.click(screen.getByRole("button", { name: "Change role" }));
     expect(onConfirm).toHaveBeenCalledWith("", DUTY_LEAD);
   });
@@ -240,9 +272,9 @@ describe("ConfirmChangeDialog", () => {
       />,
     );
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    const roleField = screen.getByLabelText("Role");
     expect(optionsOf(roleField)).toEqual(ROLES);
-    expect(roleField.value).toBe(DUTY_LEAD);
+    expect(roleValue()).toBe(DUTY_LEAD);
 
     fireEvent.click(screen.getByRole("button", { name: "Change role" }));
     expect(onConfirm).toHaveBeenCalledWith("", DUTY_LEAD);
@@ -261,9 +293,7 @@ describe("ConfirmChangeDialog", () => {
 
     const confirm = screen.getByRole("button", { name: "Change role" });
     expect(confirm).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: HOT_FOOD },
-    });
+    chooseRole(HOT_FOOD);
     expect(confirm).toBeEnabled();
   });
 
@@ -409,9 +439,7 @@ describe("AssigneeDialog", () => {
       target: { value: "ada" },
     });
 
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      HOT_FOOD,
-    );
+    expect(roleValue()).toBe(HOT_FOOD);
   });
 
   // The roster is standing advice, not a gate on a cover (ADR 0005/0009): who
@@ -430,10 +458,10 @@ describe("AssigneeDialog", () => {
     fireEvent.change(screen.getByLabelText("Who"), {
       target: { value: "grace" },
     });
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    const roleField = screen.getByLabelText("Role");
     expect(optionsOf(roleField)).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
 
-    fireEvent.change(roleField, { target: { value: DUTY_LEAD } });
+    chooseRole(DUTY_LEAD);
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     expect(onConfirm).toHaveBeenCalledWith(
@@ -459,9 +487,7 @@ describe("AssigneeDialog", () => {
     fireEvent.change(screen.getByLabelText("Who"), {
       target: { value: "grace" },
     });
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      DUTY_LEAD,
-    );
+    expect(roleValue()).toBe(DUTY_LEAD);
 
     fireEvent.click(screen.getByRole("button", { name: "Replace" }));
     expect(onConfirm).toHaveBeenCalledWith(
@@ -485,9 +511,7 @@ describe("AssigneeDialog", () => {
     fireEvent.change(screen.getByLabelText("Who"), {
       target: { value: "grace" },
     });
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: GREETER },
-    });
+    chooseRole(GREETER);
     fireEvent.click(screen.getByRole("button", { name: "Replace" }));
 
     expect(onConfirm).toHaveBeenCalledWith(
@@ -543,10 +567,10 @@ describe("AssigneeDialog", () => {
       target: { value: "Redbridge youth group" },
     });
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
+    const roleField = screen.getByLabelText("Role");
     expect(optionsOf(roleField)).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
 
-    fireEvent.change(roleField, { target: { value: HOT_FOOD } });
+    chooseRole(HOT_FOOD);
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(onConfirm).toHaveBeenCalledWith(
       { custom: "Redbridge youth group" },
@@ -575,9 +599,7 @@ describe("AssigneeDialog", () => {
       target: { value: "Redbridge youth group" },
     });
 
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      DUTY_LEAD,
-    );
+    expect(roleValue()).toBe(DUTY_LEAD);
 
     fireEvent.click(screen.getByRole("button", { name: "Replace" }));
     expect(onConfirm).toHaveBeenCalledWith(
@@ -667,9 +689,7 @@ describe("PinDialog", () => {
   test("offers every role the organisation has, whatever the volunteer holds or the shape asks for", () => {
     render(<PinDialog {...pinProps()} onConfirm={() => {}} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "grace" },
-    });
+    pickWho("Grace Hopper");
 
     expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
       DUTY_LEAD,
@@ -682,13 +702,9 @@ describe("PinDialog", () => {
   test("the role defaults to the highest-priority one the volunteer holds", () => {
     render(<PinDialog {...pinProps()} onConfirm={() => {}} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "ada" },
-    });
+    pickWho("Ada Lovelace");
 
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      HOT_FOOD,
-    );
+    expect(roleValue()).toBe(HOT_FOOD);
   });
 
   // A warning, never a block (ADR 0010).
@@ -696,14 +712,10 @@ describe("PinDialog", () => {
     const onConfirm = mock<(person: unknown, role: string) => void>();
     render(<PinDialog {...pinProps()} onConfirm={onConfirm} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "grace" },
-    });
+    pickWho("Grace Hopper");
     expect(screen.queryByText(/is not down for/)).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: DUTY_LEAD },
-    });
+    chooseRole(DUTY_LEAD);
     expect(
       screen.getByText(new RegExp(`Grace is not down for ${DUTY_LEAD}`)),
     ).toBeInTheDocument();
@@ -716,12 +728,8 @@ describe("PinDialog", () => {
     const onConfirm = mock<(person: unknown, role: string) => void>();
     render(<PinDialog {...pinProps()} onConfirm={onConfirm} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "ada" },
-    });
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: GREETER },
-    });
+    pickWho("Ada Lovelace");
+    chooseRole(GREETER);
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
 
     expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "ada" }, GREETER);
@@ -733,13 +741,9 @@ describe("PinDialog", () => {
     const onConfirm = mock<(person: unknown, role: string) => void>();
     render(<PinDialog {...pinProps(["r-hot"])} onConfirm={onConfirm} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "ada" },
-    });
+    pickWho("Ada Lovelace");
     expect(optionsOf(screen.getByLabelText("Role"))).toContain(HOT_FOOD);
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: HOT_FOOD },
-    });
+    chooseRole(HOT_FOOD);
 
     expect(
       screen.getByText(/every Hot food seat pinned already/),
@@ -752,12 +756,8 @@ describe("PinDialog", () => {
     const onConfirm = mock<(person: unknown, role: string) => void>();
     render(<PinDialog {...pinProps()} onConfirm={onConfirm} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "grace" },
-    });
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: LITTER },
-    });
+    pickWho("Grace Hopper");
+    chooseRole(LITTER);
 
     expect(
       screen.getByText(/does not ask for any Litter picker/),
@@ -771,13 +771,9 @@ describe("PinDialog", () => {
   test("the role defaults to one the volunteer holds with a seat free", () => {
     render(<PinDialog {...pinProps(["r-hot"])} onConfirm={() => {}} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "ada" },
-    });
+    pickWho("Ada Lovelace");
 
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      GREETER,
-    );
+    expect(roleValue()).toBe(GREETER);
     expect(screen.queryByText(/pinned already/)).not.toBeInTheDocument();
   });
 
@@ -789,13 +785,9 @@ describe("PinDialog", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "grace" },
-    });
+    pickWho("Grace Hopper");
 
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      GREETER,
-    );
+    expect(roleValue()).toBe(GREETER);
     expect(
       screen.getByText(/every Greeter seat pinned already/),
     ).toBeInTheDocument();
@@ -808,12 +800,8 @@ describe("PinDialog", () => {
   test("someone off the roster may be pinned into any role", () => {
     render(<PinDialog {...pinProps(["r-hot"])} onConfirm={() => {}} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "custom" },
-    });
-    fireEvent.change(screen.getByLabelText("Name"), {
-      target: { value: "Redbridge youth group" },
-    });
+    typeWho("Redbridge youth group");
+    pickOption("Use “Redbridge youth group” — not on the roster");
 
     expect(optionsOf(screen.getByLabelText("Role"))).toEqual([
       DUTY_LEAD,
@@ -826,13 +814,9 @@ describe("PinDialog", () => {
   test("a shift asking for nobody can still have somebody pinned to it", () => {
     render(<PinDialog {...pinProps()} seats={[]} onConfirm={() => {}} />);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "ada" },
-    });
+    pickWho("Ada Lovelace");
 
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      HOT_FOOD,
-    );
+    expect(roleValue()).toBe(HOT_FOOD);
     expect(
       screen.getByText(/does not ask for any Hot food/),
     ).toBeInTheDocument();
@@ -849,16 +833,14 @@ describe("PinDialog", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("option", { name: "Ada Lovelace (not active)" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "Grace Hopper" }),
-    ).toBeInTheDocument();
+    fireEvent.focus(screen.getByLabelText("Who"));
+    // Listed after the active, and said to be inactive, but listed.
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Grace Hopper",
+      "Ada Lovelace · not active",
+    ]);
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "ada" },
-    });
+    pickWho("Ada Lovelace");
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
 
     expect(onConfirm).toHaveBeenCalledWith({ volunteerId: "ada" }, HOT_FOOD);
@@ -875,12 +857,8 @@ describe("PinDialog", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Who"), {
-      target: { value: "custom" },
-    });
-    fireEvent.change(screen.getByLabelText("Name"), {
-      target: { value: "Redbridge youth group" },
-    });
+    typeWho("Redbridge youth group");
+    pickOption("Use “Redbridge youth group” — not on the roster");
 
     expect(screen.getByText(/already pinned/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pin" })).toBeEnabled();

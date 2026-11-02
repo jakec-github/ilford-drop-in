@@ -221,11 +221,17 @@ describe("a rule card", () => {
   test("offers inactive volunteers too, and adds the one picked", async () => {
     const { onSave } = renderCards([rule("gap")]);
     const add = screen.getByRole("combobox", { name: "Everyone except" });
-    expect(
-      within(add).getByRole("option", { name: "Ada Lovelace (not active)" }),
-    ).toBeTruthy();
+    fireEvent.focus(add);
+    // Only the roster: a Scope names volunteers, and a typed name is none.
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Alan Turing",
+      "Grace Hopper",
+      "Ada Lovelace · not active",
+    ]);
+    fireEvent.change(add, { target: { value: "turing" } });
+    expect(screen.getAllByRole("option")).toHaveLength(1);
 
-    fireEvent.change(add, { target: { value: "alan" } });
+    fireEvent.click(screen.getByRole("option", { name: "Alan Turing" }));
     await wait(SAVED);
     expect(onSave.mock.calls[0][1].scope).toEqual({
       include: [],
