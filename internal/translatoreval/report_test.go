@@ -186,11 +186,11 @@ func TestRender_AgainstAnEarlierReportSaysWhatChanged(t *testing.T) {
 
 func TestEstimate_CountsACallPerTranslationAndUpToThree(t *testing.T) {
 	cases := []Case{sundaysCase(), sundaysCase()}
-	e := EstimateRun("claude-sonnet-5-5", cases, 5)
+	e := EstimateRun("claude-sonnet-5-5", "", cases, 5)
 	if e.Calls != 10 || e.MaxCalls != 30 || !e.Priced || e.Cost <= 0 {
 		t.Errorf("estimate: %+v", e)
 	}
-	if e := EstimateRun("stub", cases, 5); e.Calls != 0 || e.Cost != 0 {
+	if e := EstimateRun("stub", "", cases, 5); e.Calls != 0 || e.Cost != 0 {
 		t.Errorf("stub: %+v", e)
 	}
 }
@@ -276,8 +276,105 @@ func TestRender_ARepairCaseIsComparedByItsFixes(t *testing.T) {
 func TestEstimate_ThePlantedCallIsFree(t *testing.T) {
 	c := sundaysCase()
 	c.Planted = noDuration
-	e := EstimateRun("claude-sonnet-5-5", []Case{c}, 5)
+	e := EstimateRun("claude-sonnet-5-5", "", []Case{c}, 5)
 	if e.Calls != 5 || e.MaxCalls != 5*(patterntranslator.MaxCalls-1) {
 		t.Errorf("estimate: %+v", e)
+	}
+}
+
+// judgedReport is sampleReport with a judge, and a case whose runs it judged:
+// one with a match, a made-up issue and a miss, one it could not judge.
+func judgedReport() *Report {
+	r := sampleReport()
+	r.Judge, r.JudgePrompt = "claude-opus-5-5", "dddddddddddd"
+	raised := func(r RunReport, issues ...patterntranslator.Issue) RunReport {
+		r.Issues = issues
+		return r
+	}
+	r.Cases = append(r.Cases, CaseReport{
+		Name: "sunday-evenings", Kind: Patterns, Group: "what is missing", Text: "Sunday evenings",
+		Expected: []ExpectedIssue{
+			{Kind: patterntranslator.Missing, About: "how long the Sunday shifts run"},
+			{Kind: patterntranslator.Ambiguous, About: "what time the evening shifts start"},
+		},
+		Runs: []RunReport{
+			func() RunReport {
+				run := raised(run(false, Raised, 1, 0.01, time.Second),
+					patterntranslator.Issue{Kind: patterntranslator.Missing, Message: "Add how long"},
+					patterntranslator.Issue{Kind: patterntranslator.Unsupported, Message: "Bank holidays are not supported"})
+				run.Judgement = &Judgement{
+					Raised: []Verdict{{Matches: 1, Reason: "Both are about the length."}, {Matches: 0, Reason: "No bank holiday is named."}},
+					Missed: []Miss{{Expected: 2, Reason: "Nothing asks what time evenings start."}},
+					Cost:   0.02,
+				}
+				return run
+			}(),
+			func() RunReport {
+				run := raised(run(true, Raised, 1, 0.01, time.Second),
+					patterntranslator.Issue{Kind: patterntranslator.Missing, Message: "Add how long"})
+				run.Judgement = &Judgement{Error: "the judge left out issue 1", Cost: 0.01}
+				return run
+			}(),
+		},
+	})
+	return r
+}
+
+func TestSummarise_CountsWhatTheJudgeFoundAndWhatItCost(t *testing.T) {
+	s := Summarise(judgedReport().Cases)
+	want := Judged{Replies: 1, Right: 0, MadeUp: 1, Missed: 1, NotJudged: 1, Cost: 0.03}
+	if math.Abs(s.Judged.Cost-want.Cost) > 1e-9 {
+		t.Errorf("judge cost = %v, want %v", s.Judged.Cost, want.Cost)
+	}
+	s.Judged.Cost = want.Cost
+	if s.Judged != want {
+		t.Errorf("judged: %+v, want %+v", s.Judged, want)
+	}
+	// The run's cost leaves the judge's out.
+	if math.Abs(s.Cost-0.10) > 1e-9 {
+		t.Errorf("cost = %v, want the runs' own 0.10", s.Cost)
+	}
+}
+
+func TestRender_ShowsTheJudgesPairingAndReasonBesideEachIssue(t *testing.T) {
+	md := Render(judgedReport(), nil)
+	for _, want := range []string{
+		"Judged by claude-opus-5-5 · prompt dddddddddddd",
+		// Judged right is replies with nothing made up and nothing missed,
+		// of those judged.
+		"| | First call | In the end | Wording | Judged right |",
+		"| All | 3/8 (38%) | 4/8 (50%) | 0.75 | 0/1 (0%) |",
+		"| Patterns: days and times | 1/2 (50%) | 1/2 (50%) | — | — |",
+		"| Patterns: what is missing | 2/4 (50%) | 3/4 (75%) | 0.75 | 0/1 (0%) |",
+		"| Case | Wants | First call | In the end | Wording | Judged right | Calls |",
+		"| sunday-evenings | issues | 1/2 | 1/2 | — | 0/1 | 2 / 0 / 0 / 0 |",
+		"| sundays | translation | 1/2 | 1/2 | — | — | 1 / 1 / 0 / 0 |",
+		"Judged in all: 1 made up, 1 missed; 1 reply it could not judge · judge cost $0.0300, apart from the cost above",
+		"## Judged issues",
+		"### sunday-evenings\n\n> Sunday evenings\n\nWanted:\n\n1. missing: how long the Sunday shifts run\n2. ambiguous: what time the evening shifts start\n",
+		"- Run 1:\n  - Raised missing: Add how long — about 1: Both are about the length.\n" +
+			"  - Raised unsupported: Bank holidays are not supported — made up: No bank holiday is named.\n" +
+			"  - Missed 2: Nothing asks what time evenings start.\n",
+		"- Run 2: not judged: the judge left out issue 1\n",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("report lacks %q:\n%s", want, md)
+		}
+	}
+
+	if md := Render(sampleReport(), nil); strings.Contains(md, "judge") || strings.Contains(md, "Judge") {
+		t.Errorf("a report with no judge mentions one:\n%s", md)
+	}
+}
+
+func TestEstimate_CountsAJudgeCallPerIssuesReply(t *testing.T) {
+	issues := issuesCase(Patterns, ExpectedIssue{Kind: patterntranslator.Missing, About: "length"})
+	issues.Text = "Sunday evenings"
+	e := EstimateRun("claude-haiku-5-5", "claude-opus-5-5", []Case{sundaysCase(), issues}, 5)
+	if e.JudgeCalls != 5 || e.JudgeCost <= 0 || !e.JudgePriced {
+		t.Errorf("estimate: %+v", e)
+	}
+	if e := EstimateRun("claude-haiku-5-5", "", []Case{issues}, 5); e.JudgeCalls != 0 || e.JudgeCost != 0 {
+		t.Errorf("no judge: %+v", e)
 	}
 }

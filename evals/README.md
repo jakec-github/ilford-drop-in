@@ -17,12 +17,13 @@ ANTHROPIC_API_KEY=… go run ./cmd/translator-eval
 ```
 
 Before the first call it prints how many calls the run will make and roughly
-what they cost, then waits for a yes.
+what they cost, the judge's apart, then waits for a yes.
 
 | Flag | Default | What it does |
 |---|---|---|
 | `-model` | `claude-sonnet-5-5` | the model being tested; `stub` runs the dev-mode stub, free and without a key |
 | `-effort` | `low` | the model's effort |
+| `-judge` | `claude-opus-5-5` | the model that judges the issues raised (see below); `none` judges nothing |
 | `-repeats` | `5` | runs per case |
 | `-cases` | `all` | `patterns`, `rules`, a group's name, or one case's name |
 | `-compare` | | an earlier report's `.json`, to say what changed |
@@ -77,15 +78,25 @@ that gets that one thing right has nothing else to raise.
   the expected rule. The expected answer is one way of writing them, not the
   only one.
 - **Issues are graded in code** on the reply's status and its set of kinds.
+- **Then a judge pairs them.** Whether "Add how long the shifts run" is the
+  case's "missing: the duration" takes judgement, so a second model, the
+  judge, is given the description, the issues the case wants and the ones the
+  model raised, each wanted one with its `about` note. It pairs each one
+  raised with the one wanted that it is about, or marks it **made up**, and marks each one wanted that nothing was
+  about as **missed**. It does not judge the wording.
+  - Only replies of issues where issues were wanted are judged, one call
+    each. The stub is never judged.
+  - Its verdicts never fail a run: the report counts them, and lists every
+    one with the judge's reason, so a wrong verdict can be seen.
+  - Its prompt and schema are `internal/translatoreval/judge.md` and
+    `judge.schema.json`. A judge that is the model being tested is warned
+    about, since it may be blind to its own mistakes.
 - **Wording is scored, and never fails a run.** Each message of issues the
   model raised scores from 0 to 1. A message naming the format's terms
   (RRULE, DTSTART, …) scores 0. A message over the prompts' 15-word limit
   loses in proportion: 18 words scores 0.8, and 30 scores 0. A run's score is
   the mean over its messages, and the report gives the mean beside each pass
   rate.
-
-  Each issue's `about` note says what it should be about. The code doesn't
-  check it, since that takes a judge.
 - Each case fixes `today`, so a case means the same thing whenever it is run.
 
 ### Repair cases
@@ -136,14 +147,18 @@ worked, but it took longer and cost more.
 Each report starts with:
 - the model and effort;
 - a hash of each prompt;
-- pass rates on the first call and in the end, and wording scores, overall
-  and for each group;
+- pass rates on the first call and in the end, wording scores and, with a
+  judge, how many replies of issues it judged right (nothing made up, nothing
+  missed), overall and for each group;
 - every call made again, by why: the parser refused the reply before it, or
   the reply could not be used at all (issues with none in them, an empty
-  answer, JSON that does not read, a refusal, a reply cut off).
+  answer, JSON that does not read, a refusal, a reply cut off);
+- how many issues the judge found made up and missed, and its cost, apart from
+  the cost of the model being tested.
 
 For each case it gives:
-- the pass rates on the first call and in the end, and the wording score;
+- the pass rates on the first call and in the end, the wording score and, with
+  a judge, the replies it judged right;
 - the calls each run took: first, second or third, gave up, or unavailable;
 - the cost;
 - typical and slow (p95) latency.
@@ -156,7 +171,9 @@ that says nothing, such as issues with none in them, goes back with what it
 left out. A reply the loop cannot read at all is asked again the same way and
 leaves no message, so only its reply says what happened. The eval asks for the thinking; the
 server does not. The `.json` keeps it for every call, not only the ones shown.
-Every message that lost wording points is listed after that.
+Under Judged issues, every judged run lists each issue raised with the judge's
+verdict and reason, then each one missed. Every message that lost wording
+points is listed after that.
 
 `-compare` gives both rates before and after. An older report without the
 reasons for its calls still compares: its first-call rate comes from how many

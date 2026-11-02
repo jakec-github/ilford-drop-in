@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "raised": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue": { "type": "integer" },
+          "matches": { "type": "integer" },
+          "reason": { "type": "string" }
+        },
+        "required": ["issue", "matches", "reason"],
+        "additionalProperties": false
+      }
+    },
+    "missed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "expected": { "type": "integer" },
+          "reason": { "type": "string" }
+        },
+        "required": ["expected", "reason"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["raised", "missed"],
+  "additionalProperties": false
+}

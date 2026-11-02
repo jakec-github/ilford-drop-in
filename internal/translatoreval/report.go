@@ -131,6 +131,7 @@ type Group struct {
 	Label string
 	Tally
 	Wording Score
+	Judged  Judged
 }
 
 // Calls is how many calls translations took: one, or a second or third after
@@ -214,6 +215,56 @@ type Summary struct {
 	// Retries is the calls made again on first attempts; RepairRetries is
 	// those on repairs, the planted reply's refusal aside.
 	Retries, RepairRetries Retries
+	// Judged is what the judge found in the runs it judged, repairs left out
+	// like the rates. Its cost is not in Cost.
+	Judged Judged
+}
+
+// Judged is what the judge found across runs.
+type Judged struct {
+	// Replies is how many replies of issues it paired, and Right how many of
+	// those had nothing made up and nothing missed; NotJudged is how many it
+	// was asked about and could not.
+	Replies, Right, NotJudged int
+	// MadeUp is issues raised that were about nothing wanted; Missed, issues
+	// wanted that nothing raised was about.
+	MadeUp, Missed int
+	// Cost is the judge's, in US dollars.
+	Cost float64
+}
+
+func (j *Judged) add(r RunReport) {
+	if r.Judgement == nil {
+		return
+	}
+	j.Cost += r.Judgement.Cost
+	if r.Judgement.Error != "" {
+		j.NotJudged++
+		return
+	}
+	j.Replies++
+	j.MadeUp += r.Judgement.MadeUp()
+	j.Missed += len(r.Judgement.Missed)
+	if r.Judgement.MadeUp() == 0 && len(r.Judgement.Missed) == 0 {
+		j.Right++
+	}
+}
+
+// Rate is the replies judged right, of those judged.
+func (j Judged) Rate() Tally {
+	return Tally{Passed: j.Right, Runs: j.Replies}
+}
+
+// cell is the judged-right rate for a table, with its percentage or without,
+// or a dash where nothing was judged.
+func (j Judged) cell(percent bool) string {
+	if j.Replies == 0 {
+		return "—"
+	}
+	if !percent {
+		return fmt.Sprintf("%d/%d", j.Right, j.Replies)
+	}
+	return j.Rate().String()
 }
 
 // PerRun is the mean cost of one translation, repairs included.
@@ -257,6 +308,8 @@ func Summarise(cases []CaseReport) Summary {
 		}
 		g := groups[label]
 		for _, r := range c.Runs {
+			s.Judged.add(r)
+			g.Judged.add(r)
 			s.All.add(r)
 			s.Wording.add(r)
 			g.Tally.add(r)
@@ -318,15 +371,31 @@ func Render(r *Report, earlier *Report) string {
 
 	fmt.Fprintf(&b, "# Translator eval: %s\n\n", subjectName(r))
 	fmt.Fprintf(&b, "Run %s · %d repeats · prompts %s\n\n", r.Started.Format("2006-01-02 15:04 MST"), r.Repeats, promptList(r.Prompts))
+	if r.Judge != "" {
+		fmt.Fprintf(&b, "Judged by %s · prompt %s\n\n", r.Judge, r.JudgePrompt)
+	}
 
 	s := Summarise(r.Cases)
 	b.WriteString("## Summary\n\nWording scores the messages of issues the model raised, from 0 to 1. It never fails a run.\n\n")
 	b.WriteString("First call is the runs right on the model's first reply; in the end, those right on any. ")
 	b.WriteString("Every call after the first means a reply did not stand.\n\n")
-	b.WriteString("| | First call | In the end | Wording |\n|---|---|---|---|\n")
-	fmt.Fprintf(&b, "| All | %s | %s | %s |\n", s.All.FirstCall(), s.All, s.Wording)
+	judged := r.Judge != ""
+	// judgedCol is a table's judged-right column, where there is a judge.
+	judgedCol := func(j Judged, percent bool) string {
+		if !judged {
+			return ""
+		}
+		return " " + j.cell(percent) + " |"
+	}
+	if judged {
+		b.WriteString("Judged right is the replies of issues in which the judge found nothing made up and nothing missed, of those it judged. It never fails a run.\n\n")
+		b.WriteString("| | First call | In the end | Wording | Judged right |\n|---|---|---|---|---|\n")
+	} else {
+		b.WriteString("| | First call | In the end | Wording |\n|---|---|---|---|\n")
+	}
+	fmt.Fprintf(&b, "| All | %s | %s | %s |%s\n", s.All.FirstCall(), s.All, s.Wording, judgedCol(s.Judged, true))
 	for _, g := range s.Groups {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", g.Label, g.FirstCall(), g.Tally, g.Wording)
+		fmt.Fprintf(&b, "| %s | %s | %s | %s |%s\n", g.Label, g.FirstCall(), g.Tally, g.Wording, judgedCol(g.Judged, true))
 	}
 	b.WriteString("\n| Calls | Runs |\n|---|---|\n")
 	fmt.Fprintf(&b, "| First call | %d |\n| Second call | %d |\n| Third call | %d |\n| Gave up | %d |\n| Unavailable | %d |\n\n",
@@ -334,6 +403,13 @@ func Render(r *Report, earlier *Report) string {
 	writeRetries(&b, s.Retries)
 	fmt.Fprintf(&b, "Cost %s in all, %s a translation · latency %s typical, %s slow (p95) · %d over the %s limit\n\n",
 		money(s.Cost), money(s.PerRun()), seconds(s.Typical), seconds(s.Slow), s.TimedOut, patterntranslator.Timeout)
+	if j := s.Judged; j.Replies+j.NotJudged > 0 {
+		fmt.Fprintf(&b, "Judged in all: %d made up, %d missed", j.MadeUp, j.Missed)
+		if j.NotJudged > 0 {
+			fmt.Fprintf(&b, "; %s it could not judge", replies(j.NotJudged))
+		}
+		fmt.Fprintf(&b, " · judge cost %s, apart from the cost above\n\n", money(j.Cost))
+	}
 
 	if len(s.RepairGroups) > 0 {
 		b.WriteString("## Repairs\n\nEach repair case's first call is a planted reply the parser refuses, made without asking the model; ")
@@ -357,7 +433,11 @@ func Render(r *Report, earlier *Report) string {
 		if l := groupLabel(c); l != label {
 			label = l
 			fmt.Fprintf(&b, "\n### %s\n\n", label)
-			b.WriteString("| Case | Wants | First call | In the end | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|\n")
+			if judged {
+				b.WriteString("| Case | Wants | First call | In the end | Wording | Judged right | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|---|\n")
+			} else {
+				b.WriteString("| Case | Wants | First call | In the end | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|\n")
+			}
 		}
 		cs := Summarise([]CaseReport{c})
 		wants := "issues"
@@ -374,8 +454,8 @@ func Render(r *Report, earlier *Report) string {
 				calls.add(run)
 			}
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d/%d | %d/%d | %s | %d / %d / %d / %d | %s | %s | %s |\n",
-			c.Name, wants, passed.First, passed.Runs, passed.Passed, passed.Runs, cs.Wording,
+		fmt.Fprintf(&b, "| %s | %s | %d/%d | %d/%d | %s |%s %d / %d / %d / %d | %s | %s | %s |\n",
+			c.Name, wants, passed.First, passed.Runs, passed.Passed, passed.Runs, cs.Wording, judgedCol(cs.Judged, false),
 			calls.First, calls.Second, calls.Third, calls.GaveUp+calls.Unavailable,
 			money(cs.PerRun()), seconds(cs.Typical), seconds(cs.Slow))
 	}
@@ -393,6 +473,7 @@ func Render(r *Report, earlier *Report) string {
 		}
 	}
 	writeSecondGoes(&b, r.Cases)
+	writeJudged(&b, r.Cases)
 
 	writeWording(&b, r.Cases)
 
@@ -400,6 +481,65 @@ func Render(r *Report, earlier *Report) string {
 		writeComparison(&b, r, earlier)
 	}
 	return b.String()
+}
+
+func replies(n int) string {
+	if n == 1 {
+		return "1 reply"
+	}
+	return fmt.Sprintf("%d replies", n)
+}
+
+// writeJudged lists every run the judge was asked about: each issue raised,
+// with the issue wanted it was paired with or that it was made up, and why,
+// then each issue wanted that nothing raised was about. Every verdict is
+// shown, not only the ones that found something, so a wrong one can be seen.
+func writeJudged(b *strings.Builder, cases []CaseReport) {
+	wrote := false
+	for _, c := range cases {
+		if !slices.ContainsFunc(c.Runs, func(run RunReport) bool { return run.Judgement != nil }) {
+			continue
+		}
+		if !wrote {
+			b.WriteString("\n## Judged issues\n\nEach issue raised, with the one wanted that the judge paired it with, or made up; then each one wanted that nothing raised was about.\n")
+			wrote = true
+		}
+		fmt.Fprintf(b, "\n### %s\n\n> %s\n\nWanted:\n\n", c.Name, strings.ReplaceAll(c.Text, "\n", "\n> "))
+		for i, e := range c.Expected {
+			kind := string(e.Kind)
+			if e.Or != "" {
+				kind += " or " + string(e.Or)
+			}
+			fmt.Fprintf(b, "%d. %s: %s\n", i+1, kind, e.About)
+		}
+		b.WriteString("\n")
+		for i, run := range c.Runs {
+			j := run.Judgement
+			switch {
+			case j == nil:
+				continue
+			case j.Error != "":
+				fmt.Fprintf(b, "- Run %d: not judged: %s\n", i+1, j.Error)
+				continue
+			}
+			fmt.Fprintf(b, "- Run %d:\n", i+1)
+			for k, v := range j.Raised {
+				issue := run.Issues[k]
+				verdict := "made up"
+				if v.Matches > 0 {
+					verdict = fmt.Sprintf("about %d", v.Matches)
+				}
+				fmt.Fprintf(b, "  - Raised %s: %s — %s: %s\n", issue.Kind, issue.Message, verdict, v.Reason)
+			}
+			for _, m := range j.Missed {
+				reason := m.Reason
+				if reason == "" {
+					reason = "nothing raised was about it"
+				}
+				fmt.Fprintf(b, "  - Missed %d: %s\n", m.Expected, reason)
+			}
+		}
+	}
 }
 
 // writeWording lists every message that lost wording points, case by case,
@@ -722,13 +862,19 @@ type Estimate struct {
 	// guess at the reply.
 	Cost   float64
 	Priced bool
+	// JudgeCalls is one for each reply of issues a case wants, and
+	// JudgeCost what the judge charges for them, as roughly.
+	JudgeCalls  int
+	JudgeCost   float64
+	JudgePriced bool
 }
 
 // replyGuess is the output tokens a call is taken to use, thinking included.
 const replyGuess = 600
 
-// EstimateRun is what translating cases repeats times on model will take.
-func EstimateRun(model string, cases []Case, repeats int) Estimate {
+// EstimateRun is what translating cases repeats times on model will take,
+// and judging the issues raised on judge, if there is one.
+func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
 	if model == "stub" {
 		return Estimate{}
 	}
@@ -755,6 +901,19 @@ func EstimateRun(model string, cases []Case, repeats int) Estimate {
 		// About four characters a token.
 		u := patterntranslator.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
 		e.Cost += cost(model, u) * float64(repeats)
+
+		if judge != "" && !c.Translates() {
+			// The issues raised are guessed at a little longer than the
+			// notes of the ones wanted.
+			chars := len(judgeSystem) + len(judgeSchema) + len(c.Text) + 200
+			for _, issue := range c.Expect.Issues {
+				chars += 2 * (len(issue.About) + 40)
+			}
+			u := patterntranslator.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
+			e.JudgeCalls += repeats
+			e.JudgeCost += cost(judge, u) * float64(repeats)
+		}
 	}
+	_, e.JudgePriced = prices[judge]
 	return e
 }

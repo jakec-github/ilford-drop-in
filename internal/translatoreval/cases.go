@@ -68,12 +68,12 @@ type Expect struct {
 // of what it is about. The note is for whatever pairs the issues raised with
 // the ones wanted; the wording of a message is the model's own.
 type ExpectedIssue struct {
-	Kind patterntranslator.Kind `yaml:"kind"`
+	Kind patterntranslator.Kind `yaml:"kind" json:"kind"`
 	// Or is a second kind the issue may fairly be, where the line between
 	// them is one no Organiser would notice: "evenings" with no time is as
 	// much a missing time as an ambiguous one.
-	Or    patterntranslator.Kind `yaml:"or"`
-	About string                 `yaml:"about"`
+	Or    patterntranslator.Kind `yaml:"or" json:"or,omitempty"`
+	About string                 `yaml:"about" json:"about"`
 }
 
 // Repairs is whether the case grades a repair rather than a first attempt.

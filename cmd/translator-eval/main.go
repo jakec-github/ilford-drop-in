@@ -5,6 +5,9 @@
 //	ANTHROPIC_API_KEY=... go run ./cmd/translator-eval
 //	go run ./cmd/translator-eval -model stub -yes
 //
+// A second model, the judge, pairs the issues each reply raises with the ones
+// its case wants. The stub is never judged.
+//
 // It asks the real model and costs money, so it is run by hand, never by
 // scripts/check.sh or CI. Before the first call it says how many calls it will
 // make and roughly what they cost, and waits for a yes.
@@ -37,6 +40,7 @@ func run() error {
 	effort := flag.String("effort", "low", "the model's effort")
 	repeats := flag.Int("repeats", 5, "how many times each case is translated")
 	which := flag.String("cases", "all", "all, patterns, rules, a group's name, or one case's name")
+	judge := flag.String("judge", "claude-opus-5-5", "the model that judges the issues raised, or none")
 	compare := flag.String("compare", "", "an earlier report's .json, to say what changed")
 	parallel := flag.Int("parallel", 4, "how many translations run at once")
 	yes := flag.Bool("yes", false, "run without asking first")
@@ -86,9 +90,17 @@ func run() error {
 		// The thinking is there to read beside a reply that went wrong.
 		base.ShowThinking = true
 		subject.Base = base
+
+		if *judge != "none" {
+			if *judge == *model {
+				fmt.Printf("Warning: %s is judging its own issues, and may be blind to what it gets wrong.\n", *judge)
+			}
+			subject.JudgeModel = *judge
+			subject.Judge = patterntranslator.NewAnthropic(key, *judge, judgeEffort)
+		}
 	}
 
-	e := translatoreval.EstimateRun(*model, cases, *repeats)
+	e := translatoreval.EstimateRun(*model, subject.JudgeModel, cases, *repeats)
 	fmt.Printf("%d cases × %d repeats on %s: %d calls, up to %d if the parser refuses answers",
 		len(cases), *repeats, *model, e.Calls, e.MaxCalls)
 	switch {
@@ -98,6 +110,14 @@ func run() error {
 		fmt.Printf(", about $%.2f.\n", e.Cost)
 	default:
 		fmt.Println(". The model has no price, so the cost is unknown.")
+	}
+	if subject.Judge != nil {
+		fmt.Printf("%s judges each reply of issues: about %d calls", subject.JudgeModel, e.JudgeCalls)
+		if e.JudgePriced {
+			fmt.Printf(", about $%.2f.\n", e.JudgeCost)
+		} else {
+			fmt.Println(". It has no price, so the cost is unknown.")
+		}
 	}
 	if !*yes && subject.Base != nil {
 		fmt.Print("Run it? [y/N] ")
@@ -140,9 +160,17 @@ func run() error {
 	if r := s.Repairs.Rate(); r.Runs > 0 {
 		repairs = fmt.Sprintf(", fixed %s, %s on the first model call", r, r.FirstCall())
 	}
-	fmt.Printf("Passed %s on the first call, %s in the end%s. Report: %s.md\n", s.All.FirstCall(), s.All, repairs, base)
+	judged := ""
+	if j := s.Judged; j.Replies > 0 {
+		judged = fmt.Sprintf("; the judge found %d made up, %d missed", j.MadeUp, j.Missed)
+	}
+	fmt.Printf("Passed %s on the first call, %s in the end%s%s. Report: %s.md\n", s.All.FirstCall(), s.All, repairs, judged, base)
 	return nil
 }
+
+// judgeEffort is the judge's effort. Pairing a few issues is not hard, and a
+// reply shares the translators' token limit, thinking included.
+const judgeEffort = "medium"
 
 func exists(path string) bool {
 	_, err := os.Stat(path)
