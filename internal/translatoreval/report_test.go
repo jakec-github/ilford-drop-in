@@ -1,6 +1,7 @@
 package translatoreval
 
 import (
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -23,6 +24,16 @@ func worded(r RunReport, score float64, notes ...string) RunReport {
 	return r
 }
 
+func replied(r RunReport, replies ...Reply) RunReport {
+	r.Replies = replies
+	return r
+}
+
+const (
+	emptyIssues = `{"status":"issues","issues":[]}`
+	sentBack    = "The app cannot use that pattern:\n- entry 1: DURATION is missing\n\nReply again for the same description."
+)
+
 func sampleReport() *Report {
 	return &Report{
 		Model: "claude-sonnet-5-5", Effort: "low", Repeats: 2, Priced: true,
@@ -31,11 +42,15 @@ func sampleReport() *Report {
 		Cases: []CaseReport{
 			{Name: "sundays", Kind: Patterns, Group: "days and times", Text: "Sundays 7:30 to 10:30pm", Translates: true, Runs: []RunReport{
 				run(true, Translated, 1, 0.01, 2*time.Second),
-				run(false, Translated, 2, 0.02, 4*time.Second),
+				replied(run(false, Translated, 2, 0.02, 4*time.Second),
+					Reply{Text: okPattern(noDuration), Retry: Refused, SentBack: sentBack},
+					Reply{Text: okPattern(sundays)}),
 			}},
 			{Name: "no-length", Kind: Patterns, Group: "what is missing", Text: "Sunday evenings", Runs: []RunReport{
 				worded(run(true, Raised, 1, 0.01, time.Second), 1),
-				worded(run(true, Raised, 1, 0.01, time.Second), 0.5, `"Add how long the shifts on a Sunday evening run, in hours or by when they end please": 17 words, limit 15`),
+				replied(worded(run(true, Raised, 2, 0.01, time.Second), 0.5, `"Add how long the shifts on a Sunday evening run, in hours or by when they end please": 17 words, limit 15`),
+					Reply{Text: emptyIssues, Retry: Unusable, Thinking: "Is 7:30 morning?"},
+					Reply{Text: `{"status":"issues","issues":[{"kind":"missing","message":"Add how long"}]}`}),
 			}},
 			{Name: "evening", Kind: Rules, Group: "days and times", Text: "The Sunday evening shift", Translates: true, Runs: []RunReport{
 				run(false, GaveUp, 3, 0.03, 9*time.Second),
@@ -47,14 +62,14 @@ func sampleReport() *Report {
 
 func TestSummarise_CountsPassesByGroupAndHowManyCallsEachTook(t *testing.T) {
 	s := Summarise(sampleReport().Cases)
-	if s.All != (Tally{Passed: 3, Runs: 6}) {
+	if s.All != (Tally{Passed: 3, First: 2, Runs: 6}) {
 		t.Errorf("all: %+v", s.All)
 	}
 	// Each file's groups apart, in the order the cases ran.
 	want := []Group{
-		{Label: "Patterns: days and times", Tally: Tally{1, 2}},
-		{Label: "Patterns: what is missing", Tally: Tally{2, 2}, Wording: Score{1.5, 2}},
-		{Label: "Rules: days and times", Tally: Tally{0, 2}},
+		{Label: "Patterns: days and times", Tally: Tally{Passed: 1, First: 1, Runs: 2}},
+		{Label: "Patterns: what is missing", Tally: Tally{Passed: 2, First: 1, Runs: 2}, Wording: Score{1.5, 2}},
+		{Label: "Rules: days and times", Tally: Tally{Runs: 2}},
 	}
 	if !slices.Equal(s.Groups, want) {
 		t.Errorf("groups: %+v, want %+v", s.Groups, want)
@@ -62,8 +77,11 @@ func TestSummarise_CountsPassesByGroupAndHowManyCallsEachTook(t *testing.T) {
 	if s.Wording != (Score{1.5, 2}) || s.Wording.String() != "0.75" {
 		t.Errorf("wording: %+v", s.Wording)
 	}
-	if s.Calls != (Calls{First: 3, Second: 1, GaveUp: 1, Unavailable: 1}) {
+	if s.Calls != (Calls{First: 2, Second: 2, GaveUp: 1, Unavailable: 1}) {
 		t.Errorf("calls: %+v", s.Calls)
+	}
+	if s.Retries.Refused != 1 || !maps.Equal(s.Retries.Unusable, map[string]int{"issues with none in them": 1}) {
+		t.Errorf("retries: %+v", s.Retries)
 	}
 	if math.Abs(s.Cost-0.08) > 1e-9 || s.TimedOut != 1 {
 		t.Errorf("cost %v, timed out %d", s.Cost, s.TimedOut)
@@ -81,8 +99,9 @@ func TestRender_SaysWhatRanAndWhatFailed(t *testing.T) {
 	r.Cases[0].Runs[1].Shifts = &ShiftDiff{Missing: []string{"Sun 1 Nov 2026 19:30 for 3h"}, MissingCount: 1}
 	r.Cases[1].Runs[0].Issues = []patterntranslator.Issue{{Kind: patterntranslator.Missing, Message: "Add how long"}}
 	r.Cases[2].Runs[0].Replies = []Reply{
-		{Text: "{\"status\":\"issues\",\n\"issues\":[]}", Thinking: "The time is clear.\n\nBut the length is not."},
-		{Error: "the model's reply cannot be used: stopped for refusal"},
+		{Text: "{\"status\":\"issues\",\n\"issues\":[]}", Thinking: "The time is clear.\n\nBut the length is not.", Retry: Unusable},
+		{Error: "the model's reply cannot be used: stopped for refusal", Retry: Unusable},
+		{Text: okPattern(noDuration)},
 	}
 	md := Render(r, nil)
 
@@ -90,14 +109,19 @@ func TestRender_SaysWhatRanAndWhatFailed(t *testing.T) {
 		"# Translator eval: claude-sonnet-5-5, low effort",
 		"2 repeats",
 		"`pattern` aaaaaaaaaaaa",
-		"| All | 3/6 (50%) | 0.75 |",
-		"| Rules: days and times | 0/2 (0%) | — |",
+		"| | First call | In the end | Wording |",
+		"| All | 2/6 (33%) | 3/6 (50%) | 0.75 |",
+		"| Patterns: what is missing | 1/2 (50%) | 2/2 (100%) | 0.75 |",
+		"| Rules: days and times | 0/2 (0%) | 0/2 (0%) | — |",
 		"| Gave up | 1 |",
+		// Every call after the first, by why it was made.
+		"| Why the model was asked again | Calls |\n|---|---|\n| Refused by the parser | 1 |\n| Unusable: issues with none in them | 2 |\n| Unusable: stopped for refusal | 1 |\n",
 		"### Patterns: days and times",
-		"| sundays | translation | 1/2 | — | 1 / 1 / 0 / 0 | $0.0150 | 2.0s | 4.0s |",
-		"| no-length | issues | 2/2 | 0.75 |",
+		"| Case | Wants | First call | In the end | Wording | Calls |",
+		"| sundays | translation | 1/2 | 1/2 | — | 1 / 1 / 0 / 0 | $0.0150 | 2.0s | 4.0s |",
+		"| no-length | issues | 1/2 | 2/2 | 0.75 | 1 / 1 / 0 / 0 |",
 		"### Rules: days and times",
-		"| evening | translation | 0/2 | — | 0 / 0 / 0 / 2 |",
+		"| evening | translation | 0/2 | 0/2 | — | 0 / 0 / 0 / 2 |",
 		"### sundays",
 		"> Sundays 7:30 to 10:30pm",
 		"Run 2: other Shifts: 1 missing, 0 extra",
@@ -106,16 +130,25 @@ func TestRender_SaysWhatRanAndWhatFailed(t *testing.T) {
 		"1 over the 30s limit",
 		"## Wording",
 		`- "Add how long the shifts on a Sunday evening run, in hours or by when they end please": 17 words, limit 15`,
-		"- Call 1: `` {\"status\":\"issues\", \"issues\":[]} ``",
-		"- Call 1: `` {\"status\":\"issues\", \"issues\":[]} ``\n    - Thought: The time is clear. But the length is not.\n  - Call 2: no reply",
-		"- Call 2: no reply: the model's reply cannot be used: stopped for refusal",
+		"- Call 1: `` {\"status\":\"issues\", \"issues\":[]} ``\n    - Thought: The time is clear. But the length is not.\n    - Asked again: unusable, issues with none in them\n  - Call 2: no reply",
+		"- Call 2: no reply: the model's reply cannot be used: stopped for refusal\n    - Asked again: unusable, stopped for refusal\n  - Call 3:",
+		// A failed run that was not given up still shows how it got there.
+		"- Run 2: other Shifts: 1 missing, 0 extra",
+		"    - Asked again: the parser refused it: entry 1: DURATION is missing\n",
+		// A pass that took a second call is listed with its calls.
+		"## Second goes",
+		"### no-length\n\n> Sunday evenings\n\n- Run 2: passed on call 2\n  - Call 1: `` {\"status\":\"issues\",\"issues\":[]} ``\n    - Thought: Is 7:30 morning?\n    - Asked again: unusable, issues with none in them\n  - Call 2:",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q:\n%s", want, md)
 		}
 	}
-	if strings.Contains(md, "### no-length\n\n>") {
+	failures := md[strings.Index(md, "## Failures"):strings.Index(md, "## Second goes")]
+	if strings.Contains(failures, "### no-length") {
 		t.Error("a case that always passed is listed under failures")
+	}
+	if strings.Contains(md[strings.Index(md, "## Second goes"):], "### sundays") {
+		t.Error("a run that failed is listed under second goes")
 	}
 }
 
@@ -138,7 +171,9 @@ func TestRender_AgainstAnEarlierReportSaysWhatChanged(t *testing.T) {
 	for _, want := range []string{
 		"## Against claude-sonnet-5-5, low effort, 2026-11-02",
 		"`pattern` prompt differs: cccccccccccc → aaaaaaaaaaaa",
-		"| sundays | 2/2 | 1/2 | −50 pts |",
+		"first call 1/2 (50%) → 1/2 (50%), in the end 2/2 (100%) → 1/2 (50%)",
+		"| Case | First call | Change | In the end | Change |",
+		"| sundays | 1/2 → 1/2 | 0 | 2/2 → 1/2 | −50 pts |",
 		"wording — → —",
 		"Only in this run: evening, no-length",
 		"Only in the earlier run: dropped",
@@ -165,7 +200,10 @@ func repairReport() *Report {
 	repairs := []CaseReport{
 		{Name: "no-duration", Kind: Patterns, Group: "repairs", Planted: noDuration, Translates: true, Runs: []RunReport{
 			run(true, Translated, 2, 0.01, time.Second),
-			run(true, Translated, 3, 0.02, time.Second),
+			replied(run(true, Translated, 3, 0.02, time.Second),
+				Reply{Text: okPattern(noDuration), Retry: Refused, SentBack: sentBack},
+				Reply{Text: `{"pattern":"","status":"ok"}`, Retry: Unusable},
+				Reply{Text: okPattern(sundays)}),
 			run(false, Translated, 2, 0.01, time.Second),
 			run(false, GaveUp, 3, 0.02, time.Second),
 		}},
@@ -182,18 +220,19 @@ func repairReport() *Report {
 // reply, so counting it in the pass rate would mix two questions.
 func TestSummarise_RepairsAreKeptApartFromThePassRate(t *testing.T) {
 	s := Summarise(repairReport().Cases)
-	if s.All != (Tally{Passed: 3, Runs: 6}) || len(s.Groups) != 3 {
+	if s.All != (Tally{Passed: 3, First: 2, Runs: 6}) || len(s.Groups) != 3 {
 		t.Errorf("first attempts: %+v, groups %+v", s.All, s.Groups)
 	}
-	if s.Calls.Second != 1 || s.Calls.Third != 0 {
-		t.Errorf("calls count repairs: %+v", s.Calls)
+	if s.Calls.Second != 2 || s.Calls.Third != 0 || s.Retries.Refused != 1 {
+		t.Errorf("calls count repairs: %+v, %+v", s.Calls, s.Retries)
 	}
-	want := Repairs{Fixed: 3, Changed: 1, NotFixed: 1, Unavailable: 1, ModelCalls: 4}
+	want := Repairs{Fixed: 3, FirstFix: 2, Changed: 1, NotFixed: 1, Unavailable: 1}
 	if s.Repairs != want {
 		t.Errorf("repairs: %+v, want %+v", s.Repairs, want)
 	}
-	if got := s.Repairs.CallsPerFix(); math.Abs(got-4.0/3) > 1e-9 {
-		t.Errorf("calls a fix = %v, want 4/3", got)
+	// The planted reply's refusal is the case, not the model's doing.
+	if s.RepairRetries.Refused != 0 || !maps.Equal(s.RepairRetries.Unusable, map[string]int{"an empty answer": 1}) {
+		t.Errorf("repair retries: %+v", s.RepairRetries)
 	}
 	if len(s.RepairGroups) != 2 || s.RepairGroups[0].Label != "Patterns: repairs" || s.RepairGroups[1].Repairs.Fixed != 1 {
 		t.Errorf("repair groups: %+v", s.RepairGroups)
@@ -205,11 +244,16 @@ func TestRender_RepairsHaveASectionOfTheirOwn(t *testing.T) {
 	for _, want := range []string{
 		"| All | 3/6 (50%) |",
 		"## Repairs",
-		"| | Fixed | Parsed but changed | Not fixed | Unavailable | Calls a fix |",
-		"| All | 3/6 (50%) | 1 | 1 | 1 | 1.3 |",
-		"| Patterns: repairs | 2/4 (50%) | 1 | 1 | 0 | 1.5 |",
+		"| | Fixed | On the first model call | Parsed but changed | Not fixed | Unavailable |",
+		"| All | 3/6 (50%) | 2/6 (33%) | 1 | 1 | 1 |",
+		"| Patterns: repairs | 2/4 (50%) | 1/4 (25%) | 1 | 1 | 0 |",
+		"| Why the model was asked again | Calls |\n|---|---|\n| Unusable: an empty answer | 1 |\n\n## Cases",
 		// A repair case's own row counts its fixes and the loop's calls.
-		"| no-duration | translation | 2/4 | — | 0 / 2 / 1 / 1 |",
+		"| no-duration | translation | 1/4 | 2/4 | — | 0 / 2 / 1 / 1 |",
+		// A repair that took more than one model call is a second go; its
+		// first call is the planted one.
+		"### no-duration\n\n> ",
+		"- Run 2: passed on call 3\n  - Call 1 (planted): ",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q:\n%s", want, md)
@@ -220,8 +264,8 @@ func TestRender_RepairsHaveASectionOfTheirOwn(t *testing.T) {
 func TestRender_ARepairCaseIsComparedByItsFixes(t *testing.T) {
 	md := Render(repairReport(), repairReport())
 	for _, want := range []string{
-		"Repairs on the cases both ran: fixed 3/6 (50%) → 3/6 (50%), calls a fix 1.3 → 1.3",
-		"| no-duration | 2/4 | 2/4 | 0 |",
+		"Repairs on the cases both ran: fixed 3/6 (50%) → 3/6 (50%), on the first model call 2/6 (33%) → 2/6 (33%)",
+		"| no-duration | 1/4 → 1/4 | 0 | 2/4 → 2/4 | 0 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("comparison lacks %q:\n%s", want, md)

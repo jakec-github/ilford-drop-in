@@ -117,8 +117,8 @@ the refused reply the model is taken to have written first.
 - Passing the parser is not enough. A repair that drops the hard part of
   the description parses too, and is graded as the wrong answer it is.
 - The report keeps repairs out of the pass rate, in a section of their own:
-  fixed, parsed but changed (an answer, but the wrong one), not fixed (every
-  call refused), and the model's calls a fix took.
+  fixed, and of those how many on the model's first call; parsed but changed
+  (an answer, but the wrong one); not fixed (every call refused).
 
 Both files keep theirs in a group called "repairing a refused reply", so
 `-cases "repairing a refused reply"` runs just those.
@@ -128,24 +128,38 @@ Both files keep theirs in a group called "repairing a refused reply", so
 Each run writes `reports/<date>-<model>-<effort>.md`, and `.json` beside it
 for `-compare`.
 
+Every call after a run's first means the model's reply did not stand, so a
+report leads with how often the first reply was right, not only how often the
+run was right in the end. A pass on a later call still passes: the product
+worked, but it took longer and cost more.
+
 Each report starts with:
 - the model and effort;
 - a hash of each prompt;
-- pass rates and wording scores, overall and for each group.
+- pass rates on the first call and in the end, and wording scores, overall
+  and for each group;
+- every call made again, by why: the parser refused the reply before it, or
+  the reply could not be used at all (issues with none in them, an empty
+  answer, JSON that does not read, a refusal, a reply cut off).
 
 For each case it gives:
-- the pass rate and wording score;
+- the pass rates on the first call and in the end, and the wording score;
 - the calls each run took: first, second or third, gave up, or unavailable;
 - the cost;
 - typical and slow (p95) latency.
 
-Below that, every failed run is listed with what went wrong. A run that gave
-up shows each call's raw reply, since a reply the loop cannot read, such as
-issues with none in them, never reaches the parser and leaves no message of
-its own. Under each reply is a summary of the model's thinking behind it: the
-eval asks for one, where the server does not. The `.json` keeps it for every
-call, not only the ones shown. Every message that lost wording points is
-listed after that.
+Below that, every failed run is listed with what went wrong, then under
+Second goes every run that passed on a later call. Both show a run's calls
+when it took more than one, or gave up: each call's raw reply, the summary of
+the model's thinking behind it, and why the model was asked again. A reply the
+loop cannot read never reaches the parser and leaves no message of its own,
+so only its reply says what happened. The eval asks for the thinking; the
+server does not. The `.json` keeps it for every call, not only the ones shown.
+Every message that lost wording points is listed after that.
+
+`-compare` gives both rates before and after. An older report without the
+reasons for its calls still compares: its first-call rate comes from how many
+calls each run took.
 
 Commit only the reports worth keeping, such as the run that chose a model or
 the runs before and after a prompt change. They hold only our own cases and

@@ -138,9 +138,9 @@ func run() error {
 	s := translatoreval.Summarise(report.Cases)
 	repairs := ""
 	if r := s.Repairs.Rate(); r.Runs > 0 {
-		repairs = fmt.Sprintf(", fixed %s", r)
+		repairs = fmt.Sprintf(", fixed %s, %s on the first model call", r, r.FirstCall())
 	}
-	fmt.Printf("Passed %s%s. Report: %s.md\n", s.All, repairs, base)
+	fmt.Printf("Passed %s on the first call, %s in the end%s. Report: %s.md\n", s.All.FirstCall(), s.All, repairs, base)
 	return nil
 }
 
