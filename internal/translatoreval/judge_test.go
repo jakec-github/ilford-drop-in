@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 )
 
@@ -15,14 +16,14 @@ type judgeModel struct {
 	reply string
 	err   error
 
-	prompts []*patterntranslator.Prompt
+	prompts []*llm.Prompt
 	turns   []string
 }
 
-func (m *judgeModel) Reply(_ context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
+func (m *judgeModel) Reply(_ context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	m.prompts = append(m.prompts, prompt)
 	m.turns = append(m.turns, turns[0].Text)
-	return patterntranslator.Response{Text: m.reply, Usage: callUsage}, m.err
+	return llm.Response{Text: m.reply, Usage: callUsage}, m.err
 }
 
 // twoIssuesCase wants two issues; the model under test raises two, one about

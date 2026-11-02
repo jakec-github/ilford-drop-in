@@ -1,4 +1,4 @@
-package patterntranslator
+package llm
 
 import (
 	"context"

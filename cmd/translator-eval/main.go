@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/jakechorley/ilford-drop-in/internal/translatoreval"
-	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 )
 
 func main() {
@@ -86,7 +86,7 @@ func run() error {
 		if key == "" {
 			return fmt.Errorf("set ANTHROPIC_API_KEY to ask %s, or use -model stub", *model)
 		}
-		base := patterntranslator.NewAnthropic(key, *model, *effort)
+		base := llm.NewAnthropic(key, *model, *effort)
 		// The thinking is there to read beside a reply that went wrong.
 		base.ShowThinking = true
 		subject.Base = base
@@ -96,7 +96,7 @@ func run() error {
 				fmt.Printf("Warning: %s is judging its own issues, and may be blind to what it gets wrong.\n", *judge)
 			}
 			subject.JudgeModel = *judge
-			subject.Judge = patterntranslator.NewAnthropic(key, *judge, judgeEffort)
+			subject.Judge = llm.NewAnthropic(key, *judge, judgeEffort)
 		}
 	}
 

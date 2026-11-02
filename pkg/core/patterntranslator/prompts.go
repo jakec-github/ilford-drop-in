@@ -2,18 +2,9 @@ package patterntranslator
 
 import (
 	_ "embed"
-	"encoding/json"
-)
 
-// Prompt is what a Model is asked under: a system prompt, the same on every
-// call, and the reply shapes the API's structured outputs enforce, so a reply
-// always parses and cannot be both ok and issues. Everything that varies goes
-// in the user turn.
-type Prompt struct {
-	Name   string
-	System string
-	Schema map[string]any
-}
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
+)
 
 // The playground version of the pattern prompt in docs/design/llm/ is for
 // trying it by hand — these are the ones that run.
@@ -30,21 +21,13 @@ var (
 
 var (
 	// patternPrompt writes a Shift pattern's VEVENT entries.
-	patternPrompt = newPrompt("pattern", patternSystem, patternSchema)
+	patternPrompt = llm.NewPrompt("pattern", patternSystem, patternSchema)
 	// rulePrompt writes what an Override matches: a DTSTART date and an RRULE.
-	rulePrompt = newPrompt("rule", ruleSystem, ruleSchema)
+	rulePrompt = llm.NewPrompt("rule", ruleSystem, ruleSchema)
 )
-
-func newPrompt(name, system string, schemaJSON []byte) *Prompt {
-	var schema map[string]any
-	if err := json.Unmarshal(schemaJSON, &schema); err != nil {
-		panic("patterntranslator: " + name + ".schema.json: " + err.Error())
-	}
-	return &Prompt{Name: name, System: system, Schema: schema}
-}
 
 // Prompts is every prompt a translator asks under, for whatever measures them:
 // an evaluation names the versions it ran against.
-func Prompts() []*Prompt {
-	return []*Prompt{patternPrompt, rulePrompt}
+func Prompts() []*llm.Prompt {
+	return []*llm.Prompt{patternPrompt, rulePrompt}
 }

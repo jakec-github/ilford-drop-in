@@ -18,6 +18,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/api"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -163,7 +164,7 @@ func run(env string, portOverride int) error {
 			if effort == "" {
 				effort = config.DefaultTranslatorEffort
 			}
-			shared.translator = patterntranslator.New(patterntranslator.NewAnthropic(t.APIKey, model, effort))
+			shared.translator = patterntranslator.New(llm.NewAnthropic(t.APIKey, model, effort))
 		}
 	}
 

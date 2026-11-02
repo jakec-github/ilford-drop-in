@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 )
 
@@ -122,59 +123,16 @@ var (
 	// not be reached, refused the request (a spending limit, say), or the time
 	// for the translation ran out.
 	ErrUnavailable = errors.New("couldn't translate just now")
-	// ErrUnusableReply is a reply a Model returns that cannot be read as an
-	// answer — a refusal, or one cut short at its token limit. It counts as a
-	// failed call, like a reply that is not JSON.
-	ErrUnusableReply = errors.New("the model's reply cannot be used")
 )
-
-// Role is who says a Turn.
-type Role string
-
-const (
-	User      Role = "user"
-	Assistant Role = "assistant"
-)
-
-// Turn is one message of the exchange with the model.
-type Turn struct {
-	Role Role
-	Text string
-}
-
-// Model is a language model: given a Prompt and the exchange so far, its next
-// reply. An error other than ErrUnusableReply means it could not be asked; with
-// ErrUnusableReply the Response still says what the call used and thought.
-type Model interface {
-	Reply(ctx context.Context, prompt *Prompt, turns []Turn) (Response, error)
-}
-
-// Response is one call's reply: the JSON text the model wrote, the summary of
-// its thinking where it was asked for one, and what the call used. The
-// translator reads only the text; the rest is for whatever measures the calls.
-type Response struct {
-	Text     string
-	Thinking string
-	Usage    Usage
-}
-
-// Usage is the tokens one call used, as the API counts them. The translator
-// does not read it; it is there for whatever measures the calls.
-type Usage struct {
-	InputTokens      int64 `json:"inputTokens"`
-	OutputTokens     int64 `json:"outputTokens"`
-	CacheReadTokens  int64 `json:"cacheReadTokens"`
-	CacheWriteTokens int64 `json:"cacheWriteTokens"`
-}
 
 // New is the Translator that asks model and checks everything it writes with
 // the server's parsers.
-func New(model Model) Translator {
+func New(model llm.Model) Translator {
 	return checked{model: model}
 }
 
 type checked struct {
-	model Model
+	model llm.Model
 }
 
 // reply is either reply shape, as the model writes it. Answer is the pattern
@@ -188,7 +146,7 @@ type reply struct {
 
 // task is what one kind of translation brings to the loop.
 type task struct {
-	prompt *Prompt
+	prompt *llm.Prompt
 	// noun is what the model writes, as the retry turn names it.
 	noun   string
 	gaveUp string
@@ -240,14 +198,14 @@ func (c checked) TranslateRule(ctx context.Context, req RuleRequest) (RuleResult
 // cannot be read at all is asked again the same way: there is nothing in it
 // to answer.
 func (c checked) run(ctx context.Context, t task, first string) (string, []Issue, error) {
-	turns := []Turn{{Role: User, Text: first}}
+	turns := []llm.Turn{{Role: llm.User, Text: first}}
 	var problems []string
 	for range MaxCalls {
 		if err := ctx.Err(); err != nil {
 			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
 		resp, err := c.model.Reply(ctx, t.prompt, turns)
-		if errors.Is(err, ErrUnusableReply) {
+		if errors.Is(err, llm.ErrUnusableReply) {
 			continue
 		}
 		if err != nil {
@@ -262,8 +220,8 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 		// asked the same way, so the model is told what it left out.
 		if r.Status == "issues" && len(r.Issues) == 0 {
 			turns = append(turns,
-				Turn{Role: Assistant, Text: resp.Text},
-				Turn{Role: User, Text: fmt.Sprintf("Your reply listed no issues. List each issue, or give the whole %s.", t.noun)})
+				llm.Turn{Role: llm.Assistant, Text: resp.Text},
+				llm.Turn{Role: llm.User, Text: fmt.Sprintf("Your reply listed no issues. List each issue, or give the whole %s.", t.noun)})
 			continue
 		}
 		if r.Status == "issues" {
@@ -272,8 +230,8 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 		answer := strings.TrimSpace(t.answer(r))
 		if answer == "" {
 			turns = append(turns,
-				Turn{Role: Assistant, Text: resp.Text},
-				Turn{Role: User, Text: fmt.Sprintf("Your reply gave no %s. Give the whole %[1]s, or list the issues.", t.noun)})
+				llm.Turn{Role: llm.Assistant, Text: resp.Text},
+				llm.Turn{Role: llm.User, Text: fmt.Sprintf("Your reply gave no %s. Give the whole %[1]s, or list the issues.", t.noun)})
 			continue
 		}
 
@@ -282,8 +240,8 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 			return answer, nil, nil
 		}
 		turns = append(turns,
-			Turn{Role: Assistant, Text: resp.Text},
-			Turn{Role: User, Text: retryTurn(t.noun, problems)})
+			llm.Turn{Role: llm.Assistant, Text: resp.Text},
+			llm.Turn{Role: llm.User, Text: retryTurn(t.noun, problems)})
 	}
 
 	issues := []Issue{{Kind: Unsupported, Message: t.gaveUp, Examples: []string{}}}
