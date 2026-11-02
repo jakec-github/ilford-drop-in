@@ -42,3 +42,9 @@ func newPrompt(name, system string, schemaJSON []byte) *Prompt {
 	}
 	return &Prompt{Name: name, System: system, Schema: schema}
 }
+
+// Prompts is every prompt a translator asks under, for whatever measures them:
+// an evaluation names the versions it ran against.
+func Prompts() []*Prompt {
+	return []*Prompt{patternPrompt, rulePrompt}
+}

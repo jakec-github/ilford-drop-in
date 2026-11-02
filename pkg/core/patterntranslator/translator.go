@@ -28,6 +28,9 @@ import (
 // not a description of when Shifts happen.
 const MaxText = 1000
 
+// Timeout is the ceiling on one translation, every call included (ADR 0015).
+const Timeout = 30 * time.Second
+
 // MaxCalls is how many times one translation asks the model: once, and twice
 // more with what the parser found wrong.
 const MaxCalls = 3
@@ -139,10 +142,19 @@ type Turn struct {
 }
 
 // Model is a language model: given a Prompt and the exchange so far, its next
-// reply, as the JSON text it wrote. An error other than ErrUnusableReply means
-// it could not be asked.
+// reply, as the JSON text it wrote, and what the call used. An error other than
+// ErrUnusableReply means it could not be asked.
 type Model interface {
-	Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, error)
+	Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, Usage, error)
+}
+
+// Usage is the tokens one call used, as the API counts them. The translator
+// does not read it; it is there for whatever measures the calls.
+type Usage struct {
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
 }
 
 // New is the Translator that asks model and checks everything it writes with
@@ -222,7 +234,7 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 		if err := ctx.Err(); err != nil {
 			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
-		text, err := c.model.Reply(ctx, t.prompt, turns)
+		text, _, err := c.model.Reply(ctx, t.prompt, turns)
 		if errors.Is(err, ErrUnusableReply) {
 			continue
 		}

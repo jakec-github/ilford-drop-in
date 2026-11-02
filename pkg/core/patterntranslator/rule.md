@@ -67,7 +67,7 @@ attempt.
   - `unsupported` — it asks for something a rule cannot hold, such as two
     unrelated sets of days that no one RRULE gives, or bank holidays. Say so in
     plain words; for two sets, suggest an Override for each.
-- `message`: under 12 words, plain English, no format jargon (never "RRULE",
+- `message`: 15 words at most, plain English, no format jargon (never "RRULE",
   "BYSETPOS", "DTSTART"). Say what to add or change, not what is wrong with them.
 - `examples`: up to three short phrases the Organiser could type to fix that
   issue, or none when they would not help.

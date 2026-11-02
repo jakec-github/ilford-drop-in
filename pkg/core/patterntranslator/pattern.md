@@ -53,7 +53,7 @@ attempt.
     then close that Shift in the draft rota". For an extra date (a one-off
     Shift), there is no way yet: say the extra Shift is not supported yet, and
     never tell them to add it anywhere.
-- `message`: under 12 words, plain English, no format jargon (never "RRULE",
+- `message`: 15 words at most, plain English, no format jargon (never "RRULE",
   "BYSETPOS", "DTSTART"). Say what to add or change, not what is wrong with them.
   When the description has several parts, say which part the issue is about
   ("the Tuesday shifts", "the weekend mornings").
