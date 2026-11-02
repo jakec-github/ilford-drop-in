@@ -64,6 +64,10 @@ groups:
             - {kind: missing, about: how long the weekday morning shifts run}
 ```
 
+An expected issue whose kind could fairly be either of two, where the
+difference would not matter to an Organiser, gives both:
+`{kind: ambiguous, or: missing, about: …}`.
+
 A case tests one thing. Say everything else in its text plainly, so a reply
 that gets that one thing right has nothing else to raise.
 

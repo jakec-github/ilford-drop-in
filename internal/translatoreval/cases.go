@@ -63,7 +63,11 @@ type Expect struct {
 // of what it is about. The note is for whatever pairs the issues raised with
 // the ones wanted; the wording of a message is the model's own.
 type ExpectedIssue struct {
-	Kind  patterntranslator.Kind `yaml:"kind"`
+	Kind patterntranslator.Kind `yaml:"kind"`
+	// Or is a second kind the issue may fairly be, where the line between
+	// them is one no Organiser would notice: "evenings" with no time is as
+	// much a missing time as an ambiguous one.
+	Or    patterntranslator.Kind `yaml:"or"`
 	About string                 `yaml:"about"`
 }
 
@@ -208,10 +212,19 @@ func readCase(kind string, f file, y caseYAML) (Case, error) {
 		}
 	}
 	for _, issue := range e.Issues {
-		switch issue.Kind {
-		case patterntranslator.Missing, patterntranslator.Ambiguous, patterntranslator.Unsupported:
-		default:
-			return c, fmt.Errorf("issue kind %q is not missing, ambiguous or unsupported", issue.Kind)
+		kinds := []patterntranslator.Kind{issue.Kind}
+		if issue.Or != "" {
+			if issue.Or == issue.Kind {
+				return c, fmt.Errorf("issue kind %q is its own or", issue.Kind)
+			}
+			kinds = append(kinds, issue.Or)
+		}
+		for _, k := range kinds {
+			switch k {
+			case patterntranslator.Missing, patterntranslator.Ambiguous, patterntranslator.Unsupported:
+			default:
+				return c, fmt.Errorf("issue kind %q is not missing, ambiguous or unsupported", k)
+			}
 		}
 		if strings.TrimSpace(issue.About) == "" {
 			return c, errors.New("every expected issue says what it is about")

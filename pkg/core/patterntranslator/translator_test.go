@@ -96,6 +96,30 @@ func TestTranslate_TheModelIsToldTodayInTheOrganisationsZoneAndTheDescription(t 
 	}
 }
 
+// A model counts dates badly: "the first Saturday" from today came out a month
+// late. The calendar lets it read a date off rather than work it out.
+func TestTranslate_TheModelIsToldEachWeekdaysDatesToTheEndOfNextMonth(t *testing.T) {
+	model := &scriptedModel{replies: []scripted{ok(sundays)}}
+
+	req := Request{Text: "First Saturday of the month", Zone: "Pacific/Kiritimati", Now: now}
+	if _, err := New(model).Translate(context.Background(), req); err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+
+	want := "Dates from today to the end of next month:\n" +
+		"- Monday: 2, 9, 16, 23, 30 November 2026; 7, 14, 21, 28 December 2026\n" +
+		"- Tuesday: 3, 10, 17, 24 November 2026; 1, 8, 15, 22, 29 December 2026\n" +
+		"- Wednesday: 4, 11, 18, 25 November 2026; 2, 9, 16, 23, 30 December 2026\n" +
+		"- Thursday: 5, 12, 19, 26 November 2026; 3, 10, 17, 24, 31 December 2026\n" +
+		"- Friday: 6, 13, 20, 27 November 2026; 4, 11, 18, 25 December 2026\n" +
+		"- Saturday: 7, 14, 21, 28 November 2026; 5, 12, 19, 26 December 2026\n" +
+		"- Sunday: 8, 15, 22, 29 November 2026; 6, 13, 20, 27 December 2026\n" +
+		"</context>"
+	if first := model.calls[0][0].Text; !strings.Contains(first, want) {
+		t.Errorf("user turn %q lacks the calendar %q", first, want)
+	}
+}
+
 func TestTranslate_IssuesAreAnAnswerAndAreNotRetried(t *testing.T) {
 	model := &scriptedModel{replies: []scripted{{text: `{"status":"issues","issues":[` +
 		`{"kind":"missing","message":"Add how long the Sunday shifts run","examples":[]},` +

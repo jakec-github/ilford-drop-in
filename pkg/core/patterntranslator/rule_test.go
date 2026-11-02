@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // twoSundays is a saved pattern's entries as the rule translator is told them:
@@ -57,6 +58,28 @@ func TestTranslateRule_TheModelIsToldTheSavedPatternAndTheDescription(t *testing
 		"Today: 2026-11-01 (Sunday)",
 		"<pattern>\n- " + twoSundays[0] + "\n- " + twoSundays[1] + "\n</pattern>",
 		"<description>\nthe Sunday evening shift\n</description>",
+	} {
+		if !strings.Contains(first, want) {
+			t.Errorf("user turn %q lacks %q", first, want)
+		}
+	}
+}
+
+// Near the year's end the calendar runs into the next year, and a weekday with
+// no dates left this month starts in the next.
+func TestTranslateRule_TheCalendarRunsIntoTheNextYear(t *testing.T) {
+	model := &scriptedModel{replies: []scripted{okRule(sundayEvenings)}}
+
+	req := RuleRequest{Text: "the Sunday evening shift", Pattern: twoSundays, Zone: zone,
+		Now: time.Date(2026, 12, 30, 12, 0, 0, 0, time.UTC)}
+	if _, err := New(model).TranslateRule(context.Background(), req); err != nil {
+		t.Fatalf("TranslateRule: %v", err)
+	}
+	first := model.calls[0][0].Text
+	for _, want := range []string{
+		"- Monday: 4, 11, 18, 25 January 2027\n",
+		"- Wednesday: 30 December 2026; 6, 13, 20, 27 January 2027\n",
+		"- Thursday: 31 December 2026; 7, 14, 21, 28 January 2027\n",
 	} {
 		if !strings.Contains(first, want) {
 			t.Errorf("user turn %q lacks %q", first, want)

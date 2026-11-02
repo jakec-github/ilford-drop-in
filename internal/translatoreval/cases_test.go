@@ -167,6 +167,28 @@ groups:
         expect:
           issues: [{kind: vague, about: length}]
 `, `odd: issue kind "vague"`},
+		{"an or of no kind there is", Patterns, `
+zone: Europe/London
+today: 2026-11-01
+groups:
+  - name: g
+    cases:
+      - name: odd-or
+        text: Sundays
+        expect:
+          issues: [{kind: missing, or: vague, about: length}]
+`, `odd-or: issue kind "vague"`},
+		{"an or the same as its kind", Patterns, `
+zone: Europe/London
+today: 2026-11-01
+groups:
+  - name: g
+    cases:
+      - name: same-or
+        text: Sundays
+        expect:
+          issues: [{kind: missing, or: missing, about: length}]
+`, `same-or: issue kind "missing" is its own or`},
 		{"an issue about nothing", Patterns, `
 zone: Europe/London
 today: 2026-11-01

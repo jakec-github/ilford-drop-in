@@ -187,22 +187,49 @@ func formatShift(s shiftpattern.Start) string {
 	return s.At.Format("Mon 2 Jan 2006 15:04") + " for " + length
 }
 
-// checkKinds is whether the issues raised are of the kinds wanted. Whether
-// each is about the right thing takes a judge.
+// checkKinds is whether the issues raised are of the kinds wanted, taking
+// each issue that may be either of two kinds as whichever fits. Whether each
+// is about the right thing takes a judge.
 func checkKinds(want []ExpectedIssue, got []patterntranslator.Issue) []string {
-	var wantKinds, gotKinds []string
-	for _, w := range want {
-		wantKinds = append(wantKinds, string(w.Kind))
-	}
+	var gotKinds []string
 	for _, g := range got {
 		gotKinds = append(gotKinds, string(g.Kind))
 	}
-	wantKinds, gotKinds = kindSet(wantKinds), kindSet(gotKinds)
-	if !slices.Equal(wantKinds, gotKinds) {
-		return []string{fmt.Sprintf("kinds: raised %s; wanted %s",
-			strings.Join(gotKinds, ", "), strings.Join(wantKinds, ", "))}
+	gotKinds = kindSet(gotKinds)
+
+	var fixed, alternatives []string
+	var either []ExpectedIssue
+	for _, w := range want {
+		if w.Or == "" {
+			fixed = append(fixed, string(w.Kind))
+		} else {
+			either = append(either, w)
+			alternatives = append(alternatives, fmt.Sprintf("%s or %s", w.Kind, w.Or))
+		}
 	}
-	return nil
+	// Every way of taking each either-kind issue as one kind or the other.
+	for choice := range 1 << len(either) {
+		kinds := slices.Clone(fixed)
+		for i, w := range either {
+			k := w.Kind
+			if choice&(1<<i) != 0 {
+				k = w.Or
+			}
+			kinds = append(kinds, string(k))
+		}
+		if slices.Equal(kindSet(kinds), gotKinds) {
+			return nil
+		}
+	}
+
+	wanted := strings.Join(kindSet(fixed), ", ")
+	if len(alternatives) > 0 {
+		if wanted != "" {
+			wanted += ", and "
+		}
+		wanted += strings.Join(alternatives, ", and ")
+	}
+	return []string{fmt.Sprintf("kinds: raised %s; wanted %s", strings.Join(gotKinds, ", "), wanted)}
 }
 
 func kindSet(kinds []string) []string {

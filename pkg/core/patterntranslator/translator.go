@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -325,20 +326,47 @@ func checkRule(rule string) []string {
 }
 
 func firstTurn(text string, today time.Time) string {
-	return fmt.Sprintf("<context>\nToday: %s\nOrganisation time zone: %s\n</context>\n\n<description>\n%s\n</description>",
-		today.Format("2006-01-02 (Monday)"), today.Location(), text)
+	return contextBlock(today) + fmt.Sprintf("\n\n<description>\n%s\n</description>", text)
 }
 
 func firstRuleTurn(text string, pattern []string, today time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<context>\nToday: %s\nOrganisation time zone: %s\n</context>\n\n<pattern>\n",
-		today.Format("2006-01-02 (Monday)"), today.Location())
+	b.WriteString(contextBlock(today))
+	b.WriteString("\n\n<pattern>\n")
 	for _, entry := range pattern {
 		b.WriteString("- ")
 		b.WriteString(entry)
 		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "</pattern>\n\n<description>\n%s\n</description>", text)
+	return b.String()
+}
+
+// contextBlock is today, the organisation's time zone, and each weekday's
+// dates from today to the end of next month: a model counts dates badly, and
+// reads them off a list well.
+func contextBlock(today time.Time) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "<context>\nToday: %s\nOrganisation time zone: %s\nDates from today to the end of next month:\n",
+		today.Format("2006-01-02 (Monday)"), today.Location())
+	first := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	end := time.Date(today.Year(), today.Month()+2, 1, 0, 0, 0, 0, time.UTC)
+	for _, weekday := range []time.Weekday{
+		time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday, time.Saturday, time.Sunday,
+	} {
+		day := first.AddDate(0, 0, (int(weekday)-int(first.Weekday())+7)%7)
+		var months []string
+		for day.Before(end) {
+			month := day.Month()
+			var days []string
+			for ; day.Before(end) && day.Month() == month; day = day.AddDate(0, 0, 7) {
+				days = append(days, strconv.Itoa(day.Day()))
+			}
+			months = append(months, strings.Join(days, ", ")+" "+day.AddDate(0, 0, -7).Format("January 2006"))
+		}
+		fmt.Fprintf(&b, "- %s: %s\n", weekday, strings.Join(months, "; "))
+	}
+	b.WriteString("</context>")
 	return b.String()
 }
 

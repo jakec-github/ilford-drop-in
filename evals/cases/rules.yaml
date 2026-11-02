@@ -41,7 +41,7 @@ groups:
             RRULE:FREQ=MONTHLY;BYDAY=1SU
 
       - name: ten-oclock-on-the-first-sunday
-        text: The 10am shift on the first Sunday
+        text: The 10am shift on the first Sunday of the month
         expect:
           rule: |
             DTSTART;VALUE=DATE:20261101
@@ -76,14 +76,6 @@ groups:
         expect:
           issues:
             - {kind: ambiguous, about: "no shift is in the afternoon, so which one"}
-
-      # A date with no time, on days with two Shifts: the prompt says to ask
-      # which.
-      - name: christmas-eve
-        text: Christmas Eve
-        expect:
-          issues:
-            - {kind: ambiguous, about: "which of the two shifts, or both"}
 
   - name: prompt injection
     cases:

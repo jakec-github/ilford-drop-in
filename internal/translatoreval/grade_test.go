@@ -121,6 +121,30 @@ func TestGrade_IssuesOfOtherKindsFail(t *testing.T) {
 	}
 }
 
+func TestGrade_AnIssueThatMayBeEitherKindPassesAsEither(t *testing.T) {
+	c := issuesCase(Patterns,
+		ExpectedIssue{Kind: patterntranslator.Missing, About: "which evenings"},
+		ExpectedIssue{Kind: patterntranslator.Ambiguous, Or: patterntranslator.Missing, About: "what time the evenings start"})
+	for raised, pass := range map[string]bool{
+		"missing":             true, // both missing
+		"missing,ambiguous":   true,
+		"ambiguous":           false, // the first must be missing
+		"missing,unsupported": false,
+	} {
+		var issues []patterntranslator.Issue
+		for _, k := range strings.Split(raised, ",") {
+			issues = append(issues, patterntranslator.Issue{Kind: patterntranslator.Kind(k), Message: "Say more"})
+		}
+		if g := grade(c, Answer{Outcome: Raised, Issues: issues}); g.Pass != pass {
+			t.Errorf("raised %s: pass = %v, want %v (%v)", raised, g.Pass, pass, g.Failures)
+		}
+	}
+	g := grade(c, Answer{Outcome: Raised, Issues: []patterntranslator.Issue{{Kind: patterntranslator.Unsupported, Message: "x"}}})
+	if want := "kinds: raised unsupported; wanted missing, and ambiguous or missing"; !contains(g.Failures, want) {
+		t.Errorf("failures: %q, want %q", g.Failures, want)
+	}
+}
+
 func TestGrade_WordingIsScoredButNeverFailsARun(t *testing.T) {
 	c := issuesCase(Rules, ExpectedIssue{Kind: patterntranslator.Ambiguous, About: "which shift"})
 	g := grade(c, Answer{Outcome: Raised, Issues: []patterntranslator.Issue{
