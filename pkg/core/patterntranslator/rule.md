@@ -62,7 +62,8 @@ attempt.
 
 Every issue is in a part that needs one. A part that reads one way has no
 issue, even when another part has one: one thing missing is no reason to doubt
-the rest.
+the rest. A date with several Shifts and no word for which does not read one
+way: it is `ambiguous`, as "Time or whole date" says.
 
 - `kind` is one of:
   - `missing` — something the rule needs is not there, such as which days.
@@ -88,7 +89,8 @@ leave it out, and translate the rest.
 - "Every other week" counts from the start date — ambiguous unless the input
   says which week is first, or it is fine to start this week.
 - "Christmas Eve" and other fixed dates repeat yearly
-  (`FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=24`) unless a year is given.
+  (`FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=24`) unless a year is given. Which of the
+  date's Shifts still follows "Time or whole date".
 
 ## When the app cannot use your rule
 
