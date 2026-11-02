@@ -35,10 +35,18 @@ type Answer struct {
 }
 
 // Grade is whether an answer is the one its case wants, and if not, why not.
+// Pass is about what the answer means; how its messages are worded is scored
+// apart, in Wording, and never fails it.
 type Grade struct {
 	Pass     bool       `json:"pass"`
 	Failures []string   `json:"failures,omitempty"`
 	Shifts   *ShiftDiff `json:"shifts,omitempty"`
+	// Wording is, for issues the model raised, how well their messages keep
+	// to the prompt's rules, from 0 to 1: the mean of each message's score.
+	// It is nil for any other answer.
+	Wording *float64 `json:"wording,omitempty"`
+	// WordingNotes says what each message that lost points lost them for.
+	WordingNotes []string `json:"wordingNotes,omitempty"`
 }
 
 // ShiftDiff is how a translation's Shifts differ from the ones wanted: the
@@ -60,9 +68,9 @@ func window(today time.Time) (time.Time, time.Time) {
 	return from, from.AddDate(1, 0, 0)
 }
 
-// maxWords is how long an issue's message may be: "under 12 words", as both
-// prompts say.
-const maxWords = 11
+// maxWords is how long an issue's message may be: "15 words at most", as
+// both prompts say.
+const maxWords = 15
 
 // formatTerms are the format's own words, which no message may use. They
 // are matched as written — an ordinary "until" is not UNTIL.
@@ -93,7 +101,10 @@ func grade(c Case, a Answer) Grade {
 			g.Failures = []string{"raised issues, but a translation was wanted"}
 			break
 		}
-		g.Failures = checkIssues(c.Expect.Issues, a.Issues)
+		g.Failures = checkKinds(c.Expect.Issues, a.Issues)
+	}
+	if a.Outcome == Raised {
+		g.Wording, g.WordingNotes = scoreWording(a.Issues)
 	}
 	g.Pass = len(g.Failures) == 0
 	return g
@@ -176,11 +187,9 @@ func formatShift(s shiftpattern.Start) string {
 	return s.At.Format("Mon 2 Jan 2006 15:04") + " for " + length
 }
 
-// checkIssues is everything the code can tell is wrong with the issues
-// raised: their kinds, and each message's length and words. Whether an issue
-// is about the right thing takes a judge.
-func checkIssues(want []ExpectedIssue, got []patterntranslator.Issue) []string {
-	var failures []string
+// checkKinds is whether the issues raised are of the kinds wanted. Whether
+// each is about the right thing takes a judge.
+func checkKinds(want []ExpectedIssue, got []patterntranslator.Issue) []string {
 	var wantKinds, gotKinds []string
 	for _, w := range want {
 		wantKinds = append(wantKinds, string(w.Kind))
@@ -190,21 +199,38 @@ func checkIssues(want []ExpectedIssue, got []patterntranslator.Issue) []string {
 	}
 	wantKinds, gotKinds = kindSet(wantKinds), kindSet(gotKinds)
 	if !slices.Equal(wantKinds, gotKinds) {
-		failures = append(failures, fmt.Sprintf("kinds: raised %s; wanted %s",
-			strings.Join(gotKinds, ", "), strings.Join(wantKinds, ", ")))
+		return []string{fmt.Sprintf("kinds: raised %s; wanted %s",
+			strings.Join(gotKinds, ", "), strings.Join(wantKinds, ", "))}
 	}
-	for _, g := range got {
-		if n := len(strings.Fields(g.Message)); n > maxWords {
-			failures = append(failures, fmt.Sprintf("%q: %d words, want under %d", g.Message, n, maxWords+1))
-		}
-		if term := formatTerms.FindString(g.Message); term != "" {
-			failures = append(failures, fmt.Sprintf("%q: names %s", g.Message, term))
-		}
-	}
-	return failures
+	return nil
 }
 
 func kindSet(kinds []string) []string {
 	slices.Sort(kinds)
 	return slices.Compact(kinds)
+}
+
+// scoreWording scores each message from 0 to 1 and gives their mean. A
+// message naming the format scores 0: the Organiser cannot act on it. One over
+// the word limit loses in proportion to how far over it is, so a message two
+// words long loses little and one twice the limit scores 0.
+func scoreWording(issues []patterntranslator.Issue) (*float64, []string) {
+	if len(issues) == 0 {
+		return nil, nil
+	}
+	var sum float64
+	var notes []string
+	for _, issue := range issues {
+		score := 1.0
+		if term := formatTerms.FindString(issue.Message); term != "" {
+			score = 0
+			notes = append(notes, fmt.Sprintf("%q: names %s", issue.Message, term))
+		} else if n := len(strings.Fields(issue.Message)); n > maxWords {
+			score = max(0, 1-float64(n-maxWords)/maxWords)
+			notes = append(notes, fmt.Sprintf("%q: %d words, limit %d", issue.Message, n, maxWords))
+		}
+		sum += score
+	}
+	mean := sum / float64(len(issues))
+	return &mean, notes
 }

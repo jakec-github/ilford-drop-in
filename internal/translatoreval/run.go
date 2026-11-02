@@ -51,9 +51,10 @@ type Report struct {
 
 // CaseReport is one case's runs.
 type CaseReport struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-	Text string `json:"text"`
+	Name  string `json:"name"`
+	Kind  string `json:"kind"`
+	Group string `json:"group,omitempty"`
+	Text  string `json:"text"`
 	// Translates is whether the case wants a translation rather than issues.
 	Translates bool        `json:"translates"`
 	Runs       []RunReport `json:"runs"`
@@ -66,14 +67,24 @@ type RunReport struct {
 	Grade
 	// Descriptions is the server's own reading of a translation, entry by
 	// entry: what it means, as the Organiser would see it.
-	Descriptions []string                `json:"descriptions,omitempty"`
-	Calls        int                     `json:"calls"`
-	Usage        patterntranslator.Usage `json:"usage"`
+	Descriptions []string `json:"descriptions,omitempty"`
+	Calls        int      `json:"calls"`
+	// Replies is what each call came back with, as the model wrote it, so a
+	// run that gave up says why when no reply reached the parser.
+	Replies []Reply                 `json:"replies,omitempty"`
+	Usage   patterntranslator.Usage `json:"usage"`
 	// Cost is in US dollars, priced when it ran.
 	Cost      float64 `json:"cost"`
 	LatencyMS int64   `json:"latencyMs"`
 	// TimedOut is a translation that ran out of patterntranslator.Timeout.
 	TimedOut bool `json:"timedOut,omitempty"`
+}
+
+// Reply is one call's reply: its text, or why there was none to use, such as
+// a refusal or a reply cut off at its token limit.
+type Reply struct {
+	Text  string `json:"text,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 // Latency is how long the translation took.
@@ -98,7 +109,7 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 	}
 	for i, c := range cases {
 		report.Cases[i] = CaseReport{
-			Name: c.Name, Kind: c.Kind, Text: c.Text, Translates: c.Translates(),
+			Name: c.Name, Kind: c.Kind, Group: c.Group, Text: c.Text, Translates: c.Translates(),
 			Runs: make([]RunReport, o.Repeats),
 		}
 	}
@@ -181,7 +192,8 @@ func translateOnce(ctx context.Context, s Subject, c Case) RunReport {
 		Answer:       a,
 		Grade:        grade(c, a),
 		Descriptions: describe(c, a),
-		Calls:        rec.calls,
+		Calls:        len(rec.replies),
+		Replies:      rec.replies,
 		Usage:        rec.usage,
 		Cost:         cost(s.Model, rec.usage),
 		LatencyMS:    latency.Milliseconds(),
@@ -207,17 +219,21 @@ func describe(c Case, a Answer) []string {
 	return lines
 }
 
-// recorder is a Model that counts the calls one translation makes and what
-// they use. Each translation has its own.
+// recorder is a Model that keeps each reply one translation's calls get, and
+// sums what they use. Each translation has its own.
 type recorder struct {
-	model patterntranslator.Model
-	calls int
-	usage patterntranslator.Usage
+	model   patterntranslator.Model
+	replies []Reply
+	usage   patterntranslator.Usage
 }
 
 func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
 	text, u, err := r.model.Reply(ctx, prompt, turns)
-	r.calls++
+	reply := Reply{Text: text}
+	if err != nil {
+		reply.Error = err.Error()
+	}
+	r.replies = append(r.replies, reply)
 	r.usage.InputTokens += u.InputTokens
 	r.usage.OutputTokens += u.OutputTokens
 	r.usage.CacheReadTokens += u.CacheReadTokens

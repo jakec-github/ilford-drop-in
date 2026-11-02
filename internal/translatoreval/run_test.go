@@ -126,11 +126,31 @@ func TestRun_GivingUpAndBeingUnavailableAreOutcomesOfTheirOwn(t *testing.T) {
 	if r.Outcome != GaveUp || r.Calls != patterntranslator.MaxCalls || r.Pass {
 		t.Errorf("gave up: %+v", r)
 	}
+	if len(r.Replies) != patterntranslator.MaxCalls || r.Replies[0].Text != okPattern(noDuration) {
+		t.Errorf("replies: %+v", r.Replies)
+	}
 
 	down := &fakeModel{err: errors.New("overloaded")}
 	r = Run(context.Background(), Subject{Model: "m", Base: down}, []Case{sundaysCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
 	if r.Outcome != Unavailable || r.Calls != 1 || r.TimedOut || !strings.Contains(r.Error, "overloaded") {
 		t.Errorf("unavailable: %+v", r)
+	}
+}
+
+// A reply the loop cannot read, such as issues with none in them, never
+// reaches the parser, so it leaves no message to say why the run gave up: only
+// the replies themselves say.
+func TestRun_RepliesThatNeverReachTheParserAreKept(t *testing.T) {
+	empty := `{"status":"issues","issues":[]}`
+	model := &fakeModel{replies: map[string][]string{"Sundays 7:30 to 10:30pm": {empty}}}
+	r := Run(context.Background(), Subject{Model: "m", Base: model}, []Case{sundaysCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
+	if r.Outcome != GaveUp || len(r.Replies) != patterntranslator.MaxCalls {
+		t.Fatalf("run: %+v", r)
+	}
+	for _, reply := range r.Replies {
+		if reply.Text != empty {
+			t.Errorf("reply: %+v", reply)
+		}
 	}
 }
 

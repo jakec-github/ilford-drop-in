@@ -2,6 +2,7 @@ package translatoreval
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,21 +18,26 @@ func run(pass bool, outcome Outcome, calls int, cost float64, latency time.Durat
 	return r
 }
 
+func worded(r RunReport, score float64, notes ...string) RunReport {
+	r.Wording, r.WordingNotes = &score, notes
+	return r
+}
+
 func sampleReport() *Report {
 	return &Report{
 		Model: "claude-sonnet-5-5", Effort: "low", Repeats: 2, Priced: true,
 		Started: time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC),
 		Prompts: map[string]string{"pattern": "aaaaaaaaaaaa", "rule": "bbbbbbbbbbbb"},
 		Cases: []CaseReport{
-			{Name: "sundays", Kind: Patterns, Text: "Sundays 7:30 to 10:30pm", Translates: true, Runs: []RunReport{
+			{Name: "sundays", Kind: Patterns, Group: "days and times", Text: "Sundays 7:30 to 10:30pm", Translates: true, Runs: []RunReport{
 				run(true, Translated, 1, 0.01, 2*time.Second),
 				run(false, Translated, 2, 0.02, 4*time.Second),
 			}},
-			{Name: "no-length", Kind: Patterns, Text: "Sunday evenings", Runs: []RunReport{
-				run(true, Raised, 1, 0.01, time.Second),
-				run(true, Raised, 1, 0.01, time.Second),
+			{Name: "no-length", Kind: Patterns, Group: "what is missing", Text: "Sunday evenings", Runs: []RunReport{
+				worded(run(true, Raised, 1, 0.01, time.Second), 1),
+				worded(run(true, Raised, 1, 0.01, time.Second), 0.5, `"Add how long the shifts on a Sunday evening run, in hours or by when they end please": 17 words, limit 15`),
 			}},
-			{Name: "evening", Kind: Rules, Text: "The Sunday evening shift", Translates: true, Runs: []RunReport{
+			{Name: "evening", Kind: Rules, Group: "days and times", Text: "The Sunday evening shift", Translates: true, Runs: []RunReport{
 				run(false, GaveUp, 3, 0.03, 9*time.Second),
 				{Answer: Answer{Outcome: Unavailable, Error: "deadline"}, Grade: Grade{Failures: []string{"unavailable: deadline"}}, Calls: 2, LatencyMS: 30000, TimedOut: true},
 			}},
@@ -39,23 +45,22 @@ func sampleReport() *Report {
 	}
 }
 
-func TestSummarise_CountsPassesByKindAndHowManyCallsEachTook(t *testing.T) {
+func TestSummarise_CountsPassesByGroupAndHowManyCallsEachTook(t *testing.T) {
 	s := Summarise(sampleReport().Cases)
 	if s.All != (Tally{Passed: 3, Runs: 6}) {
 		t.Errorf("all: %+v", s.All)
 	}
-	want := map[string]Tally{
-		"Patterns, translations": {1, 2},
-		"Patterns, issues":       {2, 2},
-		"Rules, translations":    {0, 2},
+	// Each file's groups apart, in the order the cases ran.
+	want := []Group{
+		{Label: "Patterns: days and times", Tally: Tally{1, 2}},
+		{Label: "Patterns: what is missing", Tally: Tally{2, 2}, Wording: Score{1.5, 2}},
+		{Label: "Rules: days and times", Tally: Tally{0, 2}},
 	}
-	if len(s.Groups) != len(want) {
-		t.Errorf("groups: %+v", s.Groups)
+	if !slices.Equal(s.Groups, want) {
+		t.Errorf("groups: %+v, want %+v", s.Groups, want)
 	}
-	for _, g := range s.Groups {
-		if want[g.Label] != g.Tally {
-			t.Errorf("%s: %+v, want %+v", g.Label, g.Tally, want[g.Label])
-		}
+	if s.Wording != (Score{1.5, 2}) || s.Wording.String() != "0.75" {
+		t.Errorf("wording: %+v", s.Wording)
 	}
 	if s.Calls != (Calls{First: 3, Second: 1, GaveUp: 1, Unavailable: 1}) {
 		t.Errorf("calls: %+v", s.Calls)
@@ -75,29 +80,40 @@ func TestRender_SaysWhatRanAndWhatFailed(t *testing.T) {
 	r.Cases[0].Runs[1].Descriptions = []string{"Every Sunday at 20:00 for 3 hours, from 1 Nov 2026"}
 	r.Cases[0].Runs[1].Shifts = &ShiftDiff{Missing: []string{"Sun 1 Nov 2026 19:30 for 3h"}, MissingCount: 1}
 	r.Cases[1].Runs[0].Issues = []patterntranslator.Issue{{Kind: patterntranslator.Missing, Message: "Add how long"}}
+	r.Cases[2].Runs[0].Replies = []Reply{
+		{Text: "{\"status\":\"issues\",\n\"issues\":[]}"},
+		{Error: "the model's reply cannot be used: stopped for refusal"},
+	}
 	md := Render(r, nil)
 
 	for _, want := range []string{
 		"# Translator eval: claude-sonnet-5-5, low effort",
 		"2 repeats",
 		"`pattern` aaaaaaaaaaaa",
-		"| All | 3/6 (50%) |",
-		"| Rules, translations | 0/2 (0%) |",
+		"| All | 3/6 (50%) | 0.75 |",
+		"| Rules: days and times | 0/2 (0%) | — |",
 		"| Gave up | 1 |",
-		"| sundays | patterns | translation | 1/2 | 1 / 1 / 0 / 0 | $0.0150 | 2.0s | 4.0s |",
-		"| evening | rules | translation | 0/2 | 0 / 0 / 0 / 2 |",
+		"### Patterns: days and times",
+		"| sundays | translation | 1/2 | — | 1 / 1 / 0 / 0 | $0.0150 | 2.0s | 4.0s |",
+		"| no-length | issues | 2/2 | 0.75 |",
+		"### Rules: days and times",
+		"| evening | translation | 0/2 | — | 0 / 0 / 0 / 2 |",
 		"### sundays",
 		"> Sundays 7:30 to 10:30pm",
 		"Run 2: other Shifts: 1 missing, 0 extra",
 		"Every Sunday at 20:00 for 3 hours, from 1 Nov 2026",
 		"Missing: Sun 1 Nov 2026 19:30 for 3h",
 		"1 over the 30s limit",
+		"## Wording",
+		`- "Add how long the shifts on a Sunday evening run, in hours or by when they end please": 17 words, limit 15`,
+		"- Call 1: `` {\"status\":\"issues\", \"issues\":[]} ``",
+		"- Call 2: no reply: the model's reply cannot be used: stopped for refusal",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q:\n%s", want, md)
 		}
 	}
-	if strings.Contains(md, "### no-length") {
+	if strings.Contains(md, "### no-length\n\n>") {
 		t.Error("a case that always passed is listed under failures")
 	}
 }
@@ -122,6 +138,7 @@ func TestRender_AgainstAnEarlierReportSaysWhatChanged(t *testing.T) {
 		"## Against claude-sonnet-5-5, low effort, 2026-11-02",
 		"`pattern` prompt differs: cccccccccccc → aaaaaaaaaaaa",
 		"| sundays | 2/2 | 1/2 | −50 pts |",
+		"wording — → —",
 		"Only in this run: evening, no-length",
 		"Only in the earlier run: dropped",
 	} {

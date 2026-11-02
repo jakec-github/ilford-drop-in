@@ -39,7 +39,10 @@ type Case struct {
 	Name string
 	// Kind is Patterns or Rules.
 	Kind string
-	Text string
+	// Group is what the case tests, shared with the cases beside it in its
+	// file, such as "prompt injection".
+	Group string
+	Text  string
 	// Today is the date the translator is told it is, so a case means the
 	// same thing whenever it is run.
 	Today time.Time
@@ -80,13 +83,19 @@ func (c Case) Descriptions() []string {
 	return lines
 }
 
-// file is a case file as written. Zone, today and, for rules, the pattern are
-// the defaults for every case in it.
+// file is a case file as written: its cases in groups, by what they test.
+// Zone, today and, for rules, the pattern are the defaults for every case in
+// it.
 type file struct {
-	Zone    string     `yaml:"zone"`
-	Today   string     `yaml:"today"`
-	Pattern string     `yaml:"pattern"`
-	Cases   []caseYAML `yaml:"cases"`
+	Zone    string      `yaml:"zone"`
+	Today   string      `yaml:"today"`
+	Pattern string      `yaml:"pattern"`
+	Groups  []groupYAML `yaml:"groups"`
+}
+
+type groupYAML struct {
+	Name  string     `yaml:"name"`
+	Cases []caseYAML `yaml:"cases"`
 }
 
 type caseYAML struct {
@@ -111,18 +120,25 @@ func ReadCases(kind string, data []byte) ([]Case, error) {
 
 	var cases []Case
 	var problems []string
-	seen := map[string]bool{}
-	for _, y := range f.Cases {
-		c, err := readCase(kind, f, y)
-		if err == nil && seen[c.Name] {
-			err = errors.New("two cases have this name")
+	seen, seenGroup := map[string]bool{}, map[string]bool{}
+	for _, g := range f.Groups {
+		if strings.TrimSpace(g.Name) == "" || seenGroup[g.Name] {
+			problems = append(problems, fmt.Sprintf("group %q: every group needs a name of its own", g.Name))
 		}
-		seen[c.Name] = true
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %v", y.Name, err))
-			continue
+		seenGroup[g.Name] = true
+		for _, y := range g.Cases {
+			c, err := readCase(kind, f, y)
+			c.Group = g.Name
+			if err == nil && seen[c.Name] {
+				err = errors.New("two cases have this name")
+			}
+			seen[c.Name] = true
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", y.Name, err))
+				continue
+			}
+			cases = append(cases, c)
 		}
-		cases = append(cases, c)
 	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("%s has broken cases:\n  %s", kind, strings.Join(problems, "\n  "))
@@ -222,8 +238,8 @@ func or(s, otherwise string) string {
 	return otherwise
 }
 
-// Select is the cases a run asks for: every one, either kind, or one case by
-// name.
+// Select is the cases a run asks for: every one, either kind, one group, or
+// one case by name.
 func Select(cases []Case, which string) ([]Case, error) {
 	switch which {
 	case "", "all":
@@ -242,5 +258,14 @@ func Select(cases []Case, which string) ([]Case, error) {
 			return []Case{c}, nil
 		}
 	}
-	return nil, fmt.Errorf("no case is called %q: give all, patterns, rules or a case's name", which)
+	var group []Case
+	for _, c := range cases {
+		if c.Group == which {
+			group = append(group, c)
+		}
+	}
+	if len(group) > 0 {
+		return group, nil
+	}
+	return nil, fmt.Errorf("no case or group is called %q: give all, patterns, rules, a group's name or a case's", which)
 }

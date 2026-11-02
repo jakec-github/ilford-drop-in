@@ -1,6 +1,7 @@
 package translatoreval
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -120,23 +121,48 @@ func TestGrade_IssuesOfOtherKindsFail(t *testing.T) {
 	}
 }
 
-func TestGrade_AMessageMustBeShortAndFreeOfTheFormat(t *testing.T) {
+func TestGrade_WordingIsScoredButNeverFailsARun(t *testing.T) {
 	c := issuesCase(Rules, ExpectedIssue{Kind: patterntranslator.Ambiguous, About: "which shift"})
 	g := grade(c, Answer{Outcome: Raised, Issues: []patterntranslator.Issue{
-		{Kind: patterntranslator.Ambiguous, Message: "Say which of the two Sunday shifts you mean, the morning or the evening"},
+		// 18 words, three over: 1 - 3/15.
+		{Kind: patterntranslator.Ambiguous, Message: "Say which of the two Sunday shifts you mean here, the morning one or the evening one please"},
 		{Kind: patterntranslator.Ambiguous, Message: "Add BYHOUR to pick the shift"},
 		{Kind: patterntranslator.Ambiguous, Message: "Say which Sunday shift, until when"},
 	}})
+	if !g.Pass {
+		t.Errorf("failed on wording: %v", g.Failures)
+	}
+	if g.Wording == nil || math.Abs(*g.Wording-(0.8+0+1)/3) > 1e-9 {
+		t.Errorf("wording: %v, want %v", g.Wording, (0.8+0+1)/3)
+	}
 	for _, want := range []string{
-		`"Say which of the two Sunday shifts you mean, the morning or the evening": 14 words, want under 12`,
+		`"Say which of the two Sunday shifts you mean here, the morning one or the evening one please": 18 words, limit 15`,
 		`"Add BYHOUR to pick the shift": names BYHOUR`,
 	} {
-		if !contains(g.Failures, want) {
-			t.Errorf("failures: %q, want %q", g.Failures, want)
+		if !contains(g.WordingNotes, want) {
+			t.Errorf("notes: %q, want %q", g.WordingNotes, want)
 		}
 	}
-	if len(g.Failures) != 2 {
-		t.Errorf("failures: %q, want two (an ordinary \"until\" is not the format)", g.Failures)
+	if len(g.WordingNotes) != 2 {
+		t.Errorf("notes: %q, want two (an ordinary \"until\" is not the format)", g.WordingNotes)
+	}
+}
+
+func TestGrade_AMessageTwiceTheLimitScoresNothing(t *testing.T) {
+	long := strings.TrimSpace(strings.Repeat("word ", 2*maxWords))
+	g := grade(issuesCase(Patterns, ExpectedIssue{Kind: patterntranslator.Missing, About: "x"}),
+		Answer{Outcome: Raised, Issues: []patterntranslator.Issue{{Kind: patterntranslator.Missing, Message: long}}})
+	if g.Wording == nil || *g.Wording != 0 {
+		t.Errorf("wording: %v", g.Wording)
+	}
+}
+
+func TestGrade_OnlyIssuesTheModelRaisedAreScoredForWording(t *testing.T) {
+	g := grade(patternCase(sundays), Answer{Outcome: GaveUp, Issues: []patterntranslator.Issue{
+		{Kind: patterntranslator.Unsupported, Message: patterntranslator.GaveUp},
+	}})
+	if g.Wording != nil {
+		t.Errorf("the parser's own messages were scored: %v", *g.Wording)
 	}
 }
 

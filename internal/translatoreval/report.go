@@ -31,11 +31,39 @@ func (t *Tally) add(r RunReport) {
 	}
 }
 
-// Group is the tally of one kind of case: a pattern or a rule, wanting a
-// translation or issues.
+// Score is a mean score from 0 to 1 over the runs that have one.
+type Score struct {
+	Sum  float64
+	Runs int
+}
+
+func (s Score) String() string {
+	if s.Runs == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.2f", s.Mean())
+}
+
+// Mean is the mean score, or 0 with none.
+func (s Score) Mean() float64 {
+	if s.Runs == 0 {
+		return 0
+	}
+	return s.Sum / float64(s.Runs)
+}
+
+func (s *Score) add(r RunReport) {
+	if r.Wording != nil {
+		s.Sum += *r.Wording
+		s.Runs++
+	}
+}
+
+// Group is the cases of one group in one file, taken together.
 type Group struct {
 	Label string
 	Tally
+	Wording Score
 }
 
 // Calls is how many calls translations took: one, or a second or third after
@@ -62,9 +90,11 @@ func (c *Calls) add(r RunReport) {
 
 // Summary is a set of runs taken together.
 type Summary struct {
-	All    Tally
-	Groups []Group
-	Calls  Calls
+	All Tally
+	// Wording is the mean wording score of the runs that raised issues.
+	Wording Score
+	Groups  []Group
+	Calls   Calls
 	// Cost is the whole cost, in US dollars.
 	Cost float64
 	// Typical and Slow are the median and 95th-percentile latency.
@@ -84,18 +114,21 @@ func (s Summary) PerRun() float64 {
 // Summarise takes cases' runs together.
 func Summarise(cases []CaseReport) Summary {
 	var s Summary
-	groups := map[string]*Tally{}
+	groups := map[string]*Group{}
 	var order []string
 	var latencies []time.Duration
 	for _, c := range cases {
 		label := groupLabel(c)
 		if groups[label] == nil {
-			groups[label] = &Tally{}
+			groups[label] = &Group{Label: label}
 			order = append(order, label)
 		}
+		g := groups[label]
 		for _, r := range c.Runs {
 			s.All.add(r)
-			groups[label].add(r)
+			s.Wording.add(r)
+			g.Tally.add(r)
+			g.Wording.add(r)
 			s.Calls.add(r)
 			s.Cost += r.Cost
 			latencies = append(latencies, r.Latency())
@@ -104,23 +137,24 @@ func Summarise(cases []CaseReport) Summary {
 			}
 		}
 	}
-	sort.Strings(order)
 	for _, label := range order {
-		s.Groups = append(s.Groups, Group{Label: label, Tally: *groups[label]})
+		s.Groups = append(s.Groups, *groups[label])
 	}
 	s.Typical, s.Slow = percentile(latencies, 0.5), percentile(latencies, 0.95)
 	return s
 }
 
+// groupLabel names a case's group with its kind, since each file has groups
+// of its own.
 func groupLabel(c CaseReport) string {
 	kind := "Patterns"
 	if c.Kind == Rules {
 		kind = "Rules"
 	}
-	if c.Translates {
-		return kind + ", translations"
+	if c.Group == "" {
+		return kind
 	}
-	return kind + ", issues"
+	return kind + ": " + c.Group
 }
 
 // percentile is the nearest-rank percentile p of ds.
@@ -150,10 +184,11 @@ func Render(r *Report, earlier *Report) string {
 	fmt.Fprintf(&b, "Run %s · %d repeats · prompts %s\n\n", r.Started.Format("2006-01-02 15:04 MST"), r.Repeats, promptList(r.Prompts))
 
 	s := Summarise(r.Cases)
-	b.WriteString("## Summary\n\n| | Passed |\n|---|---|\n")
-	fmt.Fprintf(&b, "| All | %s |\n", s.All)
+	b.WriteString("## Summary\n\nWording scores the messages of issues the model raised, from 0 to 1. It never fails a run.\n\n")
+	b.WriteString("| | Passed | Wording |\n|---|---|---|\n")
+	fmt.Fprintf(&b, "| All | %s | %s |\n", s.All, s.Wording)
 	for _, g := range s.Groups {
-		fmt.Fprintf(&b, "| %s | %s |\n", g.Label, g.Tally)
+		fmt.Fprintf(&b, "| %s | %s | %s |\n", g.Label, g.Tally, g.Wording)
 	}
 	b.WriteString("\n| Calls | Runs |\n|---|---|\n")
 	fmt.Fprintf(&b, "| First call | %d |\n| Second call | %d |\n| Third call | %d |\n| Gave up | %d |\n| Unavailable | %d |\n\n",
@@ -161,16 +196,21 @@ func Render(r *Report, earlier *Report) string {
 	fmt.Fprintf(&b, "Cost %s in all, %s a translation · latency %s typical, %s slow (p95) · %d over the %s limit\n\n",
 		money(s.Cost), money(s.PerRun()), seconds(s.Typical), seconds(s.Slow), s.TimedOut, patterntranslator.Timeout)
 
-	b.WriteString("## Cases\n\nCalls are first / second / third / none that worked (gave up or unavailable).\n\n")
-	b.WriteString("| Case | Kind | Wants | Passed | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("## Cases\n\nCalls are first / second / third / none that worked (gave up or unavailable).\n")
+	label := ""
 	for _, c := range r.Cases {
+		if l := groupLabel(c); l != label {
+			label = l
+			fmt.Fprintf(&b, "\n### %s\n\n", label)
+			b.WriteString("| Case | Wants | Passed | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|\n")
+		}
 		cs := Summarise([]CaseReport{c})
 		wants := "issues"
 		if c.Translates {
 			wants = "translation"
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %d/%d | %d / %d / %d / %d | %s | %s | %s |\n",
-			c.Name, c.Kind, wants, cs.All.Passed, cs.All.Runs,
+		fmt.Fprintf(&b, "| %s | %s | %d/%d | %s | %d / %d / %d / %d | %s | %s | %s |\n",
+			c.Name, wants, cs.All.Passed, cs.All.Runs, cs.Wording,
 			cs.Calls.First, cs.Calls.Second, cs.Calls.Third, cs.Calls.GaveUp+cs.Calls.Unavailable,
 			money(cs.PerRun()), seconds(cs.Typical), seconds(cs.Slow))
 	}
@@ -188,10 +228,39 @@ func Render(r *Report, earlier *Report) string {
 		}
 	}
 
+	writeWording(&b, r.Cases)
+
 	if earlier != nil {
 		writeComparison(&b, r, earlier)
 	}
 	return b.String()
+}
+
+// writeWording lists every message that lost wording points, case by case,
+// whether or not its run passed.
+func writeWording(b *strings.Builder, cases []CaseReport) {
+	wrote := false
+	for _, c := range cases {
+		var notes []string
+		for _, run := range c.Runs {
+			for _, n := range run.WordingNotes {
+				if !slices.Contains(notes, n) {
+					notes = append(notes, n)
+				}
+			}
+		}
+		if len(notes) == 0 {
+			continue
+		}
+		if !wrote {
+			fmt.Fprintf(b, "\n## Wording\n\nMessages over %d words or naming the format.\n", maxWords)
+			wrote = true
+		}
+		fmt.Fprintf(b, "\n### %s\n\n", c.Name)
+		for _, n := range notes {
+			fmt.Fprintf(b, "- %s\n", n)
+		}
+	}
 }
 
 func writeFailures(b *strings.Builder, c CaseReport) {
@@ -209,6 +278,11 @@ func writeFailures(b *strings.Builder, c CaseReport) {
 				fmt.Fprintf(b, "  - Raised %s: %s\n", issue.Kind, issue.Message)
 			}
 		}
+		if run.Outcome == GaveUp {
+			for n, reply := range run.Replies {
+				fmt.Fprintf(b, "  - Call %d: %s\n", n+1, replyLine(reply))
+			}
+		}
 		if d := run.Shifts; d != nil {
 			if d.MissingCount > 0 {
 				fmt.Fprintf(b, "  - Missing: %s%s\n", strings.Join(d.Missing, ", "), more(d.MissingCount, len(d.Missing)))
@@ -218,6 +292,18 @@ func writeFailures(b *strings.Builder, c CaseReport) {
 			}
 		}
 	}
+}
+
+// replyLine is a reply on one line: its text as code, or why it had none.
+func replyLine(r Reply) string {
+	if r.Error != "" {
+		return "no reply: " + r.Error
+	}
+	text := strings.Join(strings.Fields(r.Text), " ")
+	if text == "" {
+		return "an empty reply"
+	}
+	return "`` " + strings.ReplaceAll(text, "`", "'") + " ``"
 }
 
 func more(count, shown int) string {
@@ -266,8 +352,8 @@ func writeComparison(b *strings.Builder, r, earlier *Report) {
 		sharedBefore = append(sharedBefore, before[c.Name])
 	}
 	sb, sn := Summarise(sharedBefore), Summarise(shared)
-	fmt.Fprintf(b, "On the cases both ran: passed %s → %s, %s a translation → %s, typical %s → %s, slow %s → %s\n\n",
-		sb.All, sn.All, dollars(earlier.Priced, sb.PerRun()), dollars(r.Priced, sn.PerRun()),
+	fmt.Fprintf(b, "On the cases both ran: passed %s → %s, wording %s → %s, %s a translation → %s, typical %s → %s, slow %s → %s\n\n",
+		sb.All, sn.All, sb.Wording, sn.Wording, dollars(earlier.Priced, sb.PerRun()), dollars(r.Priced, sn.PerRun()),
 		seconds(sb.Typical), seconds(sn.Typical), seconds(sb.Slow), seconds(sn.Slow))
 
 	b.WriteString("| Case | Before | Now | Change |\n|---|---|---|---|\n")

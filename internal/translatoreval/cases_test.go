@@ -29,20 +29,24 @@ func TestReadCases_TheFileGivesDefaultsACaseCanOverride(t *testing.T) {
 	cases, err := ReadCases(Patterns, []byte(`
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: sundays
-    text: Sundays 7:30 to 10:30pm
-    expect:
-      pattern: |
-`+indent(sundays, 8)+`
-  - name: no-length
-    text: Sunday evenings
-    today: 2026-12-25
-    zone: America/New_York
-    expect:
-      issues:
-        - kind: missing
-          about: how long the shifts run
+groups:
+  - name: g
+    cases:
+      - name: sundays
+        text: Sundays 7:30 to 10:30pm
+        expect:
+          pattern: |
+`+indent(sundays, 12)+`
+  - name: h
+    cases:
+      - name: no-length
+        text: Sunday evenings
+        today: 2026-12-25
+        zone: America/New_York
+        expect:
+          issues:
+            - kind: missing
+              about: how long the shifts run
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -50,11 +54,11 @@ cases:
 	if len(cases) != 2 {
 		t.Fatalf("got %d cases, want 2", len(cases))
 	}
-	if c := cases[0]; c.Kind != Patterns || c.Zone != "Europe/London" || !c.Today.Equal(date(2026, 11, 1)) || !c.Translates() {
+	if c := cases[0]; c.Kind != Patterns || c.Group != "g" || c.Zone != "Europe/London" || !c.Today.Equal(date(2026, 11, 1)) || !c.Translates() {
 		t.Errorf("first case: %+v", c)
 	}
 	c := cases[1]
-	if c.Zone != "America/New_York" || !c.Today.Equal(date(2026, 12, 25)) || c.Translates() {
+	if c.Group != "h" || c.Zone != "America/New_York" || !c.Today.Equal(date(2026, 12, 25)) || c.Translates() {
 		t.Errorf("second case: %+v", c)
 	}
 	want := []ExpectedIssue{{Kind: patterntranslator.Missing, About: "how long the shifts run"}}
@@ -69,13 +73,15 @@ zone: Europe/London
 today: 2026-11-01
 pattern: |
 `+indent(twoSundays, 2)+`
-cases:
-  - name: evening
-    text: The Sunday evening shift
-    expect:
-      rule: |
-        DTSTART;VALUE=DATE:20261101
-        RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30
+groups:
+  - name: g
+    cases:
+      - name: evening
+        text: The Sunday evening shift
+        expect:
+          rule: |
+            DTSTART;VALUE=DATE:20261101
+            RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -96,97 +102,121 @@ func TestReadCases_ABrokenCaseStopsTheRun(t *testing.T) {
 		{"an expected pattern the parser refuses", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: broken
-    text: Sundays
-    expect:
-      pattern: "BEGIN:VEVENT\nDTSTART:20261101T193000\nRRULE:FREQ=WEEKLY\nEND:VEVENT"
+groups:
+  - name: g
+    cases:
+      - name: broken
+        text: Sundays
+        expect:
+          pattern: "BEGIN:VEVENT\nDTSTART:20261101T193000\nRRULE:FREQ=WEEKLY\nEND:VEVENT"
 `, `broken: the expected pattern`},
 		{"an expected rule the parser refuses", Rules, `
 zone: Europe/London
 today: 2026-11-01
 pattern: "` + strings.ReplaceAll(sundays, "\n", `\n`) + `"
-cases:
-  - name: broken
-    text: Sundays
-    expect:
-      rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYHOUR=19"
+groups:
+  - name: g
+    cases:
+      - name: broken
+        text: Sundays
+        expect:
+          rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYHOUR=19"
 `, `broken: the expected rule`},
 		{"a rule case with no pattern", Rules, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: unmatched
-    text: Sundays
-    expect:
-      rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"
+groups:
+  - name: g
+    cases:
+      - name: unmatched
+        text: Sundays
+        expect:
+          rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"
 `, `unmatched: no pattern`},
 		{"both a translation and issues", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: both
-    text: Sundays
-    expect:
-      pattern: "` + strings.ReplaceAll(sundays, "\n", `\n`) + `"
-      issues: [{kind: missing, about: length}]
+groups:
+  - name: g
+    cases:
+      - name: both
+        text: Sundays
+        expect:
+          pattern: "` + strings.ReplaceAll(sundays, "\n", `\n`) + `"
+          issues: [{kind: missing, about: length}]
 `, `both: expect`},
 		{"a rule in a pattern case", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: wrong
-    text: Sundays
-    expect:
-      rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"
+groups:
+  - name: g
+    cases:
+      - name: wrong
+        text: Sundays
+        expect:
+          rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"
 `, `wrong: expect`},
 		{"an issue of no kind there is", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: odd
-    text: Sundays
-    expect:
-      issues: [{kind: vague, about: length}]
+groups:
+  - name: g
+    cases:
+      - name: odd
+        text: Sundays
+        expect:
+          issues: [{kind: vague, about: length}]
 `, `odd: issue kind "vague"`},
 		{"an issue about nothing", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - name: blank
-    text: Sundays
-    expect:
-      issues: [{kind: missing}]
+groups:
+  - name: g
+    cases:
+      - name: blank
+        text: Sundays
+        expect:
+          issues: [{kind: missing}]
 `, `blank: every expected issue says what it is about`},
 		{"two cases of one name", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - {name: twice, text: a, expect: {issues: [{kind: missing, about: x}]}}
-  - {name: twice, text: b, expect: {issues: [{kind: missing, about: x}]}}
+groups:
+  - name: g
+    cases:
+      - {name: twice, text: a, expect: {issues: [{kind: missing, about: x}]}}
+      - {name: twice, text: b, expect: {issues: [{kind: missing, about: x}]}}
 `, `twice: two cases`},
 		{"no today", Patterns, `
 zone: Europe/London
-cases:
-  - {name: when, text: a, expect: {issues: [{kind: missing, about: x}]}}
+groups:
+  - name: g
+    cases:
+      - {name: when, text: a, expect: {issues: [{kind: missing, about: x}]}}
 `, `when: today`},
 		{"a zone there is not", Patterns, `
 zone: Europe/Ilford
 today: 2026-11-01
-cases:
-  - {name: where, text: a, expect: {issues: [{kind: missing, about: x}]}}
+groups:
+  - name: g
+    cases:
+      - {name: where, text: a, expect: {issues: [{kind: missing, about: x}]}}
 `, `where: zone`},
 		{"a description too long to translate", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - {name: long, text: ` + strings.Repeat("a", patterntranslator.MaxText+1) + `, expect: {issues: [{kind: missing, about: x}]}}
+groups:
+  - name: g
+    cases:
+      - {name: long, text: ` + strings.Repeat("a", patterntranslator.MaxText+1) + `, expect: {issues: [{kind: missing, about: x}]}}
 `, `long: the text`},
 		{"a key the file does not have", Patterns, `
 zone: Europe/London
 today: 2026-11-01
-cases:
-  - {name: typo, text: a, expcet: {issues: [{kind: missing, about: x}]}}
+groups:
+  - name: g
+    cases:
+      - {name: typo, text: a, expcet: {issues: [{kind: missing, about: x}]}}
 `, `expcet`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -195,6 +225,18 @@ cases:
 				t.Errorf("err = %v, want one saying %q", err, tc.says)
 			}
 		})
+	}
+}
+
+func TestReadCases_EveryGroupHasANameOfItsOwn(t *testing.T) {
+	for name, groups := range map[string]string{
+		"none":  "  - cases: [{name: a, text: a, expect: {issues: [{kind: missing, about: x}]}}]\n",
+		"twice": "  - {name: g, cases: [{name: a, text: a, expect: {issues: [{kind: missing, about: x}]}}]}\n  - {name: g, cases: []}\n",
+	} {
+		_, err := ReadCases(Patterns, []byte("zone: Europe/London\ntoday: 2026-11-01\ngroups:\n"+groups))
+		if err == nil || !strings.Contains(err.Error(), "every group needs a name of its own") {
+			t.Errorf("%s: err = %v", name, err)
+		}
 	}
 }
 
@@ -207,9 +249,9 @@ func date(y int, m time.Month, d int) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-func TestSelect_EveryCaseEitherKindOrOneByName(t *testing.T) {
-	cases := []Case{{Name: "a", Kind: Patterns}, {Name: "b", Kind: Rules}, {Name: "c", Kind: Patterns}}
-	for which, want := range map[string]string{"": "abc", "all": "abc", Patterns: "ac", Rules: "b", "b": "b"} {
+func TestSelect_EveryCaseEitherKindAGroupOrOneByName(t *testing.T) {
+	cases := []Case{{Name: "a", Kind: Patterns, Group: "g"}, {Name: "b", Kind: Rules, Group: "g"}, {Name: "c", Kind: Patterns}}
+	for which, want := range map[string]string{"": "abc", "all": "abc", Patterns: "ac", Rules: "b", "b": "b", "g": "ab"} {
 		got, err := Select(cases, which)
 		var names string
 		for _, c := range got {
