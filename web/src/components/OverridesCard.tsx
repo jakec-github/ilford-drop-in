@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
 import DragHandle from "../ui/DragHandle";
@@ -10,7 +16,7 @@ import { useOverrides } from "../hooks/useOverrides";
 import { useRoles } from "../hooks/useRoles";
 import { useRotaDefaults } from "../hooks/useRotaDefaults";
 import { useVolunteers } from "../hooks/useVolunteers";
-import ModeSwitch, { type EditorMode } from "./ModeSwitch";
+import type { EditorMode } from "./ModeSwitch";
 import NaturalField from "./NaturalField";
 import SaveStatus from "./SaveStatus";
 import SettingsSection from "./SettingsSection";
@@ -48,7 +54,7 @@ function newOverride(): OverrideDraft {
   };
 }
 
-// How an Override matches, in the words the card uses for it.
+// Which shifts on a day an Override changes, in the words the card uses.
 function GranularityBadge({
   granularity,
 }: {
@@ -199,6 +205,54 @@ function PinAdder({
   );
 }
 
+// What an Override can change on the shifts it picks out.
+type Change = "start" | "length" | "shape" | "pin";
+
+// ChangePopover is where one change is edited, under its chip. It takes the
+// focus as it opens, and closes on Escape or on a press anywhere outside it
+// and the chip it hangs from.
+function ChangePopover({
+  label,
+  onClose,
+  children,
+}: {
+  label: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>("input, select, button")?.focus();
+    const away = (e: Event) => {
+      if (!box.current?.parentElement?.contains(e.target as Node)) {
+        close.current();
+      }
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, []);
+  return (
+    <div
+      ref={box}
+      className="override-popover"
+      role="dialog"
+      aria-label={label}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        box.current?.parentElement?.querySelector("button")?.focus();
+        onClose();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // OverrideEdit is one Override as its card holds it. A part that is switched
 // off keeps what it was set to, so switching it back on does not lose it; only
 // what the switches leave on is sent.
@@ -264,9 +318,9 @@ function withPin(pins: PinDraft[], pin: Omit<PinDraft, "key">): PinDraft[] {
   return [...kept, { ...pin, key: pinKey() }];
 }
 
-// OverrideCard is one Override, edited where it stands, in two halves an
-// Organiser can tell apart at a glance: what it matches — the rule, which
-// carries the date it counts from — and what it sets on the shifts it matches. Changes save
+// OverrideCard is one Override as one line, when → then: which shifts — the
+// description, or the rule, which carries the date it counts from — then only
+// what it changes on them, each a chip that opens to be edited. Changes save
 // themselves once they stop moving; removing asks first, on the card.
 export function OverrideCard({
   override,
@@ -358,6 +412,44 @@ export function OverrideCard({
       : current && reading
         ? reading.description
         : (generated ?? override.description);
+  const granularity =
+    current && reading ? reading.granularity : override.granularity;
+  const switchMode = (next: EditorMode) => {
+    setGenerated(null);
+    setChosen(next);
+  };
+
+  // Which change is open for editing, or the menu of what else it could
+  // change. One at a time, so the line never holds two popovers.
+  const [open, setOpen] = useState<Change | "menu" | null>(null);
+  const toggle = (c: Change | "menu") => setOpen((o) => (o === c ? null : c));
+  const shut = () => setOpen(null);
+  // Starting a change turns it on and opens it, so what it is set to is the
+  // next thing asked.
+  function begin(c: Change) {
+    if (c === "start") change({ startOn: true });
+    if (c === "length") change({ lengthOn: true });
+    if (c === "shape") change({ shapeOn: true });
+    setOpen(c);
+  }
+  function stop(c: Exclude<Change, "pin">) {
+    if (c === "start") change({ startOn: false });
+    if (c === "length") change({ lengthOn: false });
+    if (c === "shape") change({ shapeOn: false });
+    setOpen(null);
+  }
+  const unchanged: [Change, string][] = [
+    ...(draft.startOn ? [] : [["start", "Start time"] as [Change, string]]),
+    ...(draft.lengthOn ? [] : [["length", "Length"] as [Change, string]]),
+    ...(draft.shapeOn ? [] : [["shape", "Shape"] as [Change, string]]),
+    ["pin", "Pin somebody"],
+  ];
+  const seats = seatsOf(roles, draft.counts);
+  const changesNothing =
+    !draft.startOn &&
+    !draft.lengthOn &&
+    !draft.shapeOn &&
+    draft.pins.length === 0;
 
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -394,28 +486,281 @@ export function OverrideCard({
       className={`override${held ? " override--dragging" : ""}${fresh ? " override--fresh" : ""}`}
       aria-label={`Override ${n}`}
     >
-      <header className="override-head">
-        <span className="override-number" aria-hidden="true">
-          {n}
-        </span>
-        <span className="override-title">Override {n}</span>
-        <SaveStatus state={saveState} />
-        {asking ? (
-          <span className="override-confirm">
-            Remove this override?
-            <Button size="small" onClick={() => setAsking(false)}>
-              Keep
-            </Button>
-            <Button
-              size="small"
-              className="override-confirm-remove"
-              disabled={removing}
-              onClick={remove}
-            >
-              {removing ? "Removing…" : "Remove"}
-            </Button>
-          </span>
+      <span className="override-number" aria-hidden="true">
+        {n}
+      </span>
+
+      {/* Which shifts: the description, said in words, or the rule itself. */}
+      <div className="override-when">
+        {mode === "natural" ? (
+          <NaturalField
+            descriptions={description ? [description] : []}
+            label={`Override ${n} description`}
+            placeholder="Describe which shifts it changes in plain English"
+            translate={translateRule}
+            onTranslated={({ rrule, description: said }) => {
+              setGenerated(said);
+              change({ rrule });
+            }}
+            rawLabel="Write the rule yourself"
+            onUseRaw={() => setChosen("raw")}
+          />
         ) : (
+          <>
+            <textarea
+              ref={ruleBox}
+              className="override-rule"
+              rows={Math.max(2, draft.rrule.split("\n").length)}
+              aria-label={`Override ${n} rule`}
+              spellCheck={false}
+              value={draft.rrule}
+              disabled={!editable}
+              onChange={(e) => change({ rrule: e.target.value })}
+            />
+            <div className="override-reading" aria-live="polite">
+              {readingError && <p className="settings-error">{readingError}</p>}
+              {draft.rrule.trim() === "" ? (
+                <p className="override-problems">
+                  Write a rule to pick out shifts.
+                </p>
+              ) : problems.length > 0 ? (
+                <ul className="override-problems">
+                  {problems.map((problem) => (
+                    <li key={problem}>{problem}</li>
+                  ))}
+                </ul>
+              ) : (
+                reading && (
+                  <p className="override-description">
+                    {reading.description}{" "}
+                    {reading.granularity && (
+                      <GranularityBadge granularity={reading.granularity} />
+                    )}
+                  </p>
+                )
+              )}
+            </div>
+            <p className="settings-hint">
+              A DTSTART;VALUE=DATE line says the date it counts from, and
+              nothing before it is changed; an RRULE line says which dates. With
+              BYHOUR and BYMINUTE it changes only the shift the pattern starts
+              at that time; without them, every shift on those days.
+            </p>
+          </>
+        )}
+        <div className="override-when-meta">
+          {mode === "natural" && granularity && (
+            <GranularityBadge granularity={granularity} />
+          )}
+          {mode === "natural" ? (
+            <button
+              type="button"
+              className="override-mode"
+              onClick={() => switchMode("raw")}
+            >
+              Edit the rule
+            </button>
+          ) : (
+            // The reason is on the wrapper, because a disabled button shows
+            // no title in every browser.
+            <span title={locked ?? undefined}>
+              <button
+                type="button"
+                className="override-mode"
+                disabled={locked !== null}
+                onClick={() => switchMode("natural")}
+              >
+                Describe it instead
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+
+      <svg className="override-arrow" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 12h15M14 7l5 5-5 5" />
+      </svg>
+
+      {/* What changes on them: only what it changes, each a chip that opens
+          to be edited. */}
+      <div
+        className="override-then"
+        role="group"
+        aria-label={`What override ${n} changes`}
+      >
+        {changesNothing && (
+          <span className="override-none">Changes nothing yet</span>
+        )}
+        {draft.startOn && (
+          <span className="override-change">
+            <button
+              type="button"
+              className={`override-chip${draft.startTime ? "" : " override-chip--pending"}`}
+              aria-expanded={open === "start"}
+              disabled={!editable}
+              onClick={() => toggle("start")}
+            >
+              {draft.startTime ? `Starts ${draft.startTime}` : "Start time?"}
+            </button>
+            {open === "start" && (
+              <ChangePopover label={`Override ${n} start`} onClose={shut}>
+                <input
+                  type="time"
+                  aria-label={`Override ${n} start time`}
+                  step={300}
+                  required
+                  value={draft.startTime}
+                  onChange={(e) => change({ startTime: e.target.value })}
+                />
+                <Button size="small" onClick={() => stop("start")}>
+                  Keep the pattern's start
+                </Button>
+              </ChangePopover>
+            )}
+          </span>
+        )}
+        {draft.lengthOn && (
+          <span className="override-change">
+            <button
+              type="button"
+              className="override-chip"
+              aria-expanded={open === "length"}
+              disabled={!editable}
+              onClick={() => toggle("length")}
+            >
+              {formatLength(draft.length)}
+            </button>
+            {open === "length" && (
+              <ChangePopover label={`Override ${n} length`} onClose={shut}>
+                <select
+                  aria-label={`Override ${n} length`}
+                  value={draft.length}
+                  onChange={(e) => change({ length: Number(e.target.value) })}
+                >
+                  {lengthChoices(draft.length).map((m) => (
+                    <option key={m} value={m}>
+                      {formatLength(m)}
+                    </option>
+                  ))}
+                </select>
+                <Button size="small" onClick={() => stop("length")}>
+                  Keep the pattern's length
+                </Button>
+              </ChangePopover>
+            )}
+          </span>
+        )}
+        {draft.shapeOn && (
+          <span className="override-change">
+            <button
+              type="button"
+              className="override-chip"
+              aria-label={`Shape: ${
+                seats
+                  .map((s) => `${s.count} ${roleOf(s.roleId)?.name ?? ""}`)
+                  .join(", ") || "nobody"
+              }`}
+              aria-expanded={open === "shape"}
+              disabled={!editable}
+              onClick={() => toggle("shape")}
+            >
+              {seats.length === 0
+                ? "Nobody"
+                : seats.map((s) => (
+                    <span
+                      key={s.roleId}
+                      className="override-seat"
+                      data-role-colour={roleOf(s.roleId)?.colour}
+                      title={roleOf(s.roleId)?.name}
+                    >
+                      {s.count}
+                    </span>
+                  ))}
+            </button>
+            {open === "shape" && (
+              <ChangePopover label={`Override ${n} shape`} onClose={shut}>
+                <ShapeSeats
+                  roles={roles}
+                  counts={draft.counts}
+                  onChange={(counts) => change({ counts })}
+                />
+                <Button size="small" onClick={() => stop("shape")}>
+                  Keep the default shape
+                </Button>
+              </ChangePopover>
+            )}
+          </span>
+        )}
+        {draft.pins.map((pin) => {
+          const role = roleOf(pin.roleId);
+          return (
+            <PinChip
+              key={pin.key}
+              name={pin.name}
+              role={role?.name ?? "unknown role"}
+              custom={"custom" in pin.person}
+              colour={role?.colour}
+              onRemove={
+                editable
+                  ? () =>
+                      change({
+                        pins: draft.pins.filter((p) => p.key !== pin.key),
+                      })
+                  : undefined
+              }
+            />
+          );
+        })}
+        <span className="override-change">
+          <button
+            type="button"
+            className="override-add"
+            aria-label={`Change something else on override ${n}`}
+            title="Change something else"
+            aria-expanded={open === "menu" || open === "pin"}
+            disabled={!editable}
+            onClick={() =>
+              setOpen((o) => (o === "menu" || o === "pin" ? null : "menu"))
+            }
+          >
+            +
+          </button>
+          {open === "menu" && (
+            <ChangePopover
+              label={`What else override ${n} changes`}
+              onClose={shut}
+            >
+              {unchanged.map(([c, name]) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="override-menu-item"
+                  onClick={() => begin(c)}
+                >
+                  {name}
+                </button>
+              ))}
+            </ChangePopover>
+          )}
+          {open === "pin" && (
+            <ChangePopover
+              label={`Pin somebody on override ${n}`}
+              onClose={shut}
+            >
+              <PinAdder
+                roles={roles}
+                volunteers={volunteers}
+                volunteersError={volunteersError}
+                onAdd={(pin) => change({ pins: withPin(draft.pins, pin) })}
+              />
+            </ChangePopover>
+          )}
+        </span>
+      </div>
+
+      <div className="override-side">
+        <SaveStatus state={saveState} />
+        {!asking && (
           <button
             type="button"
             className="override-remove"
@@ -441,199 +786,25 @@ export function OverrideCard({
           onGrab={onGrab}
           onMove={onMove}
         />
-      </header>
+      </div>
 
-      <section
-        className="override-part override-part--match"
-        aria-label={`Override ${n} matches`}
-      >
-        <div className="override-part-head">
-          <h3 className="override-part-title">Matches</h3>
-          <ModeSwitch
-            label={`How override ${n} matches`}
-            mode={mode}
-            locked={locked}
-            onMode={(next) => {
-              setGenerated(null);
-              setChosen(next);
-            }}
-          />
-        </div>
-        {mode === "natural" ? (
-          <NaturalField
-            descriptions={description ? [description] : []}
-            label={`Override ${n} description`}
-            placeholder="Describe which shifts it matches in plain English"
-            translate={translateRule}
-            onTranslated={({ rrule, description: said }) => {
-              setGenerated(said);
-              change({ rrule });
-            }}
-            rawLabel="Write the rule yourself"
-            onUseRaw={() => setChosen("raw")}
-          />
-        ) : (
-          <>
-            <textarea
-              ref={ruleBox}
-              className="override-rule"
-              rows={Math.max(2, draft.rrule.split("\n").length)}
-              aria-label={`Override ${n} rule`}
-              spellCheck={false}
-              value={draft.rrule}
-              disabled={!editable}
-              onChange={(e) => change({ rrule: e.target.value })}
-            />
-            <div className="override-reading" aria-live="polite">
-              {readingError && <p className="settings-error">{readingError}</p>}
-              {draft.rrule.trim() === "" ? (
-                <p className="override-problems">
-                  Write a rule to match shifts.
-                </p>
-              ) : problems.length > 0 ? (
-                <ul className="override-problems">
-                  {problems.map((problem) => (
-                    <li key={problem}>{problem}</li>
-                  ))}
-                </ul>
-              ) : (
-                reading && (
-                  <p className="override-description">
-                    {reading.description}{" "}
-                    {reading.granularity && (
-                      <GranularityBadge granularity={reading.granularity} />
-                    )}
-                  </p>
-                )
-              )}
-            </div>
-            <p className="settings-hint">
-              A DTSTART;VALUE=DATE line says the date it counts from, and
-              nothing before it is matched; an RRULE line says which dates. With
-              BYHOUR and BYMINUTE it matches only the shift the pattern starts
-              at that time; without them, every shift on those days.
-            </p>
-          </>
-        )}
-      </section>
-
-      <section
-        className="override-part override-part--set"
-        aria-label={`Override ${n} sets`}
-      >
-        <h3 className="override-part-title">Sets</h3>
-        <div className="override-props">
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.startOn}
-              disabled={!editable}
-              onChange={(e) => change({ startOn: e.target.checked })}
-            />{" "}
-            Start time
-          </label>
-          <div>
-            {draft.startOn ? (
-              <input
-                type="time"
-                aria-label={`Override ${n} start time`}
-                step={300}
-                required
-                value={draft.startTime}
-                disabled={!editable}
-                onChange={(e) => change({ startTime: e.target.value })}
-              />
-            ) : (
-              <span className="override-off">as the pattern generates it</span>
-            )}
-          </div>
-
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.lengthOn}
-              disabled={!editable}
-              onChange={(e) => change({ lengthOn: e.target.checked })}
-            />{" "}
-            Length
-          </label>
-          <div>
-            {draft.lengthOn ? (
-              <select
-                aria-label={`Override ${n} length`}
-                value={draft.length}
-                disabled={!editable}
-                onChange={(e) => change({ length: Number(e.target.value) })}
-              >
-                {lengthChoices(draft.length).map((m) => (
-                  <option key={m} value={m}>
-                    {formatLength(m)}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="override-off">the pattern's length</span>
-            )}
-          </div>
-
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.shapeOn}
-              disabled={!editable}
-              onChange={(e) => change({ shapeOn: e.target.checked })}
-            />{" "}
-            Shape
-          </label>
-          <div>
-            {draft.shapeOn ? (
-              <div className="override-shape">
-                <ShapeSeats
-                  roles={roles}
-                  counts={draft.counts}
-                  onChange={(counts) => change({ counts })}
-                />
-              </div>
-            ) : (
-              <span className="override-off">the default shape</span>
-            )}
-          </div>
-
-          <span className="override-label">Pins</span>
-          <div>
-            <div className="override-pins">
-              {draft.pins.length === 0 && (
-                <span className="override-off">none</span>
-              )}
-              {draft.pins.map((pin) => {
-                const role = roleOf(pin.roleId);
-                return (
-                  <PinChip
-                    key={pin.key}
-                    name={pin.name}
-                    role={role?.name ?? "unknown role"}
-                    custom={"custom" in pin.person}
-                    colour={role?.colour}
-                    onRemove={() =>
-                      change({
-                        pins: draft.pins.filter((p) => p.key !== pin.key),
-                      })
-                    }
-                  />
-                );
-              })}
-            </div>
-            <PinAdder
-              roles={roles}
-              volunteers={volunteers}
-              volunteersError={volunteersError}
-              onAdd={(pin) => change({ pins: withPin(draft.pins, pin) })}
-            />
-          </div>
-        </div>
-      </section>
-
-      {error && <p className="settings-error">{error}</p>}
+      {asking && (
+        <p className="override-confirm override-wide">
+          Remove this override?
+          <Button size="small" onClick={() => setAsking(false)}>
+            Keep
+          </Button>
+          <Button
+            size="small"
+            className="override-confirm-remove"
+            disabled={removing}
+            onClick={remove}
+          >
+            {removing ? "Removing…" : "Remove"}
+          </Button>
+        </p>
+      )}
+      {error && <p className="settings-error override-wide">{error}</p>}
     </article>
   );
 }
@@ -715,7 +886,7 @@ export default function OverridesCard({
       title="Overrides"
       collapsible={collapsible}
       summary={settingsSummary(overrides?.length, "override", "overrides")}
-      blurb="Rules that change some of the shifts your pattern makes, each time a rota is defined. Each matches some shifts, then sets what is different about them. When two change the same shift, the later one wins."
+      blurb="Rules that change some of the shifts your pattern makes, each time a rota is defined: which shifts, then what is different about them. When two change the same shift, the later one wins."
       action={
         canAdd && (
           <IconButton

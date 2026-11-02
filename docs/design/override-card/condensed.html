@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Override card — condensed mockups</title>
+<style>
+  /* Tokens copied from web/src/index.css so the mockups read as the app. */
+  :root {
+    --text: #56625d; --text-h: #0f1a16; --page: #eef3f0; --bg: #fff;
+    --border: #dce5e0; --accent: #2f6f5e; --accent-bg: rgba(47,111,94,.1);
+    --role-violet: #a233f5; --role-teal: #0a8168; --role-blue: #1d68c7;
+    --role-amber: #8a6100; --role-rose: #c02a51; --role-slate: #53616f;
+    --warning: #a04b00;
+    --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font: 16px/1.5 var(--sans); color: var(--text); background: var(--page);
+  }
+  :root.dark {
+    --text: #9fb0a8; --text-h: #eef3f0; --page: #0d1210; --bg: #151c19;
+    --border: #24302b; --accent: #6cc4a6; --accent-bg: rgba(108,196,166,.13);
+    --role-violet: #c084fc; --role-teal: #2dd4a7; --role-blue: #7cb2f8;
+    --role-amber: #f0b445; --role-rose: #fb7196; --role-slate: #b6bec9;
+    --warning: #f0b445;
+  }
+  body { margin: 0; padding: 2rem 1rem 4rem; }
+  main { max-width: 44rem; margin: 0 auto; }
+  h1 { color: var(--text-h); font-size: 1.5rem; margin: 0 0 .25rem; }
+  h2 { color: var(--text-h); font-size: 1.125rem; margin: 2.5rem 0 .25rem; }
+  .lede, .note { font-size: .875rem; margin: 0 0 1rem; }
+  .note { margin-top: .75rem; }
+  .note li { margin-bottom: .25rem; }
+  .theme { position: fixed; top: 1rem; right: 1rem; }
+  button { font: inherit; }
+  .settings {
+    background: var(--bg); border-radius: 14px; padding: 1rem 1.125rem;
+    box-shadow: 0 1px 2px rgba(15,26,22,.06), 0 2px 8px rgba(15,26,22,.05);
+  }
+  .settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+  .settings-head strong { color: var(--text-h); }
+  .plus { width: 28px; height: 28px; border-radius: 50%; border: none; background: var(--accent); color: var(--bg); font-size: 1.1rem; line-height: 1; cursor: pointer; }
+
+  /* Shared bits */
+  .num {
+    display: inline-flex; flex: none; align-items: center; justify-content: center;
+    width: 1.5rem; height: 1.5rem; font-size: .8125rem; font-weight: 700;
+    color: var(--accent); background: var(--accent-bg); border-radius: 50%;
+  }
+  .grip { flex: none; color: var(--text); opacity: .55; cursor: grab; letter-spacing: -2px; font-size: .9rem; user-select: none; }
+  .icon-btn {
+    flex: none; width: 26px; height: 26px; display: inline-grid; place-items: center;
+    background: none; border: none; border-radius: 50%; color: var(--text); cursor: pointer; padding: 0;
+  }
+  .icon-btn:hover { background: var(--accent-bg); color: var(--text-h); }
+  .icon-btn.danger:hover { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
+  .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .saved { font-size: .75rem; color: var(--text); white-space: nowrap; }
+  .saved::before { content: "✓ "; color: var(--accent); }
+  .desc {
+    color: var(--text-h); font-weight: 600; font-size: .9375rem; text-align: left;
+    background: none; border: none; padding: 0; cursor: text;
+    border-bottom: 1px dashed transparent;
+  }
+  .desc:hover { border-bottom-color: var(--border); }
+  .badge {
+    display: inline-block; padding: 0 .5rem; font-size: .75rem; white-space: nowrap;
+    color: var(--role-blue); background: color-mix(in srgb, var(--role-blue) 12%, transparent);
+    border-radius: 999px; font-weight: 400; vertical-align: 1px;
+  }
+  .badge.time { color: var(--role-teal); background: color-mix(in srgb, var(--role-teal) 12%, transparent); }
+
+  /* A change: one thing the Override sets, as a chip you click to edit. */
+  .change {
+    display: inline-flex; align-items: center; gap: .375rem;
+    padding: .1875rem .625rem; font-size: .8125rem; color: var(--text-h);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .change:hover { border-color: var(--accent); }
+  .change .k { color: var(--text); font-size: .75rem; }
+  .change svg { width: 14px; height: 14px; fill: none; stroke: var(--text); stroke-width: 1.7; stroke-linecap: round; }
+  .pin {
+    --c: var(--role-slate);
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .125rem .5rem .125rem .25rem; font-size: .8125rem; color: var(--text-h);
+    background: color-mix(in srgb, var(--c) 12%, transparent); border-radius: 999px;
+  }
+  .pin::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: var(--c); margin-left: .25rem; }
+  .pin.tag { border-radius: 6px; }
+  .pin .r { color: var(--text); font-size: .75rem; }
+  .seat { display: inline-flex; align-items: center; gap: .2rem; }
+  .seat i { --c: var(--role-slate); width: .5rem; height: .5rem; border-radius: 2px; background: var(--c); display: inline-block; }
+  .add {
+    display: inline-flex; align-items: center; gap: .25rem; padding: .1875rem .5rem;
+    font-size: .8125rem; color: var(--accent); background: none;
+    border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 8px; cursor: pointer;
+  }
+  .add:hover { background: var(--accent-bg); }
+  .menu {
+    position: absolute; z-index: 2; margin-top: .25rem; padding: .25rem; min-width: 11rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(15,26,22,.12); font-size: .8125rem;
+  }
+  .menu div { padding: .375rem .625rem; border-radius: 6px; color: var(--text-h); cursor: pointer; }
+  .menu div:hover { background: var(--accent-bg); }
+  .menu div.off { color: var(--text); opacity: .6; cursor: default; }
+  .menu div.off:hover { background: none; }
+  .menu small { color: var(--text); margin-left: .25rem; }
+  .natural {
+    width: 100%; box-sizing: border-box; padding: .5rem .625rem; font: .875rem/1.45 var(--sans);
+    color: var(--text-h); background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; resize: none;
+  }
+  .btn {
+    padding: .1875rem .75rem; font-size: .8125rem; color: var(--text-h);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  }
+  .btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .raw-link { font-size: .75rem; color: var(--text); background: none; border: none; text-decoration: underline; cursor: pointer; padding: 0; }
+  .ed { display: inline-flex; align-items: center; gap: .375rem; font-size: .8125rem; }
+  .ed input, .ed select {
+    padding: .125rem .375rem; font: .8125rem/1.4 var(--sans); color: var(--text-h);
+    background: var(--bg); border: 1px solid var(--accent); border-radius: 6px;
+  }
+  .x { font-size: .875rem; color: var(--text); cursor: pointer; padding: 0 .125rem; }
+
+  /* ---------- A: Headline ---------- */
+  .a-card {
+    position: relative; padding: .625rem .75rem .75rem; margin-bottom: .5rem;
+    border: 1px solid var(--border); border-radius: 12px;
+  }
+  .a-card:hover .a-tools { opacity: 1; }
+  .a-card.editing { border-color: var(--accent); }
+  .a-head { display: flex; align-items: flex-start; gap: .5rem; }
+  .a-head .desc { flex: 1 1 auto; padding-top: .0625rem; }
+  .a-tools { display: flex; align-items: center; gap: .125rem; opacity: .35; transition: opacity .15s; }
+  .a-changes { display: flex; flex-wrap: wrap; gap: .375rem; margin: .5rem 0 0 2rem; align-items: center; }
+  .a-natural { margin: .5rem 0 0 2rem; }
+  .a-natural-row { display: flex; gap: .375rem; align-items: center; margin-top: .375rem; }
+  .a-natural-row .raw-link { margin-left: auto; }
+
+  /* ---------- B: Ledger rows ---------- */
+  .b-list { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .b-row {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: .625rem;
+    align-items: center; padding: .5rem .75rem; border-top: 1px solid var(--border); cursor: pointer;
+  }
+  .b-row:first-child { border-top: none; }
+  .b-row:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+  .b-main { min-width: 0; }
+  .b-what { color: var(--text-h); font-weight: 600; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .b-sum { font-size: .8125rem; color: var(--text); display: flex; flex-wrap: wrap; gap: .25rem .75rem; }
+  .b-sum b { color: var(--text-h); font-weight: 500; }
+  .b-chev { color: var(--text); font-size: .8rem; transition: transform .15s; }
+  .b-row.open { background: color-mix(in srgb, var(--accent) 5%, transparent); cursor: default; }
+  .b-row.open .b-chev { transform: rotate(90deg); }
+  .b-editor {
+    padding: .25rem .75rem .875rem 3.75rem; border-top: none;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .b-grid { display: grid; grid-template-columns: 5rem 1fr; gap: .5rem .75rem; align-items: center; font-size: .8125rem; }
+  .b-grid > span { color: var(--text); }
+  .b-unset { font-style: italic; color: var(--text); opacity: .75; }
+  .b-foot { display: flex; justify-content: space-between; align-items: center; margin-top: .75rem; }
+
+  /* ---------- C: Arrow ---------- */
+  .c-card {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1.25fr) auto;
+    gap: .75rem; align-items: center; padding: .625rem .75rem; margin-bottom: .5rem;
+    border: 1px solid var(--border); border-radius: 12px; position: relative;
+  }
+  .c-when { min-width: 0; }
+  .c-when .desc { font-size: .875rem; line-height: 1.35; }
+  .c-when .badge { margin-top: .25rem; }
+  .c-arrow { color: var(--accent); opacity: .7; }
+  .c-arrow svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
+  .c-then { display: flex; flex-wrap: wrap; gap: .3125rem; }
+  .c-side { display: flex; flex-direction: column; align-items: center; gap: .125rem; }
+  .c-card::before {
+    content: ""; position: absolute; left: 0; top: .625rem; bottom: .625rem; width: 3px;
+    border-radius: 0 3px 3px 0; background: var(--accent); opacity: .5;
+  }
+  @media (max-width: 34rem) {
+    .c-card { grid-template-columns: auto minmax(0,1fr) auto; }
+    .c-arrow { display: none; }
+    .c-then { grid-column: 2 / 3; }
+    .c-side { grid-row: 1; grid-column: 3; }
+  }
+</style>
+</head>
+<body>
+<button class="btn theme" onclick="document.documentElement.classList.toggle('dark')">Light / dark</button>
+<main>
+  <h1>Override card — condensed</h1>
+  <p class="lede">Three directions. All drop the Matches/Sets panels: the
+    description is the "which shifts", and the changes are the "what's
+    different". Only what an Override actually changes is shown — no more
+    "as the pattern generates it" rows. Clicks are wired lightly so you can
+    feel the editing states.</p>
+
+  <!-- ================= A ================= -->
+  <h2>A · Headline and changes</h2>
+  <p class="lede">The description <em>is</em> the card's title. Changes sit
+    under it as chips; click one to edit it in place, "+ Change" adds one.
+    Number, drag, remove stay on one header line.</p>
+
+  <section class="settings">
+    <div class="settings-head"><strong>Overrides</strong><button class="plus" aria-label="New override">+</button></div>
+
+    <article class="a-card">
+      <div class="a-head">
+        <span class="num">1</span>
+        <button class="desc" title="Describe it again">First Sunday of every month, from 2 Nov 2026 <span class="badge">every shift that day</span></button>
+        <div class="a-tools">
+          <span class="saved">Saved</span>
+          <button class="icon-btn danger" title="Remove"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M6.5 10h7"/></svg></button>
+          <span class="grip" title="Drag to reorder: a later override wins">⋮⋮</span>
+        </div>
+      </div>
+      <div class="a-changes">
+        <button class="change"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg>Starts 10:00</button>
+        <button class="change"><svg viewBox="0 0 16 16"><path d="M2 8h12M5 5 2 8l3 3M11 5l3 3-3 3"/></svg>3 hours</button>
+        <span class="pin" style="--c: var(--role-violet)">Amira Hussain <span class="r">Lead</span> <span class="x">×</span></span>
+        <span class="add-wrap" style="position:relative">
+          <button class="add" onclick="this.nextElementSibling.hidden = !this.nextElementSibling.hidden">+ Change</button>
+          <div class="menu" hidden>
+            <div class="off">Start time <small>set</small></div>
+            <div class="off">Length <small>set</small></div>
+            <div>Shape</div>
+            <div>Pin somebody</div>
+          </div>
+        </span>
+      </div>
+    </article>
+
+    <article class="a-card editing">
+      <div class="a-head">
+        <span class="num">2</span>
+        <button class="desc">Christmas Eve, 24 Dec 2026 at 18:00 <span class="badge time">the shift at that time</span></button>
+        <div class="a-tools" style="opacity:1">
+          <span class="saved" style="opacity:.6">Saving…</span>
+          <button class="icon-btn danger" title="Remove"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M6.5 10h7"/></svg></button>
+          <span class="grip">⋮⋮</span>
+        </div>
+      </div>
+      <div class="a-changes">
+        <span class="change" style="border-color:var(--accent);cursor:default">
+          <span class="k">Shape</span>
+          <span class="ed">
+            <span class="seat"><i style="--c:var(--role-violet)"></i>Lead <input type="number" value="1" style="width:2.5rem"></span>
+            <span class="seat"><i style="--c:var(--role-teal)"></i>Kitchen <input type="number" value="5" style="width:2.5rem"></span>
+            <span class="seat"><i style="--c:var(--role-blue)"></i>Floor <input type="number" value="3" style="width:2.5rem"></span>
+          </span>
+          <span class="x" title="Stop replacing the shape">×</span>
+        </span>
+        <span class="pin tag" style="--c: var(--role-teal)">Redbridge youth group <span class="r">Kitchen</span> <span class="x">×</span></span>
+        <button class="add">+ Change</button>
+      </div>
+    </article>
+
+    <article class="a-card editing">
+      <div class="a-head">
+        <span class="num">3</span>
+        <span style="flex:1;color:var(--text-h);font-weight:600;font-size:.9375rem">New override</span>
+        <div class="a-tools" style="opacity:1">
+          <button class="icon-btn danger"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M6.5 10h7"/></svg></button>
+          <span class="grip">⋮⋮</span>
+        </div>
+      </div>
+      <div class="a-natural">
+        <textarea class="natural" rows="2" placeholder="Which shifts? e.g. the last Saturday of every month"></textarea>
+        <div class="a-natural-row">
+          <button class="btn primary">Generate</button>
+          <button class="btn">Cancel</button>
+          <button class="raw-link">Write the rule yourself</button>
+        </div>
+      </div>
+      <div class="a-changes"><button class="add">+ Change</button><span style="font-size:.75rem">Nothing changed yet</span></div>
+    </article>
+  </section>
+  <ul class="note">
+    <li>The Natural/Raw switch goes: natural is the default, "Write the rule yourself" is the way to raw (already the NaturalField's escape hatch), and raw gets a "Describe it instead" link back.</li>
+    <li>Tools dim until hover/focus so a list of overrides reads as a list of rules, not of buttons. (Always full strength on touch.)</li>
+    <li>Closest to today's code: same article, same NaturalField, same ShapeSeats — the props grid becomes a chip row.</li>
+  </ul>
+
+  <!-- ================= B ================= -->
+  <h2>B · Ledger with one open</h2>
+  <p class="lede">Each Override is a single summary row; one opens at a time
+    into its editor. Best when there are many — the define preview's
+    "Override 3" is easy to find. Click a row.</p>
+
+  <section class="settings">
+    <div class="settings-head"><strong>Overrides</strong><button class="plus" aria-label="New override">+</button></div>
+    <div class="b-list" id="b-list">
+      <div class="b-row" data-i="1">
+        <span class="grip">⋮⋮</span><span class="num">1</span>
+        <div class="b-main">
+          <div class="b-what">First Sunday of every month</div>
+          <div class="b-sum"><span>Starts <b>10:00</b></span><span><b>3 h</b></span><span>Pins <b>Amira</b></span></div>
+        </div>
+        <span class="b-chev">▶</span>
+      </div>
+      <div class="b-editor" data-for="1" hidden>
+        <div class="b-grid">
+          <span>Shifts</span>
+          <button class="desc" style="font-weight:500;font-size:.875rem">First Sunday of every month, from 2 Nov 2026 <span class="badge">every shift that day</span></button>
+          <span>Starts</span><span class="ed"><input type="time" value="10:00"><span class="x">×</span></span>
+          <span>Length</span><span class="ed"><select><option>3 hours</option></select><span class="x">×</span></span>
+          <span>Shape</span><span><button class="add">+ Replace the shape</button></span>
+          <span>Pins</span>
+          <span style="display:flex;gap:.375rem;flex-wrap:wrap;align-items:center"><span class="pin" style="--c: var(--role-violet)">Amira Hussain <span class="r">Lead</span> <span class="x">×</span></span><button class="add">+ Pin</button></span>
+        </div>
+        <div class="b-foot"><span class="saved">Saved</span><button class="btn" style="color:var(--warning)">Remove</button></div>
+      </div>
+      <div class="b-row" data-i="2">
+        <span class="grip">⋮⋮</span><span class="num">2</span>
+        <div class="b-main">
+          <div class="b-what">Christmas Eve at 18:00</div>
+          <div class="b-sum"><span>Shape <b>1 Lead · 5 Kitchen · 3 Floor</b></span><span>Pins <b>Redbridge youth group</b></span></div>
+        </div>
+        <span class="b-chev">▶</span>
+      </div>
+      <div class="b-editor" data-for="2" hidden><p class="b-unset">(editor as above)</p></div>
+      <div class="b-row" data-i="3">
+        <span class="grip">⋮⋮</span><span class="num">3</span>
+        <div class="b-main">
+          <div class="b-what">Every Wednesday in August</div>
+          <div class="b-sum"><span class="b-unset">changes nothing yet</span></div>
+        </div>
+        <span class="b-chev">▶</span>
+      </div>
+      <div class="b-editor" data-for="3" hidden><p class="b-unset">(editor as above)</p></div>
+    </div>
+  </section>
+  <ul class="note">
+    <li>Densest by far — three overrides in about the height one card takes today.</li>
+    <li>Cost: an extra click to edit, and "one open at a time" is new behaviour to build (and the fresh-card focus has to open its row).</li>
+    <li>In the open editor, unset properties stay as "+ Replace the shape" / "+ Pin" rather than vanishing, since there's room.</li>
+  </ul>
+
+  <!-- ================= C ================= -->
+  <h2>C · When → then</h2>
+  <p class="lede">One line per Override: which shifts on the left, an arrow,
+    what changes on the right. The arrow does the job the two panel titles
+    used to. Wraps to two lines on a phone.</p>
+
+  <section class="settings">
+    <div class="settings-head"><strong>Overrides</strong><button class="plus" aria-label="New override">+</button></div>
+
+    <article class="c-card">
+      <span class="num">1</span>
+      <div class="c-when">
+        <button class="desc">First Sunday of every month</button><br>
+        <span class="badge">every shift that day</span>
+      </div>
+      <span class="c-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h15M14 7l5 5-5 5"/></svg></span>
+      <div class="c-then">
+        <button class="change">Starts 10:00</button>
+        <button class="change">3 h</button>
+        <span class="pin" style="--c: var(--role-violet)">Amira <span class="r">Lead</span></span>
+        <button class="add">+</button>
+      </div>
+      <div class="c-side">
+        <span class="grip">⋮⋮</span>
+        <button class="icon-btn danger"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M6.5 10h7"/></svg></button>
+      </div>
+    </article>
+
+    <article class="c-card">
+      <span class="num">2</span>
+      <div class="c-when">
+        <button class="desc">Christmas Eve, 24 Dec 2026 at 18:00</button><br>
+        <span class="badge time">the shift at that time</span>
+      </div>
+      <span class="c-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h15M14 7l5 5-5 5"/></svg></span>
+      <div class="c-then">
+        <button class="change"><span class="seat"><i style="--c:var(--role-violet)"></i>1</span><span class="seat"><i style="--c:var(--role-teal)"></i>5</span><span class="seat"><i style="--c:var(--role-blue)"></i>3</span></button>
+        <span class="pin tag" style="--c: var(--role-teal)">Redbridge youth group <span class="r">Kitchen</span></span>
+        <button class="add">+</button>
+      </div>
+      <div class="c-side">
+        <span class="grip">⋮⋮</span>
+        <button class="icon-btn danger"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M6.5 10h7"/></svg></button>
+      </div>
+    </article>
+  </section>
+  <ul class="note">
+    <li>The snazziest, and reads as a rule ("if this, then that") at a glance.</li>
+    <li>Editing needs popovers off each chip (shape counts, the pin adder), since there's no room inline — more to build, and popovers on a phone are fiddly.</li>
+    <li>Save status would move to the section header ("All saved") rather than per card.</li>
+  </ul>
+
+  <h2>Recommendation</h2>
+  <p class="lede">A. It gets most of B's and C's compactness (a typical
+    override drops from ~9 rows of UI to 2), keeps editing in place as today,
+    and reuses every existing piece. B is worth revisiting if Organisers end
+    up with a dozen overrides; C's arrow could be borrowed into A later
+    if the description and chips ever feel disconnected.</p>
+</main>
+<script>
+  document.querySelectorAll(".b-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      const i = row.dataset.i;
+      document.querySelectorAll(".b-row").forEach((r) => {
+        const open = r.dataset.i === i && !r.classList.contains("open");
+        r.classList.toggle("open", open);
+        document.querySelector(`.b-editor[data-for="${r.dataset.i}"]`).hidden = !open;
+      });
+    });
+  });
+  document.querySelector('.b-row[data-i="1"]').click();
+</script>
+</body>
+</html>

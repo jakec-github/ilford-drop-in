@@ -22,12 +22,19 @@ const GREETER = "Greeter";
 // funnel through it), so mounting it for real needs every function its
 // hooks call stubbed out — there is no server to answer them here. Values
 // only matter where a test below reads them back.
+//
+// Everything else is the real module, copied before it is mocked, and the
+// real module is put back afterwards: under CI's Bun (1.4.4) a module mock
+// outlived this file despite mock.restore(), and a later file importing
+// anything left out here failed to load at all.
+const realApi = { ...(await import("../api")) };
 const fetchRoles = mock<() => Promise<ConfiguredRole[]>>();
 const fetchVolunteers = mock<() => Promise<Roster>>();
 const fetchDraftRotaAllocation = mock(async () => null);
 const fetchPins = mock<() => Promise<Pin[]>>();
 
 mock.module("../api", () => ({
+  ...realApi,
   fetchOrganisation: mock(async () => ({
     id: "test-org",
     displayName: "Test Organisation",
@@ -52,6 +59,7 @@ const { default: RotaViewer } = await import("./RotaViewer");
 
 afterAll(() => {
   mock.restore();
+  mock.module("../api", () => realApi);
 });
 
 const ROLES: ConfiguredRole[] = [

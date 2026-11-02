@@ -117,7 +117,17 @@ function renderCard(
   return onSave;
 }
 
+// Opens the "+" menu and starts the change it names there.
+function begin(name: string) {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Change something else on override 1" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name }));
+}
+
 function pin(who: string, roleId?: string) {
+  // The adder stays open after a Pin, for pinning somebody else.
+  if (!screen.queryByLabelText("Who to pin")) begin("Pin somebody");
   fireEvent.change(screen.getByLabelText("Who to pin"), {
     target: { value: who },
   });
@@ -149,8 +159,7 @@ describe("OverrideCard", () => {
   // field for it of its own.
   test("the rule carries its own start date", () => {
     renderCard();
-    const matches = screen.getByRole("region", { name: "Override 1 matches" });
-    const rule = within(matches).getByLabelText(
+    const rule = screen.getByLabelText(
       "Override 1 rule",
     ) as HTMLTextAreaElement;
     expect(rule.value).toContain("DTSTART;VALUE=DATE:20261101");
@@ -200,30 +209,78 @@ describe("OverrideCard", () => {
     ]);
   });
 
-  test("ticking the shape starts it from the default", async () => {
+  test("only what it changes is drawn", async () => {
+    renderCard({ ...STORED, lengthMinutes: 90 });
+    await settle();
+    const changes = screen.getByRole("group", {
+      name: "What override 1 changes",
+    });
+    expect(
+      within(changes).getByRole("button", { name: "1 hour 30 minutes" }),
+    ).toBeTruthy();
+    expect(within(changes).queryByText(/Starts/)).toBeNull();
+    expect(
+      within(changes).queryByRole("button", { name: /^Shape/ }),
+    ).toBeNull();
+  });
+
+  test("a change is stopped from its popover, and that saves", async () => {
+    const onSave = renderCard({ ...STORED, lengthMinutes: 90 });
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "1 hour 30 minutes" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep the pattern's length" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "1 hour 30 minutes" }),
+    ).toBeNull();
+    await saveWait();
+    expect(onSave.mock.calls[0][0].lengthMinutes).toBeNull();
+  });
+
+  test("Escape closes a popover", async () => {
+    renderCard({ ...STORED, lengthMinutes: 90 });
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "1 hour 30 minutes" }));
+    fireEvent.keyDown(
+      screen.getByLabelText("Override 1 length", { selector: "select" }),
+      {
+        key: "Escape",
+      },
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("starting the shape starts it from the default", async () => {
     const onSave = renderCard();
     await settle();
-    fireEvent.click(screen.getByLabelText("Shape"));
+    begin("Shape");
+    expect(
+      screen.getByRole("button", { name: "Shape: 2 Greeter" }),
+    ).toBeTruthy();
     await saveWait();
     expect(onSave.mock.calls[0][0].shape).toEqual([
       { roleId: "r-greet", count: 2 },
     ]);
   });
 
-  test("a ticked start time is saved only once it is said", async () => {
+  test("a started start time is saved only once it is said", async () => {
     const onSave = renderCard();
     await settle();
-    fireEvent.click(screen.getByLabelText("Start time"));
+    begin("Start time");
     await saveWait();
     expect(onSave).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("Override 1 start time"), {
       target: { value: "19:00" },
     });
-    fireEvent.click(screen.getByLabelText("Length"));
-    fireEvent.change(screen.getByLabelText("Override 1 length"), {
-      target: { value: "150" },
-    });
+    begin("Length");
+    fireEvent.change(
+      screen.getByLabelText("Override 1 length", { selector: "select" }),
+      {
+        target: { value: "150" },
+      },
+    );
     await saveWait();
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0].startTime).toBe("19:00");
@@ -401,38 +458,35 @@ describe("OverrideCard matches in plain English", () => {
     };
   });
 
-  const option = (name: string) =>
+  const button = (name: string) =>
     screen.getByRole("button", { name }) as HTMLButtonElement;
-  const switchGroup = () =>
-    screen.getByRole("group", { name: "How override 1 matches" });
   const describeBox = () =>
     screen.queryByPlaceholderText(
-      "Describe which shifts it matches in plain English",
+      "Describe which shifts it changes in plain English",
     ) as HTMLTextAreaElement | null;
   const raw = () =>
     screen.queryByLabelText("Override 1 rule") as HTMLTextAreaElement | null;
 
   test("opens on the rule's description where it is available", () => {
     renderCard(STORED, { available: true });
-    expect(option("Natural").getAttribute("aria-pressed")).toBe("true");
     expect(raw()).toBeNull();
     expect(
       screen.getByRole("button", {
         name: /On the first Sunday of every month/,
       }),
     ).toBeTruthy();
-    // What it sets is the same form either way.
-    expect(screen.getByLabelText("Who to pin")).toBeTruthy();
+    expect(screen.getByText("every shift that day")).toBeTruthy();
+    expect(button("Edit the rule")).toBeTruthy();
   });
 
-  test("opens raw with the switch locked where it is not, saying why", () => {
+  test("opens raw with no way back where it is not, saying why", () => {
     renderCard(STORED, {
       available: false,
       reason: "Set the shift pattern first",
     });
     expect(raw()).toBeTruthy();
-    expect(option("Natural").disabled).toBe(true);
-    expect(switchGroup().getAttribute("title")).toBe(
+    expect(button("Describe it instead").disabled).toBe(true);
+    expect(button("Describe it instead").parentElement!.title).toBe(
       "Set the shift pattern first",
     );
   });
@@ -505,9 +559,9 @@ describe("OverrideCard matches in plain English", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  test("a raw edit with problems locks the switch until it is undone", async () => {
+  test("a raw edit with problems keeps it raw until it is undone", async () => {
     renderCard(STORED, { available: true });
-    fireEvent.click(option("Raw"));
+    fireEvent.click(button("Edit the rule"));
     reading = {
       granularity: "",
       description: "",
@@ -517,8 +571,8 @@ describe("OverrideCard matches in plain English", () => {
       target: { value: "DTSTART;VALUE=DATE:20261101" },
     });
     await settle();
-    expect(option("Natural").disabled).toBe(true);
-    expect(switchGroup().getAttribute("title")).toBe(
+    expect(button("Describe it instead").disabled).toBe(true);
+    expect(button("Describe it instead").parentElement!.title).toBe(
       "Fix or undo the raw edit first",
     );
 
@@ -529,7 +583,7 @@ describe("OverrideCard matches in plain English", () => {
     };
     fireEvent.change(raw()!, { target: { value: STORED.rrule } });
     await settle();
-    expect(option("Natural").disabled).toBe(false);
+    expect(button("Describe it instead").disabled).toBe(false);
   });
 
   test("when it cannot be translated just now, the way out is the raw rule", async () => {
@@ -551,6 +605,6 @@ describe("OverrideCard matches in plain English", () => {
       screen.getByRole("button", { name: "Write the rule yourself" }),
     );
     expect(raw()).toBeTruthy();
-    expect(option("Raw").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Describe it instead")).toBeTruthy();
   });
 });
