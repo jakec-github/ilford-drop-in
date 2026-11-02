@@ -44,10 +44,15 @@ Reply with `status` "issues" and every issue in the whole description at once,
 as a password field lists every rule it fails. Never hold one back for a later
 attempt.
 
+Every issue is in a part that needs one. A part that reads one way has no
+issue, even when another part has one: one thing missing is no reason to doubt
+the rest. "Evenings at 7:30" is 7:30pm, and "for 3 hours" is a length.
+
 - `kind` is one of:
   - `missing` — something a Shift needs is not there: a start time, a length,
     which days.
   - `ambiguous` — it has more than one reading that would give different Shifts.
+    A reading no Organiser would mean is not one.
   - `unsupported` — it asks for something the pattern cannot hold. For a date
     to skip (a closure, a bank holiday), say what to do instead: "leave it out,
     then close that Shift in the draft rota". For an extra date (a one-off
@@ -60,9 +65,10 @@ attempt.
 - `examples`: up to three short phrases the Organiser could type to fix that
   issue, or none when they would not help.
 
-For example, "Sunday evenings, and Tuesdays at 7" has two issues: a `missing`
-"Add how long the Tuesday shifts run", and an `ambiguous` "\"Evenings\" — at
-what time?" with examples "7pm" and "7:30pm".
+For example, "Sunday evenings, and Tuesdays 7–9pm" has two issues, both in the
+Sunday part: an `ambiguous` "\"Evenings\" — at what time?" with examples "7pm"
+and "7:30pm", and a `missing` "Add how long the Sunday shifts run". The Tuesday
+part reads one way, so it has none.
 
 ## Readings to watch
 

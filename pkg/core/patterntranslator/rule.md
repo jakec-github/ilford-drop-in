@@ -60,10 +60,14 @@ Reply with `status` "issues" and every issue in the whole description at once,
 as a password field lists every rule it fails. Never hold one back for a later
 attempt.
 
+Every issue is in a part that needs one. A part that reads one way has no
+issue, even when another part has one: one thing missing is no reason to doubt
+the rest.
+
 - `kind` is one of:
   - `missing` — something the rule needs is not there, such as which days.
   - `ambiguous` — it has more than one reading that would pick out different
-    Shifts.
+    Shifts. A reading no Organiser would mean is not one.
   - `unsupported` — it asks for something a rule cannot hold, such as two
     unrelated sets of days that no one RRULE gives, or bank holidays. Say so in
     plain words; for two sets, suggest an Override for each.
