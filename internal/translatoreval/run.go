@@ -91,8 +91,8 @@ type Reply struct {
 	Thinking string `json:"thinking,omitempty"`
 	// Retry is why the model was asked again after this reply, if it was.
 	Retry Retry `json:"retry,omitempty"`
-	// SentBack is, for a reply the parser refused, the message that took its
-	// problems back to the model.
+	// SentBack is the message that went back to the model about this reply:
+	// the parser's problems, or what the reply left out.
 	SentBack string `json:"sentBack,omitempty"`
 }
 
@@ -103,8 +103,9 @@ type Retry string
 const (
 	// Refused is a reply the parser refused; its problems went back.
 	Refused Retry = "refused"
-	// Unusable is a reply the translator could not use at all, such as issues
-	// with none in them, so it asked again the same way.
+	// Unusable is a reply the translator could not use at all: one that says
+	// nothing, such as issues with none in them, goes back saying what it left
+	// out; one that does not read is asked again the same way.
 	Unusable Retry = "unusable"
 )
 
@@ -172,7 +173,7 @@ func translateOnce(ctx context.Context, s Subject, c Case) RunReport {
 	if c.Repairs() {
 		model = planter{model: s.Base, reply: plantedReply(c)}
 	}
-	rec := &recorder{model: model}
+	rec := &recorder{model: model, kind: c.Kind}
 	var translator patterntranslator.Translator = patterntranslator.Stub{}
 	if s.Base != nil {
 		translator = patterntranslator.New(rec)
@@ -247,7 +248,9 @@ func describe(c Case, a Answer) []string {
 // recorder is a Model that keeps each reply one translation's calls get, and
 // sums what they use. Each translation has its own.
 type recorder struct {
-	model   patterntranslator.Model
+	model patterntranslator.Model
+	// kind is the case's, so a reply is read for the answer it was asked for.
+	kind    string
 	replies []Reply
 	usage   patterntranslator.Usage
 	// turns is how many turns the last call was asked with.
@@ -255,15 +258,17 @@ type recorder struct {
 }
 
 func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
-	// A call after another says why the last reply did not stand: a refused
-	// one goes back with the parser's problems, so the turns grow; an unusable
-	// one is asked again with the same turns.
+	// A call after another says why the last reply did not stand: it was an
+	// answer the parser refused, or it could not be used at all. Either may
+	// have gone back with a message, which the turns grew by.
 	if n := len(r.replies); n > 0 {
 		last := &r.replies[n-1]
-		if len(turns) > r.turns {
-			last.Retry, last.SentBack = Refused, turns[len(turns)-1].Text
-		} else {
+		last.Retry = Refused
+		if whyUnusable(r.kind, *last) != "" {
 			last.Retry = Unusable
+		}
+		if len(turns) > r.turns {
+			last.SentBack = turns[len(turns)-1].Text
 		}
 	}
 	r.turns = len(turns)

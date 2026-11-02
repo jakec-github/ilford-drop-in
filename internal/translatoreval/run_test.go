@@ -238,8 +238,8 @@ func (m *sequenceModel) Reply(context.Context, *patterntranslator.Prompt, []patt
 }
 
 // Going back to the model means its reply did not stand, so each reply that
-// was followed by another call says why: the parser refused it, and what went
-// back, or it could not be used at all.
+// was followed by another call says why, the parser refused it or it could not
+// be used at all, and what went back.
 func TestRun_EachReplyFollowedByAnotherSaysWhy(t *testing.T) {
 	model := &sequenceModel{replies: []patterntranslator.Response{
 		{Text: `{"status":"issues","issues":[]}`},
@@ -251,7 +251,7 @@ func TestRun_EachReplyFollowedByAnotherSaysWhy(t *testing.T) {
 	if !r.Pass || len(r.Replies) != 3 {
 		t.Fatalf("run: %+v", r)
 	}
-	if r.Replies[0].Retry != Unusable || r.Replies[0].SentBack != "" {
+	if r.Replies[0].Retry != Unusable || !strings.Contains(r.Replies[0].SentBack, "Your reply listed no issues.") {
 		t.Errorf("an unusable reply: %+v", r.Replies[0])
 	}
 	if r.Replies[1].Retry != Refused || !strings.Contains(r.Replies[1].SentBack, problemsOf(noDuration, "Europe/London")[0]) {
