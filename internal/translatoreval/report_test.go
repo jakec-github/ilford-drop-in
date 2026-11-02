@@ -322,7 +322,7 @@ func judgedReport() *Report {
 
 func TestSummarise_CountsWhatTheJudgeFoundAndWhatItCost(t *testing.T) {
 	s := Summarise(judgedReport().Cases)
-	want := Judged{Replies: 1, MadeUp: 1, Missed: 1, NotJudged: 1, Cost: 0.03}
+	want := Judged{Replies: 1, Right: 0, MadeUp: 1, Missed: 1, NotJudged: 1, Cost: 0.03}
 	if math.Abs(s.Judged.Cost-want.Cost) > 1e-9 {
 		t.Errorf("judge cost = %v, want %v", s.Judged.Cost, want.Cost)
 	}
@@ -340,8 +340,16 @@ func TestRender_ShowsTheJudgesPairingAndReasonBesideEachIssue(t *testing.T) {
 	md := Render(judgedReport(), nil)
 	for _, want := range []string{
 		"Judged by claude-opus-5-5 · prompt dddddddddddd",
-		"The judge paired the issues of 1 reply with the ones wanted: 1 made up, 1 missed, 1 reply not judged.",
-		"Judge cost $0.0300, apart from the cost above.",
+		// Judged right is replies with nothing made up and nothing missed,
+		// of those judged.
+		"| | First call | In the end | Wording | Judged right |",
+		"| All | 3/8 (38%) | 4/8 (50%) | 0.75 | 0/1 (0%) |",
+		"| Patterns: days and times | 1/2 (50%) | 1/2 (50%) | — | — |",
+		"| Patterns: what is missing | 2/4 (50%) | 3/4 (75%) | 0.75 | 0/1 (0%) |",
+		"| Case | Wants | First call | In the end | Wording | Judged right | Calls |",
+		"| sunday-evenings | issues | 1/2 | 1/2 | — | 0/1 | 2 / 0 / 0 / 0 |",
+		"| sundays | translation | 1/2 | 1/2 | — | — | 1 / 1 / 0 / 0 |",
+		"Judged in all: 1 made up, 1 missed; 1 reply it could not judge · judge cost $0.0300, apart from the cost above",
 		"## Judged issues",
 		"### sunday-evenings\n\n> Sunday evenings\n\nWanted:\n\n1. missing: how long the Sunday shifts run\n2. ambiguous: what time the evening shifts start\n",
 		"- Run 1:\n  - Raised missing: Add how long — about 1: Both are about the length.\n" +

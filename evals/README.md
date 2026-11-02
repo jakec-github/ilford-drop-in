@@ -147,8 +147,9 @@ worked, but it took longer and cost more.
 Each report starts with:
 - the model and effort;
 - a hash of each prompt;
-- pass rates on the first call and in the end, and wording scores, overall
-  and for each group;
+- pass rates on the first call and in the end, wording scores and, with a
+  judge, how many replies of issues it judged right (nothing made up, nothing
+  missed), overall and for each group;
 - every call made again, by why: the parser refused the reply before it, or
   the reply could not be used at all (issues with none in them, an empty
   answer, JSON that does not read, a refusal, a reply cut off);
@@ -156,7 +157,8 @@ Each report starts with:
   the cost of the model being tested.
 
 For each case it gives:
-- the pass rates on the first call and in the end, and the wording score;
+- the pass rates on the first call and in the end, the wording score and, with
+  a judge, the replies it judged right;
 - the calls each run took: first, second or third, gave up, or unavailable;
 - the cost;
 - typical and slow (p95) latency.

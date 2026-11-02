@@ -131,6 +131,7 @@ type Group struct {
 	Label string
 	Tally
 	Wording Score
+	Judged  Judged
 }
 
 // Calls is how many calls translations took: one, or a second or third after
@@ -214,16 +215,17 @@ type Summary struct {
 	// Retries is the calls made again on first attempts; RepairRetries is
 	// those on repairs, the planted reply's refusal aside.
 	Retries, RepairRetries Retries
-	// Judged is what the judge found in every run it judged, repairs
-	// included. Its cost is not in Cost.
+	// Judged is what the judge found in the runs it judged, repairs left out
+	// like the rates. Its cost is not in Cost.
 	Judged Judged
 }
 
 // Judged is what the judge found across runs.
 type Judged struct {
-	// Replies is how many replies of issues it paired; NotJudged, how many
-	// it was asked about and could not.
-	Replies, NotJudged int
+	// Replies is how many replies of issues it paired, and Right how many of
+	// those had nothing made up and nothing missed; NotJudged is how many it
+	// was asked about and could not.
+	Replies, Right, NotJudged int
 	// MadeUp is issues raised that were about nothing wanted; Missed, issues
 	// wanted that nothing raised was about.
 	MadeUp, Missed int
@@ -243,6 +245,26 @@ func (j *Judged) add(r RunReport) {
 	j.Replies++
 	j.MadeUp += r.Judgement.MadeUp()
 	j.Missed += len(r.Judgement.Missed)
+	if r.Judgement.MadeUp() == 0 && len(r.Judgement.Missed) == 0 {
+		j.Right++
+	}
+}
+
+// Rate is the replies judged right, of those judged.
+func (j Judged) Rate() Tally {
+	return Tally{Passed: j.Right, Runs: j.Replies}
+}
+
+// cell is the judged-right rate for a table, with its percentage or without,
+// or a dash where nothing was judged.
+func (j Judged) cell(percent bool) string {
+	if j.Replies == 0 {
+		return "—"
+	}
+	if !percent {
+		return fmt.Sprintf("%d/%d", j.Right, j.Replies)
+	}
+	return j.Rate().String()
 }
 
 // PerRun is the mean cost of one translation, repairs included.
@@ -269,7 +291,6 @@ func Summarise(cases []CaseReport) Summary {
 				repairOrder = append(repairOrder, label)
 			}
 			for _, r := range c.Runs {
-				s.Judged.add(r)
 				s.Repairs.add(r)
 				repairs[label].add(r)
 				s.RepairRetries.add(c.Kind, r, 1)
@@ -288,6 +309,7 @@ func Summarise(cases []CaseReport) Summary {
 		g := groups[label]
 		for _, r := range c.Runs {
 			s.Judged.add(r)
+			g.Judged.add(r)
 			s.All.add(r)
 			s.Wording.add(r)
 			g.Tally.add(r)
@@ -357,10 +379,23 @@ func Render(r *Report, earlier *Report) string {
 	b.WriteString("## Summary\n\nWording scores the messages of issues the model raised, from 0 to 1. It never fails a run.\n\n")
 	b.WriteString("First call is the runs right on the model's first reply; in the end, those right on any. ")
 	b.WriteString("Every call after the first means a reply did not stand.\n\n")
-	b.WriteString("| | First call | In the end | Wording |\n|---|---|---|---|\n")
-	fmt.Fprintf(&b, "| All | %s | %s | %s |\n", s.All.FirstCall(), s.All, s.Wording)
+	judged := r.Judge != ""
+	// judgedCol is a table's judged-right column, where there is a judge.
+	judgedCol := func(j Judged, percent bool) string {
+		if !judged {
+			return ""
+		}
+		return " " + j.cell(percent) + " |"
+	}
+	if judged {
+		b.WriteString("Judged right is the replies of issues in which the judge found nothing made up and nothing missed, of those it judged. It never fails a run.\n\n")
+		b.WriteString("| | First call | In the end | Wording | Judged right |\n|---|---|---|---|---|\n")
+	} else {
+		b.WriteString("| | First call | In the end | Wording |\n|---|---|---|---|\n")
+	}
+	fmt.Fprintf(&b, "| All | %s | %s | %s |%s\n", s.All.FirstCall(), s.All, s.Wording, judgedCol(s.Judged, true))
 	for _, g := range s.Groups {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", g.Label, g.FirstCall(), g.Tally, g.Wording)
+		fmt.Fprintf(&b, "| %s | %s | %s | %s |%s\n", g.Label, g.FirstCall(), g.Tally, g.Wording, judgedCol(g.Judged, true))
 	}
 	b.WriteString("\n| Calls | Runs |\n|---|---|\n")
 	fmt.Fprintf(&b, "| First call | %d |\n| Second call | %d |\n| Third call | %d |\n| Gave up | %d |\n| Unavailable | %d |\n\n",
@@ -369,11 +404,11 @@ func Render(r *Report, earlier *Report) string {
 	fmt.Fprintf(&b, "Cost %s in all, %s a translation · latency %s typical, %s slow (p95) · %d over the %s limit\n\n",
 		money(s.Cost), money(s.PerRun()), seconds(s.Typical), seconds(s.Slow), s.TimedOut, patterntranslator.Timeout)
 	if j := s.Judged; j.Replies+j.NotJudged > 0 {
-		fmt.Fprintf(&b, "The judge paired the issues of %s with the ones wanted: %d made up, %d missed", replies(j.Replies), j.MadeUp, j.Missed)
+		fmt.Fprintf(&b, "Judged in all: %d made up, %d missed", j.MadeUp, j.Missed)
 		if j.NotJudged > 0 {
-			fmt.Fprintf(&b, ", %s not judged", replies(j.NotJudged))
+			fmt.Fprintf(&b, "; %s it could not judge", replies(j.NotJudged))
 		}
-		fmt.Fprintf(&b, ". It never fails a run. Judge cost %s, apart from the cost above.\n\n", money(j.Cost))
+		fmt.Fprintf(&b, " · judge cost %s, apart from the cost above\n\n", money(j.Cost))
 	}
 
 	if len(s.RepairGroups) > 0 {
@@ -398,7 +433,11 @@ func Render(r *Report, earlier *Report) string {
 		if l := groupLabel(c); l != label {
 			label = l
 			fmt.Fprintf(&b, "\n### %s\n\n", label)
-			b.WriteString("| Case | Wants | First call | In the end | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|\n")
+			if judged {
+				b.WriteString("| Case | Wants | First call | In the end | Wording | Judged right | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|---|\n")
+			} else {
+				b.WriteString("| Case | Wants | First call | In the end | Wording | Calls | Cost a run | Typical | Slow |\n|---|---|---|---|---|---|---|---|---|\n")
+			}
 		}
 		cs := Summarise([]CaseReport{c})
 		wants := "issues"
@@ -415,8 +454,8 @@ func Render(r *Report, earlier *Report) string {
 				calls.add(run)
 			}
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d/%d | %d/%d | %s | %d / %d / %d / %d | %s | %s | %s |\n",
-			c.Name, wants, passed.First, passed.Runs, passed.Passed, passed.Runs, cs.Wording,
+		fmt.Fprintf(&b, "| %s | %s | %d/%d | %d/%d | %s |%s %d / %d / %d / %d | %s | %s | %s |\n",
+			c.Name, wants, passed.First, passed.Runs, passed.Passed, passed.Runs, cs.Wording, judgedCol(cs.Judged, false),
 			calls.First, calls.Second, calls.Third, calls.GaveUp+calls.Unavailable,
 			money(cs.PerRun()), seconds(cs.Typical), seconds(cs.Slow))
 	}
