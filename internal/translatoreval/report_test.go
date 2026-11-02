@@ -207,9 +207,23 @@ func TestRender_RepairsHaveASectionOfTheirOwn(t *testing.T) {
 		"| | Fixed | Parsed but changed | Not fixed | Unavailable | Calls a fix |",
 		"| All | 3/6 (50%) | 1 | 1 | 1 | 1.3 |",
 		"| Patterns: repairs | 2/4 (50%) | 1 | 1 | 0 | 1.5 |",
+		// A repair case's own row counts its fixes and the loop's calls.
+		"| no-duration | translation | 2/4 | — | 0 / 2 / 1 / 1 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q:\n%s", want, md)
+		}
+	}
+}
+
+func TestRender_ARepairCaseIsComparedByItsFixes(t *testing.T) {
+	md := Render(repairReport(), repairReport())
+	for _, want := range []string{
+		"Repairs on the cases both ran: fixed 3/6 (50%) → 3/6 (50%), calls a fix 1.3 → 1.3",
+		"| no-duration | 2/4 | 2/4 | 0 |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("comparison lacks %q:\n%s", want, md)
 		}
 	}
 }

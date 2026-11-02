@@ -300,9 +300,19 @@ func Render(r *Report, earlier *Report) string {
 		if c.Translates {
 			wants = "translation"
 		}
+		// The summary leaves a repair case's runs out of its pass rate and
+		// calls, so its own row counts them here: its fixes, and the loop's
+		// calls, the planted one first.
+		passed, calls := caseRate(c), cs.Calls
+		if c.Planted != "" {
+			calls = Calls{}
+			for _, run := range c.Runs {
+				calls.add(run)
+			}
+		}
 		fmt.Fprintf(&b, "| %s | %s | %d/%d | %s | %d / %d / %d / %d | %s | %s | %s |\n",
-			c.Name, wants, cs.All.Passed, cs.All.Runs, cs.Wording,
-			cs.Calls.First, cs.Calls.Second, cs.Calls.Third, cs.Calls.GaveUp+cs.Calls.Unavailable,
+			c.Name, wants, passed.Passed, passed.Runs, cs.Wording,
+			calls.First, calls.Second, calls.Third, calls.GaveUp+calls.Unavailable,
 			money(cs.PerRun()), seconds(cs.Typical), seconds(cs.Slow))
 	}
 
@@ -454,7 +464,7 @@ func writeComparison(b *strings.Builder, r, earlier *Report) {
 
 	b.WriteString("| Case | Before | Now | Change |\n|---|---|---|---|\n")
 	for _, c := range shared {
-		was, is := Summarise([]CaseReport{before[c.Name]}).All, Summarise([]CaseReport{c}).All
+		was, is := caseRate(before[c.Name]), caseRate(c)
 		fmt.Fprintf(b, "| %s | %d/%d | %d/%d | %s |\n", c.Name, was.Passed, was.Runs, is.Passed, is.Runs, change(was, is))
 	}
 	if len(onlyNow) > 0 {
@@ -465,6 +475,16 @@ func writeComparison(b *strings.Builder, r, earlier *Report) {
 		sort.Strings(onlyBefore)
 		fmt.Fprintf(b, "\nOnly in the earlier run: %s\n", strings.Join(onlyBefore, ", "))
 	}
+}
+
+// caseRate is how many of a case's runs passed, or for a repair case, were
+// fixed.
+func caseRate(c CaseReport) Tally {
+	s := Summarise([]CaseReport{c})
+	if c.Planted != "" {
+		return s.Repairs.Rate()
+	}
+	return s.All
 }
 
 // change is the change in pass rate, in percentage points.
