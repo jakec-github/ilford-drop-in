@@ -14,6 +14,27 @@ import type { AccessLevel } from "../auth-context";
 // to string-match on the two S1 came with, so nothing a deployment configured
 // was reachable (issue #212); fixtures named like this are what stops that
 // coming back.
+
+// The Role chips a dialog offers, in order, and the one selected.
+function roleChips(): string[] {
+  return within(screen.getByLabelText("Role"))
+    .getAllByRole("radio")
+    .map((r) => r.closest("label")?.textContent ?? "");
+}
+
+function roleValue(): string {
+  const checked = within(screen.getByLabelText("Role"))
+    .getAllByRole("radio")
+    .find((r) => (r as HTMLInputElement).checked);
+  return (checked as HTMLInputElement | undefined)?.value ?? "";
+}
+
+function chooseRole(role: string) {
+  fireEvent.click(
+    within(screen.getByLabelText("Role")).getByRole("radio", { name: role }),
+  );
+}
+
 const DUTY_LEAD = "Duty lead";
 const HOT_FOOD = "Hot food";
 const GREETER = "Greeter";
@@ -288,13 +309,9 @@ describe("RotaViewer placement", () => {
       await screen.findByRole("heading", { name: "Change Alice's role?" }),
     ).toBeInTheDocument();
     // Defaulted to the job she is doing there, not to the first Role going.
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe(
-      DUTY_LEAD,
-    );
+    expect(roleValue()).toBe(DUTY_LEAD);
 
-    fireEvent.change(screen.getByLabelText("Role"), {
-      target: { value: HOT_FOOD },
-    });
+    chooseRole(HOT_FOOD);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Change role" }));
     });
@@ -507,15 +524,10 @@ describe("RotaViewer role pickers", () => {
       target: { value: "carol" },
     });
 
-    const roleField = screen.getByLabelText("Role") as HTMLSelectElement;
-    expect(
-      within(roleField)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
+    expect(roleChips()).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
     // Carol only greets on the roster, so the default follows her — but Duty
     // lead is hers to be given.
-    expect(roleField.value).toBe(GREETER);
+    expect(roleValue()).toBe(GREETER);
   });
 
   // Neither the roster nor this shift's Shape narrows a pin (ADR 0010): every
@@ -534,17 +546,14 @@ describe("RotaViewer role pickers", () => {
         name: /^Pin someone to/,
       }),
     );
-    fireEvent.change(await screen.findByLabelText("Who"), {
-      target: { value: "alice" },
-    });
+    const who = await screen.findByLabelText("Who");
+    fireEvent.focus(who);
+    fireEvent.change(who, { target: { value: "Alice" } });
+    fireEvent.click(screen.getByRole("option", { name: "Alice" }));
 
     // Alice holds Duty lead and Greeter. Hot food is offered though she does
     // not hold it, and Greeter though this shift asks for none.
-    expect(
-      within(screen.getByLabelText("Role"))
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
+    expect(roleChips()).toEqual([DUTY_LEAD, HOT_FOOD, GREETER]);
   });
 
   // Being inactive stops the allocator choosing somebody, not a person
@@ -572,10 +581,10 @@ describe("RotaViewer role pickers", () => {
         name: /^Pin someone to/,
       }),
     );
-    const who = await screen.findByLabelText("Who");
+    fireEvent.focus(await screen.findByLabelText("Who"));
 
     expect(
-      within(who).getByRole("option", { name: "Dora (not active)" }),
+      screen.getByRole("option", { name: "Dora · not active" }),
     ).toBeInTheDocument();
   });
 });
@@ -1026,9 +1035,8 @@ describe("RotaViewer custom entries on a shift more than once", () => {
     await renderEditing("organiser", redCrossShifts(), onChange);
     openRedCross(GREETER);
     fireEvent.click(screen.getByRole("button", { name: "Change role" }));
-    fireEvent.change(await screen.findByLabelText("Role"), {
-      target: { value: DUTY_LEAD },
-    });
+    await screen.findByLabelText("Role");
+    chooseRole(DUTY_LEAD);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Change role" }));
     });

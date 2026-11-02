@@ -437,24 +437,37 @@
 
 /* "+ person": a select dressed as a dashed ghost chip, so adding somebody
    reads as making one more of the chips beside it. */
+/* The roster search, drawn as a dashed "+ person" until it is pressed; then it
+   takes the row's whole width, so its list opens under the names. */
 .scope-add {
+  width: 8rem;
+}
+
+.scope-add:focus-within {
+  flex-basis: 100%;
   width: auto;
-  max-width: 10rem;
+}
+
+.scope-add .volunteer-picker-icon {
+  display: none;
+}
+
+.volunteer-picker.scope-add .volunteer-picker-input {
   padding: 0.1875rem 0.625rem;
-  font: inherit;
   font-size: 0.8125rem;
   color: var(--text);
   background: none;
   border: 1px dashed var(--border);
   border-radius: 999px;
   cursor: pointer;
-  appearance: none;
 }
 
-.scope-add:hover:not(:disabled),
-.scope-add:focus-visible {
-  color: var(--rule-colour);
+.volunteer-picker.scope-add .volunteer-picker-input:hover:not(:disabled),
+.volunteer-picker.scope-add .volunteer-picker-input:focus-visible {
+  color: var(--text-h);
   border-color: var(--rule-colour);
+  outline: none;
+  cursor: text;
 }
 
 .rule-card-coverage {

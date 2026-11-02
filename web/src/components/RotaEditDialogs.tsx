@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
-import type { Assignee, PersonRef, Role, Volunteer } from "../types";
+import type {
+  Assignee,
+  PersonRef,
+  Role,
+  RoleColour,
+  Volunteer,
+} from "../types";
 import { CUSTOM_CHOICE } from "../types";
+import RoleSelector from "./RoleSelector";
+import VolunteerPicker from "./VolunteerPicker";
 import type { SeatCount } from "./shape";
 import { roleSuffix } from "./shifts";
 import "./RotaEditDialogs.css";
@@ -120,6 +128,7 @@ export function ConfirmChangeDialog({
   confirmLabel,
   role,
   reasonRequired,
+  colourOf,
   busy,
   onCancel,
   onConfirm,
@@ -142,6 +151,8 @@ export function ConfirmChangeDialog({
   // server refuses that one without a reason. A move and a swap put whoever
   // leaves on another shift, so both go through with none.
   reasonRequired: boolean;
+  // What each Role is drawn in, by name. Absent draws them all uncoloured.
+  colourOf?: (role: Role) => RoleColour | null;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (reason: string, role?: Role) => void;
@@ -181,19 +192,16 @@ export function ConfirmChangeDialog({
         <p className="rota-edit-summary">{summary}</p>
 
         {role && options.length > 0 && (
-          <label className="rota-edit-field">
-            Role
-            <select
+          <div className="rota-edit-field">
+            <RoleSelector
+              label="Role"
+              options={options}
               value={chosenRole}
-              onChange={(e) => setPicked(e.target.value as Role)}
-            >
-              {options.map((option) => (
-                <option key={option} value={option}>
-                  {roleLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={setPicked}
+              colourOf={colourOf}
+              labelOf={roleLabel}
+            />
+          </div>
         )}
 
         {/* Only reachable on a required picker with nothing to carry: the
@@ -259,6 +267,7 @@ export function AssigneeDialog({
   volunteers,
   volunteersError,
   roles,
+  colourOf,
   busy,
   onCancel,
   onConfirm,
@@ -273,6 +282,8 @@ export function AssigneeDialog({
   // are still loading. Anybody coming in must name one, so until this arrives
   // there is nothing to send and the dialog says so.
   roles: Role[] | null;
+  // What each Role is drawn in, by name. Absent draws them all uncoloured.
+  colourOf?: (role: Role) => RoleColour | null;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (person: PersonRef, reason: string, role: Role) => void;
@@ -391,19 +402,16 @@ export function AssigneeDialog({
             somebody off the roster too: their Seat is a Seat in a Role like
             everybody else's (issue #214). */}
         {choice !== "" && options.length > 0 && (
-          <label className="rota-edit-field">
-            Role
-            <select
+          <div className="rota-edit-field">
+            <RoleSelector
+              label="Role"
+              options={options}
               value={incomingRole}
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
-              {options.map((option) => (
-                <option key={option} value={option}>
-                  {roleLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={setRole}
+              colourOf={colourOf}
+              labelOf={roleLabel}
+            />
+          </div>
         )}
 
         {/* Only reachable before the Roles have arrived, or on a deployment
@@ -453,6 +461,7 @@ export function PinDialog({
   roles,
   seats,
   pinnedNames,
+  colourOf,
   busy,
   onCancel,
   onConfirm,
@@ -475,29 +484,26 @@ export function PinDialog({
   // allowed for a custom entry (issue #195) — an organisation sending two
   // people is two pins reading alike — so this is only ever a note.
   pinnedNames: string[];
+  // What each Role is drawn in, by name. Absent draws them all uncoloured.
+  colourOf?: (role: Role) => RoleColour | null;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (person: PersonRef, role: Role) => void;
 }) {
-  const [choice, setChoice] = useState("");
-  const [customName, setCustomName] = useState("");
+  const whoId = useId();
+  const [person, setPerson] = useState<PersonRef | null>(null);
   // Empty until somebody picks one; what is actually offered is derived below,
   // so that changing who is being pinned re-defaults the Role while an explicit
   // choice survives it.
   const [role, setRole] = useState<Role>("");
 
-  const isCustom = choice === CUSTOM_CHOICE;
-  const trimmedName = customName.trim();
-  const repeatedName = isCustom && pinnedNames.includes(trimmedName);
-  const person: PersonRef | null = isCustom
-    ? trimmedName
-      ? { custom: trimmedName }
-      : null
-    : choice
-      ? { volunteerId: choice }
-      : null;
+  const customName = person && "custom" in person ? person.custom : null;
+  const repeatedName = customName !== null && pinnedNames.includes(customName);
 
-  const chosen = volunteers?.find((v) => v.id === choice) ?? null;
+  const chosen =
+    person && "volunteerId" in person
+      ? (volunteers?.find((v) => v.id === person.volunteerId) ?? null)
+      : null;
   const options = roles ?? seats.map((seat) => seat.role);
   const seatOf = (option: Role) => seats.find((seat) => seat.role === option);
   const free = options.filter((option) => {
@@ -520,7 +526,7 @@ export function PinDialog({
   // allocator places nobody else in that Role (ADR 0010).
   const pinnedSeat = pinnedRole === "" ? undefined : seatOf(pinnedRole);
   let note: string | null = null;
-  if (choice === "" || pinnedRole === "") {
+  if (person === null || pinnedRole === "") {
     note = null;
   } else if (pinnedSeat === undefined || pinnedSeat.seats === 0) {
     note = `${dateLabel} does not ask for any ${pinnedRole}. This pin goes past the shift's shape, and allocation adds nobody else as ${pinnedRole}.`;
@@ -544,27 +550,16 @@ export function PinDialog({
           Whoever you pin is guaranteed this shift when the rota is allocated.
         </p>
 
-        <label className="rota-edit-field">
-          Who
-          <select
-            value={choice}
-            onChange={(e) => setChoice(e.target.value)}
-            disabled={volunteers === null && volunteersError === null}
-          >
-            <option value="">
-              {volunteers === null && volunteersError === null
-                ? "Loading the roster…"
-                : "Choose someone…"}
-            </option>
-            {volunteers?.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.fullName}
-                {v.active ? "" : " (not active)"}
-              </option>
-            ))}
-            <option value={CUSTOM_CHOICE}>Someone not on the roster…</option>
-          </select>
-        </label>
+        <div className="rota-edit-field">
+          <label htmlFor={whoId}>Who</label>
+          <VolunteerPicker
+            id={whoId}
+            volunteers={volunteers}
+            volunteersError={volunteersError}
+            value={person}
+            onChange={setPerson}
+          />
+        </div>
 
         {/* The roster failing is not a dead end: a custom entry needs nothing
             from it, so the picker degrades to that rather than to nothing. */}
@@ -575,42 +570,26 @@ export function PinDialog({
           </p>
         )}
 
-        {isCustom && (
-          <label className="rota-edit-field">
-            Name
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder="e.g. Redbridge youth group"
-            />
-          </label>
-        )}
-
         {/* A note, not a refusal: pinning a name twice is how the editor says an
             organisation is sending two people (issue #195). Worth saying,
             because the other reason to be typing it is a slip. */}
         {repeatedName && (
           <p className="rota-edit-note">
-            {trimmedName} is already pinned to {dateLabel}. Pinning the name
+            {customName} is already pinned to {dateLabel}. Pinning the name
             again promises a second person from them.
           </p>
         )}
 
         {options.length > 0 && (
-          <label className="rota-edit-field">
-            Role
-            <select
+          <div className="rota-edit-field">
+            <RoleSelector
+              label="Role"
+              options={options}
               value={pinnedRole}
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
-              {options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={setRole}
+              colourOf={colourOf}
+            />
+          </div>
         )}
 
         {notHeld && (
