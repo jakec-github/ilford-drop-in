@@ -240,6 +240,31 @@ groups:
     cases:
       - {name: typo, text: a, expcet: {issues: [{kind: missing, about: x}]}}
 `, `expcet`},
+		{"a planted pattern the parser accepts", Patterns, `
+zone: Europe/London
+today: 2026-11-01
+groups:
+  - name: g
+    cases:
+      - name: unbroken
+        text: Sundays 7:30 to 10:30pm
+        planted: "` + strings.ReplaceAll(sundays, "\n", `\n`) + `"
+        expect:
+          pattern: "` + strings.ReplaceAll(sundays, "\n", `\n`) + `"
+`, `unbroken: the planted reply reads`},
+		{"a planted rule the parser accepts", Rules, `
+zone: Europe/London
+today: 2026-11-01
+pattern: "` + strings.ReplaceAll(sundays, "\n", `\n`) + `"
+groups:
+  - name: g
+    cases:
+      - name: unbroken
+        text: Sundays
+        planted: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"
+        expect:
+          rule: "DTSTART;VALUE=DATE:20261101\nRRULE:FREQ=WEEKLY;BYDAY=SU"
+`, `unbroken: the planted reply reads`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ReadCases(tc.kind, []byte(tc.file))
@@ -247,6 +272,31 @@ groups:
 				t.Errorf("err = %v, want one saying %q", err, tc.says)
 			}
 		})
+	}
+}
+
+// A repair case plants the reply the model is taken to have written first,
+// one the parser refuses.
+func TestReadCases_ARepairCasePlantsAReplyTheParserRefuses(t *testing.T) {
+	cases, err := ReadCases(Patterns, []byte(`
+zone: Europe/London
+today: 2026-11-01
+groups:
+  - name: g
+    cases:
+      - name: no-duration
+        text: Sundays 7:30 to 10:30pm
+        planted: |
+`+indent(noDuration, 10)+`
+        expect:
+          pattern: |
+`+indent(sundays, 12)+`
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := cases[0]; c.Planted != noDuration || !c.Repairs() {
+		t.Errorf("case: %+v", c)
 	}
 }
 

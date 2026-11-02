@@ -36,7 +36,7 @@ func run() error {
 	model := flag.String("model", "claude-sonnet-5-5", "the model to evaluate, or stub for the dev-mode stub, which is free")
 	effort := flag.String("effort", "low", "the model's effort")
 	repeats := flag.Int("repeats", 5, "how many times each case is translated")
-	which := flag.String("cases", "all", "all, patterns, rules, or one case's name")
+	which := flag.String("cases", "all", "all, patterns, rules, a group's name, or one case's name")
 	compare := flag.String("compare", "", "an earlier report's .json, to say what changed")
 	parallel := flag.Int("parallel", 4, "how many translations run at once")
 	yes := flag.Bool("yes", false, "run without asking first")
@@ -133,7 +133,11 @@ func run() error {
 	}
 
 	s := translatoreval.Summarise(report.Cases)
-	fmt.Printf("Passed %s. Report: %s.md\n", s.All, base)
+	repairs := ""
+	if r := s.Repairs.Rate(); r.Runs > 0 {
+		repairs = fmt.Sprintf(", fixed %s", r)
+	}
+	fmt.Printf("Passed %s%s. Report: %s.md\n", s.All, repairs, base)
 	return nil
 }
 

@@ -88,6 +88,41 @@ that gets that one thing right has nothing else to raise.
   check it, since that takes a judge.
 - Each case fixes `today`, so a case means the same thing whenever it is run.
 
+### Repair cases
+
+When the parser refuses a reply, the translator sends its messages back and
+asks again, up to three calls. A good model is rarely refused, so first
+attempts say little about that loop. A **repair case** says more: it plants
+the refused reply the model is taken to have written first.
+
+```yaml
+      - name: repair-no-duration
+        text: Sundays 7:30 to 10:30pm
+        planted: |
+          BEGIN:VEVENT
+          DTSTART:20261101T193000
+          RRULE:FREQ=WEEKLY;BYDAY=SU
+          END:VEVENT
+        expect:
+          pattern: |
+            …
+```
+
+- The first call returns `planted` without asking the model, and costs
+  nothing. The translator's own loop then runs as it does in the app: the
+  parser refuses the reply, its real messages go back, and the model's
+  replies after that are graded against `expect`.
+- A planted reply the parser accepts is a broken case, and stops the run
+  before any call.
+- Passing the parser is not enough. A repair that drops the hard part of
+  the description parses too, and is graded as the wrong answer it is.
+- The report keeps repairs out of the pass rate, in a section of their own:
+  fixed, parsed but changed (an answer, but the wrong one), not fixed (every
+  call refused), and the model's calls a fix took.
+
+Both files keep theirs in a group called "repairing a refused reply", so
+`-cases "repairing a refused reply"` runs just those.
+
 ## Reports
 
 Each run writes `reports/<date>-<model>-<effort>.md`, and `.json` beside it

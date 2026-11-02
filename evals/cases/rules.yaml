@@ -84,3 +84,38 @@ groups:
         expect:
           issues:
             - {kind: unsupported, about: not a description of which shifts}
+
+  # Each case plants a first reply the parser refuses, one kind of refusal
+  # each, and grades what the model makes of the parser's messages. A repair
+  # that parses by dropping the hard part fails like any wrong answer.
+  - name: repairing a refused reply
+    cases:
+      - name: repair-time-in-a-date
+        text: The Sunday evening shift
+        planted: |
+          DTSTART;VALUE=DATE:20261101T193000
+          RRULE:FREQ=WEEKLY;BYDAY=SU
+        expect:
+          rule: |
+            DTSTART;VALUE=DATE:20261101
+            RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30
+
+      - name: repair-position-with-weekly
+        text: The 10am shift on the first Sunday of the month
+        planted: |
+          DTSTART;VALUE=DATE:20261101
+          RRULE:FREQ=WEEKLY;BYDAY=1SU;BYHOUR=10;BYMINUTE=0
+        expect:
+          rule: |
+            DTSTART;VALUE=DATE:20261101
+            RRULE:FREQ=MONTHLY;BYDAY=1SU;BYHOUR=10;BYMINUTE=0
+
+      - name: repair-count-and-until
+        text: The evening shift on every Sunday in December 2026
+        planted: |
+          DTSTART;VALUE=DATE:20261201
+          RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30;COUNT=4;UNTIL=20261231
+        expect:
+          rule: |
+            DTSTART;VALUE=DATE:20261201
+            RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=19;BYMINUTE=30;UNTIL=20261231

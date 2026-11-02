@@ -167,3 +167,54 @@ groups:
         expect:
           issues:
             - {kind: unsupported, about: not a description of when shifts happen}
+
+  # Each case plants a first reply the parser refuses, one kind of refusal
+  # each, and grades what the model makes of the parser's messages. A repair
+  # that parses by dropping the hard part fails like any wrong answer.
+  - name: repairing a refused reply
+    cases:
+      - name: repair-no-duration
+        text: Sundays 7:30 to 10:30pm
+        planted: |
+          BEGIN:VEVENT
+          DTSTART:20261101T193000
+          RRULE:FREQ=WEEKLY;BYDAY=SU
+          END:VEVENT
+        expect:
+          pattern: |
+            BEGIN:VEVENT
+            DTSTART:20261101T193000
+            DURATION:PT3H
+            RRULE:FREQ=WEEKLY;BYDAY=SU
+            END:VEVENT
+
+      # The pattern cannot skip a date, so the fix is to say so, not to drop
+      # the exception and keep 27 December.
+      - name: repair-exdate
+        text: Every Sunday 7:30–10:30pm, except 27 December
+        planted: |
+          BEGIN:VEVENT
+          DTSTART:20261101T193000
+          DURATION:PT3H
+          RRULE:FREQ=WEEKLY;BYDAY=SU
+          EXDATE:20261227T193000
+          END:VEVENT
+        expect:
+          issues:
+            - {kind: unsupported, about: leaving out 27 December}
+
+      - name: repair-malformed-rrule
+        text: Weekdays 9am to noon
+        planted: |
+          BEGIN:VEVENT
+          DTSTART:20261102T090000
+          DURATION:PT3H
+          RRULE:FREQ=WEEKLY;BYDAY=MO-FR
+          END:VEVENT
+        expect:
+          pattern: |
+            BEGIN:VEVENT
+            DTSTART:20261102T090000
+            DURATION:PT3H
+            RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR
+            END:VEVENT
