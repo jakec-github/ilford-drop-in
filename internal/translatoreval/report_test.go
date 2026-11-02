@@ -1,6 +1,7 @@
 package translatoreval
 
 import (
+	"encoding/json"
 	"maps"
 	"math"
 	"slices"
@@ -186,11 +187,11 @@ func TestRender_AgainstAnEarlierReportSaysWhatChanged(t *testing.T) {
 
 func TestEstimate_CountsACallPerTranslationAndUpToThree(t *testing.T) {
 	cases := []Case{sundaysCase(), sundaysCase()}
-	e := EstimateRun("claude-sonnet-5-5", "", cases, 5)
+	e := EstimateRun(Subject{Model: "m", Price: subjectPrice, Base: &fakeModel{}}, cases, 5)
 	if e.Calls != 10 || e.MaxCalls != 30 || !e.Priced || e.Cost <= 0 {
 		t.Errorf("estimate: %+v", e)
 	}
-	if e := EstimateRun("stub", "", cases, 5); e.Calls != 0 || e.Cost != 0 {
+	if e := EstimateRun(Subject{Model: "stub"}, cases, 5); e.Calls != 0 || e.Cost != 0 {
 		t.Errorf("stub: %+v", e)
 	}
 }
@@ -273,10 +274,35 @@ func TestRender_ARepairCaseIsComparedByItsFixes(t *testing.T) {
 	}
 }
 
+// A report names the tier asked for and the model it was; one written before
+// tiers named only the model, and still reads as it did.
+func TestRender_NamesTheTierAndTheModelItWas(t *testing.T) {
+	r := sampleReport()
+	r.Model, r.ModelID = "anthropic-medium", "claude-sonnet-5-5"
+	if md := Render(r, nil); !strings.Contains(md, "# Translator eval: anthropic-medium (claude-sonnet-5-5), low effort\n") {
+		t.Errorf("header:\n%s", md)
+	}
+	if got := FileName(r); got != "2026-11-02-anthropic-medium-low" {
+		t.Errorf("FileName = %q", got)
+	}
+
+	data, err := json.Marshal(sampleReport())
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := ReadReport(data)
+	if err != nil {
+		t.Fatalf("ReadReport: %v", err)
+	}
+	if md := Render(r, old); !strings.Contains(md, "claude-sonnet-5-5, low effort") {
+		t.Errorf("a comparison with a report from before tiers does not name its model:\n%s", md)
+	}
+}
+
 func TestEstimate_ThePlantedCallIsFree(t *testing.T) {
 	c := sundaysCase()
 	c.Planted = noDuration
-	e := EstimateRun("claude-sonnet-5-5", "", []Case{c}, 5)
+	e := EstimateRun(Subject{Model: "m", Price: subjectPrice, Base: &fakeModel{}}, []Case{c}, 5)
 	if e.Calls != 5 || e.MaxCalls != 5*(patterntranslator.MaxCalls-1) {
 		t.Errorf("estimate: %+v", e)
 	}
@@ -286,7 +312,7 @@ func TestEstimate_ThePlantedCallIsFree(t *testing.T) {
 // one with a match, a made-up issue and a miss, one it could not judge.
 func judgedReport() *Report {
 	r := sampleReport()
-	r.Judge, r.JudgePrompt = "claude-opus-5-5", "dddddddddddd"
+	r.Judge, r.JudgeID, r.JudgePrompt = "anthropic-large", "claude-opus-5-5", "dddddddddddd"
 	raised := func(r RunReport, issues ...patterntranslator.Issue) RunReport {
 		r.Issues = issues
 		return r
@@ -339,7 +365,7 @@ func TestSummarise_CountsWhatTheJudgeFoundAndWhatItCost(t *testing.T) {
 func TestRender_ShowsTheJudgesPairingAndReasonBesideEachIssue(t *testing.T) {
 	md := Render(judgedReport(), nil)
 	for _, want := range []string{
-		"Judged by claude-opus-5-5 · prompt dddddddddddd",
+		"Judged by anthropic-large (claude-opus-5-5) · prompt dddddddddddd",
 		// Judged right is replies with nothing made up and nothing missed,
 		// of those judged.
 		"| | First call | In the end | Wording | Judged right |",
@@ -370,11 +396,12 @@ func TestRender_ShowsTheJudgesPairingAndReasonBesideEachIssue(t *testing.T) {
 func TestEstimate_CountsAJudgeCallPerIssuesReply(t *testing.T) {
 	issues := issuesCase(Patterns, ExpectedIssue{Kind: patterntranslator.Missing, About: "length"})
 	issues.Text = "Sunday evenings"
-	e := EstimateRun("claude-haiku-5-5", "claude-opus-5-5", []Case{sundaysCase(), issues}, 5)
+	judged := Subject{Model: "m", Price: subjectPrice, Base: &fakeModel{}, JudgeModel: "j", JudgePrice: judgePrice, Judge: &judgeModel{}}
+	e := EstimateRun(judged, []Case{sundaysCase(), issues}, 5)
 	if e.JudgeCalls != 5 || e.JudgeCost <= 0 || !e.JudgePriced {
 		t.Errorf("estimate: %+v", e)
 	}
-	if e := EstimateRun("claude-haiku-5-5", "", []Case{issues}, 5); e.JudgeCalls != 0 || e.JudgeCost != 0 {
+	if e := EstimateRun(Subject{Model: "m", Price: subjectPrice, Base: &fakeModel{}}, []Case{issues}, 5); e.JudgeCalls != 0 || e.JudgeCost != 0 {
 		t.Errorf("no judge: %+v", e)
 	}
 }

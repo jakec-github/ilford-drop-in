@@ -10,20 +10,26 @@ answer, so a broken case is caught before a paid run.
 
 ## Running
 
-From the repository's root, with a key for the evals' Anthropic workspace:
+From the repository's root, with a key for each provider the run asks, from
+the evals' own workspace with it:
 
 ```bash
 ANTHROPIC_API_KEY=… go run ./cmd/translator-eval
 ```
+
+A model is named `<provider>-<tier>` (ADR 0016): `anthropic-small`,
+`anthropic-medium` or `anthropic-large`. Each provider's key comes from its own
+environment variable, `ANTHROPIC_API_KEY` for Anthropic, and a run whose model
+and judge are from different providers needs both.
 
 Before the first call it prints how many calls the run will make and roughly
 what they cost, the judge's apart, then waits for a yes.
 
 | Flag | Default | What it does |
 |---|---|---|
-| `-model` | `claude-sonnet-5-5` | the model being tested; `stub` runs the dev-mode stub, free and without a key |
-| `-effort` | `low` | the model's effort |
-| `-judge` | `claude-opus-5-5` | the model that judges the issues raised (see below); `none` judges nothing |
+| `-model` | `anthropic-medium` | the `<provider>-<tier>` being tested, the tier the server translates with by default; `stub` runs the dev-mode stub, free and without a key |
+| `-effort` | `low` | the model's effort; a provider with nothing like it ignores it |
+| `-judge` | `anthropic-large` | the `<provider>-<tier>` that judges the issues raised (see below); `none` judges nothing |
 | `-repeats` | `5` | runs per case |
 | `-cases` | `all` | `patterns`, `rules`, a group's name, or one case's name |
 | `-compare` | | an earlier report's `.json`, to say what changed |
@@ -136,7 +142,7 @@ Both files keep theirs in a group called "repairing a refused reply", so
 
 ## Reports
 
-Each run writes `reports/<date>-<model>-<effort>.md`, and `.json` beside it
+Each run writes `reports/<date>-<provider>-<tier>-<effort>.md`, and `.json` beside it
 for `-compare`.
 
 Every call after a run's first means the model's reply did not stand, so a
@@ -145,7 +151,8 @@ run was right in the end. A pass on a later call still passes: the product
 worked, but it took longer and cost more.
 
 Each report starts with:
-- the model and effort;
+- the `<provider>-<tier>` and the model it was, and the effort, so a report
+  still says what ran after a tier moves to a newer model;
 - a hash of each prompt;
 - pass rates on the first call and in the end, wording scores and, with a
   judge, how many replies of issues it judged right (nothing made up, nothing

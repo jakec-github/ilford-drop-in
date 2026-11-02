@@ -373,7 +373,7 @@ func Render(r *Report, earlier *Report) string {
 	fmt.Fprintf(&b, "# Translator eval: %s\n\n", subjectName(r))
 	fmt.Fprintf(&b, "Run %s · %d repeats · prompts %s\n\n", r.Started.Format("2006-01-02 15:04 MST"), r.Repeats, promptList(r.Prompts))
 	if r.Judge != "" {
-		fmt.Fprintf(&b, "Judged by %s · prompt %s\n\n", r.Judge, r.JudgePrompt)
+		fmt.Fprintf(&b, "Judged by %s · prompt %s\n\n", modelName(r.Judge, r.JudgeID), r.JudgePrompt)
 	}
 
 	s := Summarise(r.Cases)
@@ -814,10 +814,20 @@ func dollars(priced bool, v float64) string {
 }
 
 func subjectName(r *Report) string {
+	name := modelName(r.Model, r.ModelID)
 	if r.Effort == "" {
-		return r.Model
+		return name
 	}
-	return fmt.Sprintf("%s, %s effort", r.Model, r.Effort)
+	return fmt.Sprintf("%s, %s effort", name, r.Effort)
+}
+
+// modelName is a <provider>-<tier> with the model it was, or a report's model
+// from before tiers as it was written.
+func modelName(asked, id string) string {
+	if id == "" {
+		return asked
+	}
+	return fmt.Sprintf("%s (%s)", asked, id)
 }
 
 func promptList(prompts map[string]string) string {
@@ -873,10 +883,10 @@ type Estimate struct {
 // replyGuess is the output tokens a call is taken to use, thinking included.
 const replyGuess = 600
 
-// EstimateRun is what translating cases repeats times on model will take,
-// and judging the issues raised on judge, if there is one.
-func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
-	if model == "stub" {
+// EstimateRun is what translating cases repeats times on s will take, and
+// judging the issues raised, if s has a judge.
+func EstimateRun(s Subject, cases []Case, repeats int) Estimate {
+	if s.Base == nil {
 		return Estimate{}
 	}
 	system := map[string]int{}
@@ -884,8 +894,7 @@ func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
 		schema, _ := json.Marshal(p.Schema)
 		system[p.Name] = len(p.System) + len(schema)
 	}
-	e := Estimate{}
-	_, e.Priced = prices[model]
+	e := Estimate{Priced: s.Price != nil, JudgePriced: s.Judge != nil && s.JudgePrice != nil}
 	for _, c := range cases {
 		// A repair's planted call is free, so it can ask one call fewer, and
 		// each is asked with the planted reply and the parser's messages too.
@@ -901,9 +910,9 @@ func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
 		}
 		// About four characters a token.
 		u := llm.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
-		e.Cost += cost(model, u) * float64(repeats)
+		e.Cost += s.Price.Cost(u) * float64(repeats)
 
-		if judge != "" && !c.Translates() {
+		if s.Judge != nil && !c.Translates() {
 			// The issues raised are guessed at a little longer than the
 			// notes of the ones wanted.
 			chars := len(judgeSystem) + len(judgeSchema) + len(c.Text) + 200
@@ -912,9 +921,8 @@ func EstimateRun(model, judge string, cases []Case, repeats int) Estimate {
 			}
 			u := llm.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}
 			e.JudgeCalls += repeats
-			e.JudgeCost += cost(judge, u) * float64(repeats)
+			e.JudgeCost += s.JudgePrice.Cost(u) * float64(repeats)
 		}
 	}
-	_, e.JudgePriced = prices[judge]
 	return e
 }

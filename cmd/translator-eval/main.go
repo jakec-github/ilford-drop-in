@@ -5,6 +5,9 @@
 //	ANTHROPIC_API_KEY=... go run ./cmd/translator-eval
 //	go run ./cmd/translator-eval -model stub -yes
 //
+// A model is named by <provider>-<tier>, such as anthropic-medium (ADR 0016),
+// and each provider's key is read from its own environment variable.
+//
 // A second model, the judge, pairs the issues each reply raises with the ones
 // its case wants. The stub is never judged.
 //
@@ -26,6 +29,8 @@ import (
 
 	"github.com/jakechorley/ilford-drop-in/internal/translatoreval"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm/providers"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 )
 
 func main() {
@@ -36,11 +41,11 @@ func main() {
 }
 
 func run() error {
-	model := flag.String("model", "claude-sonnet-5-5", "the model to evaluate, or stub for the dev-mode stub, which is free")
+	model := flag.String("model", "anthropic-"+string(patterntranslator.Tier), "the <provider>-<tier> to evaluate, or stub for the dev-mode stub, which is free")
 	effort := flag.String("effort", "low", "the model's effort")
 	repeats := flag.Int("repeats", 5, "how many times each case is translated")
 	which := flag.String("cases", "all", "all, patterns, rules, a group's name, or one case's name")
-	judge := flag.String("judge", "claude-opus-5-5", "the model that judges the issues raised, or none")
+	judge := flag.String("judge", "anthropic-large", "the <provider>-<tier> that judges the issues raised, or none")
 	compare := flag.String("compare", "", "an earlier report's .json, to say what changed")
 	parallel := flag.Int("parallel", 4, "how many translations run at once")
 	yes := flag.Bool("yes", false, "run without asking first")
@@ -80,29 +85,28 @@ func run() error {
 	if *model == "stub" {
 		subject.Effort = ""
 	} else {
-		// From the environment only, so a key in a config file is never used
-		// without someone choosing to export it.
-		key := os.Getenv("ANTHROPIC_API_KEY")
-		if key == "" {
-			return fmt.Errorf("set ANTHROPIC_API_KEY to ask %s, or use -model stub", *model)
-		}
-		base := llm.NewAnthropic(key, *model, *effort)
 		// The thinking is there to read beside a reply that went wrong.
-		base.ShowThinking = true
-		subject.Base = base
+		base, id, price, err := ask(*model, llm.Options{Effort: *effort, ShowThinking: true})
+		if err != nil {
+			return err
+		}
+		subject.Base, subject.ModelID, subject.Price = base, id, price
 
 		if *judge != "none" {
 			if *judge == *model {
 				fmt.Printf("Warning: %s is judging its own issues, and may be blind to what it gets wrong.\n", *judge)
 			}
-			subject.JudgeModel = *judge
-			subject.Judge = llm.NewAnthropic(key, *judge, judgeEffort)
+			judgeModel, id, price, err := ask(*judge, llm.Options{Effort: judgeEffort})
+			if err != nil {
+				return err
+			}
+			subject.Judge, subject.JudgeModel, subject.JudgeModelID, subject.JudgePrice = judgeModel, *judge, id, price
 		}
 	}
 
-	e := translatoreval.EstimateRun(*model, subject.JudgeModel, cases, *repeats)
+	e := translatoreval.EstimateRun(subject, cases, *repeats)
 	fmt.Printf("%d cases × %d repeats on %s: %d calls, up to %d if the parser refuses answers",
-		len(cases), *repeats, *model, e.Calls, e.MaxCalls)
+		len(cases), *repeats, name(*model, subject.ModelID), e.Calls, e.MaxCalls)
 	switch {
 	case subject.Base == nil:
 		fmt.Println(", free.")
@@ -112,7 +116,7 @@ func run() error {
 		fmt.Println(". The model has no price, so the cost is unknown.")
 	}
 	if subject.Judge != nil {
-		fmt.Printf("%s judges each reply of issues: about %d calls", subject.JudgeModel, e.JudgeCalls)
+		fmt.Printf("%s judges each reply of issues: about %d calls", name(subject.JudgeModel, subject.JudgeModelID), e.JudgeCalls)
 		if e.JudgePriced {
 			fmt.Printf(", about $%.2f.\n", e.JudgeCost)
 		} else {
@@ -166,6 +170,31 @@ func run() error {
 	}
 	fmt.Printf("Passed %s on the first call, %s in the end%s%s. Report: %s.md\n", s.All.FirstCall(), s.All, repairs, judged, base)
 	return nil
+}
+
+// ask is the Model that ref, a <provider>-<tier>, names: the model id it
+// resolves to, and its price. The provider's key comes from the environment
+// only, so a key in a config file is never used without someone choosing to
+// export it.
+func ask(ref string, o llm.Options) (llm.Model, string, *llm.Price, error) {
+	provider, tier, err := providers.Parse(ref)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	key := os.Getenv(provider.KeyEnv)
+	if key == "" {
+		return nil, "", nil, fmt.Errorf("set %s to ask %s, or use -model stub", provider.KeyEnv, ref)
+	}
+	m := provider.Tiers[tier]
+	return provider.Ask(key, tier, o), m.ID, &m.Price, nil
+}
+
+// name is a <provider>-<tier> with the model it is.
+func name(ref, id string) string {
+	if id == "" {
+		return ref
+	}
+	return fmt.Sprintf("%s (%s)", ref, id)
 }
 
 // judgeEffort is the judge's effort. Pairing a few issues is not hard, and a

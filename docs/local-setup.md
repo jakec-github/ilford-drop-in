@@ -143,7 +143,7 @@ organisations:
     volunteerSheetID: 'your-volunteer-sheet-id'
     serviceVolunteersTab: 'volunteers'       # the tab name in the volunteer sheet
     rotaSheetID: 'your-rota-sheet-id'
-    naturalEditor: true                      # optional: describe the shift pattern, and what an Override matches, in plain English (needs translator below)
+    naturalEditor: true                      # optional: describe the shift pattern, and what an Override matches, in plain English (needs llm below)
 
 # Local Postgres (matches scripts/test-db.sh)
 databaseURL: 'postgres://postgres:postgres@localhost:5432/ilford_dropin_test?sslmode=disable'
@@ -163,12 +163,13 @@ server:
   port: 8080
   sessionSecret: 'change-me-min-16-chars'     # signs session cookies; ≥16 chars
 
-# Optional: the model behind plain-English shift patterns (ADR 0015). Without
-# it the pattern card offers raw entry only. Spend is capped by the Anthropic
-# workspace's limit, not here.
-translator:
+# Optional: the language-model provider behind plain-English shift patterns
+# (ADR 0015, ADR 0016). Without it the pattern card offers raw entry only. The
+# app asks for a tier, and the provider says which of its models that is. Spend
+# is capped by the provider workspace's limit, not here.
+llm:
+  provider: 'anthropic'                      # anthropic
   apiKey: 'sk-ant-your-key'
-  model: 'claude-sonnet-5-5'                 # optional; this is the default
   effort: 'low'                              # optional; low, medium, high, xhigh or max
 ```
 

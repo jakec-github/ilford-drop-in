@@ -25,6 +25,10 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/core/shiftpattern"
 )
 
+// Tier is the size of model the server translates with (ADR 0016). A wrong ok
+// saves a bad pattern, so being right counts for more than price.
+const Tier = llm.Medium
+
 // MaxText is the longest description translated, in characters. A ten-entry
 // pattern written out as descriptions is about 600; anything much longer is
 // not a description of when Shifts happen.

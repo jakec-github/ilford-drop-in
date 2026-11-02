@@ -1,4 +1,4 @@
-package llm
+package anthropic
 
 import (
 	"context"
@@ -9,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 )
 
 // testPrompt is any prompt: the fake API does not read it.
-var testPrompt = NewPrompt("test", "Reply in JSON.", []byte(`{"type":"object"}`))
+var testPrompt = llm.NewPrompt("test", "Reply in JSON.", []byte(`{"type":"object"}`))
 
 // fakeAPI answers every Messages request with a thinking block and a text
 // block, and keeps the last request's body.
@@ -39,28 +41,27 @@ func fakeAPI(t *testing.T) (*httptest.Server, *map[string]any) {
 	return server, &last
 }
 
-func TestAnthropic_LeavesThinkingAsTheModelDefaultsUnlessShown(t *testing.T) {
+func TestModel_LeavesThinkingAsTheModelDefaultsUnlessShown(t *testing.T) {
 	server, last := fakeAPI(t)
-	model := newAnthropic("claude-haiku-5-5", "low", option.WithBaseURL(server.URL), option.WithAPIKey("test"))
+	model := newModel("claude-haiku-5-5", llm.Options{Effort: "low"}, option.WithBaseURL(server.URL), option.WithAPIKey("test"))
 
-	got, err := model.Reply(context.Background(), testPrompt, []Turn{{Role: User, Text: "Sundays"}})
+	got, err := model.Reply(context.Background(), testPrompt, []llm.Turn{{Role: llm.User, Text: "Sundays"}})
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
 	if _, asked := (*last)["thinking"]; asked {
 		t.Errorf("the request sets thinking: %v", (*last)["thinking"])
 	}
-	if got.Text != `{"status":"ok","pattern":"p"}` || got.Usage != (Usage{InputTokens: 100, OutputTokens: 40}) {
+	if got.Text != `{"status":"ok","pattern":"p"}` || got.Usage != (llm.Usage{InputTokens: 100, OutputTokens: 40}) {
 		t.Errorf("response: %+v", got)
 	}
 }
 
-func TestAnthropic_ShowingThinkingAsksForItsSummaryAndReturnsIt(t *testing.T) {
+func TestModel_ShowingThinkingAsksForItsSummaryAndReturnsIt(t *testing.T) {
 	server, last := fakeAPI(t)
-	model := newAnthropic("claude-haiku-5-5", "low", option.WithBaseURL(server.URL), option.WithAPIKey("test"))
-	model.ShowThinking = true
+	model := newModel("claude-haiku-5-5", llm.Options{Effort: "low", ShowThinking: true}, option.WithBaseURL(server.URL), option.WithAPIKey("test"))
 
-	got, err := model.Reply(context.Background(), testPrompt, []Turn{{Role: User, Text: "Sundays"}})
+	got, err := model.Reply(context.Background(), testPrompt, []llm.Turn{{Role: llm.User, Text: "Sundays"}})
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}

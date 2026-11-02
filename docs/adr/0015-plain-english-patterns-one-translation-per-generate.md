@@ -1,7 +1,9 @@
 # Plain-English patterns: one stateless translation per Generate
 
 Status: proposed, 2026-11-01. Builds on [ADR 0014](0014-pattern-entries-carry-their-own-start-and-length.md);
-ADR 0013's one evaluator stands.
+ADR 0013's one evaluator stands. Partly superseded by
+[ADR 0016](0016-language-models-by-provider-and-tier.md): the model is a tier
+and the provider is chosen in config.
 
 ## In plain words
 
@@ -58,14 +60,15 @@ the model is not available.
   and `issues`. The schema cannot say a string is valid iCalendar — that stays
   the parser's job — and a `refusal` or `max_tokens` stop counts as a failed call.
 
-- **Sonnet 5.5 at low effort, named in server config.** A wrong `ok` saves a bad
+- **Sonnet 5.5 at low effort, named in server config.** *Superseded by ADR
+  0016:* the translator asks for the `medium` tier, Sonnet 5.5 on Anthropic. A wrong `ok` saves a bad
   pattern, so being right counts for more than price at a handful of Generates a
   month; in the playground Haiku 5.5 once raised an issue that was not there.
   Low effort because it is a short, bounded translation behind a button.
   Choosing between models on evidence is for when there are evaluations to
   choose by.
 
-- **No provider abstraction.** The Anthropic Go SDK is called directly behind a
+- **No provider abstraction.** *Superseded by ADR 0016.* The Anthropic Go SDK is called directly behind a
   small `Translator` interface. The interface is there for tests and the dev
   stack, not for a second provider.
 

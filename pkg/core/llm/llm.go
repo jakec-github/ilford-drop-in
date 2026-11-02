@@ -72,3 +72,65 @@ type Usage struct {
 	CacheReadTokens  int64 `json:"cacheReadTokens"`
 	CacheWriteTokens int64 `json:"cacheWriteTokens"`
 }
+
+// Tier is how big a model is asked for. Code names a tier, never a model:
+// each Provider says which of its models a tier is (ADR 0016).
+type Tier string
+
+const (
+	Small  Tier = "small"
+	Medium Tier = "medium"
+	Large  Tier = "large"
+)
+
+// Tiers is every tier, smallest first.
+var Tiers = []Tier{Small, Medium, Large}
+
+// Options are how a Model is asked.
+type Options struct {
+	// Effort is how hard the model thinks: low, medium, high, xhigh or max. A
+	// provider with nothing like it ignores it.
+	Effort string
+	// ShowThinking asks for a summary of the model's thinking with each reply,
+	// for the eval to record. The server leaves it off: nothing reads it there,
+	// and the thinking the model does is the same either way.
+	ShowThinking bool
+}
+
+// Price is what a model charges, in US dollars per million tokens.
+type Price struct {
+	Input, Output, CacheRead, CacheWrite float64
+}
+
+// Cost is what u costs at p, in US dollars; nothing at a nil Price.
+func (p *Price) Cost(u Usage) float64 {
+	if p == nil {
+		return 0
+	}
+	return (float64(u.InputTokens)*p.Input +
+		float64(u.OutputTokens)*p.Output +
+		float64(u.CacheReadTokens)*p.CacheRead +
+		float64(u.CacheWriteTokens)*p.CacheWrite) / 1e6
+}
+
+// TierModel is the model a Provider answers a tier with.
+type TierModel struct {
+	ID    string
+	Price Price
+}
+
+// Provider is a company whose models answer: its name in config and in the
+// eval's <provider>-<tier>, the environment variable the eval reads its key
+// from, and which of its models each tier is.
+type Provider struct {
+	Name   string
+	KeyEnv string
+	Tiers  map[Tier]TierModel
+	// New is the Model that asks the model id with apiKey.
+	New func(apiKey, id string, o Options) Model
+}
+
+// Ask is the Model that answers tier t, with apiKey.
+func (p Provider) Ask(apiKey string, t Tier, o Options) Model {
+	return p.New(apiKey, p.Tiers[t].ID, o)
+}

@@ -73,11 +73,11 @@ func (j Judgement) MadeUp() int {
 }
 
 // judge asks the judge model to pair the issues raised with the case's.
-func judge(ctx context.Context, model llm.Model, name string, c Case, raised []patterntranslator.Issue) *Judgement {
+func judge(ctx context.Context, model llm.Model, price *llm.Price, c Case, raised []patterntranslator.Issue) *Judgement {
 	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
 	defer cancel()
 	resp, err := model.Reply(ctx, judgePrompt, []llm.Turn{{Role: llm.User, Text: judgeTurn(c, raised)}})
-	j := &Judgement{Usage: resp.Usage, Cost: cost(name, resp.Usage)}
+	j := &Judgement{Usage: resp.Usage, Cost: price.Cost(resp.Usage)}
 	if err == nil {
 		j.Raised, j.Missed, err = readJudgement(resp.Text, len(raised), len(c.Expect.Issues))
 	}
