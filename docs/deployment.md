@@ -8,7 +8,7 @@ only by hand.
 
 ## Merges deploy preprod
 
-Every merge to main builds `ghcr.io/jakec-github/ilford-drop-in`, tagged with
+Every merge to main builds `ghcr.io/jakec-github/rota-wise`, tagged with
 the git SHA and `latest`, smoke-tests it, and deploys it to
 [preprod](#preprod). Nothing else: a merge never changes the prod container.
 While preprod is [switched off](#switching-it-off) the deploy skips it with a
@@ -38,10 +38,13 @@ Prod is released by hand: **Actions → Deploy to production → Run workflow**.
   bytes preprod ran.
 - **Give an older commit to roll back.** Full or short SHA; it must be a merge
   to main, since only those have an image. That is the whole of rollback.
+  Merges from before the repo was renamed from `ilford-drop-in` (#316 and
+  earlier; #321 on are fine) have their image only under the old name, so
+  they cannot be rolled back to this way.
 
 Before anything on the droplet changes, the workflow reads which commit each
 environment runs, resolves the one asked for, and checks that
-`ghcr.io/jakec-github/ilford-drop-in:<sha>` exists. A branch name, an unknown
+`ghcr.io/jakec-github/rota-wise:<sha>` exists. A branch name, an unknown
 commit or a commit with no image fails there and touches nothing. A commit
 other than preprod's is deployed with a notice saying so. The run's summary
 shows prod's commit before and after, and preprod's.

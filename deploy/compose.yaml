@@ -63,7 +63,7 @@ services:
   # would replace the container.
   app:
     <<: *app
-    image: ghcr.io/jakec-github/ilford-drop-in:${PROD_IMAGE_TAG:-latest}
+    image: ghcr.io/jakec-github/rota-wise:${PROD_IMAGE_TAG:-latest}
     volumes:
       # The environment's directory, not its files individually. A single-file
       # bind mount pins the inode it resolved at container start, so replacing
@@ -79,7 +79,7 @@ services:
 
   app-preprod:
     <<: *app
-    image: ghcr.io/jakec-github/ilford-drop-in:${PREPROD_IMAGE_TAG:-latest}
+    image: ghcr.io/jakec-github/rota-wise:${PREPROD_IMAGE_TAG:-latest}
     command: ["-env", "preprod"]
     volumes:
       - ./env/preprod:/app/env/preprod:ro
