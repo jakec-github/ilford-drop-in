@@ -618,10 +618,11 @@ func TestLoadFromPath_ShiftSizeKeyIsIgnoredNotRejected(t *testing.T) {
 	assert.Contains(t, logged.String(), "defaultShiftSize")
 }
 
-func TestLoadFromPath_TranslatorAndNaturalEditor(t *testing.T) {
+func TestLoadFromPath_LLMAndNaturalEditor(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	yaml := strings.Replace(minimalConfigYAML, `    rotaSheetID: "rota456"`, "    rotaSheetID: \"rota456\"\n    naturalEditor: true", 1) + `
-translator:
+llm:
+  provider: anthropic
   apiKey: "sk-ant-placeholder"
 `
 	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
@@ -629,28 +630,49 @@ translator:
 	cfg, err := LoadFromPath(path)
 	require.NoError(t, err)
 	assert.True(t, cfg.Organisations[0].NaturalEditor)
-	require.NotNil(t, cfg.Translator)
-	assert.Equal(t, "sk-ant-placeholder", cfg.Translator.APIKey)
-	// Empty model and effort mean the defaults, applied where the model is built.
-	assert.Empty(t, cfg.Translator.Model)
+	require.NotNil(t, cfg.LLM)
+	assert.Equal(t, "anthropic", cfg.LLM.Provider)
+	assert.Equal(t, "sk-ant-placeholder", cfg.LLM.APIKey)
+	// An empty effort means the default, applied where the model is built.
+	assert.Empty(t, cfg.LLM.Effort)
 }
 
-func TestValidate_Translator(t *testing.T) {
+// translator: was where the key went until ADR 0016. A config still carrying
+// it loads, with a warning, and has no provider: downtime for the natural
+// editor rather than a server that will not start.
+func TestLoadFromPath_TranslatorKeyIsIgnoredNotRejected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(minimalConfigYAML+"translator:\n  apiKey: \"sk-ant-placeholder\"\n"), 0o600))
+
+	logged := captureWarnings(t)
+
+	cfg, err := LoadFromPath(path)
+	require.NoError(t, err)
+	assert.Nil(t, cfg.LLM)
+	assert.Contains(t, logged.String(), "translator")
+}
+
+func TestValidate_LLM(t *testing.T) {
 	cases := map[string]struct {
-		translator *TranslatorConfig
-		wantErr    bool
+		llm     *LLMConfig
+		wantErr bool
 	}{
-		"absent":            {nil, false},
-		"a key alone":       {&TranslatorConfig{APIKey: "k"}, false},
-		"model and effort":  {&TranslatorConfig{APIKey: "k", Model: "claude-haiku-5-5", Effort: "medium"}, false},
-		"no key":            {&TranslatorConfig{Model: "claude-sonnet-5-5"}, true},
-		"an unknown effort": {&TranslatorConfig{APIKey: "k", Effort: "lots"}, true},
+		"absent":              {nil, false},
+		"a provider and key":  {&LLMConfig{Provider: "anthropic", APIKey: "k"}, false},
+		"with an effort":      {&LLMConfig{Provider: "anthropic", APIKey: "k", Effort: "medium"}, false},
+		"no key":              {&LLMConfig{Provider: "anthropic"}, true},
+		"no provider":         {&LLMConfig{APIKey: "k"}, true},
+		"an unknown provider": {&LLMConfig{Provider: "openai", APIKey: "k"}, true},
+		"an unknown effort":   {&LLMConfig{Provider: "anthropic", APIKey: "k", Effort: "lots"}, true},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			cfg := baseConfig()
-			cfg.Translator = tc.translator
+			cfg.LLM = tc.llm
 			err := Validate(cfg)
+			if name == "an unknown provider" {
+				assert.ErrorContains(t, err, "choose anthropic")
+			}
 			if tc.wantErr {
 				assert.Error(t, err)
 			} else {

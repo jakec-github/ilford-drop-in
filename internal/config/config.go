@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
+
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm/providers"
 )
 
 // ServerConfig holds settings for the HTTP server
@@ -55,33 +57,32 @@ type Organisation struct {
 	// NaturalEditor lets this Organisation's Organisers describe its Shift
 	// pattern, and what each Override matches, in plain English (ADR 0015).
 	// Off unless set, so a deployment calls
-	// no paid API until someone chooses it; it needs the server's translator
-	// too.
+	// no paid API until someone chooses it; it needs the server's llm
+	// provider too.
 	NaturalEditor bool `yaml:"naturalEditor,omitempty"`
 }
 
-// TranslatorConfig is the language model the natural editor translates with
-// (ADR 0015). One for the whole server; each Organisation opts in with
-// naturalEditor. Without it no Organisation has the natural editor, except in
-// dev mode, which stands a free stub in for it.
-type TranslatorConfig struct {
-	// APIKey is a Claude API key. Give the app an Anthropic workspace of its
-	// own with a monthly spend limit: reaching the limit is the app's only
+// LLMConfig is the language-model provider the server asks, with its key
+// (ADR 0016). One for the whole server: the natural editor translates with it,
+// and each Organisation opts in with naturalEditor. Without it no Organisation
+// has the natural editor, except in dev mode, which stands a free stub in for
+// it.
+type LLMConfig struct {
+	// Provider is whose models answer. Code asks for a tier, and the provider
+	// says which of its models that is. Validate checks it against the
+	// providers there are, and lists them when it is none of them.
+	Provider string `yaml:"provider" validate:"required"`
+	// APIKey is the provider's API key. Give the app a workspace of its own
+	// with a monthly spend limit: reaching the limit is the app's only
 	// spending cap.
 	APIKey string `yaml:"apiKey" validate:"required"`
-	// Model is the model asked, claude-sonnet-5-5 when empty.
-	Model string `yaml:"model,omitempty"`
-	// Effort is how hard it thinks — low, medium, high, xhigh or max — and low
-	// when empty.
+	// Effort is how hard the model thinks — low, medium, high, xhigh or max —
+	// and low when empty. A provider with nothing like it ignores it.
 	Effort string `yaml:"effort,omitempty" validate:"omitempty,oneof=low medium high xhigh max"`
 }
 
-// DefaultTranslatorModel and DefaultTranslatorEffort are what an empty Model
-// and Effort mean.
-const (
-	DefaultTranslatorModel  = "claude-sonnet-5-5"
-	DefaultTranslatorEffort = "low"
-)
+// DefaultEffort is what an empty Effort means.
+const DefaultEffort = "low"
 
 // organisationID is what an Organisation id may be: the same rule the
 // organisation table's CHECK holds it to, so a bad id fails here, at load,
@@ -194,9 +195,10 @@ type Config struct {
 	DatabaseURL   string         `yaml:"databaseURL" validate:"required"`
 	Server        *ServerConfig  `yaml:"server,omitempty"`
 	DevMode       *DevModeConfig `yaml:"devMode,omitempty"`
-	// Translator is the language model behind the natural editor; absent
-	// means nobody has one.
-	Translator *TranslatorConfig `yaml:"translator,omitempty"`
+	// LLM is the language-model provider behind the natural editor; absent
+	// means nobody has one. The translator: key it replaced warns like any
+	// unknown key, and leaves the natural editor off until it is rewritten.
+	LLM *LLMConfig `yaml:"llm,omitempty"`
 	// gmailUserID and gmailSender are gone too (#256). Nothing had read them
 	// since mail began to be sent as the signed-in Organiser, through the
 	// gmail.send grant they give when they send a round.
@@ -431,6 +433,11 @@ func unknownKeys(data []byte) []UnknownKey {
 func Validate(cfg *Config) error {
 	if err := validate.Struct(cfg); err != nil {
 		return fmt.Errorf("config validation failed: %w", err)
+	}
+	if cfg.LLM != nil {
+		if _, err := providers.Named(cfg.LLM.Provider); err != nil {
+			return fmt.Errorf("llm.provider: %w", err)
+		}
 	}
 
 	return checkOrganisations(cfg.Organisations)

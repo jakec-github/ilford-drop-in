@@ -25,6 +25,13 @@ type fakeModel struct {
 
 var callUsage = llm.Usage{InputTokens: 1000, OutputTokens: 200}
 
+// The tests' prices: the subject's, $2 a million in and $10 out, and the
+// judge's, twice that.
+var (
+	subjectPrice = &llm.Price{Input: 2, Output: 10}
+	judgePrice   = &llm.Price{Input: 4, Output: 20}
+)
+
 func (m *fakeModel) Reply(_ context.Context, _ *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	m.mu.Lock()
 	m.turns = append(m.turns, turns[0].Text)
@@ -62,7 +69,7 @@ func TestRun_EachRepeatIsGradedWithTheCallsItTookAndWhatTheyCost(t *testing.T) {
 	}}
 	var progress []int
 	report := Run(context.Background(),
-		Subject{Model: "claude-sonnet-5-5", Effort: "low", Base: model},
+		Subject{Model: "anthropic-medium", ModelID: "claude-sonnet-5-5", Price: subjectPrice, Effort: "low", Base: model},
 		[]Case{sundaysCase()},
 		Options{Repeats: 3, Parallel: 2, Progress: func(done, total int) {
 			if total != 3 {
@@ -81,7 +88,7 @@ func TestRun_EachRepeatIsGradedWithTheCallsItTookAndWhatTheyCost(t *testing.T) {
 		if r.Usage.InputTokens != 2000 || r.Usage.OutputTokens != 400 {
 			t.Errorf("usage: %+v", r.Usage)
 		}
-		// Sonnet 5.5: $2 a million in, $10 out.
+		// $2 a million in, $10 out.
 		if want := 2000*2/1e6 + 400*10/1e6; r.Cost != want {
 			t.Errorf("cost = %v, want %v", r.Cost, want)
 		}
@@ -92,7 +99,7 @@ func TestRun_EachRepeatIsGradedWithTheCallsItTookAndWhatTheyCost(t *testing.T) {
 	if len(progress) != 3 || progress[2] != 3 {
 		t.Errorf("progress: %v", progress)
 	}
-	if !report.Priced || report.Repeats != 3 || report.Model != "claude-sonnet-5-5" {
+	if !report.Priced || report.Repeats != 3 || report.Model != "anthropic-medium" || report.ModelID != "claude-sonnet-5-5" {
 		t.Errorf("header: %+v", report)
 	}
 	for _, p := range patterntranslator.Prompts() {
@@ -180,7 +187,7 @@ func (m *turnsModel) Reply(_ context.Context, _ *llm.Prompt, turns []llm.Turn) (
 
 func TestRun_EachReplyKeepsTheThinkingBehindIt(t *testing.T) {
 	model := &turnsModel{reply: okPattern(sundays), thinking: "Sundays, 19:30 to 22:30."}
-	r := Run(context.Background(), Subject{Model: "claude-sonnet-5-5", Base: model}, []Case{sundaysCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
+	r := Run(context.Background(), Subject{Model: "m", Price: subjectPrice, Base: model}, []Case{sundaysCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
 
 	if len(r.Replies) != 1 || r.Replies[0].Thinking != "Sundays, 19:30 to 22:30." {
 		t.Errorf("replies: %+v", r.Replies)
@@ -198,7 +205,7 @@ func repairCase() Case {
 // the model's first call is the loop's second.
 func TestRun_ARepairCasesFirstCallIsThePlantedReply(t *testing.T) {
 	model := &turnsModel{reply: okPattern(sundays)}
-	r := Run(context.Background(), Subject{Model: "claude-sonnet-5-5", Base: model}, []Case{repairCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
+	r := Run(context.Background(), Subject{Model: "m", Price: subjectPrice, Base: model}, []Case{repairCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
 
 	if len(model.calls) != 1 {
 		t.Fatalf("the model was asked %d times, want once", len(model.calls))
@@ -221,7 +228,7 @@ func TestRun_ARepairCasesFirstCallIsThePlantedReply(t *testing.T) {
 		t.Errorf("run: %+v", r)
 	}
 	// Only the model's own call is paid for.
-	if r.Usage != callUsage || r.Cost != cost("claude-sonnet-5-5", callUsage) {
+	if r.Usage != callUsage || r.Cost != subjectPrice.Cost(callUsage) {
 		t.Errorf("usage %+v, cost %v: the planted call is not free", r.Usage, r.Cost)
 	}
 }

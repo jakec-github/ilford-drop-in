@@ -19,6 +19,7 @@ import (
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/gmailclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/clients/sheetsclient"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
+	"github.com/jakechorley/ilford-drop-in/pkg/core/llm/providers"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/patterntranslator"
 	"github.com/jakechorley/ilford-drop-in/pkg/core/services"
 	"github.com/jakechorley/ilford-drop-in/pkg/db"
@@ -154,17 +155,17 @@ func run(env string, portOverride int) error {
 			return gmailclient.NewClientFromToken(ctx, token)
 		}
 
-		// Plain-English patterns need a key; without one the natural editor
-		// says it is not set up, and everything else is unchanged (ADR 0015).
-		if t := cfg.Translator; t != nil {
-			model, effort := t.Model, t.Effort
-			if model == "" {
-				model = config.DefaultTranslatorModel
-			}
+		// Plain-English patterns need a provider; without one the natural
+		// editor says it is not set up, and everything else is unchanged
+		// (ADR 0015, ADR 0016).
+		if l := cfg.LLM; l != nil {
+			// Validate has checked the name.
+			provider, _ := providers.Named(l.Provider)
+			effort := l.Effort
 			if effort == "" {
-				effort = config.DefaultTranslatorEffort
+				effort = config.DefaultEffort
 			}
-			shared.translator = patterntranslator.New(llm.NewAnthropic(t.APIKey, model, effort))
+			shared.translator = patterntranslator.New(provider.Ask(l.APIKey, patterntranslator.Tier, llm.Options{Effort: effort}))
 		}
 	}
 

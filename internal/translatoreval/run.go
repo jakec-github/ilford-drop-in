@@ -16,15 +16,22 @@ import (
 
 // Subject is what is being evaluated: a model at an effort.
 type Subject struct {
-	Model  string
-	Effort string
+	// Model is the <provider>-<tier> asked, or stub; ModelID is the model
+	// that tier is, and Price what it charges, nil where that is unknown.
+	Model   string
+	ModelID string
+	Price   *llm.Price
+	Effort  string
 	// Base asks the model. Nil runs the dev-mode stub instead, which costs
 	// nothing and makes no calls.
 	Base llm.Model
 	// Judge pairs the issues each run raises with the ones its case wants,
-	// asking JudgeModel. Nil judges nothing.
-	Judge      llm.Model
-	JudgeModel string
+	// asking JudgeModel, which is JudgeModelID at JudgePrice. Nil judges
+	// nothing.
+	Judge        llm.Model
+	JudgeModel   string
+	JudgeModelID string
+	JudgePrice   *llm.Price
 }
 
 // Options are how a run goes.
@@ -41,19 +48,26 @@ type Options struct {
 
 // Report is a run: what was evaluated, and every case's runs.
 type Report struct {
+	// Model is the <provider>-<tier> asked, and ModelID the model it was
+	// when the run was made, so a report still says what ran after a tier
+	// moves. A report from before tiers has a model id as its Model, and no
+	// ModelID.
 	Model   string    `json:"model"`
+	ModelID string    `json:"modelId,omitempty"`
 	Effort  string    `json:"effort"`
 	Started time.Time `json:"started"`
 	Repeats int       `json:"repeats"`
 	// Prompts is a hash of each prompt the translators asked under, so two
 	// reports say whether they ran against the same ones.
 	Prompts map[string]string `json:"prompts"`
-	// Priced is whether the model is in the price table, and so whether the
-	// costs mean anything.
+	// Priced is whether the model has a price, and so whether the costs mean
+	// anything.
 	Priced bool `json:"priced"`
-	// Judge is the model that judged the issues raised, and JudgePrompt a
-	// hash of what it was asked under; both are empty when nothing was.
+	// Judge is the <provider>-<tier> that judged the issues raised, JudgeID
+	// the model it was, and JudgePrompt a hash of what it was asked under;
+	// all are empty when nothing was.
 	Judge       string       `json:"judge,omitempty"`
+	JudgeID     string       `json:"judgeId,omitempty"`
 	JudgePrompt string       `json:"judgePrompt,omitempty"`
 	Cases       []CaseReport `json:"cases"`
 }
@@ -134,18 +148,18 @@ func (r RunReport) Latency() time.Duration {
 func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 	o.Repeats = max(o.Repeats, 1)
 	o.Parallel = max(o.Parallel, 1)
-	_, priced := prices[s.Model]
 	report := &Report{
 		Model:   s.Model,
+		ModelID: s.ModelID,
 		Effort:  s.Effort,
 		Started: time.Now().UTC().Truncate(time.Second),
 		Repeats: o.Repeats,
 		Prompts: promptHashes(),
-		Priced:  priced && s.Base != nil,
+		Priced:  s.Price != nil && s.Base != nil,
 		Cases:   make([]CaseReport, len(cases)),
 	}
 	if s.Judge != nil {
-		report.Judge, report.JudgePrompt = s.JudgeModel, judgeHash()
+		report.Judge, report.JudgeID, report.JudgePrompt = s.JudgeModel, s.JudgeModelID, judgeHash()
 	}
 	for i, c := range cases {
 		report.Cases[i] = CaseReport{
@@ -168,7 +182,7 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 				c := cases[j.c]
 				run := translateOnce(ctx, s, c)
 				if s.Judge != nil && run.Outcome == Raised && !c.Translates() {
-					run.Judgement = judge(ctx, s.Judge, s.JudgeModel, c, run.Issues)
+					run.Judgement = judge(ctx, s.Judge, s.JudgePrice, c, run.Issues)
 				}
 				mu.Lock()
 				report.Cases[j.c].Runs[j.r] = run
@@ -244,7 +258,7 @@ func translateOnce(ctx context.Context, s Subject, c Case) RunReport {
 		Calls:        len(rec.replies),
 		Replies:      rec.replies,
 		Usage:        rec.usage,
-		Cost:         cost(s.Model, rec.usage),
+		Cost:         s.Price.Cost(rec.usage),
 		LatencyMS:    latency.Milliseconds(),
 		TimedOut:     errors.Is(ctx.Err(), context.DeadlineExceeded),
 	}

@@ -52,9 +52,10 @@ func judgedRun(t *testing.T, judge *judgeModel) RunReport {
 	t.Helper()
 	model := &fakeModel{replies: map[string][]string{"Sunday evenings": {raisedTwo()}}}
 	report := Run(context.Background(),
-		Subject{Model: "claude-haiku-5-5", Base: model, JudgeModel: "claude-opus-5-5", Judge: judge},
+		Subject{Model: "anthropic-small", Price: subjectPrice, Base: model,
+			JudgeModel: "anthropic-large", JudgeModelID: "claude-opus-5-5", JudgePrice: judgePrice, Judge: judge},
 		[]Case{twoIssuesCase()}, Options{Repeats: 1})
-	if report.Judge != "claude-opus-5-5" || len(report.JudgePrompt) != 12 {
+	if report.Judge != "anthropic-large" || report.JudgeID != "claude-opus-5-5" || len(report.JudgePrompt) != 12 {
 		t.Errorf("report names judge %q, prompt %q", report.Judge, report.JudgePrompt)
 	}
 	return report.Cases[0].Runs[0]
@@ -79,7 +80,7 @@ func TestJudge_PairsEachIssueRaisedAndSaysWhichWereMissed(t *testing.T) {
 		t.Errorf("made up = %d, want 1", j.MadeUp())
 	}
 	// The judge's cost is its own, apart from the run's.
-	if j.Usage != callUsage || j.Cost != cost("claude-opus-5-5", callUsage) || r.Cost != cost("claude-haiku-5-5", callUsage) {
+	if j.Usage != callUsage || j.Cost != judgePrice.Cost(callUsage) || r.Cost != subjectPrice.Cost(callUsage) {
 		t.Errorf("judge usage %+v cost %v; run cost %v", j.Usage, j.Cost, r.Cost)
 	}
 
