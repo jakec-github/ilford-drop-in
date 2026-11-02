@@ -382,6 +382,9 @@ func writeFailures(b *strings.Builder, c CaseReport) {
 		if run.Outcome == GaveUp {
 			for n, reply := range run.Replies {
 				fmt.Fprintf(b, "  - Call %d: %s\n", n+1, replyLine(reply))
+				if thought := strings.Join(strings.Fields(reply.Thinking), " "); thought != "" {
+					fmt.Fprintf(b, "    - Thought: %s\n", thought)
+				}
 			}
 		}
 		if d := run.Shifts; d != nil {

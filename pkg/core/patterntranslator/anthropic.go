@@ -15,6 +15,11 @@ const maxTokens = 2000
 
 // Anthropic is a Model on the Claude API.
 type Anthropic struct {
+	// ShowThinking asks for a summary of the model's thinking with each reply,
+	// for the eval to record. The server leaves it off: nothing reads it there,
+	// and the thinking the model does is the same either way.
+	ShowThinking bool
+
 	client anthropic.Client
 	model  string
 	effort anthropic.OutputConfigEffort
@@ -24,14 +29,18 @@ type Anthropic struct {
 // abstraction sits over it: the Model interface is there for tests and the dev
 // stack (ADR 0015).
 func NewAnthropic(apiKey, model, effort string) *Anthropic {
+	return newAnthropic(model, effort, option.WithAPIKey(apiKey))
+}
+
+func newAnthropic(model, effort string, opts ...option.RequestOption) *Anthropic {
 	return &Anthropic{
-		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
+		client: anthropic.NewClient(opts...),
 		model:  model,
 		effort: anthropic.OutputConfigEffort(effort),
 	}
 }
 
-func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (string, Usage, error) {
+func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (Response, error) {
 	messages := make([]anthropic.MessageParam, 0, len(turns))
 	for _, t := range turns {
 		block := anthropic.NewTextBlock(t.Text)
@@ -42,7 +51,7 @@ func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (st
 		}
 	}
 
-	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(a.model),
 		MaxTokens: maxTokens,
 		System:    []anthropic.TextBlockParam{{Text: prompt.System}},
@@ -51,28 +60,39 @@ func (a *Anthropic) Reply(ctx context.Context, prompt *Prompt, turns []Turn) (st
 			Effort: a.effort,
 			Format: anthropic.JSONOutputFormatParam{Schema: prompt.Schema},
 		},
-	})
-	if err != nil {
-		return "", Usage{}, err
 	}
-	usage := Usage{
+	if a.ShowThinking {
+		// Adaptive is the default; display is what changes. Without it the
+		// thinking comes back empty.
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
+			Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
+		}}
+	}
+	resp, err := a.client.Messages.New(ctx, params)
+	if err != nil {
+		return Response{}, err
+	}
+
+	var text, thinking strings.Builder
+	for _, block := range resp.Content {
+		switch b := block.AsAny().(type) {
+		case anthropic.TextBlock:
+			text.WriteString(b.Text)
+		case anthropic.ThinkingBlock:
+			thinking.WriteString(b.Thinking)
+		}
+	}
+	out := Response{Text: text.String(), Thinking: thinking.String(), Usage: Usage{
 		InputTokens:      resp.Usage.InputTokens,
 		OutputTokens:     resp.Usage.OutputTokens,
 		CacheReadTokens:  resp.Usage.CacheReadInputTokens,
 		CacheWriteTokens: resp.Usage.CacheCreationInputTokens,
-	}
+	}}
 
 	// Neither stop leaves a reply that is sure to match the schema.
 	switch resp.StopReason {
 	case anthropic.StopReasonRefusal, anthropic.StopReasonMaxTokens:
-		return "", usage, fmt.Errorf("%w: stopped for %s", ErrUnusableReply, resp.StopReason)
+		return out, fmt.Errorf("%w: stopped for %s", ErrUnusableReply, resp.StopReason)
 	}
-
-	var text strings.Builder
-	for _, block := range resp.Content {
-		if b, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(b.Text)
-		}
-	}
-	return text.String(), usage, nil
+	return out, nil
 }

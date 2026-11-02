@@ -82,7 +82,10 @@ func run() error {
 		if key == "" {
 			return fmt.Errorf("set ANTHROPIC_API_KEY to ask %s, or use -model stub", *model)
 		}
-		subject.Base = patterntranslator.NewAnthropic(key, *model, *effort)
+		base := patterntranslator.NewAnthropic(key, *model, *effort)
+		// The thinking is there to read beside a reply that went wrong.
+		base.ShowThinking = true
+		subject.Base = base
 	}
 
 	e := translatoreval.EstimateRun(*model, cases, *repeats)

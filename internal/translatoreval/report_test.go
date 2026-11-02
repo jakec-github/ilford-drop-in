@@ -81,7 +81,7 @@ func TestRender_SaysWhatRanAndWhatFailed(t *testing.T) {
 	r.Cases[0].Runs[1].Shifts = &ShiftDiff{Missing: []string{"Sun 1 Nov 2026 19:30 for 3h"}, MissingCount: 1}
 	r.Cases[1].Runs[0].Issues = []patterntranslator.Issue{{Kind: patterntranslator.Missing, Message: "Add how long"}}
 	r.Cases[2].Runs[0].Replies = []Reply{
-		{Text: "{\"status\":\"issues\",\n\"issues\":[]}"},
+		{Text: "{\"status\":\"issues\",\n\"issues\":[]}", Thinking: "The time is clear.\n\nBut the length is not."},
 		{Error: "the model's reply cannot be used: stopped for refusal"},
 	}
 	md := Render(r, nil)
@@ -107,6 +107,7 @@ func TestRender_SaysWhatRanAndWhatFailed(t *testing.T) {
 		"## Wording",
 		`- "Add how long the shifts on a Sunday evening run, in hours or by when they end please": 17 words, limit 15`,
 		"- Call 1: `` {\"status\":\"issues\", \"issues\":[]} ``",
+		"- Call 1: `` {\"status\":\"issues\", \"issues\":[]} ``\n    - Thought: The time is clear. But the length is not.\n  - Call 2: no reply",
 		"- Call 2: no reply: the model's reply cannot be used: stopped for refusal",
 	} {
 		if !strings.Contains(md, want) {

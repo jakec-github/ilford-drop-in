@@ -24,19 +24,19 @@ type fakeModel struct {
 
 var callUsage = patterntranslator.Usage{InputTokens: 1000, OutputTokens: 200}
 
-func (m *fakeModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
+func (m *fakeModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
 	m.mu.Lock()
 	m.turns = append(m.turns, turns[0].Text)
 	m.mu.Unlock()
 	if m.err != nil {
-		return "", patterntranslator.Usage{}, m.err
+		return patterntranslator.Response{}, m.err
 	}
 	for text, replies := range m.replies {
 		if strings.Contains(turns[0].Text, "<description>\n"+text+"\n</description>") {
-			return replies[min(len(turns)/2, len(replies)-1)], callUsage, nil
+			return patterntranslator.Response{Text: replies[min(len(turns)/2, len(replies)-1)], Usage: callUsage}, nil
 		}
 	}
-	return "", callUsage, errors.New("fakeModel: no reply for this description")
+	return patterntranslator.Response{Usage: callUsage}, errors.New("fakeModel: no reply for this description")
 }
 
 func okPattern(p string) string {
@@ -164,16 +164,26 @@ func TestRun_TheStubCostsNothing(t *testing.T) {
 	}
 }
 
-// turnsModel replies with the same answer every call and keeps every call's
-// turns.
+// turnsModel replies with the same answer and thinking every call and keeps
+// every call's turns.
 type turnsModel struct {
-	reply string
-	calls [][]patterntranslator.Turn
+	reply    string
+	thinking string
+	calls    [][]patterntranslator.Turn
 }
 
-func (m *turnsModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
+func (m *turnsModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (patterntranslator.Response, error) {
 	m.calls = append(m.calls, slices.Clone(turns))
-	return m.reply, callUsage, nil
+	return patterntranslator.Response{Text: m.reply, Thinking: m.thinking, Usage: callUsage}, nil
+}
+
+func TestRun_EachReplyKeepsTheThinkingBehindIt(t *testing.T) {
+	model := &turnsModel{reply: okPattern(sundays), thinking: "Sundays, 19:30 to 22:30."}
+	r := Run(context.Background(), Subject{Model: "claude-sonnet-5-5", Base: model}, []Case{sundaysCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
+
+	if len(r.Replies) != 1 || r.Replies[0].Thinking != "Sundays, 19:30 to 22:30." {
+		t.Errorf("replies: %+v", r.Replies)
+	}
 }
 
 func repairCase() Case {
