@@ -113,6 +113,20 @@ groups:
           issues:
             - {kind: missing, about: how long the weekday morning shifts run}
 
+      # One gap in an otherwise plain description: the plain part raises
+      # nothing.
+      - name: wednesday-evenings-without-a-length
+        text: Saturdays 10am to 1pm, and Wednesday evenings at 6
+        expect:
+          issues:
+            - {kind: missing, about: how long the Wednesday shifts run}
+
+      - name: fridays-without-a-start
+        text: Mondays 6–9pm, and Fridays for 2 hours
+        expect:
+          issues:
+            - {kind: missing, about: what time the Friday shifts start}
+
       # Every other week from which week: the one this week, or the next.
       - name: every-other-week
         text: every other week
