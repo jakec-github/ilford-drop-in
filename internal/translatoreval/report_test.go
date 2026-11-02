@@ -158,3 +158,67 @@ func TestEstimate_CountsACallPerTranslationAndUpToThree(t *testing.T) {
 		t.Errorf("stub: %+v", e)
 	}
 }
+
+func repairReport() *Report {
+	r := sampleReport()
+	repairs := []CaseReport{
+		{Name: "no-duration", Kind: Patterns, Group: "repairs", Planted: noDuration, Translates: true, Runs: []RunReport{
+			run(true, Translated, 2, 0.01, time.Second),
+			run(true, Translated, 3, 0.02, time.Second),
+			run(false, Translated, 2, 0.01, time.Second),
+			run(false, GaveUp, 3, 0.02, time.Second),
+		}},
+		{Name: "time-in-a-date", Kind: Rules, Group: "repairs", Planted: "x", Translates: true, Runs: []RunReport{
+			run(true, Translated, 2, 0.01, time.Second),
+			{Answer: Answer{Outcome: Unavailable, Error: "overloaded"}, Grade: Grade{Failures: []string{"unavailable: overloaded"}}, Calls: 2},
+		}},
+	}
+	r.Cases = append(r.Cases, repairs...)
+	return r
+}
+
+// A repair is graded apart from first attempts: it starts from a refused
+// reply, so counting it in the pass rate would mix two questions.
+func TestSummarise_RepairsAreKeptApartFromThePassRate(t *testing.T) {
+	s := Summarise(repairReport().Cases)
+	if s.All != (Tally{Passed: 3, Runs: 6}) || len(s.Groups) != 3 {
+		t.Errorf("first attempts: %+v, groups %+v", s.All, s.Groups)
+	}
+	if s.Calls.Second != 1 || s.Calls.Third != 0 {
+		t.Errorf("calls count repairs: %+v", s.Calls)
+	}
+	want := Repairs{Fixed: 3, Changed: 1, NotFixed: 1, Unavailable: 1, ModelCalls: 4}
+	if s.Repairs != want {
+		t.Errorf("repairs: %+v, want %+v", s.Repairs, want)
+	}
+	if got := s.Repairs.CallsPerFix(); math.Abs(got-4.0/3) > 1e-9 {
+		t.Errorf("calls a fix = %v, want 4/3", got)
+	}
+	if len(s.RepairGroups) != 2 || s.RepairGroups[0].Label != "Patterns: repairs" || s.RepairGroups[1].Repairs.Fixed != 1 {
+		t.Errorf("repair groups: %+v", s.RepairGroups)
+	}
+}
+
+func TestRender_RepairsHaveASectionOfTheirOwn(t *testing.T) {
+	md := Render(repairReport(), nil)
+	for _, want := range []string{
+		"| All | 3/6 (50%) |",
+		"## Repairs",
+		"| | Fixed | Parsed but changed | Not fixed | Unavailable | Calls a fix |",
+		"| All | 3/6 (50%) | 1 | 1 | 1 | 1.3 |",
+		"| Patterns: repairs | 2/4 (50%) | 1 | 1 | 0 | 1.5 |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("report lacks %q:\n%s", want, md)
+		}
+	}
+}
+
+func TestEstimate_ThePlantedCallIsFree(t *testing.T) {
+	c := sundaysCase()
+	c.Planted = noDuration
+	e := EstimateRun("claude-sonnet-5-5", []Case{c}, 5)
+	if e.Calls != 5 || e.MaxCalls != 5*(patterntranslator.MaxCalls-1) {
+		t.Errorf("estimate: %+v", e)
+	}
+}

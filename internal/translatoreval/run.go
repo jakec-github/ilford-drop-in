@@ -55,6 +55,8 @@ type CaseReport struct {
 	Kind  string `json:"kind"`
 	Group string `json:"group,omitempty"`
 	Text  string `json:"text"`
+	// Planted is, for a repair case, the refused reply it starts from.
+	Planted string `json:"planted,omitempty"`
 	// Translates is whether the case wants a translation rather than issues.
 	Translates bool        `json:"translates"`
 	Runs       []RunReport `json:"runs"`
@@ -109,7 +111,7 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 	}
 	for i, c := range cases {
 		report.Cases[i] = CaseReport{
-			Name: c.Name, Kind: c.Kind, Group: c.Group, Text: c.Text, Translates: c.Translates(),
+			Name: c.Name, Kind: c.Kind, Group: c.Group, Text: c.Text, Planted: c.Planted, Translates: c.Translates(),
 			Runs: make([]RunReport, o.Repeats),
 		}
 	}
@@ -147,7 +149,11 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 
 // translateOnce is one Generate of a case, as the server would make it.
 func translateOnce(ctx context.Context, s Subject, c Case) RunReport {
-	rec := &recorder{model: s.Base}
+	var model patterntranslator.Model = s.Base
+	if c.Repairs() {
+		model = planter{model: s.Base, reply: plantedReply(c)}
+	}
+	rec := &recorder{model: model}
 	var translator patterntranslator.Translator = patterntranslator.Stub{}
 	if s.Base != nil {
 		translator = patterntranslator.New(rec)
@@ -239,6 +245,37 @@ func (r *recorder) Reply(ctx context.Context, prompt *patterntranslator.Prompt, 
 	r.usage.CacheReadTokens += u.CacheReadTokens
 	r.usage.CacheWriteTokens += u.CacheWriteTokens
 	return text, u, err
+}
+
+// planter is a Model whose first call is a planted reply, made without
+// asking, at no cost. Every later call asks the model it wraps.
+type planter struct {
+	model patterntranslator.Model
+	reply string
+}
+
+func (p planter) Reply(ctx context.Context, prompt *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
+	if len(turns) == 1 {
+		return p.reply, patterntranslator.Usage{}, nil
+	}
+	return p.model.Reply(ctx, prompt, turns)
+}
+
+// plantedReply is a repair case's planted answer as the model would have sent
+// it.
+func plantedReply(c Case) string {
+	reply := struct {
+		Status  string `json:"status"`
+		Pattern string `json:"pattern,omitempty"`
+		Rule    string `json:"rule,omitempty"`
+	}{Status: "ok"}
+	if c.Kind == Rules {
+		reply.Rule = c.Planted
+	} else {
+		reply.Pattern = c.Planted
+	}
+	text, _ := json.Marshal(reply)
+	return string(text)
 }
 
 // promptHashes is a short hash of each prompt, its system prompt and schema

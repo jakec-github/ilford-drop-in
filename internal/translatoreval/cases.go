@@ -49,6 +49,11 @@ type Case struct {
 	Zone  string
 	// Pattern is, for a rule, the saved Shift pattern it is read against.
 	Pattern string
+	// Planted is, for a repair case, the pattern or rule the model is taken
+	// to have written first: one the parser refuses. The model is asked only
+	// after the parser's messages have gone back, so what is graded is how it
+	// repairs it.
+	Planted string
 	Expect  Expect
 }
 
@@ -69,6 +74,11 @@ type ExpectedIssue struct {
 	// much a missing time as an ambiguous one.
 	Or    patterntranslator.Kind `yaml:"or"`
 	About string                 `yaml:"about"`
+}
+
+// Repairs is whether the case grades a repair rather than a first attempt.
+func (c Case) Repairs() bool {
+	return c.Planted != ""
 }
 
 // Translates is whether the case wants a translation rather than issues.
@@ -108,6 +118,7 @@ type caseYAML struct {
 	Today   string `yaml:"today"`
 	Zone    string `yaml:"zone"`
 	Pattern string `yaml:"pattern"`
+	Planted string `yaml:"planted"`
 	Expect  Expect `yaml:"expect"`
 }
 
@@ -157,6 +168,7 @@ func readCase(kind string, f file, y caseYAML) (Case, error) {
 		Text:    strings.TrimSpace(y.Text),
 		Zone:    or(y.Zone, f.Zone),
 		Pattern: or(y.Pattern, f.Pattern),
+		Planted: strings.TrimSpace(y.Planted),
 		Expect:  y.Expect,
 	}
 	if c.Name == "" {
@@ -182,6 +194,9 @@ func readCase(kind string, f file, y caseYAML) (Case, error) {
 		if _, p := shiftpattern.Read(c.Pattern, c.Zone); p == nil {
 			return c, fmt.Errorf("the pattern does not read: %s", strings.Join(problemsOf(c.Pattern, c.Zone), "; "))
 		}
+	}
+	if c.Planted != "" && !refused(kind, c.Planted, c.Zone) {
+		return c, errors.New("the planted reply reads: a repair case needs one the parser refuses")
 	}
 	answers := 0
 	for _, s := range []string{e.Pattern, e.Rule} {
@@ -231,6 +246,17 @@ func readCase(kind string, f file, y caseYAML) (Case, error) {
 		}
 	}
 	return c, nil
+}
+
+// refused is whether the translator's own check would send a reply back to
+// the model.
+func refused(kind, reply, zone string) bool {
+	if kind == Rules {
+		line, _ := shiftpattern.ReadRule(reply)
+		return len(line.Problems) > 0
+	}
+	reading, _ := shiftpattern.Read(reply, zone)
+	return len(problemsOf(reply, zone)) > 0 || len(reading.Entries) == 0
 }
 
 func problemsOf(pattern, zone string) []string {

@@ -88,6 +88,56 @@ func (c *Calls) add(r RunReport) {
 	}
 }
 
+// Repairs is how repair cases' runs ended: fixed, the reply parsed and means
+// what the description says; changed, it parsed (or raised issues) but means
+// something else; not fixed, every call was refused.
+type Repairs struct {
+	Fixed, Changed, NotFixed, Unavailable int
+	// ModelCalls is the calls the fixed runs asked the model for, after the
+	// planted one.
+	ModelCalls int
+}
+
+func (r *Repairs) add(run RunReport) {
+	switch {
+	case run.Outcome == Unavailable:
+		r.Unavailable++
+	case run.Outcome == GaveUp:
+		r.NotFixed++
+	case run.Pass:
+		r.Fixed++
+		r.ModelCalls += max(run.Calls-1, 0) // the stub makes no calls at all
+	default:
+		r.Changed++
+	}
+}
+
+// Rate is how many runs were fixed of how many.
+func (r Repairs) Rate() Tally {
+	return Tally{Passed: r.Fixed, Runs: r.Fixed + r.Changed + r.NotFixed + r.Unavailable}
+}
+
+// CallsPerFix is the mean calls to the model a fix took, or 0 with none.
+func (r Repairs) CallsPerFix() float64 {
+	if r.Fixed == 0 {
+		return 0
+	}
+	return float64(r.ModelCalls) / float64(r.Fixed)
+}
+
+func (r Repairs) callsPerFix() string {
+	if r.Fixed == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f", r.CallsPerFix())
+}
+
+// RepairGroup is the repair cases of one group in one file, taken together.
+type RepairGroup struct {
+	Label string
+	Repairs
+}
+
 // Summary is a set of runs taken together.
 type Summary struct {
 	All Tally
@@ -101,24 +151,47 @@ type Summary struct {
 	Typical, Slow time.Duration
 	// TimedOut is how many ran out of patterntranslator.Timeout.
 	TimedOut int
+	// Repairs is the repair cases' runs, which All, Wording, Groups and Calls
+	// leave out: a repair starts from a refused reply, so it is not a first
+	// attempt. Cost and latency count every run.
+	Repairs      Repairs
+	RepairGroups []RepairGroup
 }
 
-// PerRun is the mean cost of one translation.
+// PerRun is the mean cost of one translation, repairs included.
 func (s Summary) PerRun() float64 {
-	if s.All.Runs == 0 {
+	runs := s.All.Runs + s.Repairs.Rate().Runs
+	if runs == 0 {
 		return 0
 	}
-	return s.Cost / float64(s.All.Runs)
+	return s.Cost / float64(runs)
 }
 
 // Summarise takes cases' runs together.
 func Summarise(cases []CaseReport) Summary {
 	var s Summary
 	groups := map[string]*Group{}
-	var order []string
+	repairs := map[string]*RepairGroup{}
+	var order, repairOrder []string
 	var latencies []time.Duration
 	for _, c := range cases {
 		label := groupLabel(c)
+		if c.Planted != "" {
+			if repairs[label] == nil {
+				repairs[label] = &RepairGroup{Label: label}
+				repairOrder = append(repairOrder, label)
+			}
+			for _, r := range c.Runs {
+				s.Repairs.add(r)
+				repairs[label].add(r)
+				s.Cost += r.Cost
+				latencies = append(latencies, r.Latency())
+				if r.TimedOut {
+					s.TimedOut++
+				}
+			}
+			continue
+		}
 		if groups[label] == nil {
 			groups[label] = &Group{Label: label}
 			order = append(order, label)
@@ -139,6 +212,9 @@ func Summarise(cases []CaseReport) Summary {
 	}
 	for _, label := range order {
 		s.Groups = append(s.Groups, *groups[label])
+	}
+	for _, label := range repairOrder {
+		s.RepairGroups = append(s.RepairGroups, *repairs[label])
 	}
 	s.Typical, s.Slow = percentile(latencies, 0.5), percentile(latencies, 0.95)
 	return s
@@ -195,6 +271,21 @@ func Render(r *Report, earlier *Report) string {
 		s.Calls.First, s.Calls.Second, s.Calls.Third, s.Calls.GaveUp, s.Calls.Unavailable)
 	fmt.Fprintf(&b, "Cost %s in all, %s a translation · latency %s typical, %s slow (p95) · %d over the %s limit\n\n",
 		money(s.Cost), money(s.PerRun()), seconds(s.Typical), seconds(s.Slow), s.TimedOut, patterntranslator.Timeout)
+
+	if len(s.RepairGroups) > 0 {
+		b.WriteString("## Repairs\n\nEach repair case's first call is a planted reply the parser refuses, made without asking the model; ")
+		b.WriteString("what is graded is the model's replies after the parser's messages go back. ")
+		b.WriteString("They are left out of the pass rate and calls above. Calls a fix counts the model's calls only.\n\n")
+		b.WriteString("| | Fixed | Parsed but changed | Not fixed | Unavailable | Calls a fix |\n|---|---|---|---|---|---|\n")
+		row := func(label string, r Repairs) {
+			fmt.Fprintf(&b, "| %s | %s | %d | %d | %d | %s |\n", label, r.Rate(), r.Changed, r.NotFixed, r.Unavailable, r.callsPerFix())
+		}
+		row("All", s.Repairs)
+		for _, g := range s.RepairGroups {
+			row(g.Label, g.Repairs)
+		}
+		b.WriteString("\n")
+	}
 
 	b.WriteString("## Cases\n\nCalls are first / second / third / none that worked (gave up or unavailable).\n")
 	label := ""
@@ -356,6 +447,11 @@ func writeComparison(b *strings.Builder, r, earlier *Report) {
 		sb.All, sn.All, sb.Wording, sn.Wording, dollars(earlier.Priced, sb.PerRun()), dollars(r.Priced, sn.PerRun()),
 		seconds(sb.Typical), seconds(sn.Typical), seconds(sb.Slow), seconds(sn.Slow))
 
+	if sb.Repairs.Rate().Runs > 0 && sn.Repairs.Rate().Runs > 0 {
+		fmt.Fprintf(b, "Repairs on the cases both ran: fixed %s → %s, calls a fix %s → %s\n\n",
+			sb.Repairs.Rate(), sn.Repairs.Rate(), sb.Repairs.callsPerFix(), sn.Repairs.callsPerFix())
+	}
+
 	b.WriteString("| Case | Before | Now | Change |\n|---|---|---|---|\n")
 	for _, c := range shared {
 		was, is := Summarise([]CaseReport{before[c.Name]}).All, Summarise([]CaseReport{c}).All
@@ -461,12 +557,20 @@ func EstimateRun(model string, cases []Case, repeats int) Estimate {
 		schema, _ := json.Marshal(p.Schema)
 		system[p.Name] = len(p.System) + len(schema)
 	}
-	e := Estimate{Calls: len(cases) * repeats, MaxCalls: len(cases) * repeats * patterntranslator.MaxCalls}
+	e := Estimate{}
 	_, e.Priced = prices[model]
 	for _, c := range cases {
-		chars := system["pattern"] + len(c.Text) + 200
+		// A repair's planted call is free, so it can ask one call fewer, and
+		// each is asked with the planted reply and the parser's messages too.
+		planted, extra := 0, 0
+		if c.Repairs() {
+			planted, extra = 1, 2*len(c.Planted)+300
+		}
+		e.Calls += repeats
+		e.MaxCalls += (patterntranslator.MaxCalls - planted) * repeats
+		chars := system["pattern"] + len(c.Text) + 200 + extra
 		if c.Kind == Rules {
-			chars = system["rule"] + len(c.Text) + 200 + len(strings.Join(c.Descriptions(), "\n"))
+			chars = system["rule"] + len(c.Text) + 200 + extra + len(strings.Join(c.Descriptions(), "\n"))
 		}
 		// About four characters a token.
 		u := patterntranslator.Usage{InputTokens: int64(chars / 4), OutputTokens: replyGuess}

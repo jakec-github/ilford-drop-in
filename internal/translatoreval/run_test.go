@@ -3,6 +3,7 @@ package translatoreval
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -160,5 +161,56 @@ func TestRun_TheStubCostsNothing(t *testing.T) {
 	r := Run(context.Background(), Subject{Model: "stub"}, []Case{c}, Options{Repeats: 1}).Cases[0].Runs[0]
 	if r.Outcome != Raised || r.Calls != 0 || r.Cost != 0 {
 		t.Errorf("stub: %+v", r)
+	}
+}
+
+// turnsModel replies with the same answer every call and keeps every call's
+// turns.
+type turnsModel struct {
+	reply string
+	calls [][]patterntranslator.Turn
+}
+
+func (m *turnsModel) Reply(_ context.Context, _ *patterntranslator.Prompt, turns []patterntranslator.Turn) (string, patterntranslator.Usage, error) {
+	m.calls = append(m.calls, slices.Clone(turns))
+	return m.reply, callUsage, nil
+}
+
+func repairCase() Case {
+	c := sundaysCase()
+	c.Name, c.Planted = "no-duration", noDuration
+	return c
+}
+
+// The planted reply is the first call's, without asking the model; the
+// translator's own loop refuses it and sends the parser's messages back, so
+// the model's first call is the loop's second.
+func TestRun_ARepairCasesFirstCallIsThePlantedReply(t *testing.T) {
+	model := &turnsModel{reply: okPattern(sundays)}
+	r := Run(context.Background(), Subject{Model: "claude-sonnet-5-5", Base: model}, []Case{repairCase()}, Options{Repeats: 1}).Cases[0].Runs[0]
+
+	if len(model.calls) != 1 {
+		t.Fatalf("the model was asked %d times, want once", len(model.calls))
+	}
+	turns := model.calls[0]
+	if len(turns) != 3 || turns[1].Role != patterntranslator.Assistant || turns[1].Text != okPattern(noDuration) {
+		t.Fatalf("turns: %+v, want the first, the planted reply, and the parser's messages", turns)
+	}
+	problems := problemsOf(noDuration, "Europe/London")
+	if len(problems) == 0 {
+		t.Fatal("the planted pattern has no problems")
+	}
+	for _, p := range problems {
+		if !strings.Contains(turns[2].Text, p) {
+			t.Errorf("the second user turn %q lacks the parser's %q", turns[2].Text, p)
+		}
+	}
+
+	if !r.Pass || r.Calls != 2 || r.Replies[0].Text != okPattern(noDuration) {
+		t.Errorf("run: %+v", r)
+	}
+	// Only the model's own call is paid for.
+	if r.Usage != callUsage || r.Cost != cost("claude-sonnet-5-5", callUsage) {
+		t.Errorf("usage %+v, cost %v: the planted call is not free", r.Usage, r.Cost)
 	}
 }
