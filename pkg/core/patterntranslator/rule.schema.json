@@ -15,6 +15,7 @@
         "status": { "type": "string", "const": "issues" },
         "issues": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "object",
             "properties": {

@@ -65,7 +65,8 @@ func (rt *Retries) add(kind string, run RunReport, skip int) {
 	}
 }
 
-// whyUnusable is what made a reply one the translator could not use.
+// whyUnusable is what made a reply one the translator could not use, or
+// nothing for a reply it could: an answer, or issues.
 func whyUnusable(kind string, r Reply) string {
 	if r.Error != "" {
 		return strings.TrimPrefix(r.Error, patterntranslator.ErrUnusableReply.Error()+": ")
@@ -91,6 +92,8 @@ func whyUnusable(kind string, r Reply) string {
 		return "issues with none in them"
 	case reply.Status == "ok" && strings.TrimSpace(answer) == "":
 		return "an empty answer"
+	case reply.Status == "ok" || reply.Status == "issues":
+		return ""
 	}
 	return "a reply of neither shape"
 }

@@ -208,7 +208,6 @@ func TestTranslate_AnUnusableReplyIsAFailedCall(t *testing.T) {
 		"refusal or max_tokens": {err: ErrUnusableReply},
 		"not JSON":              {text: "Sure! Here is your pattern"},
 		"neither shape":         {text: `{"status":"maybe"}`},
-		"ok without a pattern":  {text: `{"status":"ok","pattern":""}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			model := &scriptedModel{replies: []scripted{bad, ok(sundays)}}
@@ -225,6 +224,49 @@ func TestTranslate_AnUnusableReplyIsAFailedCall(t *testing.T) {
 				t.Errorf("second call was %+v, want the first turn alone", model.calls[1])
 			}
 		})
+	}
+}
+
+// A reply that reads but says nothing, issues with none in them or an ok with
+// no pattern, would come back the same if asked the same way, so the model is
+// told what was missing.
+func TestTranslate_AReplyThatSaysNothingIsSentBackSayingWhatWasMissing(t *testing.T) {
+	for name, tc := range map[string]struct {
+		reply scripted
+		want  string
+	}{
+		"issues with none in them": {scripted{text: `{"status":"issues","issues":[]}`}, "Your reply listed no issues."},
+		"ok without a pattern":     {scripted{text: `{"status":"ok","pattern":" "}`}, "Your reply gave no pattern."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			model := &scriptedModel{replies: []scripted{tc.reply, ok(sundays)}}
+
+			got, err := translate(t, model, "Sundays 7:30 to 10:30pm")
+			if err != nil {
+				t.Fatalf("Translate: %v", err)
+			}
+			if got.Pattern != sundays || len(model.calls) != 2 {
+				t.Fatalf("got %+v after %d calls, want the second call's pattern", got, len(model.calls))
+			}
+			turns := model.calls[1]
+			if len(turns) != 3 || turns[1].Role != Assistant || turns[1].Text != tc.reply.text ||
+				turns[2].Role != User || !strings.Contains(turns[2].Text, tc.want) {
+				t.Errorf("second call was %+v, want the reply and a turn saying %q", turns, tc.want)
+			}
+		})
+	}
+}
+
+func TestTranslate_ThreeRepliesThatSayNothingGiveUp(t *testing.T) {
+	empty := scripted{text: `{"status":"issues","issues":[]}`}
+	model := &scriptedModel{replies: []scripted{empty, empty, empty}}
+
+	got, err := translate(t, model, "Sundays 7:30 to 10:30pm")
+	if err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+	if len(got.Issues) != 1 || got.Issues[0].Message != GaveUp || len(model.calls) != MaxCalls {
+		t.Fatalf("got %+v after %d calls, want the fallback issue alone", got, len(model.calls))
 	}
 }
 

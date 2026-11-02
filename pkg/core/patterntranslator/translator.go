@@ -235,8 +235,10 @@ func (c checked) TranslateRule(ctx context.Context, req RuleRequest) (RuleResult
 }
 
 // run is the loop both translations share: ask, check what comes back, and
-// send the parser's problems back until it reads, the model says what stops
-// it, or MaxCalls calls have been made.
+// send the parser's problems back, or what the reply left out, until it reads,
+// the model says what stops it, or MaxCalls calls have been made. A reply that
+// cannot be read at all is asked again the same way: there is nothing in it
+// to answer.
 func (c checked) run(ctx context.Context, t task, first string) (string, []Issue, error) {
 	turns := []Turn{{Role: User, Text: first}}
 	var problems []string
@@ -252,15 +254,29 @@ func (c checked) run(ctx context.Context, t task, first string) (string, []Issue
 			return "", nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
 
-		r, ok := read(resp.Text, t.answer)
+		r, ok := read(resp.Text)
 		if !ok {
+			continue
+		}
+		// A reply that reads but says nothing would come back the same if
+		// asked the same way, so the model is told what it left out.
+		if r.Status == "issues" && len(r.Issues) == 0 {
+			turns = append(turns,
+				Turn{Role: Assistant, Text: resp.Text},
+				Turn{Role: User, Text: fmt.Sprintf("Your reply listed no issues. List each issue, or give the whole %s.", t.noun)})
 			continue
 		}
 		if r.Status == "issues" {
 			return "", r.Issues, nil
 		}
-
 		answer := strings.TrimSpace(t.answer(r))
+		if answer == "" {
+			turns = append(turns,
+				Turn{Role: Assistant, Text: resp.Text},
+				Turn{Role: User, Text: fmt.Sprintf("Your reply gave no %s. Give the whole %[1]s, or list the issues.", t.noun)})
+			continue
+		}
+
 		problems = t.check(answer)
 		if len(problems) == 0 {
 			return answer, nil, nil
@@ -287,19 +303,17 @@ func todayIn(zone string, now time.Time) (time.Time, error) {
 }
 
 // read is a reply as one of its two shapes, or false. The schema makes
-// anything else unlikely, not impossible.
-func read(text string, answer func(reply) string) (reply, bool) {
+// anything else unlikely, not impossible. Either shape may still say nothing:
+// issues with none in them, or an ok with no answer.
+func read(text string) (reply, bool) {
 	var r reply
 	if err := json.Unmarshal([]byte(text), &r); err != nil {
 		return reply{}, false
 	}
 	switch r.Status {
 	case "ok":
-		return r, strings.TrimSpace(answer(r)) != ""
+		return r, true
 	case "issues":
-		if len(r.Issues) == 0 {
-			return reply{}, false
-		}
 		for i := range r.Issues {
 			if r.Issues[i].Examples == nil {
 				r.Issues[i].Examples = []string{}

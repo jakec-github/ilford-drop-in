@@ -133,17 +133,42 @@ func TestTranslateRule_GivesUpAfterThreeCallsWithTheParsersMessages(t *testing.T
 	}
 }
 
-func TestTranslateRule_AnUnusableReplyIsAFailedCall(t *testing.T) {
-	model := &scriptedModel{replies: []scripted{
-		{text: `{"status":"ok","pattern":"BEGIN:VEVENT"}`}, okRule(sundayEvenings),
-	}}
+func TestTranslateRule_AReplyThatSaysNothingIsSentBackSayingWhatWasMissing(t *testing.T) {
+	for name, tc := range map[string]struct {
+		reply scripted
+		want  string
+	}{
+		"issues with none in them": {scripted{text: `{"status":"issues","issues":[]}`}, "Your reply listed no issues."},
+		"ok without a rule":        {scripted{text: `{"status":"ok","rule":""}`}, "Your reply gave no rule."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			model := &scriptedModel{replies: []scripted{tc.reply, okRule(sundayEvenings)}}
+
+			got, err := translateRule(t, model, "the Sunday evening shift")
+			if err != nil {
+				t.Fatalf("TranslateRule: %v", err)
+			}
+			if got.Rule != sundayEvenings || len(model.calls) != 2 {
+				t.Fatalf("got %+v after %d calls, want the second call's rule", got, len(model.calls))
+			}
+			turns := model.calls[1]
+			if len(turns) != 3 || turns[1].Text != tc.reply.text || !strings.Contains(turns[2].Text, tc.want) {
+				t.Errorf("second call was %+v, want the reply and a turn saying %q", turns, tc.want)
+			}
+		})
+	}
+}
+
+func TestTranslateRule_ThreeRepliesThatSayNothingGiveUp(t *testing.T) {
+	empty := scripted{text: `{"status":"issues","issues":[]}`}
+	model := &scriptedModel{replies: []scripted{empty, empty, empty}}
 
 	got, err := translateRule(t, model, "the Sunday evening shift")
 	if err != nil {
 		t.Fatalf("TranslateRule: %v", err)
 	}
-	if got.Rule != sundayEvenings || len(model.calls) != 2 {
-		t.Fatalf("got %+v after %d calls, want an ok without a rule passed over", got, len(model.calls))
+	if len(got.Issues) != 1 || got.Issues[0].Message != RuleGaveUp || len(model.calls) != MaxCalls {
+		t.Fatalf("got %+v after %d calls, want the fallback issue alone", got, len(model.calls))
 	}
 }
 

@@ -151,9 +151,10 @@ For each case it gives:
 Below that, every failed run is listed with what went wrong, then under
 Second goes every run that passed on a later call. Both show a run's calls
 when it took more than one, or gave up: each call's raw reply, the summary of
-the model's thinking behind it, and why the model was asked again. A reply the
-loop cannot read never reaches the parser and leaves no message of its own,
-so only its reply says what happened. The eval asks for the thinking; the
+the model's thinking behind it, and why the model was asked again. A reply
+that says nothing, such as issues with none in them, goes back with what it
+left out. A reply the loop cannot read at all is asked again the same way and
+leaves no message, so only its reply says what happened. The eval asks for the thinking; the
 server does not. The `.json` keeps it for every call, not only the ones shown.
 Every message that lost wording points is listed after that.
 
