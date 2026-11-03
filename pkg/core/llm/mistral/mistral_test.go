@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 )
@@ -34,6 +35,7 @@ func fakeAPI(t *testing.T, status int, reply string) (*model, *map[string]any, *
 	t.Cleanup(server.Close)
 	m := Provider.New("test-key", "mistral-medium-2604", llm.Options{Effort: "low"}).(*model)
 	m.url = server.URL
+	m.pace, m.sleep = &pace{}, func(context.Context, time.Duration) error { return nil }
 	return m, &last, &header
 }
 
