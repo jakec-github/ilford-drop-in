@@ -72,7 +72,7 @@ func commonFlags(fs *flag.FlagSet) common {
 	return common{
 		repeats:  fs.Int("repeats", 5, "how many times each case is translated"),
 		which:    fs.String("cases", "all", "all, patterns, rules, a group's name, or one case's name"),
-		judge:    fs.String("judge", "anthropic-large", "the <provider>-<tier> that judges the issues raised, or none"),
+		judge:    fs.String("judge", "anthropic-large", "the <provider>-<tier> that judges the issues raised, with :<effort> to set its effort (medium if not), or none"),
 		parallel: fs.Int("parallel", 4, "how many translations run at once"),
 		yes:      fs.Bool("yes", false, "run without asking first"),
 		casesDir: fs.String("in", "evals/cases", "the directory of case files"),
@@ -241,22 +241,27 @@ func readReport(path string) (*translatoreval.Report, error) {
 
 // judge is the model that judges, or nil for none.
 type judge struct {
-	ref, id string
-	model   llm.Model
-	price   *llm.Price
+	ref, id, effort string
+	model           llm.Model
+	price           *llm.Price
 }
 
-// newJudge is the judge ref names for models, or none where ref is none or
-// every model is the stub, which is never judged.
+// newJudge is the judge named by ref, a <provider>-<tier> with an optional
+// :<effort>, for models; or none where ref is none or every model is the
+// stub, which is never judged.
 func newJudge(ref string, models []string) (*judge, error) {
 	if ref == "none" || !slices.ContainsFunc(models, func(m string) bool { return m != "stub" }) {
 		return nil, nil
 	}
-	m, id, price, err := ask(ref, llm.Options{Effort: judgeEffort})
+	ref, effort, _ := strings.Cut(ref, ":")
+	if effort == "" {
+		effort = judgeEffort
+	}
+	m, id, price, err := ask(ref, llm.Options{Effort: effort})
 	if err != nil {
 		return nil, err
 	}
-	return &judge{ref: ref, id: id, model: m, price: price}, nil
+	return &judge{ref: ref, id: id, effort: effort, model: m, price: price}, nil
 }
 
 // newSubject is model at effort, judged by j where there is one. The stub is
@@ -277,7 +282,7 @@ func newSubject(model, effort string, j *judge) (translatoreval.Subject, error) 
 		if j.ref == model {
 			fmt.Printf("Warning: %s is judging its own issues, and may be blind to what it gets wrong.\n", model)
 		}
-		subject.Judge, subject.JudgeModel, subject.JudgeModelID, subject.JudgePrice = j.model, j.ref, j.id, j.price
+		subject.Judge, subject.JudgeModel, subject.JudgeModelID, subject.JudgeEffort, subject.JudgePrice = j.model, j.ref, j.id, j.effort, j.price
 	}
 	return subject, nil
 }
@@ -432,8 +437,9 @@ func name(ref, id string) string {
 	return fmt.Sprintf("%s (%s)", ref, id)
 }
 
-// judgeEffort is the judge's effort. Pairing a few issues is not hard, and a
-// reply shares the translators' token limit, thinking included.
+// judgeEffort is the judge's effort unless -judge sets one. Pairing a few
+// issues is not hard, and a reply shares the translators' token limit,
+// thinking included.
 const judgeEffort = "medium"
 
 func exists(path string) bool {

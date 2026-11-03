@@ -373,7 +373,11 @@ func Render(r *Report, earlier *Report) string {
 	fmt.Fprintf(&b, "# Translator eval: %s\n\n", subjectName(r))
 	fmt.Fprintf(&b, "Run %s · %d repeats · prompts %s\n\n", r.Started.Format("2006-01-02 15:04 MST"), r.Repeats, promptList(r.Prompts))
 	if r.Judge != "" {
-		fmt.Fprintf(&b, "Judged by %s · prompt %s\n\n", modelName(r.Judge, r.JudgeID), r.JudgePrompt)
+		effort := ""
+		if r.JudgeEffort != "" {
+			effort = " at " + r.JudgeEffort + " effort"
+		}
+		fmt.Fprintf(&b, "Judged by %s%s · prompt %s\n\n", modelName(r.Judge, r.JudgeID), effort, r.JudgePrompt)
 	}
 
 	s := Summarise(r.Cases)

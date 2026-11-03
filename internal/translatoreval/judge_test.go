@@ -53,10 +53,10 @@ func judgedRun(t *testing.T, judge *judgeModel) RunReport {
 	model := &fakeModel{replies: map[string][]string{"Sunday evenings": {raisedTwo()}}}
 	report := Run(context.Background(),
 		Subject{Model: "anthropic-small", Price: subjectPrice, Base: model,
-			JudgeModel: "anthropic-large", JudgeModelID: "claude-opus-5-5", JudgePrice: judgePrice, Judge: judge},
+			JudgeModel: "anthropic-large", JudgeModelID: "claude-opus-5-5", JudgeEffort: "medium", JudgePrice: judgePrice, Judge: judge},
 		[]Case{twoIssuesCase()}, Options{Repeats: 1})
-	if report.Judge != "anthropic-large" || report.JudgeID != "claude-opus-5-5" || len(report.JudgePrompt) != 12 {
-		t.Errorf("report names judge %q, prompt %q", report.Judge, report.JudgePrompt)
+	if report.Judge != "anthropic-large" || report.JudgeID != "claude-opus-5-5" || report.JudgeEffort != "medium" || len(report.JudgePrompt) != 12 {
+		t.Errorf("report names judge %q at %q effort, prompt %q", report.Judge, report.JudgeEffort, report.JudgePrompt)
 	}
 	return report.Cases[0].Runs[0]
 }

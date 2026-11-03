@@ -26,11 +26,12 @@ type Subject struct {
 	// nothing and makes no calls.
 	Base llm.Model
 	// Judge pairs the issues each run raises with the ones its case wants,
-	// asking JudgeModel, which is JudgeModelID at JudgePrice. Nil judges
-	// nothing.
+	// asking JudgeModel, which is JudgeModelID at JudgeEffort and JudgePrice.
+	// Nil judges nothing.
 	Judge        llm.Model
 	JudgeModel   string
 	JudgeModelID string
+	JudgeEffort  string
 	JudgePrice   *llm.Price
 }
 
@@ -64,10 +65,12 @@ type Report struct {
 	// anything.
 	Priced bool `json:"priced"`
 	// Judge is the <provider>-<tier> that judged the issues raised, JudgeID
-	// the model it was, and JudgePrompt a hash of what it was asked under;
-	// all are empty when nothing was.
+	// the model it was, JudgeEffort its effort, and JudgePrompt a hash of what
+	// it was asked under. All are empty when nothing was judged, and
+	// JudgeEffort in a report from before it was recorded.
 	Judge       string       `json:"judge,omitempty"`
 	JudgeID     string       `json:"judgeId,omitempty"`
+	JudgeEffort string       `json:"judgeEffort,omitempty"`
 	JudgePrompt string       `json:"judgePrompt,omitempty"`
 	Cases       []CaseReport `json:"cases"`
 }
@@ -159,7 +162,7 @@ func Run(ctx context.Context, s Subject, cases []Case, o Options) *Report {
 		Cases:   make([]CaseReport, len(cases)),
 	}
 	if s.Judge != nil {
-		report.Judge, report.JudgeID, report.JudgePrompt = s.JudgeModel, s.JudgeModelID, judgeHash()
+		report.Judge, report.JudgeID, report.JudgeEffort, report.JudgePrompt = s.JudgeModel, s.JudgeModelID, s.JudgeEffort, judgeHash()
 	}
 	for i, c := range cases {
 		report.Cases[i] = CaseReport{

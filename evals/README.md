@@ -34,7 +34,7 @@ what they cost, the judge's apart, then waits for a yes.
 |---|---|---|
 | `-model` | `anthropic-medium` | the `<provider>-<tier>` being tested, the tier the server translates with by default; `stub` runs the dev-mode stub, free and without a key |
 | `-effort` | `low` | the model's effort; a provider with nothing like it ignores it |
-| `-judge` | `anthropic-large` | the `<provider>-<tier>` that judges the issues raised (see below); `none` judges nothing |
+| `-judge` | `anthropic-large` | the `<provider>-<tier>` that judges the issues raised (see below), at `medium` effort unless `:<effort>` follows it, as in `anthropic-medium:high`; `none` judges nothing |
 | `-repeats` | `5` | runs per case |
 | `-cases` | `all` | `patterns`, `rules`, a group's name, or one case's name |
 | `-compare` | | an earlier report's `.json`, to say what changed |
