@@ -62,7 +62,7 @@ func TestModel_AsksForTheSchemaWithTheSystemPromptAndTurns(t *testing.T) {
 		t.Errorf("authorization: %q", header.Get("Authorization"))
 	}
 	body := *last
-	if body["model"] != "mistral-medium-2604" || body["max_tokens"] != float64(maxTokens) || body["reasoning_effort"] != "low" {
+	if body["model"] != "mistral-medium-2604" || body["max_tokens"] != float64(maxTokens) || body["reasoning_effort"] != "none" {
 		t.Errorf("request: %v", body)
 	}
 	format, _ := body["response_format"].(map[string]any)
@@ -131,5 +131,24 @@ func TestModel_AnAPIErrorIsAFailedCallWithItsMessage(t *testing.T) {
 	_, err := m.Reply(context.Background(), testPrompt, []llm.Turn{{Role: llm.User, Text: "x"}})
 	if err == nil || errors.Is(err, llm.ErrUnusableReply) || !strings.Contains(err.Error(), "rate limit") || !strings.Contains(err.Error(), "429") {
 		t.Errorf("error: %v", err)
+	}
+}
+
+// Mistral's reasoning models take only none and high, and Large 3 does not
+// reason at all.
+func TestReasoningEffort_IsWhatMistralTakes(t *testing.T) {
+	for _, tc := range []struct{ id, effort, want string }{
+		{"mistral-small-2603", "", ""},
+		{"mistral-small-2603", "low", "none"},
+		{"mistral-small-2603", "medium", "high"},
+		{"mistral-medium-2604", "high", "high"},
+		{"mistral-medium-2604", "xhigh", "high"},
+		{"mistral-medium-2604", "max", "high"},
+		{"mistral-large-2512", "low", ""},
+		{"mistral-large-2512", "high", ""},
+	} {
+		if got := reasoningEffort(tc.id, tc.effort); got != tc.want {
+			t.Errorf("%s at %q: %q, want %q", tc.id, tc.effort, got, tc.want)
+		}
 	}
 }
