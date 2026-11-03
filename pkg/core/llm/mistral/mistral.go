@@ -40,8 +40,10 @@ var Provider = llm.Provider{
 
 const endpoint = "https://api.mistral.ai/v1/chat/completions"
 
-// maxTokens bounds one reply, thinking included, as it does on Anthropic.
-const maxTokens = 2000
+// maxTokens bounds one reply, thinking included. At high effort Small 4 can
+// think past 2000 tokens on one translation and stop before it answers, so
+// the bound is twice Anthropic's; the 30s translation limit still holds.
+const maxTokens = 4000
 
 // model is one Mistral model, asked at an effort, no more than once a gap, and
 // asked again when Mistral turns a call away for now.
