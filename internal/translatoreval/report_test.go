@@ -312,7 +312,7 @@ func TestEstimate_ThePlantedCallIsFree(t *testing.T) {
 // one with a match, a made-up issue and a miss, one it could not judge.
 func judgedReport() *Report {
 	r := sampleReport()
-	r.Judge, r.JudgeID, r.JudgePrompt = "anthropic-large", "claude-opus-5-5", "dddddddddddd"
+	r.Judge, r.JudgeID, r.JudgeEffort, r.JudgePrompt = "anthropic-large", "claude-opus-5-5", "medium", "dddddddddddd"
 	raised := func(r RunReport, issues ...patterntranslator.Issue) RunReport {
 		r.Issues = issues
 		return r
@@ -365,7 +365,7 @@ func TestSummarise_CountsWhatTheJudgeFoundAndWhatItCost(t *testing.T) {
 func TestRender_ShowsTheJudgesPairingAndReasonBesideEachIssue(t *testing.T) {
 	md := Render(judgedReport(), nil)
 	for _, want := range []string{
-		"Judged by anthropic-large (claude-opus-5-5) · prompt dddddddddddd",
+		"Judged by anthropic-large (claude-opus-5-5) at medium effort · prompt dddddddddddd",
 		// Judged right is replies with nothing made up and nothing missed,
 		// of those judged.
 		"| | First call | In the end | Wording | Judged right |",

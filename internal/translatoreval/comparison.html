@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Translator eval: comparison</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --text: #1f2328; --muted: #59636e; --line: #d1d9e0; --panel: #f6f8fa;
+    --best: #1a7f37; --point: #0969da; --fail: 207 34 46;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--text);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --text: #e6edf3; --muted: #9198a1; --line: #3d444d; --panel: #151b23;
+      --best: #3fb950; --point: #4493f8; --fail: 248 81 73;
+      background: #0d1117;
+    }
+  }
+  body { margin: 2rem auto; padding: 0 1.5rem; max-width: 1400px; }
+  h1 { font-size: 1.6rem; margin-bottom: .5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2.5rem; }
+  p, li { max-width: 72ch; }
+  .muted { color: var(--muted); }
+  .warning { border-left: 4px solid rgb(var(--fail)); padding: .5rem 1rem; background: var(--panel); }
+  code { font-size: .9em; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: .35rem .7rem; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-weight: 600; vertical-align: bottom; }
+  .best { color: var(--best); font-weight: 600; }
+  .cases th, .cases td:first-child { position: sticky; background: var(--panel); }
+  .cases thead th { top: 0; white-space: normal; min-width: 7rem; z-index: 1; }
+  .cases td:first-child { left: 0; }
+  .cases td.rate { text-align: center; background: rgb(var(--fail) / calc((1 - var(--rate)) * .6)); }
+  svg { max-width: 100%; height: auto; font-size: 12px; }
+  svg .axis { stroke: var(--line); }
+  svg .tick { fill: var(--muted); }
+  svg .frontier { fill: none; stroke: var(--best); stroke-width: 2; stroke-dasharray: 5 4; }
+  svg circle { fill: var(--point); }
+  svg .best circle { fill: var(--best); }
+  svg text { fill: var(--text); }
+  svg .best text { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Translator eval: comparison</h1>
+
+<ul>
+{{- range .Summary}}
+  <li>{{.Name}}: run {{.Run}}{{if $.PromptsDiffer}} · prompts {{.Prompts}}{{end}}</li>
+{{- end}}
+</ul>
+
+{{if .PromptsDiffer -}}
+<p class="warning"><strong>The reports were asked under different prompts</strong>, so a difference may be the prompt’s, not the model’s.</p>
+{{- else if .Summary -}}
+<p>Every report was asked under the same prompts: {{.Prompts}}.</p>
+{{- end}}
+
+<p>Compared on the {{len .Cases}} cases every report ran.
+{{- range .Summary}}{{if .Only}} Only {{.Name}} ran {{.Only}}.{{end}}{{end}}</p>
+
+<h2>Summary</h2>
+<p class="muted">First call and in the end are the first-attempt cases, as in each report; repairs are apart. Translations and issues split the first-attempt runs by what the case wants. Made up and missed are what the judge found. ★ is a model no other beats on both pass rate and cost.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th></th><th>First call</th><th>In the end</th><th>Repairs fixed</th><th>Translations</th><th>Issues</th><th>Made up</th><th>Missed</th><th>A translation</th><th>Typical</th><th>Slow (p95)</th><th>Over {{.Timeout}}</th></tr></thead>
+  <tbody>
+  {{- range .Summary}}
+    <tr><td{{if .Best}} class="best"{{end}}>{{.Name}}{{if .Best}} ★{{end}}</td>{{range .Cells}}<td>{{.}}</td>{{end}}</tr>
+  {{- end}}
+  </tbody>
+</table>
+</div>
+
+{{with .Chart -}}
+<h2>Pass rate against cost</h2>
+<p class="muted">Pass rate in the end, against cost a translation on a log scale. The dashed step runs through the models no other beats: anything below and to the right of it is beaten. Hover over a point for its figures.</p>
+<svg viewBox="0 0 {{.Width}} {{.Height}}" width="{{.Width}}" role="img" aria-label="Pass rate against cost a translation">
+  {{- range .YTicks}}
+  <line class="axis" x1="{{$.Chart.Left}}" x2="{{$.Chart.Right}}" y1="{{.At}}" y2="{{.At}}" stroke-opacity=".5"/>
+  <text class="tick" x="{{$.Chart.Left}}" y="{{.At}}" dx="-8" dy="4" text-anchor="end">{{.Label}}</text>
+  {{- end}}
+  {{- range .XTicks}}
+  <line class="axis" x1="{{.At}}" x2="{{.At}}" y1="{{$.Chart.Top}}" y2="{{$.Chart.Bottom}}" stroke-opacity=".5"/>
+  <text class="tick" x="{{.At}}" y="{{$.Chart.Bottom}}" dy="18" text-anchor="middle">{{.Label}}</text>
+  {{- end}}
+  <line class="axis" x1="{{.Left}}" x2="{{.Right}}" y1="{{.Bottom}}" y2="{{.Bottom}}"/>
+  <line class="axis" x1="{{.Left}}" x2="{{.Left}}" y1="{{.Top}}" y2="{{.Bottom}}"/>
+  <text class="tick" x="{{.Right}}" y="{{.Bottom}}" dy="40" text-anchor="end">Cost a translation →</text>
+  <text class="tick" transform="translate(16 {{.Top}}) rotate(-90)" text-anchor="end">Pass rate in the end →</text>
+  {{- if .Frontier}}
+  <polyline class="frontier" points="{{.Frontier}}"/>
+  {{- end}}
+  {{- range .Points}}
+  <g{{if .Best}} class="best"{{end}}>
+    <title>{{.Title}}</title>
+    <circle cx="{{.X}}" cy="{{.Y}}" r="6"/>
+    <text x="{{.X}}" y="{{.Y}}" dx="{{if .LabelLeft}}-10{{else}}10{{end}}" dy="-8" text-anchor="{{if .LabelLeft}}end{{else}}start{{end}}">{{.Label}}{{if .Best}} ★{{end}}</text>
+  </g>
+  {{- end}}
+</svg>
+{{- end}}
+
+<h2>Cases</h2>
+<p class="muted">In the end, or fixed for a repair case; the redder the cell, the more runs failed. The cases the models disagree on most come first.</p>
+<div class="scroll">
+<table class="cases">
+  <thead><tr><th>Case</th>{{range .Summary}}<th{{if .Best}} class="best"{{end}}>{{.Name}}{{if .Best}} ★{{end}}</th>{{end}}</tr></thead>
+  <tbody>
+  {{- range .Cases}}
+    <tr><td>{{.Name}}</td>{{range .Cells}}{{if .Ran}}<td class="rate" style="--rate:{{printf "%.2f" .Rate}}">{{.Text}}</td>{{else}}<td>—</td>{{end}}{{end}}</tr>
+  {{- end}}
+  </tbody>
+</table>
+</div>
+</body>
+</html>

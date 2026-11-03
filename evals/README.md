@@ -34,7 +34,7 @@ what they cost, the judge's apart, then waits for a yes.
 |---|---|---|
 | `-model` | `anthropic-medium` | the `<provider>-<tier>` being tested, the tier the server translates with by default; `stub` runs the dev-mode stub, free and without a key |
 | `-effort` | `low` | the model's effort; a provider with nothing like it ignores it |
-| `-judge` | `anthropic-large` | the `<provider>-<tier>` that judges the issues raised (see below); `none` judges nothing |
+| `-judge` | `anthropic-large` | the `<provider>-<tier>` that judges the issues raised (see below), at `medium` effort unless `:<effort>` follows it, as in `anthropic-medium:high`; `none` judges nothing |
 | `-repeats` | `5` | runs per case |
 | `-cases` | `all` | `patterns`, `rules`, a group's name, or one case's name |
 | `-compare` | | an earlier report's `.json`, to say what changed |
@@ -43,6 +43,42 @@ what they cost, the judge's apart, then waits for a yes.
 
 To check one case quickly: `-cases first-saturday -repeats 1`. To run one
 group from both files: `-cases "prompt injection"`.
+
+## Comparing models
+
+`matrix` runs the same eval on several models, each at its own effort, and
+saves each run as an ordinary report. Every model gets the same cases and the
+same judge, and the estimate and the confirm cover the whole matrix at once:
+
+```bash
+ANTHROPIC_API_KEY=… MISTRAL_API_KEY=… go run ./cmd/translator-eval matrix -models anthropic-small:low,anthropic-medium:low,mistral-small:high
+```
+
+`-models` takes `<provider>-<tier>:<effort>` pairs (the effort defaults to
+`low`). The other flags are the single run's, apart from `-model`, `-effort`
+and `-compare`, and they go after `matrix`, never before it.
+`-models stub:low,stub:medium -yes` runs end to end for free.
+
+When the runs finish, it writes `reports/<date>-comparison.html`, a page that
+needs nothing but itself, to open in a browser. `compare`
+writes the same thing from saved reports alone, without asking any model, so
+it costs nothing to rebuild and can compare runs from different days:
+
+```bash
+go run ./cmd/translator-eval compare evals/reports/a.json evals/reports/b.json
+```
+
+The comparison has:
+
+- a summary table, one row per model and effort;
+- a chart of pass rate against cost per translation, with cost on a log scale.
+  ★ marks a model no other beats on both, and a step joins them: anything below
+  and to the right of it is beaten. A model without a price is left off it;
+- a grid of cases by models, shaded by how many runs failed, with the cases the
+  models disagree on most first.
+
+Reports are compared only on the cases they all ran, and the rest are listed.
+If the reports were asked under different prompts, the header says so.
 
 ## Cases
 
