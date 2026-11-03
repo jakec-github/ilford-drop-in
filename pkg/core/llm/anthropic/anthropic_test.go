@@ -3,10 +3,12 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/option"
 
@@ -71,5 +73,31 @@ func TestModel_ShowingThinkingAsksForItsSummaryAndReturnsIt(t *testing.T) {
 	}
 	if got.Thinking != "Sundays at 19:30, three hours." || got.Text != `{"status":"ok","pattern":"p"}` {
 		t.Errorf("response: %+v", got)
+	}
+}
+
+// A 429 is returned at once as refused for now, with the wait the API asked
+// for, for llm.Provider.Ask to retry; a 400 is a plain failed call.
+func TestModel_ARateLimitIsRefusedForNowAndNotRetriedHere(t *testing.T) {
+	for status, refusedForNow := range map[int]bool{http.StatusTooManyRequests: true, http.StatusBadRequest: false} {
+		calls := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "7")
+			w.WriteHeader(status)
+			io.WriteString(w, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`)
+		}))
+		model := newModel("claude-haiku-5-5", llm.Options{}, option.WithBaseURL(server.URL), option.WithAPIKey("test"))
+
+		_, err := model.Reply(context.Background(), testPrompt, []llm.Turn{{Role: llm.User, Text: "Sundays"}})
+		server.Close()
+		var r *llm.RefusedForNow
+		if errors.As(err, &r) != refusedForNow || (refusedForNow && r.After != 7*time.Second) {
+			t.Errorf("%d: error %#v, want refused for now %v, after 7s", status, err, refusedForNow)
+		}
+		if calls != 1 {
+			t.Errorf("%d: %d calls, want 1: the SDK retried", status, calls)
+		}
 	}
 }

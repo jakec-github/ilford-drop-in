@@ -121,7 +121,8 @@ func (m *model) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn)
 		return llm.Response{}, err
 	}
 	if httpResp.StatusCode != http.StatusOK {
-		return llm.Response{}, fmt.Errorf("mistral: %s: %s", httpResp.Status, strings.TrimSpace(string(data[:min(len(data), 500)])))
+		err := fmt.Errorf("mistral: %s: %s", httpResp.Status, strings.TrimSpace(string(data[:min(len(data), 500)])))
+		return llm.Response{}, llm.Refusal(err, httpResp.StatusCode, httpResp.Header)
 	}
 
 	var resp response

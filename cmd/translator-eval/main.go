@@ -47,7 +47,7 @@ func run() error {
 	which := flag.String("cases", "all", "all, patterns, rules, a group's name, or one case's name")
 	judge := flag.String("judge", "anthropic-large", "the <provider>-<tier> that judges the issues raised, or none")
 	compare := flag.String("compare", "", "an earlier report's .json, to say what changed")
-	parallel := flag.Int("parallel", 4, "how many translations run at once")
+	parallel := flag.Int("parallel", 1, "how many translations run at once; more only queue, at one call a second to a model")
 	yes := flag.Bool("yes", false, "run without asking first")
 	casesDir := flag.String("in", "evals/cases", "the directory of case files")
 	out := flag.String("out", "evals/reports", "the directory reports are written to")
