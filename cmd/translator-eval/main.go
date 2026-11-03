@@ -86,6 +86,9 @@ func runOne(args []string) error {
 	compare := fs.String("compare", "", "an earlier report's .json, to say what changed")
 	f := commonFlags(fs)
 	fs.Parse(args)
+	if err := stray(fs, args); err != nil {
+		return err
+	}
 
 	cases, err := loadCases(*f.casesDir, *f.which)
 	if err != nil {
@@ -120,6 +123,9 @@ func runMatrix(args []string) error {
 	models := fs.String("models", "", "the <provider>-<tier>:<effort> pairs to evaluate, comma separated, such as anthropic-small:low,mistral-small:high")
 	f := commonFlags(fs)
 	fs.Parse(args)
+	if err := stray(fs, args); err != nil {
+		return err
+	}
 	if *models == "" {
 		return fmt.Errorf("matrix needs -models, such as -models anthropic-small:low,anthropic-medium:low")
 	}
@@ -167,6 +173,23 @@ func runMatrix(args []string) error {
 		reports = append(reports, r)
 	}
 	return saveComparison(reports, *f.out)
+}
+
+// stray refuses what is left of args once fs has parsed its flags. The flag
+// package stops at the first word that is not a flag, so a subcommand after a
+// flag, as in -repeats 5 matrix, would otherwise quietly run one eval of the
+// default model and drop everything after it.
+func stray(fs *flag.FlagSet, args []string) error {
+	if fs.NArg() == 0 {
+		return nil
+	}
+	word := fs.Arg(0)
+	if word != "matrix" && word != "compare" {
+		return fmt.Errorf("unexpected %q: every option is a flag, such as -model %s", word, word)
+	}
+	rest := slices.Clone(args)
+	rest = slices.Delete(rest, len(args)-fs.NArg(), len(args)-fs.NArg()+1)
+	return fmt.Errorf("%s must come before any flag: translator-eval %s", word, strings.Join(append([]string{word}, rest...), " "))
 }
 
 func runCompare(args []string) error {
