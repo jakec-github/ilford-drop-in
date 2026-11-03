@@ -6,8 +6,9 @@
 //	go run ./cmd/translator-eval -model stub -yes
 //
 // matrix runs the same eval on several models, each at its own effort, saves
-// each as an ordinary report, and compares them; compare builds that
-// comparison again from saved reports alone, without asking any model:
+// each as an ordinary report, and compares them in a page of HTML; compare
+// builds that comparison again from saved reports alone, without asking any
+// model:
 //
 //	go run ./cmd/translator-eval matrix -models anthropic-small:low,mistral-small:high
 //	go run ./cmd/translator-eval compare evals/reports/a.json evals/reports/b.json
@@ -374,14 +375,14 @@ func saveComparison(reports []*translatoreval.Report, out string) error {
 	if len(reports) == 0 {
 		return nil
 	}
-	base, err := free(out, translatoreval.ComparisonFileName(time.Now()), ".md")
+	base, err := free(out, translatoreval.ComparisonFileName(time.Now()), ".html")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(base+".md", []byte(translatoreval.RenderComparison(translatoreval.Compare(reports))), 0o644); err != nil {
+	if err := os.WriteFile(base+".html", []byte(translatoreval.RenderComparison(translatoreval.Compare(reports))), 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("Comparison: %s.md\n", base)
+	fmt.Printf("Comparison: %s.html\n", base)
 	return nil
 }
 

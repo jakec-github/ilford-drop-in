@@ -2,9 +2,13 @@ package translatoreval
 
 import (
 	"cmp"
+	_ "embed"
 	"fmt"
+	"html/template"
 	"maps"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,104 +172,196 @@ func spread(c CaseRow) float64 {
 	return max(hi-lo, 0)
 }
 
-// RenderComparison is a Comparison as Markdown: the summary table, the chart
-// of pass rate against cost, and the grid of cases.
-func RenderComparison(c Comparison) string {
-	var b strings.Builder
-	b.WriteString("# Translator eval: comparison\n\n")
-	for _, r := range c.Rows {
-		fmt.Fprintf(&b, "- %s: run %s", r.Name, r.Report.Started.Format("2006-01-02 15:04 MST"))
-		if c.PromptsDiffer {
-			fmt.Fprintf(&b, " · prompts %s", promptList(r.Report.Prompts))
-		}
-		b.WriteString("\n")
-	}
-	b.WriteString("\n")
-	if c.PromptsDiffer {
-		b.WriteString("**The reports were asked under different prompts**, so a difference may be the prompt's, not the model's.\n\n")
-	} else if len(c.Rows) > 0 {
-		fmt.Fprintf(&b, "Every report was asked under the same prompts: %s.\n\n", promptList(c.Rows[0].Report.Prompts))
-	}
-	fmt.Fprintf(&b, "Compared on the %d cases every report ran.", len(c.Cases))
-	for _, r := range c.Rows {
-		if len(r.Only) > 0 {
-			fmt.Fprintf(&b, " Only %s ran %s.", r.Name, strings.Join(r.Only, ", "))
-		}
-	}
-	b.WriteString("\n\n")
+//go:embed comparison.html
+var comparisonHTML string
 
-	b.WriteString("## Summary\n\n")
-	b.WriteString("First call and in the end are the first-attempt cases, as in each report; repairs are apart. ")
-	b.WriteString("Translations and issues split the first-attempt runs by what the case wants. ")
-	b.WriteString("Made up and missed are what the judge found. ★ is a model no other beats on both pass rate and cost.\n\n")
-	b.WriteString("| | First call | In the end | Repairs fixed | Translations | Issues | Made up | Missed | A translation | Typical | Slow (p95) | Over " + patterntranslator.Timeout.String() + " |\n")
-	b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+var comparisonPage = template.Must(template.New("comparison").Parse(comparisonHTML))
+
+// RenderComparison is a Comparison as a page of HTML that needs nothing but
+// itself: the summary table, the chart of pass rate against cost, and the
+// grid of cases shaded by pass rate.
+func RenderComparison(c Comparison) string {
+	page := comparisonView{Comparison: c, Timeout: patterntranslator.Timeout.String(), Chart: plot(c)}
+	if len(c.Rows) > 0 {
+		page.Prompts = promptList(c.Rows[0].Report.Prompts)
+	}
 	for _, r := range c.Rows {
 		s := r.Summary
-		name := r.Name
-		if r.Best {
-			name += " ★"
-		}
 		judged := func(n int) string {
 			if s.Judged.Replies == 0 {
 				return "—"
 			}
 			return fmt.Sprint(n)
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", name,
-			s.All.FirstCall(), s.All, s.Repairs.Rate(), r.Translations, r.Issues,
-			judged(s.Judged.MadeUp), judged(s.Judged.Missed), dollars(r.Report.Priced, s.PerRun()),
-			seconds(s.Typical), seconds(s.Slow), s.TimedOut)
+		page.Summary = append(page.Summary, summaryRow{
+			Name: r.Name, Best: r.Best,
+			Run:     r.Report.Started.Format("2006-01-02 15:04 MST"),
+			Prompts: promptList(r.Report.Prompts),
+			Only:    strings.Join(r.Only, ", "),
+			Cells: []string{
+				s.All.FirstCall().String(), s.All.String(), s.Repairs.Rate().String(),
+				r.Translations.String(), r.Issues.String(),
+				judged(s.Judged.MadeUp), judged(s.Judged.Missed), dollars(r.Report.Priced, s.PerRun()),
+				seconds(s.Typical), seconds(s.Slow), fmt.Sprint(s.TimedOut),
+			},
+		})
 	}
-	b.WriteString("\n")
-
-	writeChart(&b, c)
-
-	b.WriteString("## Cases\n\nIn the end, or fixed for a repair case; the cases the models disagree on most come first.\n\n")
-	b.WriteString("| Case |")
-	for _, r := range c.Rows {
-		fmt.Fprintf(&b, " %s |", r.Name)
-	}
-	b.WriteString("\n|---|" + strings.Repeat("---|", len(c.Rows)) + "\n")
 	for _, cr := range c.Cases {
-		fmt.Fprintf(&b, "| %s |", cr.Name)
+		row := caseView{Name: cr.Name}
 		for _, t := range cr.Rates {
-			fmt.Fprintf(&b, " %d/%d |", t.Passed, t.Runs)
+			row.Cells = append(row.Cells, caseCell{Text: fmt.Sprintf("%d/%d", t.Passed, t.Runs), Rate: rate(t), Ran: t.Runs > 0})
 		}
-		b.WriteString("\n")
+		page.Cases = append(page.Cases, row)
+	}
+	var b strings.Builder
+	if err := comparisonPage.Execute(&b, page); err != nil {
+		// The template and the view are both fixed here, so this is a bug.
+		panic(err)
 	}
 	return b.String()
 }
 
-// writeChart is pass rate against cost a translation. GitHub's Mermaid has no
-// scatter plot, so it is a quadrant chart, with cost scaled to the dearest
-// model; a model without a price has no place on it.
-func writeChart(b *strings.Builder, c Comparison) {
-	dearest := 0.0
-	var priced []ComparisonRow
+// comparisonView is what comparison.html is drawn from.
+type comparisonView struct {
+	Comparison
+	Prompts, Timeout string
+	Summary          []summaryRow
+	Cases            []caseView
+	Chart            *chart
+}
+
+type summaryRow struct {
+	Name, Run, Prompts, Only string
+	Best                     bool
+	Cells                    []string
+}
+
+type caseView struct {
+	Name  string
+	Cells []caseCell
+}
+
+type caseCell struct {
+	Text string
+	Rate float64
+	Ran  bool
+}
+
+// chart is pass rate in the end against cost a translation, in the SVG's own
+// units. Cost is on a log scale, since a tier up can cost ten times as much.
+type chart struct {
+	Width, Height            float64
+	Left, Right, Top, Bottom float64
+	Points                   []point
+	// Frontier is the polyline points of a step through the models no other
+	// beats: along at each one's pass rate to the next one's cost, then up.
+	Frontier       string
+	XTicks, YTicks []tick
+}
+
+type point struct {
+	// Name is the row's; Label is shorter, for beside the point.
+	Name, Label string
+	X, Y        float64
+	Best        bool
+	// Title is the point's figures, shown on hovering over it.
+	Title string
+	// LabelLeft puts the label on the left, for a point near the right edge.
+	LabelLeft bool
+}
+
+type tick struct {
+	At    float64
+	Label string
+}
+
+// plot is the chart of c's priced models, or nil where none has a cost.
+func plot(c Comparison) *chart {
+	var rows []ComparisonRow
 	for _, r := range c.Rows {
-		if r.Report.Priced {
-			priced = append(priced, r)
-			dearest = max(dearest, r.Summary.PerRun())
+		if r.Report.Priced && r.Summary.PerRun() > 0 {
+			rows = append(rows, r)
 		}
 	}
-	if len(priced) == 0 || dearest == 0 {
-		return
+	if len(rows) == 0 {
+		return nil
 	}
-	b.WriteString("## Pass rate against cost\n\n")
-	fmt.Fprintf(b, "Pass rate in the end, against cost a translation as a share of the dearest, %s.\n\n", dollars(true, dearest))
-	b.WriteString("```mermaid\nquadrantChart\n    x-axis Cheaper --> Dearer\n    y-axis Fails more --> Passes more\n")
-	for _, r := range priced {
+	ch := &chart{Width: 760, Height: 440, Left: 72, Right: 736, Top: 24, Bottom: 384}
+
+	cheapest, dearest := math.Inf(1), 0.0
+	lowest := 1.0
+	for _, r := range rows {
+		cheapest, dearest = min(cheapest, r.Summary.PerRun()), max(dearest, r.Summary.PerRun())
+		lowest = min(lowest, rate(r.Summary.All))
+	}
+	xlo, xhi := math.Log10(cheapest), math.Log10(dearest)
+	if pad := (xhi - xlo) / 10; pad > 0 {
+		xlo, xhi = xlo-pad, xhi+pad
+	} else {
+		xlo, xhi = xlo-0.5, xhi+0.5
+	}
+	x := func(cost float64) float64 {
+		return tenth(ch.Left + (math.Log10(cost)-xlo)/(xhi-xlo)*(ch.Right-ch.Left))
+	}
+	// The pass rate axis starts a step below the worst model, so the models
+	// are not squeezed into the top of it.
+	ylo := max(0, math.Ceil(lowest*10-1e-9)/10-0.1)
+	y := func(r float64) float64 {
+		return tenth(ch.Bottom - (r-ylo)/(1-ylo)*(ch.Bottom-ch.Top))
+	}
+
+	for k := math.Floor(xlo); k <= math.Ceil(xhi); k++ {
+		for _, m := range []int{1, 2, 5} {
+			v, _ := strconv.ParseFloat(fmt.Sprintf("%de%d", m, int(k)), 64)
+			if l := math.Log10(v); l >= xlo && l <= xhi {
+				ch.XTicks = append(ch.XTicks, tick{At: x(v), Label: "$" + strconv.FormatFloat(v, 'f', -1, 64)})
+			}
+		}
+	}
+	step := 0.1
+	if 1-ylo <= 0.3 {
+		step = 0.05
+	}
+	for i := 0; ; i++ {
+		r := ylo + float64(i)*step
+		if r > 1+1e-9 {
+			break
+		}
+		ch.YTicks = append(ch.YTicks, tick{At: y(r), Label: fmt.Sprintf("%.0f%%", 100*r)})
+	}
+
+	var best []point
+	for _, r := range rows {
 		label := r.Report.Model
 		if r.Report.Effort != "" {
 			label += " " + r.Report.Effort
 		}
-		if r.Best {
-			label += " ★"
+		p := point{
+			Name: r.Name, Label: label, Best: r.Best,
+			X: x(r.Summary.PerRun()), Y: y(rate(r.Summary.All)),
+			Title: fmt.Sprintf("%s: %s in the end, %s a translation", r.Name, r.Summary.All, dollars(true, r.Summary.PerRun())),
 		}
-		fmt.Fprintf(b, "    %s: [%.2f, %.2f]\n", label, r.Summary.PerRun()/dearest, rate(r.Summary.All))
+		p.LabelLeft = p.X > ch.Left+(ch.Right-ch.Left)*2/3
+		ch.Points = append(ch.Points, p)
+		if p.Best {
+			best = append(best, p)
+		}
 	}
-	b.WriteString("```\n\n")
+	slices.SortFunc(best, func(a, b point) int { return cmp.Compare(a.X, b.X) })
+	var steps []string
+	for i, p := range best {
+		if i > 0 {
+			steps = append(steps, fmt.Sprintf("%.1f,%.1f", p.X, best[i-1].Y))
+		}
+		steps = append(steps, fmt.Sprintf("%.1f,%.1f", p.X, p.Y))
+	}
+	ch.Frontier = strings.Join(steps, " ")
+	return ch
+}
+
+// tenth is v to a tenth of the SVG's unit, finer than a screen shows.
+func tenth(v float64) float64 {
+	return math.Round(v*10) / 10
 }
 
 // ComparisonFileName is where a comparison made on day is written, without

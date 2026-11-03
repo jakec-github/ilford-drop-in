@@ -1,6 +1,8 @@
 package translatoreval
 
 import (
+	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -156,14 +158,91 @@ func TestCompare_TellsApartTwoRunsOfOneModel(t *testing.T) {
 	}
 }
 
-func TestRenderComparison_ChartsPassRateAgainstCostScaledToTheDearest(t *testing.T) {
-	md := RenderComparison(Compare([]*Report{
+// pointFor is the chart's point for the row named name.
+func pointFor(t *testing.T, ch *chart, name string) point {
+	t.Helper()
+	i := slices.IndexFunc(ch.Points, func(p point) bool { return p.Name == name })
+	if i < 0 {
+		t.Fatalf("no point for %s among %v", name, ch.Points)
+	}
+	return ch.Points[i]
+}
+
+func TestPlot_SpacesCostOnALogScale(t *testing.T) {
+	ch := plot(Compare([]*Report{
+		modelReport("anthropic-small", "low", translation("a", passes(2, 4, 0.001))),
+		modelReport("anthropic-medium", "low", translation("a", passes(3, 4, 0.01))),
+		modelReport("anthropic-large", "low", translation("a", passes(4, 4, 0.1))),
+	}))
+	small := pointFor(t, ch, "anthropic-small, low effort")
+	medium := pointFor(t, ch, "anthropic-medium, low effort")
+	large := pointFor(t, ch, "anthropic-large, low effort")
+	// Ten times dearer is as far again, so medium sits halfway.
+	if mid := (small.X + large.X) / 2; math.Abs(medium.X-mid) > 0.1 {
+		t.Errorf("medium at x %.2f, want halfway between %.2f and %.2f", medium.X, small.X, large.X)
+	}
+	if small.X <= ch.Left || large.X >= ch.Right {
+		t.Errorf("points at %.2f and %.2f fall outside the plot, %.2f to %.2f", small.X, large.X, ch.Left, ch.Right)
+	}
+}
+
+func TestPlot_PutsTheModelsThatPassMoreHigher(t *testing.T) {
+	ch := plot(Compare([]*Report{
 		modelReport("anthropic-small", "low", translation("a", passes(2, 4, 0.01))),
 		modelReport("anthropic-large", "low", translation("a", passes(4, 4, 0.04))),
 	}))
-	for _, want := range []string{"quadrantChart", "anthropic-small low ★: [0.25, 0.50]", "anthropic-large low ★: [1.00, 1.00]"} {
-		if !strings.Contains(md, want) {
-			t.Errorf("no %q in:\n%s", want, md)
+	small, large := pointFor(t, ch, "anthropic-small, low effort"), pointFor(t, ch, "anthropic-large, low effort")
+	if large.Y != ch.Top {
+		t.Errorf("all passing at y %.2f, want the top, %.2f", large.Y, ch.Top)
+	}
+	if !(small.Y > large.Y && small.Y < ch.Bottom) {
+		t.Errorf("half passing at y %.2f, want below %.2f and above the axis at %.2f", small.Y, large.Y, ch.Bottom)
+	}
+}
+
+func TestPlot_DrawsAStepThroughTheModelsNoOtherBeats(t *testing.T) {
+	ch := plot(Compare([]*Report{
+		modelReport("anthropic-small", "low", translation("a", passes(2, 4, 0.01))),
+		modelReport("mistral-small", "high", translation("a", passes(2, 4, 0.02))),
+		modelReport("anthropic-large", "low", translation("a", passes(4, 4, 0.05))),
+	}))
+	small, large := pointFor(t, ch, "anthropic-small, low effort"), pointFor(t, ch, "anthropic-large, low effort")
+	// Along from small at its pass rate to large's cost, then up to large.
+	want := fmt.Sprintf("%.1f,%.1f %.1f,%.1f %.1f,%.1f", small.X, small.Y, large.X, small.Y, large.X, large.Y)
+	if ch.Frontier != want {
+		t.Errorf("frontier = %q, want %q", ch.Frontier, want)
+	}
+}
+
+func TestPlot_LeavesOutAModelWithoutAPrice(t *testing.T) {
+	stub := modelReport("stub", "", translation("a", passes(4, 4, 0)))
+	stub.Priced = false
+	ch := plot(Compare([]*Report{stub, modelReport("anthropic-small", "low", translation("a", passes(2, 4, 0.01)))}))
+	if len(ch.Points) != 1 || ch.Points[0].Name != "anthropic-small, low effort" {
+		t.Errorf("points = %v, want the priced model only", ch.Points)
+	}
+	if plot(Compare([]*Report{stub})) != nil {
+		t.Error("a chart with nothing priced to put on it")
+	}
+}
+
+func TestRenderComparison_ShadesEachCaseByItsPassRate(t *testing.T) {
+	html := RenderComparison(Compare([]*Report{
+		modelReport("anthropic-small", "low", translation("a", passes(3, 4, 0.01))),
+		modelReport("anthropic-medium", "low", translation("a", passes(1, 4, 0.01))),
+	}))
+	for _, want := range []string{"--rate:0.75", "--rate:0.25"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("no %q in:\n%s", want, html)
 		}
+	}
+}
+
+func TestRenderComparison_EscapesWhatTheReportsSay(t *testing.T) {
+	html := RenderComparison(Compare([]*Report{
+		modelReport("anthropic-small", "low", translation("<i>a</i>", passes(3, 4, 0.01))),
+	}))
+	if strings.Contains(html, "<i>a</i>") || !strings.Contains(html, "&lt;i&gt;a&lt;/i&gt;") {
+		t.Errorf("a case name is not escaped:\n%s", html)
 	}
 }
