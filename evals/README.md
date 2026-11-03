@@ -44,6 +44,37 @@ what they cost, the judge's apart, then waits for a yes.
 To check one case quickly: `-cases first-saturday -repeats 1`. To run one
 group from both files: `-cases "prompt injection"`.
 
+## Comparing models
+
+`matrix` runs the same eval on several models, each at its own effort, and
+saves each run as an ordinary report. Every model gets the same cases and the
+same judge, and the estimate and the confirm cover the whole matrix at once:
+
+```bash
+ANTHROPIC_API_KEY=… MISTRAL_API_KEY=… go run ./cmd/translator-eval matrix -models anthropic-small:low,anthropic-medium:low,mistral-small:high
+```
+
+`-models` takes `<provider>-<tier>:<effort>` pairs (the effort defaults to
+`low`). The other flags are the single run's, apart from `-model`, `-effort`
+and `-compare`. `-models stub:low,stub:medium -yes` runs end to end for free.
+
+When the runs finish, it writes `reports/<date>-comparison.md`. `compare`
+writes the same thing from saved reports alone, without asking any model, so
+it costs nothing to rebuild and can compare runs from different days:
+
+```bash
+go run ./cmd/translator-eval compare evals/reports/a.json evals/reports/b.json
+```
+
+The comparison has:
+
+- a summary table, one row per model and effort;
+- a chart of pass rate against cost per translation, where ★ marks a model no other beats on both;
+- a grid of cases by models, with the cases the models disagree on most first.
+
+Reports are compared only on the cases they all ran, and the rest are listed.
+If the reports were asked under different prompts, the header says so.
+
 ## Cases
 
 `cases/patterns.yaml` holds descriptions of a whole Shift pattern.
