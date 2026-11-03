@@ -119,9 +119,28 @@ func (m *model) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn)
 	}
 }
 
+// nonReasoning is the models that do not reason, and refuse to be told how
+// hard to.
+var nonReasoning = map[string]bool{"mistral-large-2512": true}
+
+// reasoningEffort is effort as Mistral takes it for model id. Its reasoning
+// models take only none and high, so low is no reasoning at all and anything
+// more is high; nothing is sent where there is no effort or the model does not
+// reason.
+func reasoningEffort(id, effort string) string {
+	switch {
+	case effort == "" || nonReasoning[id]:
+		return ""
+	case effort == "low":
+		return "none"
+	default:
+		return "high"
+	}
+}
+
 // ask is one call to Mistral.
 func (m *model) ask(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
-	req := request{Model: m.id, MaxTokens: maxTokens, ReasoningEffort: m.options.Effort}
+	req := request{Model: m.id, MaxTokens: maxTokens, ReasoningEffort: reasoningEffort(m.id, m.options.Effort)}
 	req.Messages = append(req.Messages, message{Role: "system", Content: prompt.System})
 	for _, t := range turns {
 		req.Messages = append(req.Messages, message{Role: string(t.Role), Content: t.Text})
