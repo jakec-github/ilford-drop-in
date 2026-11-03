@@ -38,7 +38,7 @@ what they cost, the judge's apart, then waits for a yes.
 | `-repeats` | `5` | runs per case |
 | `-cases` | `all` | `patterns`, `rules`, a group's name, or one case's name |
 | `-compare` | | an earlier report's `.json`, to say what changed |
-| `-parallel` | `1` | translations run at once; no model is called more than once a second, so more only queue, and the queueing shows as latency |
+| `-parallel` | `4` | translations run at once |
 | `-yes` | | skips the confirm step |
 
 To check one case quickly: `-cases first-saturday -repeats 1`. To run one

@@ -126,15 +126,11 @@ type Provider struct {
 	Name   string
 	KeyEnv string
 	Tiers  map[Tier]TierModel
-	// New is the Model that asks the model id with apiKey, once a call: it
-	// returns a refusal for now as a RefusedForNow, and Ask paces and retries.
+	// New is the Model that asks the model id with apiKey.
 	New func(apiKey, id string, o Options) Model
 }
 
-// Ask is the Model that answers tier t, with apiKey. It starts no call within
-// Gap of another to the same model in this process, and asks again, up to
-// three times, a call the API refused for now.
+// Ask is the Model that answers tier t, with apiKey.
 func (p Provider) Ask(apiKey string, t Tier, o Options) Model {
-	id := p.Tiers[t].ID
-	return &steady{model: p.New(apiKey, id, o), pace: paceOf(p.Name, id), sleep: sleep}
+	return p.New(apiKey, p.Tiers[t].ID, o)
 }

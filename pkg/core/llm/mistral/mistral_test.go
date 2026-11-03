@@ -35,6 +35,7 @@ func fakeAPI(t *testing.T, status int, reply string) (*model, *map[string]any, *
 	t.Cleanup(server.Close)
 	m := Provider.New("test-key", "mistral-medium-2604", llm.Options{Effort: "low"}).(*model)
 	m.url = server.URL
+	m.pace, m.sleep = &pace{}, func(context.Context, time.Duration) error { return nil }
 	return m, &last, &header
 }
 
@@ -130,26 +131,5 @@ func TestModel_AnAPIErrorIsAFailedCallWithItsMessage(t *testing.T) {
 	_, err := m.Reply(context.Background(), testPrompt, []llm.Turn{{Role: llm.User, Text: "x"}})
 	if err == nil || errors.Is(err, llm.ErrUnusableReply) || !strings.Contains(err.Error(), "rate limit") || !strings.Contains(err.Error(), "429") {
 		t.Errorf("error: %v", err)
-	}
-}
-
-// A 429 or a fault on Mistral's side is refused for now, with the wait it
-// asked for, for llm.Provider.Ask to retry; a 400 is a plain failed call.
-func TestModel_ARateLimitIsRefusedForNow(t *testing.T) {
-	for status, refusedForNow := range map[int]bool{http.StatusTooManyRequests: true, http.StatusServiceUnavailable: true, http.StatusBadRequest: false} {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Retry-After", "2")
-			w.WriteHeader(status)
-			io.WriteString(w, `{"message":"Rate limit exceeded"}`)
-		}))
-		m := Provider.New("test-key", "mistral-small-2603", llm.Options{}).(*model)
-		m.url = server.URL
-
-		_, err := m.Reply(context.Background(), testPrompt, []llm.Turn{{Role: llm.User, Text: "x"}})
-		server.Close()
-		var r *llm.RefusedForNow
-		if errors.As(err, &r) != refusedForNow || (refusedForNow && r.After != 2*time.Second) {
-			t.Errorf("%d: error %#v, want refused for now %v, after 2s", status, err, refusedForNow)
-		}
 	}
 }

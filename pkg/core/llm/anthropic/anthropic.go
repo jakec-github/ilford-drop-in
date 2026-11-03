@@ -3,9 +3,7 @@ package anthropic
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
@@ -45,9 +43,7 @@ type model struct {
 
 func newModel(id string, o llm.Options, opts ...option.RequestOption) *model {
 	return &model{
-		// No retries of the SDK's own: llm.Provider.Ask retries every provider
-		// alike.
-		client:       sdk.NewClient(append([]option.RequestOption{option.WithMaxRetries(0)}, opts...)...),
+		client:       sdk.NewClient(opts...),
 		id:           id,
 		effort:       sdk.OutputConfigEffort(o.Effort),
 		showThinking: o.ShowThinking,
@@ -83,14 +79,6 @@ func (m *model) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn)
 		}}
 	}
 	resp, err := m.client.Messages.New(ctx, params)
-	var apiErr *sdk.Error
-	if errors.As(err, &apiErr) {
-		var header http.Header
-		if apiErr.Response != nil {
-			header = apiErr.Response.Header
-		}
-		return llm.Response{}, llm.Refusal(err, apiErr.StatusCode, header)
-	}
 	if err != nil {
 		return llm.Response{}, err
 	}

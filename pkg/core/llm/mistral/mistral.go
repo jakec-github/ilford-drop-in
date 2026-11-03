@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jakechorley/ilford-drop-in/pkg/core/llm"
 )
@@ -31,7 +33,8 @@ var Provider = llm.Provider{
 		llm.Large:  {ID: "mistral-large-2512", Price: llm.Price{Input: 0.50, Output: 1.50, CacheRead: 0.05}},
 	},
 	New: func(apiKey, id string, o llm.Options) llm.Model {
-		return &model{url: endpoint, apiKey: apiKey, id: id, options: o, client: http.DefaultClient}
+		return &model{url: endpoint, apiKey: apiKey, id: id, options: o, client: http.DefaultClient,
+			pace: paceOf(id), sleep: sleep}
 	},
 }
 
@@ -40,11 +43,15 @@ const endpoint = "https://api.mistral.ai/v1/chat/completions"
 // maxTokens bounds one reply, thinking included, as it does on Anthropic.
 const maxTokens = 2000
 
-// model is one Mistral model, asked at an effort.
+// model is one Mistral model, asked at an effort, no more than once a gap, and
+// asked again when Mistral turns a call away for now.
 type model struct {
 	url, apiKey, id string
 	options         llm.Options
 	client          *http.Client
+	pace            *pace
+	// sleep waits d, or until ctx ends; a test's waits nothing.
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 type message struct {
@@ -89,6 +96,31 @@ type chunk struct {
 }
 
 func (m *model) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
+	for attempt := 0; ; attempt++ {
+		if err := m.sleep(ctx, m.pace.slot()); err != nil {
+			return llm.Response{}, err
+		}
+		resp, err := m.ask(ctx, prompt, turns)
+		var b *busy
+		if !errors.As(err, &b) || attempt == retries {
+			return resp, err
+		}
+		wait := b.after
+		if wait == 0 {
+			wait = backoff(attempt)
+		}
+		// A retry that cannot start in time is not worth waiting for.
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < wait {
+			return resp, err
+		}
+		if err := m.sleep(ctx, wait); err != nil {
+			return resp, fmt.Errorf("%w (and %w while waiting to ask again)", b, err)
+		}
+	}
+}
+
+// ask is one call to Mistral.
+func (m *model) ask(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn) (llm.Response, error) {
 	req := request{Model: m.id, MaxTokens: maxTokens, ReasoningEffort: m.options.Effort}
 	req.Messages = append(req.Messages, message{Role: "system", Content: prompt.System})
 	for _, t := range turns {
@@ -122,7 +154,7 @@ func (m *model) Reply(ctx context.Context, prompt *llm.Prompt, turns []llm.Turn)
 	}
 	if httpResp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("mistral: %s: %s", httpResp.Status, strings.TrimSpace(string(data[:min(len(data), 500)])))
-		return llm.Response{}, llm.Refusal(err, httpResp.StatusCode, httpResp.Header)
+		return llm.Response{}, refusal(err, httpResp.StatusCode, httpResp.Header)
 	}
 
 	var resp response
