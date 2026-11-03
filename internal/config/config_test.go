@@ -660,6 +660,7 @@ func TestValidate_LLM(t *testing.T) {
 		"absent":              {nil, false},
 		"a provider and key":  {&LLMConfig{Provider: "anthropic", APIKey: "k"}, false},
 		"with an effort":      {&LLMConfig{Provider: "anthropic", APIKey: "k", Effort: "medium"}, false},
+		"mistral":             {&LLMConfig{Provider: "mistral", APIKey: "k"}, false},
 		"no key":              {&LLMConfig{Provider: "anthropic"}, true},
 		"no provider":         {&LLMConfig{APIKey: "k"}, true},
 		"an unknown provider": {&LLMConfig{Provider: "openai", APIKey: "k"}, true},
@@ -671,7 +672,7 @@ func TestValidate_LLM(t *testing.T) {
 			cfg.LLM = tc.llm
 			err := Validate(cfg)
 			if name == "an unknown provider" {
-				assert.ErrorContains(t, err, "choose anthropic")
+				assert.ErrorContains(t, err, "choose anthropic, mistral")
 			}
 			if tc.wantErr {
 				assert.Error(t, err)

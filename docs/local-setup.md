@@ -168,7 +168,7 @@ server:
 # app asks for a tier, and the provider says which of its models that is. Spend
 # is capped by the provider workspace's limit, not here.
 llm:
-  provider: 'anthropic'                      # anthropic
+  provider: 'anthropic'                      # anthropic or mistral
   apiKey: 'sk-ant-your-key'
   effort: 'low'                              # optional; low, medium, high, xhigh or max
 ```
