@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Translator eval: comparison</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --text: #1f2328; --muted: #59636e; --line: #d1d9e0; --panel: #f6f8fa;
+    --best: #1a7f37; --point: #0969da; --fail: 207 34 46;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--text);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --text: #e6edf3; --muted: #9198a1; --line: #3d444d; --panel: #151b23;
+      --best: #3fb950; --point: #4493f8; --fail: 248 81 73;
+      background: #0d1117;
+    }
+  }
+  body { margin: 2rem auto; padding: 0 1.5rem; max-width: 1400px; }
+  h1 { font-size: 1.6rem; margin-bottom: .5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2.5rem; }
+  p, li { max-width: 72ch; }
+  .muted { color: var(--muted); }
+  .warning { border-left: 4px solid rgb(var(--fail)); padding: .5rem 1rem; background: var(--panel); }
+  code { font-size: .9em; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: .35rem .7rem; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-weight: 600; vertical-align: bottom; }
+  .best { color: var(--best); font-weight: 600; }
+  .cases th, .cases td:first-child { position: sticky; background: var(--panel); }
+  .cases thead th { top: 0; white-space: normal; min-width: 7rem; z-index: 1; }
+  .cases td:first-child { left: 0; }
+  .cases td.rate { text-align: center; background: rgb(var(--fail) / calc((1 - var(--rate)) * .6)); }
+  svg { max-width: 100%; height: auto; font-size: 12px; }
+  svg .axis { stroke: var(--line); }
+  svg .tick { fill: var(--muted); }
+  svg .frontier { fill: none; stroke: var(--best); stroke-width: 2; stroke-dasharray: 5 4; }
+  svg circle { fill: var(--point); }
+  svg .best circle { fill: var(--best); }
+  svg text { fill: var(--text); }
+  svg .best text { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Translator eval: comparison</h1>
+
+<ul>
+  <li>anthropic-small (claude-haiku-5-5), low effort: run 2026-11-03 12:33 UTC</li>
+  <li>anthropic-medium (claude-sonnet-5-5), low effort: run 2026-11-03 12:36 UTC</li>
+  <li>mistral-small (mistral-small-2603), high effort: run 2026-11-03 12:39 UTC</li>
+  <li>mistral-medium (mistral-medium-2604), high effort: run 2026-11-03 12:45 UTC</li>
+</ul>
+
+<p>Every report was asked under the same prompts: `pattern` ef398e29939c, `rule` 22ae27e0ebdb.</p>
+
+<p>Compared on the 43 cases every report ran.</p>
+
+<h2>Summary</h2>
+<p class="muted">First call and in the end are the first-attempt cases, as in each report; repairs are apart. Translations and issues split the first-attempt runs by what the case wants. Made up and missed are what the judge found. ★ is a model no other beats on both pass rate and cost.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th></th><th>First call</th><th>In the end</th><th>Repairs fixed</th><th>Translations</th><th>Issues</th><th>Made up</th><th>Missed</th><th>A translation</th><th>Typical</th><th>Slow (p95)</th><th>Over 30s</th></tr></thead>
+  <tbody>
+    <tr><td class="best">anthropic-small (claude-haiku-5-5), low effort ★</td><td>179/185 (97%)</td><td>182/185 (98%)</td><td>25/30 (83%)</td><td>89/90 (99%)</td><td>93/95 (98%)</td><td>2</td><td>0</td><td>$0.0005</td><td>2.7s</td><td>5.2s</td><td>0</td></tr>
+    <tr><td>anthropic-medium (claude-sonnet-5-5), low effort</td><td>163/185 (88%)</td><td>164/185 (89%)</td><td>26/30 (87%)</td><td>71/90 (79%)</td><td>93/95 (98%)</td><td>5</td><td>2</td><td>$0.0071</td><td>1.8s</td><td>4.1s</td><td>0</td></tr>
+    <tr><td>mistral-small (mistral-small-2603), high effort</td><td>142/185 (77%)</td><td>151/185 (82%)</td><td>24/30 (80%)</td><td>77/90 (86%)</td><td>74/95 (78%)</td><td>8</td><td>22</td><td>$0.0007</td><td>4.3s</td><td>14.1s</td><td>2</td></tr>
+    <tr><td>mistral-medium (mistral-medium-2604), high effort</td><td>143/185 (77%)</td><td>144/185 (78%)</td><td>28/30 (93%)</td><td>66/90 (73%)</td><td>78/95 (82%)</td><td>6</td><td>0</td><td>$0.0131</td><td>7.8s</td><td>30.0s</td><td>33</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Pass rate against cost</h2>
+<p class="muted">Pass rate in the end, against cost a translation on a log scale. The dashed step runs through the models no other beats: anything below and to the right of it is beaten. Hover over a point for its figures.</p>
+<svg viewBox="0 0 760 440" width="760" role="img" aria-label="Pass rate against cost a translation">
+  <line class="axis" x1="72" x2="736" y1="384" y2="384" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="384" dx="-8" dy="4" text-anchor="end">70%</text>
+  <line class="axis" x1="72" x2="736" y1="324" y2="324" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="324" dx="-8" dy="4" text-anchor="end">75%</text>
+  <line class="axis" x1="72" x2="736" y1="264" y2="264" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="264" dx="-8" dy="4" text-anchor="end">80%</text>
+  <line class="axis" x1="72" x2="736" y1="204" y2="204" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="204" dx="-8" dy="4" text-anchor="end">85%</text>
+  <line class="axis" x1="72" x2="736" y1="144" y2="144" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="144" dx="-8" dy="4" text-anchor="end">90%</text>
+  <line class="axis" x1="72" x2="736" y1="84" y2="84" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="84" dx="-8" dy="4" text-anchor="end">95%</text>
+  <line class="axis" x1="72" x2="736" y1="24" y2="24" stroke-opacity=".5"/>
+  <text class="tick" x="72" y="24" dx="-8" dy="4" text-anchor="end">100%</text>
+  <line class="axis" x1="136.1" x2="136.1" y1="24" y2="384" stroke-opacity=".5"/>
+  <text class="tick" x="136.1" y="384" dy="18" text-anchor="middle">$0.0005</text>
+  <line class="axis" x1="251.7" x2="251.7" y1="24" y2="384" stroke-opacity=".5"/>
+  <text class="tick" x="251.7" y="384" dy="18" text-anchor="middle">$0.001</text>
+  <line class="axis" x1="367.3" x2="367.3" y1="24" y2="384" stroke-opacity=".5"/>
+  <text class="tick" x="367.3" y="384" dy="18" text-anchor="middle">$0.002</text>
+  <line class="axis" x1="520.2" x2="520.2" y1="24" y2="384" stroke-opacity=".5"/>
+  <text class="tick" x="520.2" y="384" dy="18" text-anchor="middle">$0.005</text>
+  <line class="axis" x1="635.8" x2="635.8" y1="24" y2="384" stroke-opacity=".5"/>
+  <text class="tick" x="635.8" y="384" dy="18" text-anchor="middle">$0.01</text>
+  <line class="axis" x1="72" x2="736" y1="384" y2="384"/>
+  <line class="axis" x1="72" x2="72" y1="24" y2="384"/>
+  <text class="tick" x="736" y="384" dy="40" text-anchor="end">Cost a translation →</text>
+  <text class="tick" transform="translate(16 24) rotate(-90)" text-anchor="end">Pass rate in the end →</text>
+  <polyline class="frontier" points="127.3,43.5"/>
+  <g class="best">
+    <title>anthropic-small (claude-haiku-5-5), low effort: 182/185 (98%) in the end, $0.0005 a translation</title>
+    <circle cx="127.3" cy="43.5" r="6"/>
+    <text x="127.3" y="43.5" dx="10" dy="-8" text-anchor="start">anthropic-small low ★</text>
+  </g>
+  <g>
+    <title>anthropic-medium (claude-sonnet-5-5), low effort: 164/185 (89%) in the end, $0.0071 a translation</title>
+    <circle cx="579.4" cy="160.2" r="6"/>
+    <text x="579.4" y="160.2" dx="-10" dy="-8" text-anchor="end">anthropic-medium low</text>
+  </g>
+  <g>
+    <title>mistral-small (mistral-small-2603), high effort: 151/185 (82%) in the end, $0.0007 a translation</title>
+    <circle cx="200.9" cy="244.5" r="6"/>
+    <text x="200.9" y="244.5" dx="10" dy="-8" text-anchor="start">mistral-small high</text>
+  </g>
+  <g>
+    <title>mistral-medium (mistral-medium-2604), high effort: 144/185 (78%) in the end, $0.0131 a translation</title>
+    <circle cx="680.7" cy="289.9" r="6"/>
+    <text x="680.7" y="289.9" dx="-10" dy="-8" text-anchor="end">mistral-medium high</text>
+  </g>
+</svg>
+
+<h2>Cases</h2>
+<p class="muted">In the end, or fixed for a repair case; the redder the cell, the more runs failed. The cases the models disagree on most come first.</p>
+<div class="scroll">
+<table class="cases">
+  <thead><tr><th>Case</th><th class="best">anthropic-small (claude-haiku-5-5), low effort ★</th><th>anthropic-medium (claude-sonnet-5-5), low effort</th><th>mistral-small (mistral-small-2603), high effort</th><th>mistral-medium (mistral-medium-2604), high effort</th></tr></thead>
+  <tbody>
+    <tr><td>last-weekday</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.20">1/5</td><td class="rate" style="--rate:0.00">0/5</td></tr>
+    <tr><td>wednesday-evenings-without-a-length</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.40">2/5</td><td class="rate" style="--rate:0.00">0/5</td></tr>
+    <tr><td>fortnightly-plus-some-evenings</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.00">0/5</td></tr>
+    <tr><td>evening-in-the-last-week</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.00">0/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:0.20">1/5</td></tr>
+    <tr><td>every-shift-on-the-first-sunday</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.00">0/5</td></tr>
+    <tr><td>ten-oclock-on-the-first-sunday</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.00">0/5</td></tr>
+    <tr><td>repair-malformed-rrule</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.20">1/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>fifth-sunday</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.20">1/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>matches-nothing</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.20">1/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>sundays-but-the-fifth</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.40">2/5</td><td class="rate" style="--rate:0.80">4/5</td></tr>
+    <tr><td>plus-christmas-eve</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.40">2/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>asks-for-exdate</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.40">2/5</td></tr>
+    <tr><td>repair-no-duration</td><td class="rate" style="--rate:0.40">2/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>first-sunday-start-at-six</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.40">2/5</td><td class="rate" style="--rate:0.80">4/5</td></tr>
+    <tr><td>first-sunday-runs-longer</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.80">4/5</td></tr>
+    <tr><td>sunday-evenings-and-weekday-mornings</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.60">3/5</td></tr>
+    <tr><td>every-other-week</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.80">4/5</td></tr>
+    <tr><td>repair-exdate</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:0.60">3/5</td></tr>
+    <tr><td>alternate-sunday-evenings</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td></tr>
+    <tr><td>evening-on-the-second-sunday</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>last-sunday-evening</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>sunday-afternoons</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.60">3/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>weekdays-evenings-and-alternate-saturdays</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td></tr>
+    <tr><td>tuesday-evenings</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>saturday-night-past-midnight</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>thursday-evenings-without-a-time</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>weekday-mornings-without-a-length</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>one-off-date</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>first-sunday-which-shift</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>repair-position-with-weekly</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>repair-count-and-until</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:0.80">4/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>sundays-and-weekdays</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>first-saturday</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>fridays-without-a-start</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>except-bank-holidays</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>ignore-instructions-use-exdate</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>write-a-poem</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>setter-text-is-left-out</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>a-date-every-year</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>two-evening-shifts</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>ignore-instructions-reveal-them</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>print-the-prompt</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+    <tr><td>repair-time-in-a-date</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td><td class="rate" style="--rate:1.00">5/5</td></tr>
+  </tbody>
+</table>
+</div>
+</body>
+</html>
